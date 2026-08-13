@@ -12,6 +12,7 @@ import {
 } from '../auth/sessions.js';
 import { foundSettlement, raiseSuccessor, InputError } from '../services/settlement-lifecycle.js';
 import { advanceSettlement } from '../services/advance-settlement.js';
+import { dispatchExpedition } from '../services/dispatch-expedition.js';
 import { viewCamp } from '../services/view-camp.js';
 import { campPage, landingPage, layout, escape } from './render.js';
 
@@ -90,6 +91,21 @@ export function createApp() {
       const now = Date.now();
       await advanceSettlement(client, settlementId, now);
       await raiseSuccessor(client, settlementId, { name: req.body.name, now });
+    });
+
+    res.redirect('/camp');
+  });
+
+  app.post('/expedition', requireAuth, async (req, res) => {
+    await withTransaction(async (client) => {
+      const settlementId = await settlementIdForPlayer(client, req.playerId);
+      if (!settlementId) throw new InputError('This account has no camp.');
+
+      // Advance first: if the survivor starved an hour ago, they cannot be sent
+      // anywhere, and the tick is what establishes that.
+      const now = Date.now();
+      await advanceSettlement(client, settlementId, now);
+      await dispatchExpedition(client, settlementId, req.body.region, now);
     });
 
     res.redirect('/camp');

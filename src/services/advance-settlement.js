@@ -1,5 +1,5 @@
 import { applyTick } from '../game/tick.js';
-import { loadWorld, saveWorld } from '../db/world.js';
+import { loadWorld, saveWorld, grantItems } from '../db/world.js';
 
 /**
  * Bring a settlement up to date: load, simulate, write back.
@@ -25,6 +25,13 @@ export async function advanceSettlement(client, settlementId, now) {
   const state = await loadWorld(client, settlementId);
   const { state: advanced, events } = applyTick(state, now);
   await saveWorld(client, advanced);
+
+  // Items the tick found are granted here, where slugs can be resolved to rows. A
+  // survivor who died on the way home has no pack to put them in.
+  const finds = events.filter((event) => event.type === 'item_found');
+  if (finds.length > 0 && advanced.survivor?.alive) {
+    await grantItems(client, advanced.survivor.id, finds);
+  }
 
   return { state: advanced, events };
 }

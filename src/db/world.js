@@ -52,7 +52,7 @@ export async function loadWorld(client, settlementId) {
 
   // "The living survivor", singular — the partial unique index guarantees at most one.
   const { rows: characters } = await client.query(
-    `select id, health, hunger, radiation, born_at
+    `select id, health, hunger, radiation, born_at, skill_scavenging
        from characters
       where settlement_id = $1 and died_at is null`,
     [settlementId],
@@ -77,6 +77,7 @@ export async function loadWorld(client, settlementId) {
       health: character.health,
       hunger: character.hunger,
       radiation: character.radiation,
+      skillScavenging: character.skill_scavenging,
       bornAt: character.born_at.getTime(),
       diedAt: null,
       causeOfDeath: null,
@@ -91,12 +92,35 @@ export async function loadWorld(client, settlementId) {
       })),
     };
 
+    // The region travels with the expedition because resolution is pure: the tick
+    // must be able to roll an outcome without reaching back into the database.
     const { rows: active } = await client.query(
-      `select id, status from expeditions where character_id = $1 and status = 'active'`,
+      `select e.id, e.status, e.returns_at, e.seed,
+              r.slug, r.name, r.danger, r.loot, r.finds, r.radiation_per_trip
+         from expeditions e
+         join regions r on r.id = e.region_id
+        where e.character_id = $1 and e.status = 'active'`,
       [character.id],
     );
+
     if (active[0]) {
-      expedition = { id: active[0].id, status: active[0].status, resolvedAt: null };
+      const row = active[0];
+      expedition = {
+        id: row.id,
+        status: row.status,
+        returnsAt: row.returns_at.getTime(),
+        seed: row.seed,
+        resolvedAt: null,
+        log: null,
+        region: {
+          slug: row.slug,
+          name: row.name,
+          danger: row.danger,
+          loot: row.loot,
+          finds: row.finds,
+          radiationPerTrip: row.radiation_per_trip,
+        },
+      };
     }
   }
 
@@ -154,8 +178,29 @@ export async function saveWorld(client, state) {
   const expedition = state.expedition;
   if (expedition && expedition.status !== 'active') {
     await client.query(
-      'update expeditions set status = $2, resolved_at = $3 where id = $1',
-      [expedition.id, expedition.status, new Date(expedition.resolvedAt)],
+      'update expeditions set status = $2, resolved_at = $3, log = $4 where id = $1',
+      [
+        expedition.id,
+        expedition.status,
+        new Date(expedition.resolvedAt),
+        expedition.log ? JSON.stringify(expedition.log) : null,
+      ],
+    );
+  }
+}
+
+/**
+ * Add found items to a survivor's pack. Separate from saveWorld because the tick
+ * deals in slugs and knows nothing of item ids — resolving one is a database concern.
+ */
+export async function grantItems(client, characterId, grants) {
+  for (const { slug, qty } of grants) {
+    await client.query(
+      `insert into inventory_items (character_id, item_id, qty)
+       select $1, i.id, $3 from items i where i.slug = $2
+       on conflict (character_id, item_id)
+         do update set qty = inventory_items.qty + excluded.qty`,
+      [characterId, slug, qty],
     );
   }
 }

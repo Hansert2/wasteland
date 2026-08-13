@@ -1,4 +1,5 @@
 import { CONFIG } from './constants.js';
+import { resolveExpedition } from './expeditions.js';
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -60,8 +61,78 @@ function advance(state, dtMs, at, events, config) {
 
   accrueResources(state, hours);
 
+  // Coming home happens before the hour's hunger is applied, so a survivor who
+  // returns carrying food is fed by it rather than starving on the doorstep.
+  if (isDueBack(state, at)) {
+    returnExpedition(state, at, events);
+  }
+
   if (state.survivor?.alive) {
     simulateSurvivor(state, hours, at, events, config);
+  }
+}
+
+function isDueBack(state, at) {
+  return (
+    state.survivor?.alive &&
+    state.expedition?.status === 'active' &&
+    at >= state.expedition.returnsAt
+  );
+}
+
+/**
+ * Resolve a returning expedition. The outcome is rolled from the seed stored at
+ * dispatch, so this is deterministic: replaying the same interval replays the same
+ * trip rather than re-rolling it.
+ */
+function returnExpedition(state, at, events) {
+  const expedition = state.expedition;
+  const survivor = state.survivor;
+
+  const outcome = resolveExpedition({
+    region: expedition.region,
+    survivor,
+    seed: expedition.seed,
+  });
+
+  expedition.resolvedAt = at;
+  expedition.log = outcome.log;
+
+  // Dying out there means nothing comes home — not the survivor, and not the haul.
+  if (outcome.died) {
+    expedition.status = 'lost';
+    events.push({ at, type: 'expedition_lost', expeditionId: expedition.id, log: outcome.log });
+    kill(state, at, outcome.cause, events);
+    return;
+  }
+
+  expedition.status = 'returned';
+
+  for (const [kind, amount] of Object.entries(outcome.loot)) {
+    const resource = state.settlement.resources[kind];
+    if (!resource) continue;
+    // Anything over the storage cap is simply lost; a bigger shelter is the fix.
+    resource.amount = clamp(resource.amount + amount, 0, resource.cap);
+  }
+
+  survivor.radiation = clamp(survivor.radiation + outcome.radiation, 0, 100);
+  survivor.health = clamp(survivor.health - outcome.damage, 0, 100);
+
+  // Items are granted by the caller: the tick has no idea what an item id is, and
+  // resolving a slug is a database concern.
+  for (const find of outcome.finds) {
+    events.push({ at, type: 'item_found', slug: find.slug, qty: find.qty });
+  }
+
+  events.push({
+    at,
+    type: 'expedition_returned',
+    expeditionId: expedition.id,
+    log: outcome.log,
+  });
+
+  if (survivor.health <= 0) {
+    kill(state, at, outcome.cause ?? 'injuries', events);
   }
 }
 

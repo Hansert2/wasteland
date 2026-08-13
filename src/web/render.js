@@ -66,7 +66,9 @@ export function campPage(view) {
 
     ${renderEvents(view.events)}
     ${view.survivor ? renderSurvivor(view.survivor) : renderNoSurvivor()}
+    ${view.survivor ? renderExpeditions(view) : ''}
     ${renderResources(view.resources)}
+    ${renderInventory(view.inventory)}
     ${renderStructures(view.structures)}
     ${renderRoster(view.roster)}
 
@@ -89,8 +91,14 @@ function describe(event) {
       return `${when} — your survivor died of ${event.cause} after ${n(event.daysSurvived)} days.`;
     case 'auto_consumed':
       return `${when} — with nothing left in the stores, they used a ${event.item}.`;
+    case 'expedition_returned':
+      return `${when} — ${event.log.join(' ')}`;
     case 'expedition_lost':
-      return `${when} — an expedition never came home.`;
+      return event.log
+        ? `${when} — ${event.log.join(' ')}`
+        : `${when} — an expedition never came home.`;
+    case 'item_found':
+      return `${when} — brought back ${event.qty} × ${event.slug.replaceAll('_', ' ')}.`;
     default:
       return `${when} — ${event.type}`;
   }
@@ -115,6 +123,45 @@ function renderNoSurvivor() {
       <label>Name <input name="name" placeholder="Survivor" required></label>
       <button type="submit">Take over the camp</button>
     </form>`;
+}
+
+function renderExpeditions(view) {
+  if (view.expedition) {
+    const hoursLeft = (new Date(view.expedition.returnsAt).getTime() - Date.now()) / 3600000;
+    const due =
+      hoursLeft > 0
+        ? `due back in ${n(hoursLeft)} h`
+        : 'overdue — reload to see what came back';
+    return `<h2>Away</h2>
+      <p>${escape(view.expedition.regionName)} — ${escape(due)}</p>`;
+  }
+
+  const rows = view.regions
+    .map(
+      (region) => `<tr>
+        <th>${escape(region.name)}</th>
+        <td>danger ${region.danger}</td>
+        <td>${n(region.travel_hours, 0)} h</td>
+        <td>
+          <form method="post" action="/expedition" style="margin:0">
+            <input type="hidden" name="region" value="${escape(region.slug)}">
+            <button type="submit">Send</button>
+          </form>
+        </td>
+      </tr>
+      <tr><td colspan="4"><small>${escape(region.description ?? '')}</small></td></tr>`,
+    )
+    .join('');
+
+  return `<h2>Where to send them</h2><table>${rows}</table>`;
+}
+
+function renderInventory(inventory) {
+  if (!inventory || inventory.length === 0) return '';
+  const rows = inventory
+    .map((item) => `<tr><th>${escape(item.name)}</th><td>×${item.qty}</td></tr>`)
+    .join('');
+  return `<h2>Pack</h2><table>${rows}</table>`;
 }
 
 function renderResources(resources) {

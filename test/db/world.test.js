@@ -104,10 +104,12 @@ async function seed(client, options = {}) {
        values ($1, 'Ruined City', 2, 6) returning id`,
       [`ruined_city_${uniq()}`],
     );
+    // Due back in a month: this fixture is about an expedition that is still in
+    // flight when the survivor dies at home, so it must not resolve on its own first.
     const { rows: exps } = await client.query(
-      `insert into expeditions (character_id, region_id, departed_at, returns_at)
-       values ($1, $2, $3, $4) returning id`,
-      [characterId, regions[0].id, new Date(T0), new Date(T0 + hours(6))],
+      `insert into expeditions (character_id, region_id, departed_at, returns_at, seed)
+       values ($1, $2, $3, $4, $5) returning id`,
+      [characterId, regions[0].id, new Date(T0), new Date(T0 + hours(24 * 30)), 1],
     );
     expeditionId = exps[0].id;
   }

@@ -1,14 +1,8 @@
 import { hashPassword, MIN_PASSWORD_LENGTH } from '../auth/passwords.js';
 import { storageCap } from '../game/structures.js';
+import { InputError } from '../errors.js';
 
-/** An error the user caused and can fix; routes render these rather than 500-ing. */
-export class InputError extends Error {
-  constructor(message) {
-    super(message);
-    this.name = 'InputError';
-    this.status = 400;
-  }
-}
+export { InputError };
 
 const STARTING_STRUCTURES = [
   { kind: 'shelter', level: 1 },

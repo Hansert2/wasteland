@@ -196,6 +196,112 @@ test('a finer simulation slice does not move the outcome', () => {
   assert.ok(drift < hours(1), `slice size shifted death by ${(drift / hours(1)).toFixed(2)}h`);
 });
 
+const REGION = {
+  name: 'The Ruined City',
+  danger: 1,
+  loot: { scrap: [10, 10] },
+  finds: [{ slug: 'tinned_stew', chance: 1, qty: [1, 1] }],
+  radiationPerTrip: 0,
+};
+
+const awayState = (overrides = {}) =>
+  makeState({
+    // No scrap production, so these tests measure the haul rather than the workshop.
+    resources: { scrap: { amount: 0, ratePerHour: 0, cap: 10_000 } },
+    expedition: {
+      id: 'exp_1',
+      status: 'active',
+      returnsAt: T0 + hours(4),
+      seed: 1234,
+      region: REGION,
+      resolvedAt: null,
+      log: null,
+    },
+    ...overrides,
+  });
+
+test('an expedition resolves when its hour comes, and the haul lands in the stores', () => {
+  const { state, events } = applyTick(awayState(), T0 + hours(6));
+
+  assert.equal(state.expedition.status, 'returned');
+  assert.ok(state.expedition.resolvedAt <= T0 + hours(6));
+  assert.equal(state.settlement.resources.scrap.amount, 10, 'loot arrived');
+  assert.equal(events.filter((e) => e.type === 'expedition_returned').length, 1);
+  assert.equal(events.filter((e) => e.type === 'item_found').length, 1);
+});
+
+test('an expedition still out is left alone', () => {
+  const { state, events } = applyTick(awayState(), T0 + hours(2));
+
+  assert.equal(state.expedition.status, 'active');
+  assert.equal(state.settlement.resources.scrap.amount, 0);
+  assert.equal(events.length, 0);
+});
+
+test('an expedition already overdue at load resolves on the first slice', () => {
+  // The player was away for a week; the trip ended days ago and must not be stuck.
+  const { state } = applyTick(awayState(), T0 + days(7));
+
+  assert.equal(state.expedition.status, 'returned');
+  assert.ok(state.expedition.resolvedAt < T0 + days(1));
+});
+
+test('loot beyond the storage cap is lost rather than overflowing it', () => {
+  const state = awayState({
+    resources: { scrap: { amount: 95, ratePerHour: 0, cap: 100 } },
+  });
+
+  const { state: after } = applyTick(state, T0 + hours(6));
+  assert.equal(after.settlement.resources.scrap.amount, 100, 'clamped, not 105');
+});
+
+test('dying out there loses the expedition and everything in it', () => {
+  const deadly = {
+    ...REGION,
+    name: 'The Deep Zone',
+    danger: 5,
+    loot: { scrap: [50, 50] },
+    radiationPerTrip: 20,
+  };
+
+  // Hunt for a seed that kills a badly wounded survivor in that region.
+  let result = null;
+  for (let seed = 0; seed < 500 && result === null; seed++) {
+    const state = makeState({
+      resources: { scrap: { amount: 0, ratePerHour: 0, cap: 10_000 } },
+      survivor: { health: 4 },
+      expedition: {
+        id: 'exp_1',
+        status: 'active',
+        returnsAt: T0 + hours(4),
+        seed,
+        region: deadly,
+        resolvedAt: null,
+        log: null,
+      },
+    });
+
+    const { state: after, events } = applyTick(state, T0 + hours(6));
+    if (!after.survivor.alive) result = { after, events };
+  }
+
+  assert.ok(result, 'expected a fatal seed');
+  assert.equal(result.after.expedition.status, 'lost');
+  assert.equal(result.after.settlement.resources.scrap.amount, 0, 'the haul never arrived');
+  assert.equal(result.events.filter((e) => e.type === 'item_found').length, 0);
+  assert.equal(result.events.filter((e) => e.type === 'survivor_died').length, 1);
+});
+
+test('the outcome does not depend on how finely the interval is sliced', () => {
+  const coarse = applyTick(awayState(), T0 + hours(6), { ...CONFIG, stepMs: hours(1) });
+  const fine = applyTick(awayState(), T0 + hours(6), { ...CONFIG, stepMs: 60_000 });
+
+  assert.deepStrictEqual(
+    coarse.state.settlement.resources.scrap.amount,
+    fine.state.settlement.resources.scrap.amount,
+  );
+});
+
 test('now must actually be a number', () => {
   assert.throws(() => applyTick(makeState(), new Date(T0)), TypeError);
 });
