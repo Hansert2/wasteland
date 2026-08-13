@@ -79,13 +79,18 @@ test('registering the same email twice is a user error, not a crash', async () =
 
 test('a bad email or short password is refused before anything is written', async () => {
   await withRollback(async (client) => {
-    await assert.rejects(
-      foundSettlement(client, newAccount({ email: 'not-an-email' })),
-      InputError,
-    );
-    await assert.rejects(foundSettlement(client, newAccount({ password: 'short' })), InputError);
+    const badEmail = newAccount({ email: 'not-an-email' });
+    const shortPassword = newAccount({ password: 'short' });
 
-    const { rows } = await client.query('select count(*)::int as n from players');
+    await assert.rejects(foundSettlement(client, badEmail), InputError);
+    await assert.rejects(foundSettlement(client, shortPassword), InputError);
+
+    // Scoped to these two accounts rather than counting the whole table: test files
+    // run in parallel and the HTTP suite commits players of its own.
+    const { rows } = await client.query(
+      'select count(*)::int as n from players where lower(email) = any($1)',
+      [[badEmail.email, shortPassword.email]],
+    );
     assert.equal(rows[0].n, 0, 'nothing was written');
   });
 });
@@ -182,7 +187,12 @@ test('an expired session is refused and cleaned up on read', async () => {
     const { token } = await createSession(client, playerId, Date.now() - days(365));
     assert.equal(await findSession(client, token), null);
 
-    const { rows } = await client.query('select count(*)::int as n from sessions');
+    // Scoped to this player: test files run in parallel, and the HTTP suite commits
+    // sessions of its own, so an unscoped count would be someone else's business.
+    const { rows } = await client.query(
+      'select count(*)::int as n from sessions where player_id = $1',
+      [playerId],
+    );
     assert.equal(rows[0].n, 0, 'the stale row was swept on read');
   });
 });

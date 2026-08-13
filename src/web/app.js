@@ -1,6 +1,7 @@
 import express from 'express';
 
 import { pool, withTransaction } from '../db/pool.js';
+import { isDatabaseUnreachable } from '../db/errors.js';
 import { settlementIdForPlayer } from '../db/world.js';
 import { verifyPassword } from '../auth/passwords.js';
 import {
@@ -140,6 +141,18 @@ async function startSession(res, playerId) {
 }
 
 function errorHandler(error, _req, res, _next) {
+  if (isDatabaseUnreachable(error)) {
+    console.error('database unreachable — is the container up? `npm run db:up`');
+    return res.status(503).send(
+      layout(
+        'Database unreachable',
+        `<h1>The database is not answering</h1>
+         <p>Postgres runs in a container inside WSL. If WSL has shut down, bring it
+            back with <code>npm run db:up</code> and reload.</p>`,
+      ),
+    );
+  }
+
   const status = error.status ?? 500;
 
   if (status >= 500) {
