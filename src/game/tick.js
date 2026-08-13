@@ -173,6 +173,8 @@ function kill(state, at, cause, events) {
   // the settlement never learns what happened out there.
   if (state.expedition && state.expedition.status === 'active') {
     state.expedition.status = 'lost';
+    // A resolved expedition must record when — the schema refuses the row otherwise.
+    state.expedition.resolvedAt = at;
     events.push({ at, type: 'expedition_lost', expeditionId: state.expedition.id });
   }
 

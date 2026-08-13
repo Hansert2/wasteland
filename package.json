@@ -8,7 +8,9 @@
     "node": ">=22"
   },
   "scripts": {
-    "test": "node --test",
+    "test": "node --test \"test/unit/**/*.test.js\"",
+    "test:db": "npm run db:up && node --env-file=.env --test \"test/db/**/*.test.js\"",
+    "test:all": "npm test && npm run test:db",
     "migrate": "npm run db:up && node --env-file=.env src/db/migrate.js",
     "db:up": "wsl -d Debian --cd \"%CD%\" -- docker compose up -d",
     "db:down": "wsl -d Debian --cd \"%CD%\" -- docker compose down",

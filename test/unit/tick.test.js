@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { applyTick } from '../src/game/tick.js';
-import { CONFIG } from '../src/game/constants.js';
+import { applyTick } from '../../src/game/tick.js';
+import { CONFIG } from '../../src/game/constants.js';
 
 const T0 = Date.UTC(2287, 0, 1);
 const hours = (h) => h * 60 * 60 * 1000;
@@ -157,6 +157,8 @@ test('an expedition in flight is lost when the survivor dies at home', () => {
 
   assert.equal(state.expedition.status, 'lost');
   assert.equal(events.filter((e) => e.type === 'expedition_lost').length, 1);
+  // The schema requires a resolution timestamp on any non-active expedition.
+  assert.equal(state.expedition.resolvedAt, state.survivor.diedAt);
 });
 
 test('the dead consume nothing and decay no further', () => {
