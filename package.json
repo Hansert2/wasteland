@@ -8,6 +8,8 @@
     "node": ">=22"
   },
   "scripts": {
+    "start": "npm run db:up && node --env-file=.env src/server.js",
+    "dev": "npm run db:up && node --env-file=.env --watch src/server.js",
     "test": "node --test \"test/unit/**/*.test.js\"",
     "test:db": "npm run db:up && node --env-file=.env --test \"test/db/**/*.test.js\"",
     "test:all": "npm test && npm run test:db",
@@ -18,6 +20,7 @@
     "db:psql": "wsl -d Debian --cd \"%CD%\" -- docker compose exec db psql -U wasteland -d wasteland"
   },
   "dependencies": {
+    "express": "^5.2.1",
     "pg": "^8.23.0"
   }
 }

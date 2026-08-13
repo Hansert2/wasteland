@@ -1,3 +1,5 @@
+import { productionRates } from '../game/structures.js';
+
 /**
  * The seam between the database and the pure simulation.
  *
@@ -10,6 +12,14 @@
  * callers control the transaction and tests can hand in one they intend to roll back.
  */
 
+/** One settlement per account, so this is the account's camp. */
+export async function settlementIdForPlayer(client, playerId) {
+  const { rows } = await client.query('select id from settlements where player_id = $1', [
+    playerId,
+  ]);
+  return rows[0]?.id ?? null;
+}
+
 /** Read a settlement and its living survivor into the shape `applyTick` expects. */
 export async function loadWorld(client, settlementId) {
   const { rows: settlements } = await client.query(
@@ -19,15 +29,23 @@ export async function loadWorld(client, settlementId) {
   const settlement = settlements[0];
   if (!settlement) throw new Error(`no settlement ${settlementId}`);
 
+  // Production is derived from structures rather than read from a column, so it
+  // cannot fall out of step with what the camp has actually built.
+  const { rows: structures } = await client.query(
+    'select kind, level from camp_structures where settlement_id = $1',
+    [settlementId],
+  );
+  const rates = productionRates(structures);
+
   const { rows: resourceRows } = await client.query(
-    'select kind, amount, production_rate, storage_cap from resources where settlement_id = $1',
+    'select kind, amount, storage_cap from resources where settlement_id = $1',
     [settlementId],
   );
   const resources = {};
   for (const row of resourceRows) {
     resources[row.kind] = {
       amount: row.amount,
-      ratePerHour: row.production_rate,
+      ratePerHour: rates[row.kind] ?? 0,
       cap: row.storage_cap,
     };
   }

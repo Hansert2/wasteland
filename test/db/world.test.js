@@ -28,11 +28,21 @@ async function withRollback(fn) {
 
 const uniq = () => Math.random().toString(36).slice(2, 10);
 
+/** A camp that produces food, water and scrap — the default sustainable case. */
+const SUSTAINABLE = [
+  { kind: 'shelter', level: 1 },
+  { kind: 'garden', level: 1 },
+  { kind: 'water_purifier', level: 1 },
+  { kind: 'workshop', level: 1 },
+];
+
+/** Stores only: nothing is being produced, so the camp is on borrowed time. */
+const BARREN = [{ kind: 'workshop', level: 1 }];
+
 async function seed(client, options = {}) {
   const {
-    food = { amount: 50, rate: 2 },
-    water = { amount: 50, rate: 2 },
-    scrap = { amount: 0, rate: 1 },
+    structures = SUSTAINABLE,
+    amounts = { food: 50, water: 50, scrap: 0 },
     health = 100,
     radiation = 0,
     rations = 0,
@@ -51,11 +61,18 @@ async function seed(client, options = {}) {
   );
   const settlementId = settlements[0].id;
 
-  for (const [kind, spec] of Object.entries({ food, water, scrap })) {
+  for (const { kind, level } of structures) {
     await client.query(
-      `insert into resources (settlement_id, kind, amount, production_rate, storage_cap)
-       values ($1, $2, $3, $4, 100000)`,
-      [settlementId, kind, spec.amount, spec.rate],
+      'insert into camp_structures (settlement_id, kind, level) values ($1, $2, $3)',
+      [settlementId, kind, level],
+    );
+  }
+
+  for (const [kind, amount] of Object.entries(amounts)) {
+    await client.query(
+      `insert into resources (settlement_id, kind, amount, storage_cap)
+       values ($1, $2, $3, 100000)`,
+      [settlementId, kind, amount],
     );
   }
 
@@ -104,9 +121,10 @@ test('loadWorld translates schema vocabulary into simulation vocabulary', async 
     const state = await loadWorld(client, settlementId);
 
     assert.equal(state.lastTickAt, T0, 'timestamptz became epoch ms');
+    // ratePerHour came from the garden's level, not from a column on this row.
     assert.deepEqual(state.settlement.resources.food, {
       amount: 50,
-      ratePerHour: 2,
+      ratePerHour: 1.2,
       cap: 100000,
     });
     assert.equal(state.survivor.alive, true);
@@ -148,8 +166,8 @@ test('advancing twice to the same instant does nothing the second time', async (
 test('a starved survivor is retired, and the camp keeps producing without them', async () => {
   await withRollback(async (client) => {
     const { settlementId, characterId } = await seed(client, {
-      food: { amount: 0, rate: 0 },
-      water: { amount: 0, rate: 0 },
+      structures: BARREN,
+      amounts: { food: 0, water: 0, scrap: 0 },
     });
 
     const { events } = await advanceSettlement(client, settlementId, T0 + days(10));
@@ -173,8 +191,8 @@ test('a starved survivor is retired, and the camp keeps producing without them',
 test('the roster view lists the fallen with a cause and a lifespan', async () => {
   await withRollback(async (client) => {
     const { settlementId } = await seed(client, {
-      food: { amount: 0, rate: 0 },
-      water: { amount: 0, rate: 0 },
+      structures: BARREN,
+      amounts: { food: 0, water: 0, scrap: 0 },
     });
 
     await advanceSettlement(client, settlementId, T0 + days(10));
@@ -192,8 +210,8 @@ test('the roster view lists the fallen with a cause and a lifespan', async () =>
 test('an expedition in flight is written back as lost, satisfying the schema', async () => {
   await withRollback(async (client) => {
     const { settlementId, expeditionId } = await seed(client, {
-      food: { amount: 0, rate: 0 },
-      water: { amount: 0, rate: 0 },
+      structures: BARREN,
+      amounts: { food: 0, water: 0, scrap: 0 },
       expedition: true,
     });
 
@@ -213,8 +231,8 @@ test('an expedition in flight is written back as lost, satisfying the schema', a
 test('an auto-consumed ration is decremented in the database', async () => {
   await withRollback(async (client) => {
     const { settlementId, inventoryRowId } = await seed(client, {
-      food: { amount: 0, rate: 0 },
-      water: { amount: 0, rate: 0 },
+      structures: BARREN,
+      amounts: { food: 0, water: 0, scrap: 0 },
       rations: 1,
     });
 

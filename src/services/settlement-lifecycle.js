@@ -1,0 +1,148 @@
+import { hashPassword, MIN_PASSWORD_LENGTH } from '../auth/passwords.js';
+import { storageCap } from '../game/structures.js';
+
+/** An error the user caused and can fix; routes render these rather than 500-ing. */
+export class InputError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'InputError';
+    this.status = 400;
+  }
+}
+
+const STARTING_STRUCTURES = [
+  { kind: 'shelter', level: 1 },
+  { kind: 'garden', level: 1 },
+  { kind: 'water_purifier', level: 1 },
+  { kind: 'workshop', level: 0 },
+  { kind: 'watchtower', level: 0 },
+];
+
+const STARTING_AMOUNTS = { food: 40, water: 40, scrap: 10, fuel: 0 };
+
+/** What a new survivor inherits: the camp, minus a bite taken out of it. */
+const SUCCESSOR_STRUCTURE_LOSS = 1;
+const SUCCESSOR_SALVAGE = 0.5;
+
+/**
+ * Create a player, their settlement, and their first survivor as one unit.
+ * Caller supplies the transaction; a half-founded account is not a state we allow.
+ */
+export async function foundSettlement(client, { email, password, settlementName, survivorName, now = Date.now() }) {
+  const cleanEmail = String(email ?? '').trim().toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(cleanEmail)) {
+    throw new InputError('That does not look like an email address.');
+  }
+  if (String(password ?? '').length < MIN_PASSWORD_LENGTH) {
+    throw new InputError(`Password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
+  }
+
+  const camp = cleanName(settlementName, 'Camp');
+  const survivor = cleanName(survivorName, 'Survivor');
+
+  let playerId;
+  try {
+    const { rows } = await client.query(
+      'insert into players (email, password_hash) values ($1, $2) returning id',
+      [cleanEmail, await hashPassword(password)],
+    );
+    playerId = rows[0].id;
+  } catch (error) {
+    // 23505 = unique_violation, which here can only be the email index.
+    if (error.code === '23505') throw new InputError('That email is already registered.');
+    throw error;
+  }
+
+  const { rows: settlements } = await client.query(
+    'insert into settlements (player_id, name, founded_at, last_tick_at) values ($1, $2, $3, $3) returning id',
+    [playerId, camp, new Date(now)],
+  );
+  const settlementId = settlements[0].id;
+
+  await writeStructures(client, settlementId, STARTING_STRUCTURES);
+
+  const cap = storageCap(STARTING_STRUCTURES);
+  for (const [kind, amount] of Object.entries(STARTING_AMOUNTS)) {
+    await client.query(
+      'insert into resources (settlement_id, kind, amount, storage_cap) values ($1, $2, $3, $4)',
+      [settlementId, kind, Math.min(amount, cap), cap],
+    );
+  }
+
+  const characterId = await insertSurvivor(client, settlementId, survivor, now);
+  return { playerId, settlementId, characterId };
+}
+
+/**
+ * The camp outlives its people: a new survivor takes over a settlement that has been
+ * knocked back rather than erased.
+ *
+ * Requires that nobody is currently alive there — the partial unique index would
+ * refuse the insert anyway, but failing early gives a message instead of a 23505.
+ */
+export async function raiseSuccessor(client, settlementId, { name, now = Date.now() } = {}) {
+  await client.query('select id from settlements where id = $1 for update', [settlementId]);
+
+  const { rows: living } = await client.query(
+    'select id from characters where settlement_id = $1 and died_at is null',
+    [settlementId],
+  );
+  if (living.length > 0) {
+    throw new InputError('Someone is already holding this camp.');
+  }
+
+  const { rows: structures } = await client.query(
+    'select kind, level from camp_structures where settlement_id = $1',
+    [settlementId],
+  );
+  const reduced = structures.map((s) => ({
+    kind: s.kind,
+    level: Math.max(0, s.level - SUCCESSOR_STRUCTURE_LOSS),
+  }));
+  await writeStructures(client, settlementId, reduced);
+
+  // Smaller shelter, smaller stores. Clamping to the new cap is not cosmetic: the
+  // resources_within_cap constraint would reject the row otherwise, and a settlement
+  // that shrank while full is the ordinary case rather than an edge one.
+  const cap = storageCap(reduced);
+  await client.query(
+    `update resources
+        set storage_cap = $2,
+            amount = least(amount * $3, $2)
+      where settlement_id = $1`,
+    [settlementId, cap, SUCCESSOR_SALVAGE],
+  );
+
+  // Start the clock now so the incoming survivor is not retroactively starved across
+  // however long the camp stood empty.
+  await client.query('update settlements set last_tick_at = $2 where id = $1', [
+    settlementId,
+    new Date(now),
+  ]);
+
+  const characterId = await insertSurvivor(client, settlementId, cleanName(name, 'Survivor'), now);
+  return { characterId };
+}
+
+async function writeStructures(client, settlementId, structures) {
+  for (const { kind, level } of structures) {
+    await client.query(
+      `insert into camp_structures (settlement_id, kind, level) values ($1, $2, $3)
+       on conflict (settlement_id, kind) do update set level = excluded.level`,
+      [settlementId, kind, level],
+    );
+  }
+}
+
+async function insertSurvivor(client, settlementId, name, now) {
+  const { rows } = await client.query(
+    'insert into characters (settlement_id, name, born_at) values ($1, $2, $3) returning id',
+    [settlementId, name, new Date(now)],
+  );
+  return rows[0].id;
+}
+
+function cleanName(value, fallback) {
+  const name = String(value ?? '').trim().slice(0, 40);
+  return name.length > 0 ? name : fallback;
+}
