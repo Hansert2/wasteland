@@ -302,6 +302,86 @@ test('the outcome does not depend on how finely the interval is sliced', () => {
   );
 });
 
+test('a build finishing mid-interval changes production from its exact hour', () => {
+  const state = makeState({
+    resources: { scrap: { amount: 0, ratePerHour: 1, cap: 100000 } },
+  });
+  // Workshop level 1 producing 1/hr, upgrading to level 2 at hour 10 of 20.
+  state.settlement.structures = [
+    { id: 1, kind: 'shelter', level: 400, buildCompletesAt: null },
+    { id: 2, kind: 'workshop', level: 1, buildCompletesAt: T0 + hours(10) },
+  ];
+
+  const { state: after, events } = applyTick(state, T0 + hours(20));
+
+  // 10 hours at 1/hr, then 10 hours at 2/hr — not 20 or 40.
+  assert.equal(after.settlement.resources.scrap.amount, 30);
+  assert.equal(after.settlement.structures[1].level, 2);
+  assert.equal(after.settlement.structures[1].buildCompletesAt, null);
+  assert.deepEqual(
+    events.filter((e) => e.type === 'build_completed'),
+    [{ at: T0 + hours(10), type: 'build_completed', kind: 'workshop', level: 2 }],
+  );
+});
+
+test('the completion hour does not depend on slice size, even an awkward one', () => {
+  const build = () => {
+    const state = makeState({
+      resources: { scrap: { amount: 0, ratePerHour: 1, cap: 100000 } },
+    });
+    state.settlement.structures = [
+      { id: 1, kind: 'shelter', level: 400, buildCompletesAt: null },
+      { id: 2, kind: 'workshop', level: 1, buildCompletesAt: T0 + hours(10) },
+    ];
+    return state;
+  };
+
+  // 7 hours does not divide 10, so without exact event boundaries the rate change
+  // would land at hour 14 and the totals would drift apart.
+  const awkward = applyTick(build(), T0 + hours(20), { ...CONFIG, stepMs: hours(7) });
+  const fine = applyTick(build(), T0 + hours(20), { ...CONFIG, stepMs: 60_000 });
+
+  // Tolerance is for floating-point accumulation across many small slices, not for
+  // the mechanism: without exact boundaries the difference would be whole hours.
+  const drift = Math.abs(
+    awkward.state.settlement.resources.scrap.amount -
+      fine.state.settlement.resources.scrap.amount,
+  );
+  assert.equal(awkward.state.settlement.resources.scrap.amount, 30);
+  assert.ok(drift < 1e-6, `slice size shifted the total by ${drift}`);
+});
+
+test('a finished shelter raises the storage cap from its completion hour', () => {
+  // No survivor: this measures the cap mechanics alone, without anyone eating.
+  const state = makeState({
+    survivor: null,
+    resources: { food: { amount: 95, ratePerHour: 6, cap: 100 } },
+  });
+  state.settlement.structures = [
+    { id: 1, kind: 'shelter', level: 0, buildCompletesAt: T0 + hours(5) },
+    { id: 2, kind: 'garden', level: 5, buildCompletesAt: null },
+  ];
+
+  const { state: after } = applyTick(state, T0 + hours(10));
+
+  // Five hours pinned at the old cap of 100, then five hours of growth at 6/hr
+  // under the new cap of 350.
+  assert.equal(after.settlement.resources.food.cap, 350);
+  assert.equal(after.settlement.resources.food.amount, 130);
+});
+
+test('builds finish even when nobody is alive to watch', () => {
+  const state = makeState({ survivor: null });
+  state.settlement.structures = [
+    { id: 1, kind: 'workshop', level: 0, buildCompletesAt: T0 + hours(2) },
+  ];
+
+  const { state: after, events } = applyTick(state, T0 + hours(4));
+
+  assert.equal(after.settlement.structures[0].level, 1);
+  assert.equal(events.filter((e) => e.type === 'build_completed').length, 1);
+});
+
 test('now must actually be a number', () => {
   assert.throws(() => applyTick(makeState(), new Date(T0)), TypeError);
 });

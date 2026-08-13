@@ -27,12 +27,26 @@ export const STRUCTURE_KINDS = [
  * the offline-death design rests on a camp being able to run food-positive.
  */
 export const STRUCTURES = {
-  shelter: { storagePerLevel: 250 },
-  garden: { produces: 'food', perLevel: 1.2 },
-  water_purifier: { produces: 'water', perLevel: 2.5 },
-  workshop: { produces: 'scrap', perLevel: 1 },
-  watchtower: { defencePerLevel: 8 },
+  shelter: { storagePerLevel: 250, baseCost: 30, baseHours: 6 },
+  garden: { produces: 'food', perLevel: 1.2, baseCost: 20, baseHours: 4 },
+  water_purifier: { produces: 'water', perLevel: 2.5, baseCost: 25, baseHours: 5 },
+  workshop: { produces: 'scrap', perLevel: 1, baseCost: 25, baseHours: 5 },
+  watchtower: { defencePerLevel: 8, baseCost: 40, baseHours: 8 },
 };
+
+/**
+ * Cost and duration to build the *next* level. Exponential growth is what gives an
+ * Ogame-style game its long tail: early levels are an evening, later ones a week.
+ * Both formulas live here so a balance pass edits one file.
+ */
+export function upgradeCost(kind, currentLevel) {
+  const spec = STRUCTURES[kind];
+  if (!spec) return null;
+  return {
+    scrap: Math.round(spec.baseCost * 1.6 ** currentLevel),
+    hours: Math.round(spec.baseHours * 1.4 ** currentLevel * 10) / 10,
+  };
+}
 
 /**
  * Hourly production for a settlement, in the units the tick expects.

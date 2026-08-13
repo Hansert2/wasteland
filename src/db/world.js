@@ -30,11 +30,19 @@ export async function loadWorld(client, settlementId) {
   if (!settlement) throw new Error(`no settlement ${settlementId}`);
 
   // Production is derived from structures rather than read from a column, so it
-  // cannot fall out of step with what the camp has actually built.
-  const { rows: structures } = await client.query(
-    'select kind, level from camp_structures where settlement_id = $1',
+  // cannot fall out of step with what the camp has actually built. Structures ride
+  // along in the state because the tick needs them: a build finishing mid-interval
+  // changes the rates from that hour on.
+  const { rows: structureRows } = await client.query(
+    'select id, kind, level, build_completes_at from camp_structures where settlement_id = $1',
     [settlementId],
   );
+  const structures = structureRows.map((row) => ({
+    id: row.id,
+    kind: row.kind,
+    level: row.level,
+    buildCompletesAt: row.build_completes_at?.getTime() ?? null,
+  }));
   const rates = productionRates(structures);
 
   const { rows: resourceRows } = await client.query(
@@ -126,7 +134,7 @@ export async function loadWorld(client, settlementId) {
 
   return {
     lastTickAt: settlement.last_tick_at.getTime(),
-    settlement: { id: settlement.id, resources },
+    settlement: { id: settlement.id, resources, structures },
     survivor,
     expedition,
   };
@@ -142,9 +150,22 @@ export async function saveWorld(client, state) {
   ]);
 
   for (const [kind, resource] of Object.entries(state.settlement.resources)) {
+    // The cap is written back too: a shelter that finished building mid-interval
+    // raised it, and the stored column is what the check constraint enforces against.
     await client.query(
-      'update resources set amount = $3 where settlement_id = $1 and kind = $2',
-      [settlementId, kind, resource.amount],
+      'update resources set amount = $3, storage_cap = $4 where settlement_id = $1 and kind = $2',
+      [settlementId, kind, resource.amount, resource.cap],
+    );
+  }
+
+  for (const structure of state.settlement.structures ?? []) {
+    await client.query(
+      'update camp_structures set level = $2, build_completes_at = $3 where id = $1',
+      [
+        structure.id,
+        structure.level,
+        structure.buildCompletesAt === null ? null : new Date(structure.buildCompletesAt),
+      ],
     );
   }
 

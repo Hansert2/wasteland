@@ -1,5 +1,6 @@
 import { CONFIG } from './constants.js';
 import { resolveExpedition } from './expeditions.js';
+import { productionRates, storageCap } from './structures.js';
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -45,9 +46,11 @@ export function applyTick(state, now, config = CONFIG) {
 
   let cursor = next.lastTickAt;
   while (cursor < now) {
-    const dtMs = Math.min(config.stepMs, now - cursor);
-    const at = cursor + dtMs;
-    advance(next, dtMs, at, events, config);
+    // Slices are cut exactly at pending event timestamps (build completions,
+    // expedition returns), so a rate change lands at its true hour and the result
+    // cannot depend on how the interval happens to be divided.
+    const at = Math.min(cursor + config.stepMs, now, nextEventAfter(next, cursor));
+    advance(next, at - cursor, at, events, config);
     cursor = at;
   }
 
@@ -55,11 +58,32 @@ export function applyTick(state, now, config = CONFIG) {
   return { state: next, events };
 }
 
+/** The earliest scheduled event strictly after `cursor`, or Infinity. */
+function nextEventAfter(state, cursor) {
+  let next = Infinity;
+
+  for (const structure of state.settlement.structures ?? []) {
+    if (structure.buildCompletesAt != null && structure.buildCompletesAt > cursor) {
+      next = Math.min(next, structure.buildCompletesAt);
+    }
+  }
+
+  if (state.expedition?.status === 'active' && state.expedition.returnsAt > cursor) {
+    next = Math.min(next, state.expedition.returnsAt);
+  }
+
+  return next;
+}
+
 /** One simulation slice, applied in a fixed order. */
 function advance(state, dtMs, at, events, config) {
   const hours = dtMs / HOUR_MS;
 
   accrueResources(state, hours);
+
+  // Builds finish before anything else looks at the camp: production for the slice
+  // just accrued used the old rates, and everything after this instant uses the new.
+  completeBuilds(state, at, events);
 
   // Coming home happens before the hour's hunger is applied, so a survivor who
   // returns carrying food is fed by it rather than starving on the doorstep.
@@ -69,6 +93,36 @@ function advance(state, dtMs, at, events, config) {
 
   if (state.survivor?.alive) {
     simulateSurvivor(state, hours, at, events, config);
+  }
+}
+
+/**
+ * Finish any builds whose hour has come. Runs whether or not anyone is alive — a
+ * scaffolded structure gets finished the way a garden keeps growing; only *starting*
+ * work needs hands.
+ */
+function completeBuilds(state, at, events) {
+  const structures = state.settlement.structures;
+  if (!structures) return;
+
+  let changed = false;
+  for (const structure of structures) {
+    if (structure.buildCompletesAt != null && structure.buildCompletesAt <= at) {
+      structure.level += 1;
+      structure.buildCompletesAt = null;
+      changed = true;
+      events.push({ at, type: 'build_completed', kind: structure.kind, level: structure.level });
+    }
+  }
+  if (!changed) return;
+
+  // Rates and caps are derived values; a finished build changes them from this
+  // instant on. The cap only grows here, so nothing needs clamping.
+  const rates = productionRates(structures);
+  const cap = storageCap(structures);
+  for (const [kind, resource] of Object.entries(state.settlement.resources)) {
+    resource.ratePerHour = rates[kind] ?? 0;
+    resource.cap = cap;
   }
 }
 

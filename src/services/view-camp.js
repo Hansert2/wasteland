@@ -1,5 +1,5 @@
 import { advanceSettlement } from './advance-settlement.js';
-import { campStrength, productionRates } from '../game/structures.js';
+import { campStrength, productionRates, upgradeCost } from '../game/structures.js';
 
 /**
  * Everything a camp page needs, as one transaction.
@@ -65,7 +65,11 @@ export async function viewCamp(client, settlementId, now = Date.now()) {
     name: settlements[0].name,
     foundedAt: settlements[0].founded_at,
     strength: campStrength(structures),
-    structures,
+    structures: structures.map((s) => ({
+      ...s,
+      nextCost: upgradeCost(s.kind, s.level),
+    })),
+    buildInFlight: structures.some((s) => s.build_completes_at !== null),
     roster,
     events,
     regions,

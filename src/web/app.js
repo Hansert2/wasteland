@@ -13,6 +13,7 @@ import {
 import { foundSettlement, raiseSuccessor, InputError } from '../services/settlement-lifecycle.js';
 import { advanceSettlement } from '../services/advance-settlement.js';
 import { dispatchExpedition } from '../services/dispatch-expedition.js';
+import { startBuild } from '../services/start-build.js';
 import { viewCamp } from '../services/view-camp.js';
 import { campPage, landingPage, layout, escape } from './render.js';
 
@@ -106,6 +107,21 @@ export function createApp() {
       const now = Date.now();
       await advanceSettlement(client, settlementId, now);
       await dispatchExpedition(client, settlementId, req.body.region, now);
+    });
+
+    res.redirect('/camp');
+  });
+
+  app.post('/build', requireAuth, async (req, res) => {
+    await withTransaction(async (client) => {
+      const settlementId = await settlementIdForPlayer(client, req.playerId);
+      if (!settlementId) throw new InputError('This account has no camp.');
+
+      // Advance first so the scrap being spent is the current balance, and so a
+      // build that just finished frees the queue before this one is refused.
+      const now = Date.now();
+      await advanceSettlement(client, settlementId, now);
+      await startBuild(client, settlementId, req.body.kind, now);
     });
 
     res.redirect('/camp');

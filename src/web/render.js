@@ -69,7 +69,7 @@ export function campPage(view) {
     ${view.survivor ? renderExpeditions(view) : ''}
     ${renderResources(view.resources)}
     ${renderInventory(view.inventory)}
-    ${renderStructures(view.structures)}
+    ${renderStructures(view.structures, view.buildInFlight, Boolean(view.survivor))}
     ${renderRoster(view.roster)}
 
     <form method="post" action="/logout"><button type="submit">Log out</button></form>
@@ -99,6 +99,8 @@ function describe(event) {
         : `${when} — an expedition never came home.`;
     case 'item_found':
       return `${when} — brought back ${event.qty} × ${event.slug.replaceAll('_', ' ')}.`;
+    case 'build_completed':
+      return `${when} — the ${event.kind.replaceAll('_', ' ')} reached level ${event.level}.`;
     default:
       return `${when} — ${event.type}`;
   }
@@ -174,11 +176,37 @@ function renderResources(resources) {
   return `<h2>Stores</h2><table>${rows}</table>`;
 }
 
-function renderStructures(structures) {
+function renderStructures(structures, buildInFlight, someoneAlive) {
   const rows = structures
-    .map((s) => `<tr><th>${escape(s.kind.replaceAll('_', ' '))}</th><td>level ${s.level}</td></tr>`)
+    .map((s) => {
+      const name = escape(s.kind.replaceAll('_', ' '));
+      const status = statusCell(s, buildInFlight, someoneAlive);
+      return `<tr><th>${name}</th><td>level ${s.level}</td>${status}</tr>`;
+    })
     .join('');
   return `<h2>Structures</h2><table>${rows}</table>`;
+}
+
+function statusCell(structure, buildInFlight, someoneAlive) {
+  if (structure.build_completes_at) {
+    const hoursLeft = (new Date(structure.build_completes_at).getTime() - Date.now()) / 3600000;
+    const when = hoursLeft > 0 ? `done in ${n(hoursLeft)} h` : 'done — reload';
+    return `<td colspan="2">building level ${structure.level + 1}, ${escape(when)}</td>`;
+  }
+
+  if (!structure.nextCost) return '<td></td><td></td>';
+
+  const cost = `${structure.nextCost.scrap} scrap, ${n(structure.nextCost.hours)} h`;
+  // The queue holds one build, and starting work needs living hands.
+  if (buildInFlight || !someoneAlive) {
+    return `<td>${escape(cost)}</td><td></td>`;
+  }
+
+  return `<td>${escape(cost)}</td>
+    <td><form method="post" action="/build" style="margin:0">
+      <input type="hidden" name="kind" value="${escape(structure.kind)}">
+      <button type="submit">Build</button>
+    </form></td>`;
 }
 
 function renderRoster(roster) {

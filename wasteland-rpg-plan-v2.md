@@ -91,8 +91,10 @@ forever.
    own — left unmanaged (no food/water, prolonged exposure) they drain health to zero,
    same as combat. Death isn't confined to expeditions, and can occur while logged out;
    see *Offline death* above for the auto-consume rule that guards it.
-2. **Settlement** — persists across survivor deaths; structures (shelter, water purifier,
-   workshop, watchtower) with build timers and resource costs
+2. **Settlement** — persists across survivor deaths; structures (shelter, garden, water
+   purifier, workshop, watchtower) with build timers and resource costs. The garden was
+   added during build: without a food producer, starvation would be inevitable rather
+   than a consequence of neglect, contradicting the offline-death design above.
 3. **Resources** — water, food, scrap, fuel; accrue per second, capped by storage,
    computed lazily on read
 4. **Expeditions** — send survivor to a region for a timed duration; returns loot, story

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { productionRates, storageCap, campStrength } from '../../src/game/structures.js';
+import { productionRates, storageCap, campStrength, upgradeCost } from '../../src/game/structures.js';
 import { CONFIG } from '../../src/game/constants.js';
 
 test('production scales with level and lands on the right resource', () => {
@@ -42,6 +42,16 @@ test('a level 1 garden outproduces a survivor, so a basic camp is sustainable', 
 test('storage comes from the shelter, with a floor for a camp that has none', () => {
   assert.equal(storageCap([]), 100);
   assert.equal(storageCap([{ kind: 'shelter', level: 2 }]), 600);
+});
+
+test('upgrade costs escalate, which is what gives the game its long tail', () => {
+  const early = upgradeCost('workshop', 0);
+  const late = upgradeCost('workshop', 6);
+
+  assert.equal(early.scrap, 25);
+  assert.ok(late.scrap > early.scrap * 10, 'level 7 costs an order of magnitude more');
+  assert.ok(late.hours > early.hours, 'and takes correspondingly longer');
+  assert.equal(upgradeCost('nonsense', 0), null);
 });
 
 test('camp strength counts levels and weights defences', () => {
