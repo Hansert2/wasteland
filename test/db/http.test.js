@@ -145,6 +145,56 @@ test('a forged session token is not accepted', async () => {
   assert.equal(camp.status, 302);
 });
 
+test('a refused action returns you to your camp, not to a login form', async () => {
+  const { cookie } = await register();
+
+  // A fresh camp holds 10 scrap; the workshop costs 25.
+  const refused = await fetch(`${base}/build`, {
+    method: 'POST',
+    redirect: 'manual',
+    headers: { cookie, 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ kind: 'workshop' }),
+  });
+
+  assert.equal(refused.status, 400);
+  const html = await refused.text();
+
+  assert.match(html, /Not enough scrap/, 'says why');
+  assert.match(html, /Testcamp/, 'still shows the camp');
+  assert.match(html, /Stores/, 'with its state intact');
+  // The original bug: a logged-in player was shown a login form, which reads as
+  // having been signed out.
+  assert.doesNotMatch(html, /Found a new camp/, 'no registration form');
+  assert.doesNotMatch(html, /name="password"/, 'no password field');
+});
+
+test('a refused expedition behaves the same way', async () => {
+  const { cookie } = await register();
+
+  const refused = await fetch(`${base}/expedition`, {
+    method: 'POST',
+    redirect: 'manual',
+    headers: { cookie, 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ region: 'nowhere_at_all' }),
+  });
+
+  assert.equal(refused.status, 400);
+  const html = await refused.text();
+  assert.match(html, /no such place/i);
+  assert.doesNotMatch(html, /name="password"/);
+});
+
+test('a logged-out visitor still gets the login page on a bad request', async () => {
+  const refused = await fetch(`${base}/register`, {
+    method: 'POST',
+    redirect: 'manual',
+    body: new URLSearchParams({ email: 'not-an-email', password: 'correct horse battery' }),
+  });
+
+  assert.equal(refused.status, 400);
+  assert.match(await refused.text(), /Found a new camp/, 'landing page is right when signed out');
+});
+
 test('camp names are escaped rather than rendered as markup', async () => {
   const { cookie } = await register({ settlementName: '<script>alert(1)</script>' });
 

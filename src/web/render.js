@@ -59,10 +59,11 @@ export function landingPage({ error } = {}) {
   `);
 }
 
-export function campPage(view) {
+export function campPage(view, { error } = {}) {
   return layout(view.name, `
     <h1>${escape(view.name)}</h1>
     <p>Camp strength ${view.strength} &middot; founded ${escape(view.foundedAt.toISOString().slice(0, 10))}</p>
+    ${error ? `<p class="error">${escape(error)}</p>` : ''}
 
     ${renderEvents(view.events)}
     ${view.survivor ? renderSurvivor(view.survivor) : renderNoSurvivor()}

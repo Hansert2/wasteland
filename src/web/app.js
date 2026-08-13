@@ -136,6 +136,38 @@ export function createApp() {
   return app;
 }
 
+/**
+ * Render a user error back onto the page they were on.
+ *
+ * A logged-in player who cannot afford a build must land back at their camp with the
+ * reason, not at a login form — showing someone a login form while they are already
+ * logged in reads as being signed out, which is a worse bug than the one they hit.
+ */
+async function renderErrorForPlayer(req, res, message) {
+  if (!req.playerId) {
+    return res.status(400).send(landingPage({ error: message }));
+  }
+
+  try {
+    const view = await withTransaction(async (client) => {
+      const settlementId = await settlementIdForPlayer(client, req.playerId);
+      if (!settlementId) return null;
+      return viewCamp(client, settlementId, Date.now());
+    });
+
+    if (view) return res.status(400).send(campPage(view, { error: message }));
+  } catch (error) {
+    // The camp could not be rendered; fall through rather than masking the original
+    // problem with a second one.
+    console.error('could not render camp for error page', error);
+  }
+
+  return res
+    .status(400)
+    .send(layout('Not possible', `<p class="error">${escape(message)}</p>
+      <p><a href="/camp">Back to camp</a></p>`));
+}
+
 /** Minimal cookie parsing — one small function is cheaper than a dependency. */
 function readCookies(req, _res, next) {
   const cookies = {};
@@ -172,7 +204,7 @@ async function startSession(res, playerId) {
   });
 }
 
-function errorHandler(error, _req, res, _next) {
+function errorHandler(error, req, res, next) {
   if (isDatabaseUnreachable(error)) {
     console.error('database unreachable — is the container up? `npm run db:up`');
     return res.status(503).send(
@@ -194,5 +226,5 @@ function errorHandler(error, _req, res, _next) {
       .send(layout('Error', '<h1>Something went wrong</h1><p><a href="/">Back</a></p>'));
   }
 
-  res.status(status).send(landingPage({ error: error.message }));
+  renderErrorForPlayer(req, res, error.message).catch(next);
 }
