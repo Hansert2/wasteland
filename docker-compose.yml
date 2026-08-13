@@ -1,0 +1,41 @@
+# Local development stack.
+#
+# Postgres only. Node runs on the Windows host where the repo and toolchain already
+# live — bind-mounting /mnt/c into a container is slow and breaks file watching, and
+# nginx buys nothing until there's something to deploy. The app and nginx services
+# join this file when Phase 4 moves to a VPS; the connection string is the only thing
+# that changes.
+#
+# Run from WSL:  wsl -d Debian
+#                cd /mnt/c/Projects/project-wasteland && docker compose up -d
+
+services:
+  db:
+    image: postgres:18-alpine
+    container_name: wasteland-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-wasteland}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-wasteland}
+    ports:
+      # WSL2 forwards localhost, so Node on Windows reaches this at localhost:5432.
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      # Named volume, not a bind mount: survives `compose down` and lives inside the
+      # WSL VM rather than on /mnt/c, which keeps Postgres off the slow filesystem.
+      #
+      # Mount point is /var/lib/postgresql, NOT .../data — Postgres 18 images store
+      # data in a major-version subdirectory so that `pg_upgrade --link` doesn't have
+      # to cross a mount boundary. Mounting .../data makes 18+ refuse to start.
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-wasteland} -d ${POSTGRES_DB:-wasteland}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  pgdata:
+    name: wasteland_pgdata

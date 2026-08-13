@@ -1,0 +1,21 @@
+{
+  "name": "project-wasteland",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Post-apocalyptic browser text RPG",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test",
+    "migrate": "npm run db:up && node --env-file=.env src/db/migrate.js",
+    "db:up": "wsl -d Debian --cd \"%CD%\" -- docker compose up -d",
+    "db:down": "wsl -d Debian --cd \"%CD%\" -- docker compose down",
+    "db:logs": "wsl -d Debian --cd \"%CD%\" -- docker compose logs -f db",
+    "db:psql": "wsl -d Debian --cd \"%CD%\" -- docker compose exec db psql -U wasteland -d wasteland"
+  },
+  "dependencies": {
+    "pg": "^8.23.0"
+  }
+}

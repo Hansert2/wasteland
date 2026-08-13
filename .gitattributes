@@ -1,0 +1,5 @@
+# This project straddles Windows and Linux — the repo lives on the Windows
+# filesystem, but SQL and any shell scripts get read inside WSL containers.
+# Normalise to LF in the repo and in the working tree so nothing arrives in a
+# Linux shell with carriage returns attached.
+* text=auto eol=lf
