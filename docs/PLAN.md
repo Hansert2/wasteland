@@ -400,8 +400,53 @@ or two, recorded above.
 
 ## Phase 5 — factions
 
-Reputation, traders, gated regions. The largest phase: new tables, new pages, and it
-touches expeditions, resources and items at once. Not started, and mostly not designed.
+Designed 2026-08-14, not yet built. The shape below is settled; what remains is
+content and code.
+
+**Two rival factions, and every gain with one costs standing with the other.** A
+reputation that only ever rises is a bar that fills, not a decision. One rivalry axis
+— a single slider between two crews — is legible in a way three-faction politics is
+not, and nothing stops a third faction arriving later once the machinery exists.
+
+Both factions **trade and raid**. This is load-bearing: if one faction were the
+traders and the other the raiders, the choice would collapse — everyone befriends the
+shopkeeper. Because both do both, siding with either means better prices and calmer
+raids from one crew, and worse terms and nastier visits from the other. There is no
+correct answer, only a preference.
+
+**Reputation gates prices and raids. Not regions, for now.** Standing sets trade
+terms — strangers pay a premium, friends get fair rates — and decides whose raiders
+take an interest: a faction's raids come less often and softer as standing rises,
+more often and harder as it falls. Region-gating (faction territory behind a trust
+wall) is deliberately deferred; it is the biggest build of the three and reputation
+should prove itself as a mechanic before earning new content.
+
+**Reputation hangs off the settlement and takes a knock on succession**, exactly the
+structures pattern: the camp is what factions deal with, but the new face at the gate
+is not the one they trusted, so standing decays toward neutral when a survivor dies.
+Camp-permanent reputation would be the one investment death cannot touch — the same
+oddity the fuel track was deliberately denied — and survivor-held reputation would
+start every successor cold with everyone, which is punishment stacked on a penalty
+that is already priced.
+
+**Traders arrive as visiting caravans, on the raid-scheduling pattern.** A caravan
+is a window of hours at *your* camp — scheduled per settlement from a seed and a
+count, exactly as raids are, so a month-long absence resolves the visits it missed
+deterministically and nothing needs a cron. While the window is open the camp page
+shows that faction's offers; when it closes, it closes. Missable on purpose: the
+check-in loop is the game, and an always-open market would be the one mechanic that
+ignores time. Which faction's caravan comes, and what it carries, derive from the
+seed — standing tilts how often each side bothers to visit.
+
+Buying is what earns standing (commerce is trust), and each trade with one crew costs
+a little with the other. Trading needs living hands, like every other verb.
+
+Mechanically this reuses what exists rather than inventing: caravan scheduling is the
+raid scheduler with a friendlier payload, faction attribution rides on the raid seed
+already stored, offers are content in the seed script like recipes, and the
+settlement lock already serialises trades against ticks. New schema is small — a
+`factions` seed table, a `faction_standing` row per settlement per faction, and
+caravan bookkeeping on `settlements` mirroring the raid columns.
 
 **Settled in advance, because it is the one decision that could quietly undo an
 earlier phase: trade may never produce fuel.** Traders deal in scrap, food, water and
@@ -427,9 +472,9 @@ denominate trader stock in the things the fence cannot produce — fuel, parts, 
 items — or price scrap goods against the 24/h ceiling and say so in a comment at the
 price table.
 
-Still open, and worth settling before building rather than during: whether reputation
-gates **regions**, **prices**, or **who raids you** — that last would wire this phase
-back into Phase 3 — and whether traders need a page of their own or fold into the camp.
+The questions this section used to hold open — what reputation gates, who holds it,
+how traders arrive, whether standing can fall — were all settled above on 2026-08-14.
+Region-gating is the one deliberately parked rather than decided.
 
 ## Not planned
 
