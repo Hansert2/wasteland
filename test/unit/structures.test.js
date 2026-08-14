@@ -1,7 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { productionRates, storageCap, campStrength, upgradeCost } from '../../src/game/structures.js';
+import {
+  STRUCTURES,
+  UPGRADES,
+  campStrength,
+  craftHoursMultiplier,
+  productionRates,
+  radDecayMultiplier,
+  storageCap,
+  structureEffect,
+  upgradeCost,
+  upgradeFor,
+} from '../../src/game/structures.js';
 import { CONFIG } from '../../src/game/constants.js';
 
 test('production scales with level and lands on the right resource', () => {
@@ -52,6 +63,68 @@ test('upgrade costs escalate, which is what gives the game its long tail', () =>
   assert.ok(late.scrap > early.scrap * 10, 'level 7 costs an order of magnitude more');
   assert.ok(late.hours > early.hours, 'and takes correspondingly longer');
   assert.equal(upgradeCost('nonsense', 0), null);
+});
+
+test('every structure can say what it does', () => {
+  // The page explains each structure from this, so a new structure without a summary
+  // would render a blank line rather than an obvious omission.
+  for (const [kind, spec] of Object.entries(STRUCTURES)) {
+    assert.ok(spec.summary, `${kind} has no summary`);
+    assert.ok(structureEffect(kind, 1), `${kind} does nothing at level 1`);
+  }
+});
+
+test('the effect described is the effect produced', () => {
+  // The description is derived from the same numbers as the rates, so the two cannot
+  // drift: if this ever disagrees, one of them is lying to the player.
+  // The page rounds; the simulation must not. 1.2 × 3 is 3.5999999999999996, and the
+  // player should read "+3.6 food/h" while the tick keeps every digit.
+  assert.equal(structureEffect('garden', 3), '+3.6 food/h');
+  const rate = productionRates([{ kind: 'garden', level: 3 }]).food;
+  assert.ok(Math.abs(rate - 3.6) < 1e-9, `described 3.6, produces ${rate}`);
+
+  assert.equal(structureEffect('shelter', 2), '600 storage');
+  assert.equal(storageCap([{ kind: 'shelter', level: 2 }]), 600);
+
+  assert.equal(structureEffect('watchtower', 2), '16 defence');
+});
+
+test('an unbuilt structure admits it does nothing', () => {
+  assert.equal(structureEffect('garden', 0), '');
+  assert.equal(structureEffect('watchtower', 0), '');
+  // The shelter is the exception: a camp has storage before it has a shelter.
+  assert.equal(structureEffect('shelter', 0), '100 storage');
+  assert.equal(structureEffect('nonsense', 3), '');
+});
+
+test('every upgrade is fitted to a structure that exists', () => {
+  for (const [slug, spec] of Object.entries(UPGRADES)) {
+    assert.ok(STRUCTURES[spec.kind], `${slug} is fitted to an unknown structure`);
+    assert.ok(spec.summary, `${slug} has no summary`);
+    assert.ok(spec.fuel > 0, `${slug} is not priced in fuel`);
+    assert.equal(upgradeFor(spec.kind).slug, slug);
+  }
+
+  assert.equal(upgradeFor('garden'), null, 'not every structure has a branch yet');
+});
+
+test('the fuel track is priced in fuel, which nothing in the camp produces', () => {
+  // The whole basis of the second currency: scrap is patience, fuel is danger money.
+  // If a structure ever starts producing fuel, this stops being true and the fuel
+  // track quietly becomes another scrap track.
+  const everything = Object.keys(STRUCTURES).map((kind) => ({ kind, level: 9 }));
+  assert.equal(productionRates(everything).fuel, 0);
+});
+
+test('upgrades multiply the thing they were bought to change', () => {
+  assert.equal(radDecayMultiplier([]), 1, 'a camp without one is unchanged');
+  assert.equal(radDecayMultiplier(undefined), 1, 'and so is a camp that has no list');
+  assert.equal(radDecayMultiplier(['filtration']), 2.5);
+  assert.equal(radDecayMultiplier(['machine_shop']), 1, 'the wrong upgrade does nothing');
+  assert.equal(radDecayMultiplier(['nonsense']), 1, 'and neither does one that is not real');
+
+  assert.equal(craftHoursMultiplier(['machine_shop']), 2 / 3);
+  assert.ok(craftHoursMultiplier(['machine_shop']) < 1, 'a machine shop makes crafts shorter');
 });
 
 test('camp strength counts levels and weights defences', () => {

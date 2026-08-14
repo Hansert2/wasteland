@@ -1,6 +1,6 @@
 import { CONFIG } from './constants.js';
 import { resolveExpedition } from './expeditions.js';
-import { productionRates, storageCap } from './structures.js';
+import { productionRates, radDecayMultiplier, storageCap } from './structures.js';
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -15,6 +15,7 @@ const HOUR_MS = 60 * 60 * 1000;
  * @property {object|null} survivor         null once nobody is holding the camp
  * @property {object|null} expedition       in-flight expedition, if any
  * @property {object|null} craft            in-flight workshop order, if any
+ * @property {object|null} fitting          structure upgrade being fitted, if any
  */
 
 /**
@@ -78,6 +79,10 @@ function nextEventAfter(state, cursor) {
     next = Math.min(next, state.craft.completesAt);
   }
 
+  if (state.fitting && state.fitting.installedAt == null && state.fitting.completesAt > cursor) {
+    next = Math.min(next, state.fitting.completesAt);
+  }
+
   return next;
 }
 
@@ -104,6 +109,36 @@ function advance(state, dtMs, at, events, config) {
   // Last, because delivery is the one part of crafting that needs hands, and whether
   // there are any is only settled once the slice's hunger and radiation have landed.
   completeCraft(state, at, events);
+
+  completeFitting(state, at, events);
+}
+
+/**
+ * Finish fitting a structure upgrade.
+ *
+ * Fitting is building work, so it follows the build rule: starting needed living
+ * hands, finishing does not, and an upgrade half-fitted when the survivor died is
+ * completed by nobody in particular the way a scaffolded watchtower is.
+ *
+ * Placed after the survivor has been simulated so the slice *ending* at the
+ * completion hour is still simulated at the old rate, and everything after it at the
+ * new one. That is the same treatment production gets from `completeBuilds`, which
+ * runs after `accrueResources` for exactly the same reason.
+ */
+function completeFitting(state, at, events) {
+  const fitting = state.fitting;
+  if (!fitting || fitting.installedAt != null || fitting.completesAt > at) return;
+
+  fitting.installedAt = at;
+  state.settlement.upgrades = [...(state.settlement.upgrades ?? []), fitting.upgrade];
+
+  events.push({
+    at,
+    type: 'upgrade_fitted',
+    kind: fitting.kind,
+    upgrade: fitting.upgrade,
+    name: fitting.name,
+  });
 }
 
 /**
@@ -263,7 +298,11 @@ function simulateSurvivor(state, hours, at, events, config) {
     0,
     100,
   );
-  survivor.radiation = clamp(survivor.radiation - config.radDecayPerHour * hours, 0, 100);
+  // Filtration multiplies this. Radiation is what keeps a survivor at home between
+  // trips to the hot places, so scrubbing it faster is the camp buying back time
+  // rather than buying a bigger number.
+  const radDecay = config.radDecayPerHour * radDecayMultiplier(state.settlement.upgrades);
+  survivor.radiation = clamp(survivor.radiation - radDecay * hours, 0, 100);
 
   let delta = healthDelta(survivor, hours, config);
 

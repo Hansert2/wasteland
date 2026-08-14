@@ -1,4 +1,4 @@
-import { STRUCTURES, upgradeCost } from '../game/structures.js';
+import { STRUCTURES, UPGRADES, upgradeCost } from '../game/structures.js';
 import { InputError } from '../errors.js';
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -32,6 +32,18 @@ export async function startBuild(client, settlementId, kind, now = Date.now()) {
   const inFlight = structures.find((s) => s.build_completes_at !== null);
   if (inFlight) {
     throw new InputError(`The ${inFlight.kind.replaceAll('_', ' ')} is already being worked on.`);
+  }
+
+  // Builds and upgrade fittings share one queue: it is one crew, and choosing what
+  // they work on next is the game. `startUpgrade` refuses in the other direction.
+  const { rows: fitting } = await client.query(
+    `select upgrade from structure_upgrades
+      where settlement_id = $1 and installed_at is null`,
+    [settlementId],
+  );
+  if (fitting[0]) {
+    const name = UPGRADES[fitting[0].upgrade]?.name ?? fitting[0].upgrade;
+    throw new InputError(`The crew is fitting the ${name.toLowerCase()}.`);
   }
 
   const target = structures.find((s) => s.kind === kind);

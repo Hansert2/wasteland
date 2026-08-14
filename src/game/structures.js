@@ -27,12 +27,112 @@ export const STRUCTURE_KINDS = [
  * the offline-death design rests on a camp being able to run food-positive.
  */
 export const STRUCTURES = {
-  shelter: { storagePerLevel: 250, baseCost: 30, baseHours: 6 },
-  garden: { produces: 'food', perLevel: 1.2, baseCost: 20, baseHours: 4 },
-  water_purifier: { produces: 'water', perLevel: 2.5, baseCost: 25, baseHours: 5 },
-  workshop: { produces: 'scrap', perLevel: 1, baseCost: 25, baseHours: 5 },
-  watchtower: { defencePerLevel: 8, baseCost: 40, baseHours: 8 },
+  shelter: {
+    storagePerLevel: 250,
+    baseCost: 30,
+    baseHours: 6,
+    summary: 'Storage, shared across every resource. Anything over the cap is lost.',
+  },
+  garden: {
+    produces: 'food',
+    perLevel: 1.2,
+    baseCost: 20,
+    baseHours: 4,
+    summary: 'Grows food. One level already outpaces what a survivor eats.',
+  },
+  water_purifier: {
+    produces: 'water',
+    perLevel: 2.5,
+    baseCost: 25,
+    baseHours: 5,
+    summary: 'Cleans water, the other thing they cannot go without.',
+  },
+  workshop: {
+    produces: 'scrap',
+    perLevel: 1,
+    baseCost: 25,
+    baseHours: 5,
+    summary: 'Salvages scrap, and its level is what unlocks recipes at the bench.',
+  },
+  watchtower: {
+    defencePerLevel: 8,
+    baseCost: 40,
+    baseHours: 8,
+    // Deliberately honest: this is the one structure with no effect yet. It feeds
+    // campStrength, which nothing reads until raiders exist.
+    summary: 'Camp defence. Nothing has come for the camp yet.',
+  },
 };
+
+/** The storage a camp has before any shelter is built. */
+const BASE_STORAGE = 100;
+
+/**
+ * The fuel track.
+ *
+ * Scrap makes a structure bigger; fuel makes it do something new. The split is not
+ * arbitrary — fuel is the one resource nothing in the camp produces, so it can only
+ * be earned by sending someone somewhere unpleasant. Scrap is patience, fuel is
+ * danger money, and the two therefore buy different kinds of thing.
+ *
+ * An upgrade has no levels. The camp either has the capability or it does not, which
+ * keeps this a genuine fork — fit filtration *or* upgrade the garden — instead of a
+ * second grind running alongside the first.
+ *
+ * Three more branches are designed but deliberately unbuilt, because they modify
+ * mechanics that do not exist yet: a reinforced shelter and a watchtower radio want
+ * raids, and a greenhouse wants world events. See docs/PLAN.md.
+ */
+export const UPGRADES = {
+  filtration: {
+    kind: 'water_purifier',
+    name: 'Filtration',
+    fuel: 60,
+    hours: 8,
+    requiresLevel: 2,
+    // Radiation is the real limiter on going back to the Deep Zone: a trip is worth
+    // ~30 rads and they decay at 0.8/h, so a survivor spends nearly two days waiting
+    // to be able to leave again. This is the camp buying that time back.
+    radDecayMultiplier: 2.5,
+    summary: 'Scrubs radiation out of whoever is standing in the camp, hour by hour.',
+  },
+  machine_shop: {
+    kind: 'workshop',
+    name: 'Machine Shop',
+    fuel: 75,
+    hours: 10,
+    requiresLevel: 2,
+    craftHoursMultiplier: 2 / 3,
+    summary: 'Powered tools at the bench: every craft takes a third less time.',
+  },
+};
+
+/** The upgrade a given structure can be fitted with, if any. */
+export function upgradeFor(kind) {
+  const found = Object.entries(UPGRADES).find(([, spec]) => spec.kind === kind);
+  return found ? { slug: found[0], ...found[1] } : null;
+}
+
+/**
+ * How much faster radiation leaves a survivor standing in this camp.
+ * @param {string[]} [installed] slugs of fitted upgrades
+ */
+export function radDecayMultiplier(installed) {
+  return multiplierOf(installed, 'radDecayMultiplier');
+}
+
+/** How much of a recipe's stated hours the bench actually takes. */
+export function craftHoursMultiplier(installed) {
+  return multiplierOf(installed, 'craftHoursMultiplier');
+}
+
+function multiplierOf(installed, field) {
+  let total = 1;
+  for (const slug of installed ?? []) {
+    total *= UPGRADES[slug]?.[field] ?? 1;
+  }
+  return total;
+}
 
 /**
  * Cost and duration to build the *next* level. Exponential growth is what gives an
@@ -67,7 +167,42 @@ export function productionRates(structures) {
 /** Total storage available, shared across every resource kind. */
 export function storageCap(structures) {
   const shelter = structures.find((s) => s.kind === 'shelter');
-  return 100 + (shelter ? STRUCTURES.shelter.storagePerLevel * shelter.level : 0);
+  return BASE_STORAGE + (shelter ? STRUCTURES.shelter.storagePerLevel * shelter.level : 0);
+}
+
+/**
+ * What a structure contributes at a given level, in words.
+ *
+ * Lives here rather than in the renderer because it is derived from the very numbers
+ * above: a balance pass that changes `perLevel` changes what the page says in the
+ * same edit, instead of leaving a description somewhere else to quietly go stale.
+ *
+ * @returns {string} empty when the structure contributes nothing at that level
+ */
+export function structureEffect(kind, level) {
+  const spec = STRUCTURES[kind];
+  if (!spec || level < 0) return '';
+
+  if (spec.produces) {
+    if (level === 0) return '';
+    return `+${round(spec.perLevel * level)} ${spec.produces}/h`;
+  }
+
+  if (spec.storagePerLevel) {
+    return `${round(BASE_STORAGE + spec.storagePerLevel * level)} storage`;
+  }
+
+  if (spec.defencePerLevel) {
+    if (level === 0) return '';
+    return `${round(spec.defencePerLevel * level)} defence`;
+  }
+
+  return '';
+}
+
+/** Rates are floats; 1.2 × 3 should read as 3.6, not 3.5999999999999996. */
+function round(value) {
+  return Math.round(value * 10) / 10;
 }
 
 /**

@@ -97,16 +97,60 @@ One departure from the load-bearing decisions above, recorded rather than forgot
   which one is decided by whether anybody is alive at the completion hour. A seed
   column would have been a column that never moves.
 
+## The fuel track — a second currency ✅
+
+**Scrap makes a structure bigger. Fuel makes it do something new.**
+
+The split is not arbitrary, and it was latent in the game long before anything used
+it: fuel is the one resource nothing in the camp produces, so it comes back only from
+expeditions. Scrap is patience — the workshop makes it while you sleep. Fuel is
+danger money. Pricing something in fuel therefore prices it in risk rather than in
+waiting, and that is what makes the second currency buy a different *kind* of thing
+instead of being a second helping of the first.
+
+- **An upgrade has no levels.** The camp either has the capability or it does not. A
+  second exponential track running beside the first would be a grind; one fitting
+  that changes what a structure *does* is a fork.
+- **Fitting shares the build queue.** It is one crew. Crafting deliberately does not
+  share it — the bench is a different bench, which is the same reasoning that gave
+  the craft queue its own slot in Phase 2.
+- **Upgrades outlive their survivor.** Gear dies with its owner because it hangs off
+  `character_id`; an upgrade hangs off the settlement, so it stays, like every other
+  part of the camp.
+- **Definitions live in `src/game/structures.js` beside `STRUCTURES`, not in a
+  table.** Structures have never been content — `camp_structures.kind` is a check
+  constraint — so migration `006` records only which upgrades a camp has.
+
+Built, because they pay off against mechanics that exist today:
+
+- **water purifier → filtration.** Radiation leaves a survivor 2.5× faster. This is
+  the one that earns its keep immediately: radiation, not scrap, is what keeps a
+  survivor at home between trips to the Deep Zone — a trip is worth about 30 rads and
+  they decay at 0.8/h, so the camp is buying back nearly two days of waiting.
+- **workshop → machine shop.** Every craft takes a third less time, fixed at the hour
+  the order starts, so a machine shop fitted midway does not hurry work already on
+  the bench.
+
+Designed and deliberately unbuilt, because they modify mechanics that do not exist
+yet. Stubbing them now would be building on sand:
+
+- **shelter → reinforced.** Cuts what a raid takes. Phase 3.
+- **watchtower → radio.** Raid warning rather than defence. Phase 3.
+- **garden → greenhouse.** Survives blight and rad storms. Phase 4.
+
 ## Phase 3 — raids
 
 Threats that arrive on the tick rather than being sought out. `campStrength()` in
 `src/game/structures.js` already exists and is already derived rather than stored,
 because this is the number that decides when raiders take an interest.
 
-Open questions: whether a raid can kill a survivor outright or only wound and steal;
-whether the watchtower gives warning (a scheduled, visible raid) or only defence.
-Leaning towards steal-and-wound plus visible warning — losing a survivor to something
-you could not have seen while offline is the one death that would feel unfair.
+Open question: whether a raid can kill a survivor outright or only wound and steal.
+Leaning towards steal-and-wound — losing a survivor to something you could not have
+seen while offline is the one death that would feel unfair.
+
+The watchtower question is settled by the fuel track, and settled as *both*: scrap
+levels buy defence, the radio branch buys warning. That turns two competing readings
+of one number into two distinct purchases in two different currencies.
 
 ## Phase 4 — world events
 

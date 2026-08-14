@@ -15,6 +15,7 @@ import { advanceSettlement } from '../services/advance-settlement.js';
 import { dispatchExpedition } from '../services/dispatch-expedition.js';
 import { startBuild } from '../services/start-build.js';
 import { startCraft } from '../services/start-craft.js';
+import { startUpgrade } from '../services/start-upgrade.js';
 import { viewCamp } from '../services/view-camp.js';
 import { campPage, landingPage, layout, escape } from './render.js';
 
@@ -123,6 +124,21 @@ export function createApp() {
       const now = Date.now();
       await advanceSettlement(client, settlementId, now);
       await startBuild(client, settlementId, req.body.kind, now);
+    });
+
+    res.redirect('/camp');
+  });
+
+  app.post('/upgrade', requireAuth, async (req, res) => {
+    await withTransaction(async (client) => {
+      const settlementId = await settlementIdForPlayer(client, req.playerId);
+      if (!settlementId) throw new InputError('This account has no camp.');
+
+      // Advance first, as with builds: the fuel being spent must be the current
+      // balance, and a fitting that just finished has to free the crew first.
+      const now = Date.now();
+      await advanceSettlement(client, settlementId, now);
+      await startUpgrade(client, settlementId, req.body.upgrade, now);
     });
 
     res.redirect('/camp');

@@ -1,4 +1,4 @@
-import { productionRates } from '../game/structures.js';
+import { UPGRADES, productionRates } from '../game/structures.js';
 
 /**
  * The seam between the database and the pure simulation.
@@ -147,9 +147,24 @@ export async function loadWorld(client, settlementId) {
 
   const order = crafting[0];
 
+  // The fuel track. Installed upgrades are capabilities the camp has; the one with a
+  // null installed_at is still being fitted, and the partial unique index guarantees
+  // there is at most one. What each upgrade *does* lives in code, not here.
+  const { rows: upgradeRows } = await client.query(
+    `select id, kind, upgrade, completes_at, installed_at
+       from structure_upgrades where settlement_id = $1`,
+    [settlementId],
+  );
+  const pending = upgradeRows.find((row) => row.installed_at === null);
+
   return {
     lastTickAt: settlement.last_tick_at.getTime(),
-    settlement: { id: settlement.id, resources, structures },
+    settlement: {
+      id: settlement.id,
+      resources,
+      structures,
+      upgrades: upgradeRows.filter((row) => row.installed_at !== null).map((row) => row.upgrade),
+    },
     survivor,
     expedition,
     craft: order
@@ -160,6 +175,16 @@ export async function loadWorld(client, settlementId) {
           resolvedAt: null,
           name: order.name,
           output: { slug: order.slug, qty: order.output_qty },
+        }
+      : null,
+    fitting: pending
+      ? {
+          id: pending.id,
+          kind: pending.kind,
+          upgrade: pending.upgrade,
+          name: UPGRADES[pending.upgrade]?.name ?? pending.upgrade,
+          completesAt: pending.completes_at.getTime(),
+          installedAt: null,
         }
       : null,
   };
@@ -232,6 +257,14 @@ export async function saveWorld(client, state) {
         expedition.log ? JSON.stringify(expedition.log) : null,
       ],
     );
+  }
+
+  const fitting = state.fitting;
+  if (fitting && fitting.installedAt != null) {
+    await client.query('update structure_upgrades set installed_at = $2 where id = $1', [
+      fitting.id,
+      new Date(fitting.installedAt),
+    ]);
   }
 
   const craft = state.craft;

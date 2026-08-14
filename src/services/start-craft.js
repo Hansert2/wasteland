@@ -1,3 +1,4 @@
+import { craftHoursMultiplier } from '../game/structures.js';
 import { InputError } from '../errors.js';
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -48,7 +49,17 @@ export async function startCraft(client, settlementId, recipeSlug, now = Date.no
   await payCosts(client, settlementId, recipe);
   await consumeInputs(client, character.id, recipe);
 
-  const completesAt = new Date(now + Number(recipe.craft_hours) * HOUR_MS);
+  // The bench's speed is fixed when the order starts — the tools you had when you
+  // put it on. A machine shop fitted halfway through does not retroactively hurry it.
+  const { rows: fitted } = await client.query(
+    `select upgrade from structure_upgrades
+      where settlement_id = $1 and installed_at is not null`,
+    [settlementId],
+  );
+  const hours =
+    Number(recipe.craft_hours) * craftHoursMultiplier(fitted.map((row) => row.upgrade));
+
+  const completesAt = new Date(now + hours * HOUR_MS);
 
   const { rows } = await client.query(
     `insert into craft_orders (settlement_id, recipe_id, started_at, completes_at)

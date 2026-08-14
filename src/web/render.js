@@ -116,6 +116,8 @@ function describe(event) {
       return `${when} — brought back ${event.qty} × ${event.slug.replaceAll('_', ' ')}.`;
     case 'build_completed':
       return `${when} — the ${event.kind.replaceAll('_', ' ')} reached level ${event.level}.`;
+    case 'upgrade_fitted':
+      return `${when} — the crew finished fitting the ${event.name.toLowerCase()}.`;
     case 'craft_delivered':
       return `${when} — the workshop turned out ${event.qty} × ${event.name}.`;
     case 'craft_lost':
@@ -260,10 +262,69 @@ function renderStructures(structures, buildInFlight, someoneAlive) {
     .map((s) => {
       const name = escape(s.kind.replaceAll('_', ' '));
       const status = statusCell(s, buildInFlight, someoneAlive);
-      return `<tr><th>${name}</th><td>level ${s.level}</td>${status}</tr>`;
+      // An unbuilt structure produces nothing, and saying so is more useful than
+      // an empty cell the player has to interpret.
+      const doing = s.effect ? escape(s.effect) : '<small>nothing yet</small>';
+      return `<tr>
+        <th>${name}</th>
+        <td>level ${s.level}</td>
+        <td>${doing}</td>
+        ${status}
+      </tr>
+      <tr><td colspan="5"><small>${escape(purposeOf(s))}</small></td></tr>
+      ${upgradeRow(s, buildInFlight, someoneAlive)}`;
     })
     .join('');
   return `<h2>Structures</h2><table>${rows}</table>`;
+}
+
+/**
+ * The fuel branch, where a structure has one.
+ *
+ * Kept on its own row rather than folded into the level track, because that is the
+ * point: scrap makes the thing bigger and fuel makes it do something new, and the
+ * page should not make those look like the same purchase.
+ */
+function upgradeRow(structure, buildInFlight, someoneAlive) {
+  const upgrade = structure.upgrade;
+  if (!upgrade) return '';
+
+  const label = `${escape(upgrade.name)} &mdash; ${escape(upgrade.summary)}`;
+
+  if (upgrade.fitted) {
+    return `<tr><td colspan="5"><small>${label} <em>(fitted)</em></small></td></tr>`;
+  }
+
+  if (upgrade.fittingUntil) {
+    const hoursLeft = (new Date(upgrade.fittingUntil).getTime() - Date.now()) / 3600000;
+    const when = hoursLeft > 0 ? `being fitted, ${n(hoursLeft)} h left` : 'fitted, reload';
+    return `<tr><td colspan="5"><small>${label} <em>(${escape(when)})</em></small></td></tr>`;
+  }
+
+  if (structure.level < upgrade.requiresLevel) {
+    return `<tr><td colspan="5"><small>${label}
+      <em>(needs level ${upgrade.requiresLevel})</em></small></td></tr>`;
+  }
+
+  // Fuel only comes home from expeditions, so the cost is worth spelling out.
+  const cost = escape(`${upgrade.fuel} fuel, ${n(upgrade.hours)} h`);
+  const button =
+    buildInFlight || !someoneAlive
+      ? ''
+      : `<form method="post" action="/upgrade" style="margin:0">
+          <input type="hidden" name="upgrade" value="${escape(upgrade.slug)}">
+          <button type="submit">Fit</button>
+        </form>`;
+
+  return `<tr><td colspan="3"><small>${label}</small></td>
+    <td><small>${cost}</small></td><td>${button}</td></tr>`;
+}
+
+/** What it is for, plus what the next level actually buys. */
+function purposeOf(structure) {
+  const summary = structure.summary ?? '';
+  if (!structure.nextEffect) return summary;
+  return `${summary} Level ${structure.level + 1} makes that ${structure.nextEffect}.`;
 }
 
 function statusCell(structure, buildInFlight, someoneAlive) {

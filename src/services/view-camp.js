@@ -1,5 +1,12 @@
 import { advanceSettlement } from './advance-settlement.js';
-import { campStrength, productionRates, upgradeCost } from '../game/structures.js';
+import {
+  STRUCTURES,
+  campStrength,
+  productionRates,
+  structureEffect,
+  upgradeCost,
+  upgradeFor,
+} from '../game/structures.js';
 
 /**
  * Everything a camp page needs, as one transaction.
@@ -78,17 +85,44 @@ export async function viewCamp(client, settlementId, now = Date.now()) {
     [settlementId],
   );
 
+  const { rows: upgradeRows } = await client.query(
+    'select kind, upgrade, completes_at, installed_at from structure_upgrades where settlement_id = $1',
+    [settlementId],
+  );
+  const fitted = new Set(
+    upgradeRows.filter((row) => row.installed_at !== null).map((row) => row.upgrade),
+  );
+  const beingFitted = upgradeRows.find((row) => row.installed_at === null) ?? null;
+
   const rates = productionRates(structures);
 
   return {
     name: settlements[0].name,
     foundedAt: settlements[0].founded_at,
     strength: campStrength(structures),
-    structures: structures.map((s) => ({
-      ...s,
-      nextCost: upgradeCost(s.kind, s.level),
-    })),
-    buildInFlight: structures.some((s) => s.build_completes_at !== null),
+    structures: structures.map((s) => {
+      const branch = upgradeFor(s.kind);
+      return {
+        ...s,
+        nextCost: upgradeCost(s.kind, s.level),
+        // What it does now and what the next level buys, so the page can answer
+        // "why would I upgrade this" without the player working it out themselves.
+        effect: structureEffect(s.kind, s.level),
+        nextEffect: structureEffect(s.kind, s.level + 1),
+        summary: STRUCTURES[s.kind]?.summary ?? '',
+        // The fuel branch, if this structure has one.
+        upgrade: branch
+          ? {
+              ...branch,
+              fitted: fitted.has(branch.slug),
+              fittingUntil:
+                beingFitted?.upgrade === branch.slug ? beingFitted.completes_at : null,
+            }
+          : null,
+      };
+    }),
+    // Builds and fittings share one crew, so either one occupies the queue.
+    buildInFlight: structures.some((s) => s.build_completes_at !== null) || beingFitted !== null,
     roster,
     events,
     regions,

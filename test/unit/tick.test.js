@@ -8,6 +8,18 @@ const T0 = Date.UTC(2287, 0, 1);
 const hours = (h) => h * 60 * 60 * 1000;
 const days = (d) => hours(24 * d);
 
+/**
+ * Walking an interval in fifteen-minute slices accumulates float error, so a figure
+ * that is exactly 42 on paper arrives as 41.999999999999886. The tolerance is for
+ * that and nothing else: the quantities under test here differ by whole units when
+ * the mechanism is wrong.
+ */
+const close = (actual, expected, message) =>
+  assert.ok(
+    Math.abs(actual - expected) < 1e-6,
+    `${message} — expected about ${expected}, got ${actual}`,
+  );
+
 /** A camp with a healthy survivor and enough production to sustain them. */
 function makeState(overrides = {}) {
   const { resources = {}, survivor = {}, ...rest } = overrides;
@@ -464,6 +476,85 @@ test('the delivery hour does not depend on how finely the interval is sliced', (
 
   assert.equal(coarse.state.craft.resolvedAt, T0 + hours(4));
   assert.equal(fine.state.craft.resolvedAt, T0 + hours(4));
+});
+
+const fittingState = (overrides = {}, fitting = {}) =>
+  makeState({
+    fitting: {
+      id: 'fit_1',
+      kind: 'water_purifier',
+      upgrade: 'filtration',
+      name: 'Filtration',
+      completesAt: T0 + hours(4),
+      installedAt: null,
+      ...fitting,
+    },
+    ...overrides,
+  });
+
+test('a fitting installs at its hour and becomes a capability of the camp', () => {
+  const { state, events } = applyTick(fittingState(), T0 + hours(6));
+
+  assert.equal(state.fitting.installedAt, T0 + hours(4));
+  assert.deepEqual(state.settlement.upgrades, ['filtration']);
+  assert.deepEqual(events.filter((e) => e.type === 'upgrade_fitted'), [
+    {
+      at: T0 + hours(4),
+      type: 'upgrade_fitted',
+      kind: 'water_purifier',
+      upgrade: 'filtration',
+      name: 'Filtration',
+    },
+  ]);
+});
+
+test('a fitting still in progress is left alone', () => {
+  const { state, events } = applyTick(fittingState(), T0 + hours(2));
+
+  assert.equal(state.fitting.installedAt, null);
+  assert.deepEqual(state.settlement.upgrades ?? [], []);
+  assert.equal(events.length, 0);
+});
+
+test('a fitting finishes even when nobody is alive to watch', () => {
+  // Fitting is building work: starting it needed hands, finishing it does not.
+  const { state } = applyTick(fittingState({ survivor: null }), T0 + hours(6));
+
+  assert.equal(state.fitting.installedAt, T0 + hours(4));
+  assert.deepEqual(state.settlement.upgrades, ['filtration']);
+});
+
+test('filtration scrubs radiation faster than the camp does on its own', () => {
+  const irradiated = { radiation: 50 };
+
+  const { state: bare } = applyTick(makeState({ survivor: irradiated }), T0 + hours(10));
+  close(bare.survivor.radiation, 42, '0.8/h for ten hours');
+
+  const fitted = makeState({ survivor: irradiated });
+  fitted.settlement.upgrades = ['filtration'];
+  const { state: scrubbed } = applyTick(fitted, T0 + hours(10));
+
+  close(scrubbed.survivor.radiation, 30, '2.0/h once filtration is fitted');
+});
+
+test('a fitting finishing mid-interval changes the rate from its exact hour', () => {
+  // The same property the build test pins for production: the slice that ends at the
+  // completion hour still runs at the old rate, and everything after it at the new.
+  const { state } = applyTick(
+    fittingState({ survivor: { radiation: 60 } }, { completesAt: T0 + hours(10) }),
+    T0 + hours(20),
+  );
+
+  // Ten hours at 0.8/h, then ten at 2.0/h — not 16 and not 40.
+  close(state.survivor.radiation, 32, 'the rate changed at hour 10');
+});
+
+test('the fitting hour does not depend on how finely the interval is sliced', () => {
+  const coarse = applyTick(fittingState(), T0 + hours(6), { ...CONFIG, stepMs: hours(7) });
+  const fine = applyTick(fittingState(), T0 + hours(6), { ...CONFIG, stepMs: 60_000 });
+
+  assert.equal(coarse.state.fitting.installedAt, T0 + hours(4));
+  assert.equal(fine.state.fitting.installedAt, T0 + hours(4));
 });
 
 test('now must actually be a number', () => {
