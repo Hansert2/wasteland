@@ -9,6 +9,7 @@ import { startCraft } from '../../src/services/start-craft.js';
 import { startUpgrade } from '../../src/services/start-upgrade.js';
 import { foundSettlement, raiseSuccessor } from '../../src/services/settlement-lifecycle.js';
 import { viewCamp } from '../../src/services/view-camp.js';
+import { UPGRADES } from '../../src/game/structures.js';
 import { InputError } from '../../src/errors.js';
 
 const hours = (h) => h * 60 * 60 * 1000;
@@ -64,7 +65,7 @@ test('fitting an upgrade pays fuel now and installs it later', async () => {
     const now = Date.now();
 
     const order = await startUpgrade(client, settlementId, 'filtration', now);
-    assert.equal(order.completesAt.getTime(), now + hours(8));
+    assert.equal(order.completesAt.getTime(), now + UPGRADES.filtration.hours * 3600_000);
     assert.equal(await fuelOf(client, settlementId), 140, 'paid up front');
 
     const paid = await loadWorld(client, settlementId);
@@ -207,16 +208,26 @@ test('a machine shop shortens every craft that starts after it', async () => {
     );
     const now = Date.now();
 
-    // The scrap spear is a three-hour recipe.
+    // Read the recipe rather than restate it: craft times moved from hours to
+    // minutes with the pacing rescale, and this test is about the multiplier.
+    const { rows: recipe } = await client.query(
+      `select craft_hours from recipes where slug = 'scrap_spear'`,
+    );
+    const stated = Number(recipe[0].craft_hours);
+
     const before = await startCraft(client, settlementId, 'scrap_spear', now);
-    assert.equal(before.completesAt.getTime(), now + hours(3));
+    assert.equal(before.completesAt.getTime(), now + Math.round(stated * 3600_000));
 
     await advanceSettlement(client, settlementId, now + hours(4));
     await startUpgrade(client, settlementId, 'machine_shop', now + hours(4));
     await advanceSettlement(client, settlementId, now + hours(15));
 
     const after = await startCraft(client, settlementId, 'scrap_spear', now + hours(15));
-    assert.equal(after.completesAt.getTime(), now + hours(15) + hours(2), 'a third off');
+    assert.equal(
+      after.completesAt.getTime(),
+      now + hours(15) + Math.round(stated * (2 / 3) * 3600_000),
+      'a third off',
+    );
   });
 });
 

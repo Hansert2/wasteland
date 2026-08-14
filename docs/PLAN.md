@@ -334,11 +334,50 @@ trip, which regenerates in three hours and is nearly irrelevant. What it does is
 text, written before any of this was measured, and it turns out to be literally what
 the numbers say.
 
-**A death costs about a week of camp production, at any size.** Undoing the successor
-penalty costs 160 scrap at a level 2 camp and 1049 at level 6 — but 6.7 days and 8.8
-days respectively, because exponential costs and exponential production very nearly
-cancel. A death is a weighty, consistent setback rather than one that scales into
-ruin, which is what makes starting again bearable.
+**A death costs one to two days of camp production, at any size.** Undoing the
+successor penalty costs 35 scrap at a level 2 camp and 284 at level 6 — but 1.5 days
+and 2.4 days respectively, because exponential costs and exponential production very
+nearly cancel. A death is a weighty, consistent setback rather than one that scales
+into ruin, which is what makes starting again bearable. (It was about a week before
+the pacing rescale; the whole game moves faster now, and this moved with it.)
+
+## Pacing: the first hour has to contain a game
+
+The opening move used to be a four-hour wait. A new camp holds 10 scrap, the cheapest
+build cost 20, and the workshop starts at level 0 producing nothing — so the only
+available action was a four-hour expedition, and the first structure finished around
+hour eight.
+
+**Time was never the binding constraint early. Scrap was.** Simulating the first hour
+with a fast build curve and nothing else produced exactly one build, at thirty
+seconds, followed by the same wall — because scrap income is denominated per hour and
+a minute-scale loop needs a minute-scale income. That is why this is one change and
+not two:
+
+- **The build curve runs from seconds to days.** Half a minute and four scrap for a
+  first garden, a quarter hour by level five, hours by level nine, days past twelve.
+  Same exponential shape, far lower base. Craft times and upgrade fittings moved with
+  it — minutes, not hours.
+- **Two short regions.** The Fence Line at ten minutes and the Old Service Road at
+  forty-five, paying little. They are the only minute-scale source of scrap, and
+  therefore the thing that makes the fast levels reachable at all. A cheap build you
+  cannot afford is not an improvement.
+
+Measured, first hour, attentive player: **one build without the short regions, four
+with them** — and a return to read every ten minutes. Four structure levels at ten
+minutes, seven at an hour, eleven at three hours, twenty at twelve.
+
+**Deliberately left slow: the long regions.** Four to eighteen hours is what you set
+running before closing the tab. Building and crafting are the active loop, expeditions
+the idle one, and a game that is all active loop has given up the thing that made it
+worth checking in on. The survivor's hunger and radiation rates are untouched for the
+same reason — the 36-to-72-hour starvation guard depends on them.
+
+Two properties were re-measured afterwards rather than assumed. Raid cadence tracks
+structure levels, and faster levelling could have meant raids at their 48-hour floor
+almost immediately; it does not — 7.4 days between raids ten minutes in, 3.5 days at
+twelve hours, 2.4 after a week. And the successor penalty fell from a week to a day
+or two, recorded above.
 
 ## Phase 5 — factions
 

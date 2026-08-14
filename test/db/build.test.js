@@ -5,6 +5,7 @@ import { pool } from '../../src/db/pool.js';
 import { loadWorld } from '../../src/db/world.js';
 import { advanceSettlement } from '../../src/services/advance-settlement.js';
 import { startBuild } from '../../src/services/start-build.js';
+import { upgradeCost } from '../../src/game/structures.js';
 import { foundSettlement, raiseSuccessor } from '../../src/services/settlement-lifecycle.js';
 import { InputError } from '../../src/errors.js';
 
@@ -44,16 +45,20 @@ test('starting a build pays scrap now and delivers the level later', async () =>
     const settlementId = await setup(client);
     const now = Date.now();
 
-    // Workshop level 0 -> 1: base cost, base hours.
+    // Workshop level 0 -> 1: the bottom of the curve, which is now seconds rather
+    // than hours. Derived from upgradeCost rather than restated, so a balance pass
+    // moves this test with it instead of breaking it.
+    const cost = upgradeCost('workshop', 0);
     const order = await startBuild(client, settlementId, 'workshop', now);
     assert.equal(order.toLevel, 1);
-    assert.equal(order.cost.scrap, 25);
+    assert.equal(order.cost.scrap, cost.scrap);
+    assert.ok(cost.hours * 3600 < 60, 'a first workshop is under a minute');
 
     const paid = await loadWorld(client, settlementId);
-    assert.equal(paid.settlement.resources.scrap.amount, 275, 'paid up front');
+    assert.equal(paid.settlement.resources.scrap.amount, 300 - cost.scrap, 'paid up front');
     const workshop = paid.settlement.structures.find((s) => s.kind === 'workshop');
     assert.equal(workshop.level, 0, 'the level has not arrived yet');
-    assert.equal(workshop.buildCompletesAt, now + hours(5));
+    assert.equal(workshop.buildCompletesAt, now + cost.hours * 3600_000);
 
     const { events } = await advanceSettlement(client, settlementId, now + hours(6));
     assert.equal(events.filter((e) => e.type === 'build_completed').length, 1);

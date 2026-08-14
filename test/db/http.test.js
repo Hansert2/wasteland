@@ -176,9 +176,19 @@ test('a forged session token is not accepted', async () => {
 });
 
 test('a refused action returns you to your camp, not to a login form', async () => {
-  const { cookie } = await registerAndMoveIn();
+  const { cookie, email } = await registerAndMoveIn();
 
-  // A fresh camp holds 10 scrap; the workshop costs 25.
+  // A fresh camp used to be too poor for any build at all, which made this easy to
+  // set up. Since the pacing rescale its ten scrap covers the first few levels, so
+  // the camp has to be emptied deliberately to get a refusal to test.
+  await pool.query(
+    `update resources set amount = 0
+      where kind = 'scrap' and settlement_id in (
+        select s.id from settlements s join players p on p.id = s.player_id
+         where lower(p.email) = $1)`,
+    [email],
+  );
+
   const refused = await fetch(`${base}/build`, {
     method: 'POST',
     redirect: 'manual',

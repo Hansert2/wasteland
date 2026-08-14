@@ -29,35 +29,35 @@ export const STRUCTURE_KINDS = [
 export const STRUCTURES = {
   shelter: {
     storagePerLevel: 250,
-    baseCost: 30,
-    baseHours: 6,
+    baseCost: 6,
+    baseMinutes: 0.75,
     summary: 'Storage, shared across every resource. Anything over the cap is lost.',
   },
   garden: {
     produces: 'food',
     perLevel: 1.2,
-    baseCost: 20,
-    baseHours: 4,
+    baseCost: 4,
+    baseMinutes: 0.5,
     summary: 'Grows food. One level already outpaces what a survivor eats.',
   },
   water_purifier: {
     produces: 'water',
     perLevel: 2.5,
-    baseCost: 25,
-    baseHours: 5,
+    baseCost: 5,
+    baseMinutes: 0.6,
     summary: 'Cleans water, the other thing they cannot go without.',
   },
   workshop: {
     produces: 'scrap',
     perLevel: 1,
-    baseCost: 25,
-    baseHours: 5,
+    baseCost: 5,
+    baseMinutes: 0.6,
     summary: 'Salvages scrap, and its level is what unlocks recipes at the bench.',
   },
   watchtower: {
     defencePerLevel: 8,
-    baseCost: 40,
-    baseHours: 8,
+    baseCost: 8,
+    baseMinutes: 1,
     // The only structure that does nothing for you while things are going well. Its
     // levels feed campDefence, which decides how often raiders turn back at the fence
     // and how much the rest leave with.
@@ -89,7 +89,7 @@ export const UPGRADES = {
     kind: 'water_purifier',
     name: 'Filtration',
     fuel: 60,
-    hours: 8,
+    hours: 1,
     requiresLevel: 2,
     // Radiation is the real limiter on going back to the Deep Zone: a trip is worth
     // ~30 rads and they decay at 0.8/h, so a survivor spends nearly two days waiting
@@ -101,7 +101,7 @@ export const UPGRADES = {
     kind: 'workshop',
     name: 'Machine Shop',
     fuel: 75,
-    hours: 10,
+    hours: 1.25,
     requiresLevel: 2,
     craftHoursMultiplier: 2 / 3,
     summary: 'Powered tools at the bench: every craft takes a third less time.',
@@ -110,7 +110,7 @@ export const UPGRADES = {
     kind: 'watchtower',
     name: 'Radio',
     fuel: 55,
-    hours: 8,
+    hours: 1,
     requiresLevel: 2,
     // The only upgrade that changes nothing in the simulation. It buys the hour the
     // next raid falls due, and nothing else — see `viewCamp`.
@@ -151,17 +151,37 @@ function multiplierOf(installed, field) {
   return total;
 }
 
+/** How fast the two curves climb. Time doubles a level; cost is a little gentler. */
+const TIME_GROWTH = 2;
+const COST_GROWTH = 1.7;
+
 /**
- * Cost and duration to build the *next* level. Exponential growth is what gives an
- * Ogame-style game its long tail: early levels are an evening, later ones a week.
+ * Cost and duration to build the *next* level.
+ *
+ * Exponential growth is what gives an Ogame-style game its long tail, and this curve
+ * runs the whole span: half a minute and four scrap for a first garden, a quarter of
+ * an hour by level five, hours by level nine, days past twelve.
+ *
+ * It used to start at four *hours* for that first garden, which meant a new player's
+ * opening move was to wait half a working day to watch one number become another.
+ * The exponent does the same job from a base low enough that the first hour of the
+ * game contains a game.
+ *
+ * The reason the base could be dropped this far is that time was never the binding
+ * constraint early — scrap was, and still is. Nothing in a new camp produces scrap,
+ * so the short regions added alongside this are what actually make the fast levels
+ * reachable. A cheap build you cannot afford is not an improvement.
+ *
  * Both formulas live here so a balance pass edits one file.
  */
 export function upgradeCost(kind, currentLevel) {
   const spec = STRUCTURES[kind];
   if (!spec) return null;
   return {
-    scrap: Math.round(spec.baseCost * 1.6 ** currentLevel),
-    hours: Math.round(spec.baseHours * 1.4 ** currentLevel * 10) / 10,
+    scrap: Math.round(spec.baseCost * COST_GROWTH ** currentLevel),
+    // Rounded to the second rather than the tenth of an hour, or every early level
+    // would round to the same "0.0h" and the curve would be invisible.
+    hours: Math.round((spec.baseMinutes / 60) * TIME_GROWTH ** currentLevel * 3600) / 3600,
   };
 }
 

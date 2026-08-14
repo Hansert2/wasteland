@@ -56,13 +56,22 @@ test('storage comes from the shelter, with a floor for a camp that has none', ()
   assert.equal(storageCap([{ kind: 'shelter', level: 2 }]), 600);
 });
 
-test('upgrade costs escalate, which is what gives the game its long tail', () => {
-  const early = upgradeCost('workshop', 0);
-  const late = upgradeCost('workshop', 6);
+test('the build curve runs from seconds to days', () => {
+  // The whole span, asserted at three points rather than pinned to magic numbers.
+  // This opened at four hours for a first garden, which meant a new player's first
+  // move was to wait half a working day — and it still has to reach the long tail
+  // that makes an Ogame-style game an Ogame-style game.
+  const first = upgradeCost('garden', 0);
+  assert.ok(first.hours * 3600 < 60, `a first garden takes ${first.hours * 3600}s`);
+  assert.ok(first.scrap <= 10, 'and is affordable from what a new camp is given');
 
-  assert.equal(early.scrap, 25);
-  assert.ok(late.scrap > early.scrap * 10, 'level 7 costs an order of magnitude more');
-  assert.ok(late.hours > early.hours, 'and takes correspondingly longer');
+  const middling = upgradeCost('garden', 8);
+  assert.ok(middling.hours > 1 && middling.hours < 24, `level 9 takes ${middling.hours}h`);
+
+  const late = upgradeCost('garden', 13);
+  assert.ok(late.hours > 48, `level 14 takes ${(late.hours / 24).toFixed(1)} days`);
+  assert.ok(late.scrap > first.scrap * 100, 'with a cost to match');
+
   assert.equal(upgradeCost('nonsense', 0), null);
 });
 

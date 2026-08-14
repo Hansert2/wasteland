@@ -81,7 +81,7 @@ const RECIPES = [
     costs: { scrap: 20 },
     inputs: [],
     requires_workshop: 1,
-    craft_hours: 3,
+    craft_hours: 0.1,
     description: 'Something to hold between you and whatever is in the dark.',
   },
   {
@@ -92,7 +92,7 @@ const RECIPES = [
     costs: { food: 20, scrap: 5 },
     inputs: [],
     requires_workshop: 1,
-    craft_hours: 2,
+    craft_hours: 0.05,
     description: 'Turn a surplus you cannot store into a reserve you can carry.',
   },
   {
@@ -103,7 +103,7 @@ const RECIPES = [
     costs: { scrap: 45 },
     inputs: [{ slug: 'scavenged_parts', qty: 2 }],
     requires_workshop: 2,
-    craft_hours: 8,
+    craft_hours: 0.4,
     description: 'The difference between limping home and not coming home.',
   },
   {
@@ -114,7 +114,7 @@ const RECIPES = [
     costs: { scrap: 15, fuel: 10 },
     inputs: [{ slug: 'scavenged_parts', qty: 1 }],
     requires_workshop: 2,
-    craft_hours: 6,
+    craft_hours: 0.3,
     description: 'Farmland and the Deep Zone both become survivable with enough of these.',
   },
 ];
@@ -125,6 +125,33 @@ const RECIPES = [
  * which nobody is at the camp and nobody is scavenging anything else.
  */
 const REGIONS = [
+  /**
+   * The two short ones exist because time was never what made the early game slow —
+   * scrap was. Nothing in a new camp produces any, so before these the opening move
+   * was a four-hour walk, and no build curve however fast could change that. These
+   * are minutes long and pay little, which is the point: they are the loop that gets
+   * a camp to the level where the long walks are worth taking.
+   */
+  {
+    slug: 'the_fence_line',
+    name: 'The Fence Line',
+    danger: 1,
+    travel_hours: 0.17,
+    loot: { scrap: [2, 6], food: [0, 2] },
+    finds: [],
+    radiation_per_trip: 0,
+    description: 'As far as the wire and back. Ten minutes, and never nothing.',
+  },
+  {
+    slug: 'the_service_road',
+    name: 'The Old Service Road',
+    danger: 1,
+    travel_hours: 0.75,
+    loot: { scrap: [6, 14], water: [0, 4] },
+    finds: [{ slug: 'tinned_stew', chance: 0.15, qty: [1, 1] }],
+    radiation_per_trip: 0,
+    description: 'Follows the pylons out and comes back the same way. Picked over, but close.',
+  },
   {
     slug: 'ruined_city',
     name: 'The Ruined City',

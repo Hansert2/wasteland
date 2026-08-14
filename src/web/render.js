@@ -36,6 +36,23 @@ export function layout(title, body) {
 
 const n = (value, places = 1) => Number(value).toFixed(places);
 
+/**
+ * A duration, in whatever unit makes it readable.
+ *
+ * Everything here used to be hours, so hours were hard-coded everywhere. Since the
+ * pacing rescale a build can be thirty seconds and an upgrade nine days, and a fixed
+ * unit is wrong at one end or the other — the first camp rendered after the change
+ * offered five builds all costing "0.0 h", which is worse than no number at all.
+ */
+function duration(hours) {
+  const h = Number(hours);
+  if (!Number.isFinite(h) || h <= 0) return 'now';
+  if (h < 1 / 60) return `${Math.max(1, Math.round(h * 3600))}s`;
+  if (h < 1) return `${Math.round(h * 60)} min`;
+  if (h < 48) return `${n(h)} h`;
+  return `${n(h / 24)} days`;
+}
+
 export function landingPage({ error } = {}) {
   return layout('Wasteland', `
     <h1>Wasteland</h1>
@@ -103,7 +120,7 @@ function renderWeather(weather) {
   const items = weather
     .map((event) => {
       const hoursLeft = (new Date(event.endsAt).getTime() - Date.now()) / 3600000;
-      const left = hoursLeft > 0 ? `${n(hoursLeft)} h left` : 'clearing';
+      const left = hoursLeft > 0 ? `${duration(hoursLeft)} left` : 'clearing';
       return `<li><strong>${escape(event.name)}</strong> (${escape(left)}) &mdash;
         ${escape(event.description)}</li>`;
     })
@@ -127,7 +144,7 @@ function renderRaidWarning(expectedAt) {
     return '<p class="error">The radio has gone quiet. They are overdue &mdash; reload.</p>';
   }
 
-  return `<p class="error">Radio: raiders expected in ${n(hoursLeft)} h.
+  return `<p class="error">Radio: raiders expected in ${duration(hoursLeft)}.
     Anything still in the stores is theirs to take.</p>`;
 }
 
@@ -208,7 +225,7 @@ function renderExpeditions(view) {
     const hoursLeft = (new Date(view.expedition.returnsAt).getTime() - Date.now()) / 3600000;
     const due =
       hoursLeft > 0
-        ? `due back in ${n(hoursLeft)} h`
+        ? `due back in ${duration(hoursLeft)}`
         : 'overdue — reload to see what came back';
     return `<h2>Away</h2>
       <p>${escape(view.expedition.regionName)} — ${escape(due)}</p>`;
@@ -219,7 +236,7 @@ function renderExpeditions(view) {
       (region) => `<tr>
         <th>${escape(region.name)}</th>
         <td>danger ${region.danger}</td>
-        <td>${n(region.travel_hours, 0)} h</td>
+        <td>${escape(duration(region.travel_hours))}</td>
         <td>
           <form method="post" action="/expedition" style="margin:0">
             <input type="hidden" name="region" value="${escape(region.slug)}">
@@ -249,7 +266,7 @@ function renderInventory(inventory) {
 function renderWorkshop(view) {
   if (view.craft) {
     const hoursLeft = (new Date(view.craft.completesAt).getTime() - Date.now()) / 3600000;
-    const due = hoursLeft > 0 ? `ready in ${n(hoursLeft)} h` : 'ready — reload to collect it';
+    const due = hoursLeft > 0 ? `ready in ${duration(hoursLeft)}` : 'ready — reload to collect it';
     return `<h2>On the bench</h2>
       <p>${escape(view.craft.name)} — ${escape(due)}</p>`;
   }
@@ -266,7 +283,7 @@ function renderWorkshop(view) {
             ? `× ${recipe.output_qty}`
             : ''
           : `${recipe.output_qty} × ${escape(recipe.output_name)}`;
-      const price = escape(`${priceOf(recipe)}, ${n(recipe.craft_hours)} h`);
+      const price = escape(`${priceOf(recipe)}, ${duration(recipe.craft_hours)}`);
       return `<tr>
         <th>${escape(recipe.name)}</th>
         <td>${yields}</td>
@@ -352,7 +369,7 @@ function upgradeRow(structure, buildInFlight, someoneAlive) {
 
   if (upgrade.fittingUntil) {
     const hoursLeft = (new Date(upgrade.fittingUntil).getTime() - Date.now()) / 3600000;
-    const when = hoursLeft > 0 ? `being fitted, ${n(hoursLeft)} h left` : 'fitted, reload';
+    const when = hoursLeft > 0 ? `being fitted, ${duration(hoursLeft)} left` : 'fitted, reload';
     return `<tr><td colspan="5"><small>${label} <em>(${escape(when)})</em></small></td></tr>`;
   }
 
@@ -362,7 +379,7 @@ function upgradeRow(structure, buildInFlight, someoneAlive) {
   }
 
   // Fuel only comes home from expeditions, so the cost is worth spelling out.
-  const cost = escape(`${upgrade.fuel} fuel, ${n(upgrade.hours)} h`);
+  const cost = escape(`${upgrade.fuel} fuel, ${duration(upgrade.hours)}`);
   const button =
     buildInFlight || !someoneAlive
       ? ''
@@ -385,13 +402,13 @@ function purposeOf(structure) {
 function statusCell(structure, buildInFlight, someoneAlive) {
   if (structure.build_completes_at) {
     const hoursLeft = (new Date(structure.build_completes_at).getTime() - Date.now()) / 3600000;
-    const when = hoursLeft > 0 ? `done in ${n(hoursLeft)} h` : 'done — reload';
+    const when = hoursLeft > 0 ? `done in ${duration(hoursLeft)}` : 'done — reload';
     return `<td colspan="2">building level ${structure.level + 1}, ${escape(when)}</td>`;
   }
 
   if (!structure.nextCost) return '<td></td><td></td>';
 
-  const cost = `${structure.nextCost.scrap} scrap, ${n(structure.nextCost.hours)} h`;
+  const cost = `${structure.nextCost.scrap} scrap, ${duration(structure.nextCost.hours)}`;
   // The queue holds one build, and starting work needs living hands.
   if (buildInFlight || !someoneAlive) {
     return `<td>${escape(cost)}</td><td></td>`;
