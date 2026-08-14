@@ -398,10 +398,10 @@ almost immediately; it does not — 7.4 days between raids ten minutes in, 3.5 d
 twelve hours, 2.4 after a week. And the successor penalty fell from a week to a day
 or two, recorded above.
 
-## Phase 5 — factions
+## Phase 5 — factions ✅
 
-Designed 2026-08-14, not yet built. The shape below is settled; what remains is
-content and code.
+Designed and built 2026-08-14. The design survived contact with the code with one
+departure, recorded below where it happened.
 
 **Two rival factions, and every gain with one costs standing with the other.** A
 reputation that only ever rises is a bar that fills, not a decision. One rivalry axis
@@ -438,8 +438,36 @@ check-in loop is the game, and an always-open market would be the one mechanic t
 ignores time. Which faction's caravan comes, and what it carries, derive from the
 seed — standing tilts how often each side bothers to visit.
 
-Buying is what earns standing (commerce is trust), and each trade with one crew costs
-a little with the other. Trading needs living hands, like every other verb.
+Buying is what earns standing (commerce is trust): +6 with the seller, −3 with the
+rival, clamped at ±100 — deliberately not zero-sum, so a camp trading with both crews
+drifts warmer with the world overall. Standing prices the goods (×1.4 hostile through
+×0.6 trusted) and tempers that crew's raids. Trading needs living hands, like every
+other verb.
+
+**One departure from the design as first written: visit frequency ignores standing.**
+The draft said standing would tilt how often each side bothers to visit. Building it
+showed why it must not: trading is the only way to recover standing, so a hostile
+crew that stopped visiting would make the rivalry a one-way ratchet — dig deep enough
+and the road back is bricked over. So even the crew that hates you shows up, charges
+you forty percent over the odds, and that *is* the road back. It also keeps the visit
+schedule derivable from seed and count alone, which is what the slice-independence
+guarantee wants anyway. A test pins the property by asserting `caravanVisit` takes
+two arguments and nothing else.
+
+Measured before shipping, thirty days of neglect, established camp, eight seeds:
+
+    standing with both crews    raids   taken    died
+    hated  (-90)                 11.5   12267     0/8
+    strangers (0)                 7.8    8564     0/8
+    trusted (+90)                 4.1    2599     0/8
+
+A ~4.7× swing in losses across the standing range, and the never-kills rule holds at
+every point of it.
+
+One watch item, recorded rather than hidden: **offers are unlimited within a visit
+window.** Nothing today is exploitable through that — bulk food competes with a free
+garden, and everything worth hoarding is priced in fuel — but any future offer should
+be checked against "what if they buy forty of these in one visit" before it ships.
 
 Mechanically this reuses what exists rather than inventing: caravan scheduling is the
 raid scheduler with a friendlier payload, faction attribution rides on the raid seed

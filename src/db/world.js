@@ -23,7 +23,9 @@ export async function settlementIdForPlayer(client, playerId) {
 /** Read a settlement and its living survivor into the shape `applyTick` expects. */
 export async function loadWorld(client, settlementId) {
   const { rows: settlements } = await client.query(
-    'select id, last_tick_at, raid_seed, raid_count, next_raid_at from settlements where id = $1',
+    `select id, last_tick_at, raid_seed, raid_count, next_raid_at,
+            caravan_seed, caravan_count, next_caravan_at
+       from settlements where id = $1`,
     [settlementId],
   );
   const settlement = settlements[0];
@@ -164,6 +166,13 @@ export async function loadWorld(client, settlementId) {
   );
   const pending = upgradeRows.find((row) => row.installed_at === null);
 
+  const { rows: standingRows } = await client.query(
+    'select faction, standing from faction_standing where settlement_id = $1 order by faction',
+    [settlementId],
+  );
+  const standings = {};
+  for (const row of standingRows) standings[row.faction] = Number(row.standing);
+
   return {
     lastTickAt: settlement.last_tick_at.getTime(),
     settlement: {
@@ -175,6 +184,12 @@ export async function loadWorld(client, settlementId) {
       raidSeed: Number(settlement.raid_seed),
       raidCount: settlement.raid_count,
       nextRaidAt: settlement.next_raid_at?.getTime() ?? null,
+      caravanSeed: Number(settlement.caravan_seed),
+      caravanCount: settlement.caravan_count,
+      nextCaravanAt: settlement.next_caravan_at?.getTime() ?? null,
+      // Read-only in the tick: standing feeds raid tempering, and only trades and
+      // successions write it, so saveWorld deliberately does not carry it back.
+      standings,
       upgrades: upgradeRows.filter((row) => row.installed_at !== null).map((row) => row.upgrade),
     },
     survivor,
@@ -208,13 +223,16 @@ export async function saveWorld(client, state) {
 
   await client.query(
     `update settlements
-        set last_tick_at = $2, raid_count = $3, next_raid_at = $4
+        set last_tick_at = $2, raid_count = $3, next_raid_at = $4,
+            caravan_count = $5, next_caravan_at = $6
       where id = $1`,
     [
       settlementId,
       new Date(state.lastTickAt),
       state.settlement.raidCount ?? 0,
       state.settlement.nextRaidAt == null ? null : new Date(state.settlement.nextRaidAt),
+      state.settlement.caravanCount ?? 0,
+      state.settlement.nextCaravanAt == null ? null : new Date(state.settlement.nextCaravanAt),
     ],
   );
 

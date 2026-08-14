@@ -88,8 +88,10 @@ export function campPage(view, { error } = {}) {
     ${view.survivor ? renderSurvivor(view.survivor) : renderNoSurvivor(view.fallenCount > 0)}
     ${view.survivor ? renderExpeditions(view) : ''}
     ${renderResources(view.resources)}
+    ${renderCaravan(view.caravan, Boolean(view.survivor))}
     ${renderInventory(view.inventory)}
     ${renderWorkshop(view)}
+    ${renderStandings(view.standings)}
     ${renderStructures(view.structures, view.buildInFlight, Boolean(view.survivor))}
     ${renderRoster(view.fallenCount)}
 
@@ -179,6 +181,10 @@ function describe(event) {
     case 'raid':
     case 'raid_repelled':
       return `${when} — ${event.log.join(' ')}`;
+    case 'caravan_arrived':
+      return `${when} — a caravan from ${event.name} pulled up at the gate.`;
+    case 'caravan_departed':
+      return `${when} — the ${event.name} caravan moved on.`;
     case 'upgrade_fitted':
       return `${when} — the crew finished fitting the ${event.name.toLowerCase()}.`;
     case 'craft_delivered':
@@ -317,6 +323,70 @@ function craftCell(recipe, view) {
       <input type="hidden" name="recipe" value="${escape(recipe.slug)}">
       <button type="submit">Make</button>
     </form>`;
+}
+
+/**
+ * The caravan — at the gate with its shopfront open, or on the road with an ETA.
+ *
+ * The ETA is shown to everyone, unlike the raid hour: caravans send word ahead
+ * because they want you at the gate with scrap in hand, and a visit that can be
+ * planned for is a reason to come back. Missing one still costs you the window.
+ */
+function renderCaravan(caravan, someoneAlive) {
+  if (!caravan) return '';
+
+  if (!caravan.visiting) {
+    const hoursOut = (new Date(caravan.arrivesAt).getTime() - Date.now()) / 3600000;
+    const when = hoursOut > 0 ? `expected in ${duration(hoursOut)}` : 'expected — reload';
+    return `<h2>On the road</h2>
+      <p>A caravan from ${escape(caravan.name)}, ${escape(when)}.</p>`;
+  }
+
+  const hoursLeft = (new Date(caravan.departsAt).getTime() - Date.now()) / 3600000;
+  const rows = caravan.offers
+    .map((offer) => {
+      const price = Object.entries(offer.costs)
+        .map(([kind, amount]) => `${amount} ${kind}`)
+        .join(', ');
+      const buy =
+        someoneAlive
+          ? `<form method="post" action="/trade" style="margin:0">
+              <input type="hidden" name="faction" value="${escape(caravan.faction)}">
+              <input type="hidden" name="offer" value="${offer.index}">
+              <button type="submit">Buy</button>
+            </form>`
+          : '';
+      return `<tr>
+        <th>${offer.qty} × ${escape(offer.what)}</th>
+        <td>${escape(price)}</td>
+        <td>${buy}</td>
+      </tr>`;
+    })
+    .join('');
+
+  return `<h2>${escape(caravan.name)} — at the gate</h2>
+    <p><small>${escape(caravan.description)}</small><br>
+       Moving on in ${escape(duration(hoursLeft))}. Standing ${describeStanding(caravan.standing)}
+       ${caravan.standing < 0 ? '&mdash; their prices show it.' : caravan.standing > 0 ? '&mdash; the rates are friendly.' : '&mdash; strangers pay list price.'}</p>
+    <table>${rows}</table>`;
+}
+
+/** Where the camp sits with each crew. One line each; the numbers earn no table. */
+function renderStandings(standings) {
+  if (!standings || standings.every((s) => s.standing === 0)) return '';
+  const parts = standings
+    .map((s) => `${escape(s.name)}: ${describeStanding(s.standing)}`)
+    .join(' &middot; ');
+  return `<h2>Standing</h2><p>${parts}</p>`;
+}
+
+function describeStanding(standing) {
+  const word =
+    standing <= -50 ? 'hated' :
+    standing <= -15 ? 'unwelcome' :
+    standing < 15 ? 'strangers' :
+    standing < 50 ? 'known' : 'trusted';
+  return `${word} (${standing > 0 ? '+' : ''}${n(standing, 0)})`;
 }
 
 function renderResources(resources) {

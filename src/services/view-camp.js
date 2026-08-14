@@ -1,5 +1,6 @@
 import { advanceSettlement } from './advance-settlement.js';
 import { WORLD_EVENTS, activeAt } from '../game/world-events.js';
+import { FACTIONS, caravanVisit, priceAt, standingOf } from '../game/factions.js';
 import {
   STRUCTURES,
   campDefence,
@@ -21,7 +22,8 @@ export async function viewCamp(client, settlementId, now = Date.now()) {
   const { state, events } = await advanceSettlement(client, settlementId, now);
 
   const { rows: settlements } = await client.query(
-    'select name, founded_at, next_raid_at from settlements where id = $1',
+    `select name, founded_at, next_raid_at, caravan_seed, caravan_count, next_caravan_at
+       from settlements where id = $1`,
     [settlementId],
   );
 
@@ -96,6 +98,52 @@ export async function viewCamp(client, settlementId, now = Date.now()) {
   );
   const beingFitted = upgradeRows.find((row) => row.installed_at === null) ?? null;
 
+  // The caravan at the gate, or the one on the road. Standing prices the offers.
+  const standings = {};
+  const { rows: standingRows } = await client.query(
+    'select faction, standing from faction_standing where settlement_id = $1',
+    [settlementId],
+  );
+  for (const row of standingRows) standings[row.faction] = Number(row.standing);
+
+  const caravanRow = settlements[0];
+  const visit = caravanVisit(Number(caravanRow.caravan_seed), caravanRow.caravan_count);
+  const arrival = caravanRow.next_caravan_at?.getTime() ?? null;
+  const departsAt = arrival === null ? null : arrival + visit.stayHours * 3600_000;
+  const visiting = arrival !== null && arrival <= now && now < departsAt;
+
+  let caravan = null;
+  if (arrival !== null) {
+    const spec = FACTIONS[visit.faction];
+    const standing = standingOf(standings, visit.faction);
+
+    // Proper item names for the shopfront, in one query.
+    const slugs = spec.offers.map((o) => o.item).filter(Boolean);
+    const { rows: named } = await client.query(
+      'select slug, name from items where slug = any($1)',
+      [slugs],
+    );
+    const names = new Map(named.map((row) => [row.slug, row.name]));
+
+    caravan = {
+      faction: visit.faction,
+      name: spec.name,
+      description: spec.description,
+      visiting,
+      arrivesAt: visiting ? null : new Date(arrival),
+      departsAt: visiting ? new Date(departsAt) : null,
+      standing,
+      offers: visiting
+        ? spec.offers.map((offer, index) => ({
+            index,
+            what: offer.item ? names.get(offer.item) ?? offer.item : offer.resource,
+            qty: offer.qty,
+            costs: priceAt(offer, standing),
+          }))
+        : [],
+    };
+  }
+
   const rates = productionRates(structures);
 
   return {
@@ -107,6 +155,12 @@ export async function viewCamp(client, settlementId, now = Date.now()) {
     // The radio's entire effect. Without it the hour is in the database and none of
     // the player's business; with it, it is the most useful thing on the page.
     raidExpectedAt: fitted.has('radio') ? settlements[0].next_raid_at : null,
+    caravan,
+    standings: Object.entries(FACTIONS).map(([slug, spec]) => ({
+      slug,
+      name: spec.name,
+      standing: standingOf(standings, slug),
+    })),
     // Weather is visible to everyone: it is the sky, not a secret.
     weather: activeAt(state.worldEvents, now).map((event) => ({
       kind: event.kind,

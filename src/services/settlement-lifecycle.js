@@ -115,6 +115,15 @@ export async function raiseSuccessor(client, settlementId, { name, now = Date.no
   if (inherits) {
     await writeStructures(client, settlementId, reduced);
     await shedUnsupportedUpgrades(client, settlementId, reduced);
+
+    // Factions dealt with the camp, but the new face at the gate is not the one they
+    // trusted — or the one they cursed. Standing halves toward neutral either way,
+    // the same shape as the structure knock, and it cuts grudges as well as
+    // friendships: a successor is a chance to change sides.
+    await client.query(
+      'update faction_standing set standing = standing * 0.5 where settlement_id = $1',
+      [settlementId],
+    );
   }
 
   // Smaller shelter, smaller stores. Clamping to the new cap is not cosmetic: the

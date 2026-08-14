@@ -32,6 +32,11 @@ function makeState(overrides = {}) {
       // this null would schedule a raid on the first tick and quietly turn every
       // other assertion in this file into a test of the raid table.
       nextRaidAt: T0 + days(3650),
+      // Caravans likewise: pinned out of the way unless a test invites one.
+      caravanSeed: 42,
+      caravanCount: 0,
+      nextCaravanAt: T0 + days(3650),
+      standings: {},
       resources: {
         food: { amount: 50, ratePerHour: 2, cap: 500 },
         water: { amount: 50, ratePerHour: 2, cap: 500 },
@@ -779,6 +784,84 @@ test('a world with no weather in it behaves exactly as it did before there was a
     withEmptyResult.state.settlement.resources,
     withNone.state.settlement.resources,
   );
+});
+
+const caravanState = (overrides = {}) => {
+  const state = makeState(overrides);
+  state.settlement.caravanSeed = 7;
+  state.settlement.nextCaravanAt = T0 + hours(4);
+  return state;
+};
+
+test('a caravan arrives at its hour, stays its stay, and books the next visit', () => {
+  const { state, events } = applyTick(caravanState(), T0 + days(3));
+
+  const arrivals = events.filter((e) => e.type === 'caravan_arrived');
+  const departures = events.filter((e) => e.type === 'caravan_departed');
+
+  assert.ok(arrivals.length >= 1);
+  assert.equal(arrivals[0].at, T0 + hours(4), 'at its hour, not at login');
+  assert.ok(arrivals[0].name, 'the crew is named');
+  assert.equal(arrivals[0].until - arrivals[0].at >= hours(8), true, 'a real window');
+
+  assert.equal(departures.length, arrivals.length, 'every visit that opened also closed');
+  assert.equal(state.settlement.caravanCount, departures.length, 'the count keeps up');
+  assert.ok(state.settlement.nextCaravanAt > arrivals[0].at, 'the next one is booked');
+});
+
+test('the caravan schedule does not depend on how finely the interval is sliced', () => {
+  const coarse = applyTick(caravanState(), T0 + days(10), { ...CONFIG, stepMs: hours(7) });
+  const fine = applyTick(caravanState(), T0 + days(10), { ...CONFIG, stepMs: 60_000 });
+
+  assert.deepEqual(
+    coarse.events.filter((e) => e.type.startsWith('caravan')).map((e) => [e.type, e.at]),
+    fine.events.filter((e) => e.type.startsWith('caravan')).map((e) => [e.type, e.at]),
+  );
+  assert.equal(coarse.state.settlement.nextCaravanAt, fine.state.settlement.nextCaravanAt);
+});
+
+test('a camp with no caravan on the books gets one scheduled', () => {
+  const state = makeState();
+  state.settlement.nextCaravanAt = null;
+
+  const { state: after } = applyTick(state, T0 + hours(1));
+  assert.ok(after.settlement.nextCaravanAt > T0, 'the tick booked a visit');
+});
+
+test('caravans keep coming to an empty camp — the visit needs no hands, only trading does', () => {
+  const { events } = applyTick(caravanState({ survivor: null }), T0 + days(3));
+  assert.ok(events.some((e) => e.type === 'caravan_arrived'));
+});
+
+test('standing with a crew changes how their raids land, not whether raids exist', () => {
+  const raidsOver = (standings) => {
+    const state = raidedState();
+    state.settlement.standings = standings;
+    const { state: after, events } = applyTick(state, T0 + days(60));
+    return {
+      count: events.filter((e) => e.type === 'raid' || e.type === 'raid_repelled').length,
+      taken: events
+        .filter((e) => e.type === 'raid')
+        .reduce((t, r) => t + Object.values(r.taken).reduce((a, b) => a + b, 0), 0),
+      alive: after.survivor.alive,
+    };
+  };
+
+  // Friendly with both crews versus hated by both: same world, different weather.
+  const loved = raidsOver({ junction_crews: 90, green_river: 90 });
+  const hated = raidsOver({ junction_crews: -90, green_river: -90 });
+
+  assert.ok(hated.count > loved.count, `hated ${hated.count} raids vs loved ${loved.count}`);
+  assert.ok(hated.taken > loved.taken, 'and they leave with more');
+  assert.equal(hated.alive, true, 'but even hatred never kills — the rule holds');
+});
+
+test('a raid event names the crew it answers to', () => {
+  const { events } = applyTick(raidedState(), T0 + hours(5));
+  const raid = events.find((e) => e.type === 'raid' || e.type === 'raid_repelled');
+
+  assert.ok(raid.faction, 'attributed');
+  assert.match(raid.log.join(' '), /Raiders out of The /, 'and named in the story');
 });
 
 test('now must actually be a number', () => {

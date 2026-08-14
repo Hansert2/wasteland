@@ -92,3 +92,29 @@ for (const tower of [0, 2, 4, 6]) {
     `  tower ${tower}: wealth ${campWealth(structures)}  defence ${campDefence(structures)}`,
   );
 }
+
+// --- standing: what allegiance is worth ------------------------------------
+const { } = {};
+console.log('\nWhat standing is worth (30 days, established camp, no tower):');
+for (const [label, standings] of [
+  ['hated by both   (-90)', { junction_crews: -90, green_river: -90 }],
+  ['strangers         (0)', {}],
+  ['trusted by both (+90)', { junction_crews: 90, green_river: 90 }],
+]) {
+  const rows = [1, 2, 3, 4, 5, 6, 7, 8].map((s) => {
+    const state = camp({ levels: 4, stores: 600, seed: s * 104729 });
+    state.settlement.standings = standings;
+    const { state: after, events } = applyTick(state, T0 + 30 * 24 * HOUR);
+    const raids = events.filter((e) => e.type === 'raid');
+    return {
+      raids: raids.length + events.filter((e) => e.type === 'raid_repelled').length,
+      taken: raids.reduce((t, r) => t + Object.values(r.taken).reduce((a, b) => a + b, 0), 0),
+      died: !after.survivor.alive,
+    };
+  });
+  const avg = (f) => (rows.reduce((t, r) => t + f(r), 0) / rows.length).toFixed(1);
+  console.log(
+    `  ${label}  raids ${avg((r) => r.raids).padStart(5)}  taken ${avg((r) => r.taken).padStart(7)}` +
+      `  died ${rows.filter((r) => r.died).length}/8`,
+  );
+}

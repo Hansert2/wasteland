@@ -16,6 +16,7 @@ import { dispatchExpedition } from '../services/dispatch-expedition.js';
 import { startBuild } from '../services/start-build.js';
 import { startCraft } from '../services/start-craft.js';
 import { startUpgrade } from '../services/start-upgrade.js';
+import { tradeWithCaravan } from '../services/trade.js';
 import { viewCamp } from '../services/view-camp.js';
 import { viewGraveyard } from '../services/view-graveyard.js';
 import { campPage, graveyardPage, landingPage, layout, escape } from './render.js';
@@ -150,6 +151,26 @@ export function createApp() {
       const now = Date.now();
       await advanceSettlement(client, settlementId, now);
       await startUpgrade(client, settlementId, req.body.upgrade, now);
+    });
+
+    res.redirect('/camp');
+  });
+
+  app.post('/trade', requireAuth, async (req, res) => {
+    await withTransaction(async (client) => {
+      const settlementId = await settlementIdForPlayer(client, req.playerId);
+      if (!settlementId) throw new InputError('This account has no camp.');
+
+      // Advance first: "is the caravan still here" is a question about the current
+      // instant, and a stale clock would let a player trade through a closed window.
+      const now = Date.now();
+      await advanceSettlement(client, settlementId, now);
+      await tradeWithCaravan(
+        client,
+        settlementId,
+        { faction: req.body.faction, offer: req.body.offer },
+        now,
+      );
     });
 
     res.redirect('/camp');

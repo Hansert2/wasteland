@@ -45,15 +45,18 @@ const MAX_SOFTENING = 0.7;
  *
  * @param {number} since epoch ms to measure from
  * @param {number} wealth `campWealth` at that moment
+ * @param {number} [tempo] standing's stretch on the gap — `raidTempo`, 1 when neutral
  */
-export function nextRaidAt(since, wealth, seed, index) {
+export function nextRaidAt(since, wealth, seed, index, tempo = 1) {
   const random = makeRandom(Number(seed) + index * 7919);
 
   // Richer camps are visited more often, down to a floor: even a hoard gets time to
-  // breathe, or a successful player would be under permanent siege.
+  // breathe, or a successful player would be under permanent siege. Standing then
+  // stretches or compresses the gap — a friendly crew finds reasons not to come —
+  // and the floor is applied last, so no hostility makes raids continuous.
   const mean = Math.max(
     FASTEST_INTERVAL_HOURS,
-    SLOWEST_INTERVAL_HOURS / (1 + Math.max(0, wealth) / 10),
+    (SLOWEST_INTERVAL_HOURS / (1 + Math.max(0, wealth) / 10)) * tempo,
   );
 
   // Spread either side of the mean so raids are not metronomic.
@@ -69,26 +72,39 @@ export function nextRaidAt(since, wealth, seed, index) {
  * @param {Record<string, {amount: number}>} args.resources
  * @param {object|null} args.survivor  null when nobody is holding the camp
  * @param {number} args.seed
+ * @param {string} [args.crew]  who these raiders answer to, for the log
+ * @param {{repelBonus: number, softening: number, shareBoost: number}} [args.temper]
+ *        standing's effect — `raidTemper`, neutral when omitted
  */
-export function resolveRaid({ wealth, defence, resources, survivor, seed }) {
+export function resolveRaid({ wealth, defence, resources, survivor, seed, crew, temper }) {
   const random = makeRandom(seed);
   const log = [];
+  const who = crew ? `Raiders out of ${crew}` : 'Raiders';
+  const t = { repelBonus: 0, softening: 0, shareBoost: 1, ...temper };
 
   // A tower does not merely soften a raid; often enough it means there is no raid.
-  // This is the watchtower's whole job, and the reason it stops being decoration.
-  const repelChance = Math.min(MAX_REPEL_CHANCE, Math.max(0, defence) / DEFENCE_FOR_REPEL);
+  // This is the watchtower's whole job — and a friendly crew finds its own reasons
+  // to think better of it, which is standing doing the same job for free.
+  const repelChance = Math.min(
+    MAX_REPEL_CHANCE,
+    Math.max(0, defence) / DEFENCE_FOR_REPEL + t.repelBonus,
+  );
   if (chance(random, repelChance)) {
-    log.push('Raiders came as far as the fence, thought better of it, and moved on.');
+    log.push(`${who} came as far as the fence, thought better of it, and moved on.`);
     return { repelled: true, taken: {}, damage: 0, log };
   }
 
   if (wealth < NOT_WORTH_THE_WALK) {
-    log.push('Raiders picked over the camp, found nothing worth carrying, and left.');
+    log.push(`${who} picked over the camp, found nothing worth carrying, and left.`);
     return { repelled: false, taken: {}, damage: 0, log };
   }
 
-  const softening = Math.min(MAX_SOFTENING, Math.max(0, defence) / DEFENCE_FOR_SOFTENING);
-  const share = MAX_SHARE_TAKEN * (1 - softening);
+  const softening = Math.min(
+    MAX_SOFTENING,
+    Math.max(0, defence) / DEFENCE_FOR_SOFTENING + t.softening,
+  );
+  // Hostility widens what they carry off, capped so no grudge takes everything.
+  const share = Math.min(0.5, MAX_SHARE_TAKEN * (1 - softening) * t.shareBoost);
 
   const taken = {};
   for (const [kind, resource] of Object.entries(resources ?? {})) {
@@ -100,7 +116,7 @@ export function resolveRaid({ wealth, defence, resources, survivor, seed }) {
   const carried = Object.entries(taken)
     .map(([kind, amount]) => `${amount} ${kind}`)
     .join(', ');
-  log.push(carried ? `Raiders took ${carried}.` : 'Raiders found the stores already bare.');
+  log.push(carried ? `${who} took ${carried}.` : `${who} found the stores already bare.`);
 
   let damage = 0;
   if (survivor?.alive) {

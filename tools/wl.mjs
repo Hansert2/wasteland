@@ -43,7 +43,8 @@ if (command === 'skip') {
   await pool.query(
     `update settlements
         set last_tick_at = last_tick_at - $2::interval,
-            next_raid_at = next_raid_at - $2::interval
+            next_raid_at = next_raid_at - $2::interval,
+            next_caravan_at = next_caravan_at - $2::interval
       where id = $1`,
     [id, shift],
   );

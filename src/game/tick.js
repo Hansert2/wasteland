@@ -1,5 +1,13 @@
 import { CONFIG } from './constants.js';
 import { resolveExpedition } from './expeditions.js';
+import {
+  FACTIONS,
+  caravanVisit,
+  raidFaction,
+  raidTempo,
+  raidTemper,
+  standingOf,
+} from './factions.js';
 import { nextRaidAt, resolveRaid } from './raids.js';
 import {
   activeAt,
@@ -29,6 +37,11 @@ const HOUR_MS = 60 * 60 * 1000;
  * @property {object|null} expedition       in-flight expedition, if any
  * @property {object|null} craft            in-flight workshop order, if any
  * @property {object|null} fitting          structure upgrade being fitted, if any
+ *
+ * The settlement also carries raid bookkeeping (raidSeed/raidCount/nextRaidAt),
+ * caravan bookkeeping (caravanSeed/caravanCount/nextCaravanAt), and `standings` —
+ * faction standing by slug, read-only here: only trades and successions move it,
+ * and both happen outside the tick, which is what makes it slice-stable.
  */
 
 /**
@@ -70,7 +83,15 @@ export function applyTick(state, now, config = CONFIG) {
       visibleWealth(next.settlement),
       next.settlement.raidSeed ?? 0,
       next.settlement.raidCount ?? 0,
+      raidTempo(standingWithRaiders(next.settlement, next.settlement.raidCount ?? 0)),
     );
+  }
+
+  // Likewise a camp with no caravan on the books. The first visit is scheduled from
+  // this instant, so a brand-new camp meets a trader within a couple of days.
+  if (next.settlement.nextCaravanAt == null) {
+    const visit = caravanVisit(next.settlement.caravanSeed ?? 0, next.settlement.caravanCount ?? 0);
+    next.settlement.nextCaravanAt = next.lastTickAt + visit.gapHours * HOUR_MS;
   }
 
   let cursor = next.lastTickAt;
@@ -111,6 +132,17 @@ function nextEventAfter(state, cursor) {
 
   if (state.settlement.nextRaidAt != null && state.settlement.nextRaidAt > cursor) {
     next = Math.min(next, state.settlement.nextRaidAt);
+  }
+
+  // A caravan has two timestamps, and both are boundaries: production during the
+  // visit is no different, but the arrival and departure events must land at their
+  // hours, and the departure is where the next visit gets booked.
+  if (state.settlement.nextCaravanAt != null) {
+    const arrival = state.settlement.nextCaravanAt;
+    if (arrival > cursor) next = Math.min(next, arrival);
+    const visit = caravanVisit(state.settlement.caravanSeed ?? 0, state.settlement.caravanCount ?? 0);
+    const departure = arrival + visit.stayHours * HOUR_MS;
+    if (departure > cursor) next = Math.min(next, departure);
   }
 
   // Weather changes are event timestamps like any other: a blight that begins at
@@ -155,6 +187,56 @@ function advance(state, from, at, events, config) {
   completeCraft(state, at, events);
 
   completeFitting(state, at, events);
+
+  caravan(state, from, at, events);
+}
+
+/**
+ * Announce caravan arrivals and departures whose hour falls inside this slice, and
+ * book the next visit when one leaves.
+ *
+ * Nothing else happens here — a caravan changes no numbers by existing. Trading is a
+ * player action taken while the window is open, handled by a service; the tick's
+ * whole job is to know when the window opened and closed, which is why both
+ * timestamps are slice boundaries.
+ */
+function caravan(state, from, at, events) {
+  const settlement = state.settlement;
+  if (settlement.nextCaravanAt == null) return;
+
+  const visit = caravanVisit(settlement.caravanSeed ?? 0, settlement.caravanCount ?? 0);
+  const arrival = settlement.nextCaravanAt;
+  const departure = arrival + visit.stayHours * HOUR_MS;
+
+  // Half-open on both checks, matching the slice walk: a boundary belongs to the
+  // slice that ends on it.
+  if (from < arrival && arrival <= at) {
+    events.push({
+      at: arrival,
+      type: 'caravan_arrived',
+      faction: visit.faction,
+      name: FACTIONS[visit.faction]?.name ?? visit.faction,
+      until: departure,
+    });
+  }
+
+  if (from < departure && departure <= at) {
+    events.push({
+      at: departure,
+      type: 'caravan_departed',
+      faction: visit.faction,
+      name: FACTIONS[visit.faction]?.name ?? visit.faction,
+    });
+
+    settlement.caravanCount = (settlement.caravanCount ?? 0) + 1;
+    const nextVisit = caravanVisit(settlement.caravanSeed ?? 0, settlement.caravanCount);
+    settlement.nextCaravanAt = departure + nextVisit.gapHours * HOUR_MS;
+  }
+}
+
+/** Standing with whichever crew the nth raid belongs to. */
+function standingWithRaiders(settlement, index) {
+  return standingOf(settlement.standings, raidFaction(settlement.raidSeed ?? 0, index));
 }
 
 /**
@@ -267,12 +349,20 @@ function raid(state, at, events) {
   const wealth = campWealth(settlement.structures, settlement.resources);
   const defence = campDefence(settlement.structures);
 
+  // Raiders answer to somebody, and standing with that somebody matters — at the
+  // fence, alongside the watchtower. Standing is constant across a tick (only trades
+  // and successions move it, and both happen outside), so this is slice-stable.
+  const faction = raidFaction(settlement.raidSeed ?? 0, settlement.raidCount ?? 0);
+  const standing = standingOf(settlement.standings, faction);
+
   const outcome = resolveRaid({
     wealth,
     defence,
     resources: settlement.resources,
     survivor: state.survivor,
     seed: Number(settlement.raidSeed ?? 0) + (settlement.raidCount ?? 0),
+    crew: FACTIONS[faction]?.name,
+    temper: raidTemper(standing),
   });
 
   for (const [kind, amount] of Object.entries(outcome.taken)) {
@@ -290,11 +380,15 @@ function raid(state, at, events) {
     visibleWealth(settlement),
     settlement.raidSeed ?? 0,
     settlement.raidCount,
+    // The *next* raid's crew sets the pace: a camp in good odour with one side still
+    // hears from the other on the other side's schedule.
+    raidTempo(standingWithRaiders(settlement, settlement.raidCount)),
   );
 
   events.push({
     at,
     type: outcome.repelled ? 'raid_repelled' : 'raid',
+    faction,
     taken: outcome.taken,
     damage: outcome.damage,
     log: outcome.log,
