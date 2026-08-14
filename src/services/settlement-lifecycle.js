@@ -1,5 +1,5 @@
 import { hashPassword, MIN_PASSWORD_LENGTH } from '../auth/passwords.js';
-import { storageCap } from '../game/structures.js';
+import { UPGRADES, storageCap } from '../game/structures.js';
 import { InputError } from '../errors.js';
 
 export { InputError };
@@ -94,6 +94,7 @@ export async function raiseSuccessor(client, settlementId, { name, now = Date.no
     level: Math.max(0, s.level - SUCCESSOR_STRUCTURE_LOSS),
   }));
   await writeStructures(client, settlementId, reduced);
+  await shedUnsupportedUpgrades(client, settlementId, reduced);
 
   // Smaller shelter, smaller stores. Clamping to the new cap is not cosmetic: the
   // resources_within_cap constraint would reject the row otherwise, and a settlement
@@ -116,6 +117,43 @@ export async function raiseSuccessor(client, settlementId, { name, now = Date.no
 
   const characterId = await insertSurvivor(client, settlementId, cleanName(name, 'Survivor'), now);
   return { characterId };
+}
+
+/**
+ * Drop any fuel upgrade whose structure no longer holds it up.
+ *
+ * "An upgrade needs its structure at level N" was already the rule at the moment of
+ * fitting; this makes it true at every moment instead. A purifier knocked from 2 to
+ * 1 cannot carry filtration, and the fuel has to be found again — out there, which is
+ * the only place fuel comes from.
+ *
+ * The consequence is deliberate and is the interesting part: a structure built one
+ * level *past* its upgrade's requirement survives a death with the upgrade intact.
+ * Overbuilding is insurance, which is a decision worth having.
+ *
+ * A fitting still in progress is shed on the same rule. The camp fell apart around
+ * the crew; the half-mounted rig comes off with it.
+ */
+async function shedUnsupportedUpgrades(client, settlementId, structures) {
+  const levels = new Map(structures.map((s) => [s.kind, s.level]));
+
+  const { rows } = await client.query(
+    'select upgrade from structure_upgrades where settlement_id = $1',
+    [settlementId],
+  );
+
+  for (const { upgrade } of rows) {
+    const spec = UPGRADES[upgrade];
+    // An upgrade the code no longer defines is left alone rather than silently
+    // deleted: that is a content change, and losing a player's fuel to one is rude.
+    if (!spec) continue;
+    if ((levels.get(spec.kind) ?? 0) >= spec.requiresLevel) continue;
+
+    await client.query(
+      'delete from structure_upgrades where settlement_id = $1 and upgrade = $2',
+      [settlementId, upgrade],
+    );
+  }
 }
 
 async function writeStructures(client, settlementId, structures) {

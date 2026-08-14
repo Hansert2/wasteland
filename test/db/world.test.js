@@ -165,6 +165,23 @@ test('advancing twice to the same instant does nothing the second time', async (
   });
 });
 
+test('loadWorld orders its arrays, so two loads of one world always match', async () => {
+  await withRollback(async (client) => {
+    const { settlementId } = await seed(client);
+
+    // The test above compares two loaded states directly, and Postgres is free to
+    // return rows in whatever order the heap holds them — which changes when
+    // saveWorld rewrites them. Ordering here is what makes that comparison honest
+    // rather than usually-true; asserting it directly fails every time rather than
+    // one run in twenty.
+    const state = await loadWorld(client, settlementId);
+    const kinds = state.settlement.structures.map((s) => s.kind);
+
+    assert.deepEqual(kinds, [...kinds].sort(), 'structures come back in a defined order');
+    assert.ok(kinds.length > 1, 'and there are enough of them for order to mean anything');
+  });
+});
+
 test('a starved survivor is retired, and the camp keeps producing without them', async () => {
   await withRollback(async (client) => {
     const { settlementId, characterId } = await seed(client, {

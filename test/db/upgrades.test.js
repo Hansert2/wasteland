@@ -7,7 +7,7 @@ import { advanceSettlement } from '../../src/services/advance-settlement.js';
 import { startBuild } from '../../src/services/start-build.js';
 import { startCraft } from '../../src/services/start-craft.js';
 import { startUpgrade } from '../../src/services/start-upgrade.js';
-import { foundSettlement } from '../../src/services/settlement-lifecycle.js';
+import { foundSettlement, raiseSuccessor } from '../../src/services/settlement-lifecycle.js';
 import { InputError } from '../../src/errors.js';
 
 const hours = (h) => h * 60 * 60 * 1000;
@@ -216,6 +216,59 @@ test('a machine shop shortens every craft that starts after it', async () => {
 
     const after = await startCraft(client, settlementId, 'scrap_spear', now + hours(15));
     assert.equal(after.completesAt.getTime(), now + hours(15) + hours(2), 'a third off');
+  });
+});
+
+/** Fit filtration for real, then bury the survivor who paid for it. */
+async function fitThenKill(client, settlementId) {
+  const now = Date.now();
+  await startUpgrade(client, settlementId, 'filtration', now);
+  await advanceSettlement(client, settlementId, now + hours(9));
+
+  await client.query(
+    `update characters set died_at = now(), cause_of_death = 'starvation' where settlement_id = $1`,
+    [settlementId],
+  );
+  await raiseSuccessor(client, settlementId, { name: 'Wren' });
+}
+
+const levelOf = async (client, settlementId, kind) => {
+  const { rows } = await client.query(
+    'select level from camp_structures where settlement_id = $1 and kind = $2',
+    [settlementId, kind],
+  );
+  return Number(rows[0].level);
+};
+
+test('a successor loses an upgrade the knocked-back camp can no longer hold up', async () => {
+  await withRollback(async (client) => {
+    const settlementId = await setup(client, { purifier: 2 });
+    await fitThenKill(client, settlementId);
+
+    assert.equal(await levelOf(client, settlementId, 'water_purifier'), 1, 'knocked back');
+
+    const state = await loadWorld(client, settlementId);
+    assert.deepEqual(state.settlement.upgrades, [], 'filtration came off with the camp');
+
+    // And it is genuinely gone, not merely hidden: it can be bought again.
+    await client.query(
+      `update camp_structures set level = 2 where settlement_id = $1 and kind = 'water_purifier'`,
+      [settlementId],
+    );
+    await startUpgrade(client, settlementId, 'filtration');
+  });
+});
+
+test('but a structure built past the requirement carries its upgrade through', async () => {
+  await withRollback(async (client) => {
+    // This is the decision the rule creates: overbuilding is insurance against death.
+    const settlementId = await setup(client, { purifier: 3 });
+    await fitThenKill(client, settlementId);
+
+    assert.equal(await levelOf(client, settlementId, 'water_purifier'), 2, 'still meets it');
+
+    const state = await loadWorld(client, settlementId);
+    assert.deepEqual(state.settlement.upgrades, ['filtration'], 'the successor inherits it');
   });
 });
 

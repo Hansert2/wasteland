@@ -33,8 +33,14 @@ export async function loadWorld(client, settlementId) {
   // cannot fall out of step with what the camp has actually built. Structures ride
   // along in the state because the tick needs them: a build finishing mid-interval
   // changes the rates from that hour on.
+  // Ordered, and every other query here that builds an array is too. Without it the
+  // row order is whatever the heap happens to hand back, and `saveWorld` rewrites
+  // these rows on every tick — so two loads of an unchanged world can differ in
+  // nothing but order. That makes a state comparison intermittently false, which is
+  // an unpleasant way to spend an afternoon.
   const { rows: structureRows } = await client.query(
-    'select id, kind, level, build_completes_at from camp_structures where settlement_id = $1',
+    `select id, kind, level, build_completes_at
+       from camp_structures where settlement_id = $1 order by kind`,
     [settlementId],
   );
   const structures = structureRows.map((row) => ({
@@ -75,7 +81,8 @@ export async function loadWorld(client, settlementId) {
       `select ii.id as row_id, ii.qty, i.slug, i.kind, i.potency
          from inventory_items ii
          join items i on i.id = ii.item_id
-        where ii.character_id = $1`,
+        where ii.character_id = $1
+        order by i.slug`,
       [character.id],
     );
 
@@ -152,7 +159,7 @@ export async function loadWorld(client, settlementId) {
   // there is at most one. What each upgrade *does* lives in code, not here.
   const { rows: upgradeRows } = await client.query(
     `select id, kind, upgrade, completes_at, installed_at
-       from structure_upgrades where settlement_id = $1`,
+       from structure_upgrades where settlement_id = $1 order by upgrade`,
     [settlementId],
   );
   const pending = upgradeRows.find((row) => row.installed_at === null);

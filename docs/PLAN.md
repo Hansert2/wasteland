@@ -114,9 +114,19 @@ instead of being a second helping of the first.
 - **Fitting shares the build queue.** It is one crew. Crafting deliberately does not
   share it — the bench is a different bench, which is the same reasoning that gave
   the craft queue its own slot in Phase 2.
-- **Upgrades outlive their survivor.** Gear dies with its owner because it hangs off
-  `character_id`; an upgrade hangs off the settlement, so it stays, like every other
-  part of the camp.
+- **An upgrade outlives its survivor only as far as its structure does.** Gear dies
+  with its owner because it hangs off `character_id`; an upgrade hangs off the
+  settlement, so it survives a death — unless the level it was bolted to does not.
+  A successor knocks every structure back one, and a purifier dropped from 2 to 1
+  cannot carry filtration, so the fuel has to be found again.
+
+  This keeps "an upgrade needs its structure at level N" true at every moment rather
+  than only at the moment of purchase, and stops the fuel track being the one thing
+  in the game that a death cannot touch — gear is a total loss and stores are halved,
+  so a permanently death-proof upgrade would be the odd one out, bought with the
+  riskiest currency of all. The consequence is the interesting part: a structure
+  built one level *past* its upgrade's requirement carries it through. Overbuilding
+  is insurance, which is a decision worth having.
 - **Definitions live in `src/game/structures.js` beside `STRUCTURES`, not in a
   table.** Structures have never been content — `camp_structures.kind` is a check
   constraint — so migration `006` records only which upgrades a camp has.
@@ -144,9 +154,11 @@ Threats that arrive on the tick rather than being sought out. `campStrength()` i
 `src/game/structures.js` already exists and is already derived rather than stored,
 because this is the number that decides when raiders take an interest.
 
-Open question: whether a raid can kill a survivor outright or only wound and steal.
-Leaning towards steal-and-wound — losing a survivor to something you could not have
-seen while offline is the one death that would feel unfair.
+**Settled: a raid steals and wounds, and never kills outright.** Losing a survivor to
+something you could not have seen while offline is the one death that would feel
+unfair, and the whole tuning guard exists to keep death the price of neglect rather
+than of having a life. A raid can leave someone at 3 health and no stores, which the
+tick may well finish off later — but that death is then the player's to prevent.
 
 The watchtower question is settled by the fuel track, and settled as *both*: scrap
 levels buy defence, the radio branch buys warning. That turns two competing readings
