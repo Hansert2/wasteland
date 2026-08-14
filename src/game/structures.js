@@ -80,9 +80,10 @@ const BASE_STORAGE = 100;
  * keeps this a genuine fork — fit filtration *or* upgrade the garden — instead of a
  * second grind running alongside the first.
  *
- * Three more branches are designed but deliberately unbuilt, because they modify
- * mechanics that do not exist yet: a reinforced shelter and a watchtower radio want
- * raids, and a greenhouse wants world events. See docs/PLAN.md.
+ * Two more branches are designed and not built — no longer because their mechanics
+ * are missing (raids and world events both shipped), but by choice: a reinforced
+ * shelter would double up on the watchtower's raid-softening job, and a greenhouse
+ * is waiting on a balance question, not a feature. See docs/PLAN.md.
  */
 export const UPGRADES = {
   filtration: {
@@ -91,9 +92,9 @@ export const UPGRADES = {
     fuel: 60,
     hours: 1,
     requiresLevel: 2,
-    // Radiation is the real limiter on going back to the Deep Zone: a trip is worth
-    // ~30 rads and they decay at 0.8/h, so a survivor spends nearly two days waiting
-    // to be able to leave again. This is the camp buying that time back.
+    // Radiation is the real limiter on going back to the Deep Zone: a trip doses
+    // ~25 rads nominal and they decay at 0.8/h, so a survivor spends the better part
+    // of a day and a half waiting to leave again. This is the camp buying that back.
     radDecayMultiplier: 2.5,
     summary: 'Scrubs radiation out of whoever is standing in the camp, hour by hour.',
   },

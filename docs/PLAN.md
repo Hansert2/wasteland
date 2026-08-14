@@ -174,8 +174,10 @@ Not built:
   now — so this is simply undone rather than deferred. Worth weighing against the
   watchtower first: two upgrades that both reduce raid losses may be one too many, and
   the watchtower already has the job.
-- **garden → greenhouse.** Survives blight and rad storms, neither of which exists.
-  Still genuinely deferred, to Phase 4. Stubbing it now would be building on sand.
+- **garden → greenhouse.** Survives blight and rad storms — which exist now, so this
+  is no longer blocked either. Undone rather than deferred, and the open question is
+  balance: blight is the main thing world events do to a camp, and an upgrade that
+  ignores it needs the same scrutiny filtration got before it ships.
 
 ## Phase 3 — raids ✅
 
@@ -298,26 +300,42 @@ made this section exist: it was designed to ease a constraint and turned out to 
 it, and only simulating sixty days of play found that out.
 
 **Danger does not pay per hour. It pays per trip, and it pays in materials.**
+(Re-measured 2026-08-14 after the pacing rescale added the two short regions — the
+original version of this table predated them and understated the top row badly.)
 
     region                 danger  hours  loot/h  rads/h  finds/trip  hurt
+    The Fence Line              1   0.17   29.45    0.00        0.00   8.3%
+    The Old Service Road        1   0.75   15.97    0.00        0.15   9.1%
     The Ruined City             1      4    3.26    0.00        0.25   9.9%
     Irradiated Farmland         2      6    3.16    1.33        0.15  17.8%
     Underground Bunkers         3      9    2.84    0.22        1.07  26.7%
     Coastal Wreckage            4     12    3.75    0.33        1.33  35.3%
     The Deep Zone               5     18    3.34    1.38        2.16  45.0%
 
-Loot per hour is flat — 2.84 to 3.75 across the whole map — because loot ranges and
+Among the long regions, loot per hour is flat — 2.84 to 3.75 — because ranges and
 travel times escalate together and cancel. Per *trip* the spread is real: 13 units
 from the city against 60 from the Deep Zone, and finds go from 0.25 to 2.16. Fuel
 drops only in the bottom three rows.
 
-This is defensible and worth keeping, because a check-in game is limited by check-ins
-rather than by hours: one expedition runs at a time, so what a player actually
-collects is per trip. And the danger tiers still gate the things that matter —
-scavenged parts and fuel, which is to say all of crafting and the whole fuel track.
-The honest caveat is that a player who checks in constantly and re-sends immediately
-is rationally steered to the safest region for bulk resources. Left as it is
-deliberately: retuning the loot ranges would invalidate everything below.
+**The Fence Line is a ~24 scrap/h faucet for an attentive player, roughly seven times
+any long region, and it never stops paying. Measured, considered, and kept.** The
+reasons, so nobody rediscovers this as a bug:
+
+- Builds self-limit against it. The cost curve is exponential, so a level-9 build
+  costs about twelve hours of checking in every ten minutes — some seventy visits.
+  The faucet funds the fast early levels it was added for and cannot meaningfully
+  fund the late ones; patience runs out long before the curve does.
+- It pays in nothing but bulk. No finds, no fuel, no parts — everything that matters
+  past the on-ramp still requires danger. The short regions make the camp bigger;
+  only the long ones make it *capable*.
+- Trimming it costs the thing it exists for: dropping the loot enough to matter
+  removes one of the four first-hour builds, and the first hour containing a game is
+  the whole point of the rescale.
+
+**The ceiling it sets is a constraint on Phase 5, recorded there:** any flat
+scrap-priced good a trader offers is implicitly priced in fence-visits at 24/h, and
+must be priced against that ceiling — not against idle workshop production, which is
+an order of magnitude lower.
 
 **A healthy survivor cannot die on an expedition.** Maximum hazard damage at danger 5
 is 45 against 100 health, so death threatens only the already-wounded. That makes the
@@ -356,8 +374,9 @@ not two:
 
 - **The build curve runs from seconds to days.** Half a minute and four scrap for a
   first garden, a quarter hour by level five, hours by level nine, days past twelve.
-  Same exponential shape, far lower base. Craft times and upgrade fittings moved with
-  it — minutes, not hours.
+  Same exponential shape, far lower base. Craft times moved with it — three to
+  twenty-four minutes — and fuel-upgrade fittings came down to an hour or so, longer
+  than a craft on purpose: a fitting is a capability the camp keeps forever.
 - **Two short regions.** The Fence Line at ten minutes and the Old Service Road at
   forty-five, paying little. They are the only minute-scale source of scrap, and
   therefore the thing that makes the fast levels reachable at all. A cheap build you
@@ -398,6 +417,15 @@ track would collapse into the first one.
 Note that `test/unit/structures.test.js` guards this from one direction only — it
 asserts no *structure* produces fuel. A trader would walk straight past that test.
 This paragraph is the guard until there is code to point one at.
+
+**Second settled constraint: trader prices are set against the fence, not the
+workshop.** An attentive player's scrap income is ~24/h from the Fence Line (see the
+measured table above), an order of magnitude over idle production. Any flat
+scrap-priced good is therefore implicitly priced in ten-minute fence visits, and a
+price that looks steep against a workshop is trivial against the fence. Either
+denominate trader stock in the things the fence cannot produce — fuel, parts, found
+items — or price scrap goods against the 24/h ceiling and say so in a comment at the
+price table.
 
 Still open, and worth settling before building rather than during: whether reputation
 gates **regions**, **prices**, or **who raids you** — that last would wire this phase
