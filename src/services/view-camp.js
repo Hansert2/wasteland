@@ -1,4 +1,5 @@
 import { advanceSettlement } from './advance-settlement.js';
+import { WORLD_EVENTS, activeAt } from '../game/world-events.js';
 import {
   STRUCTURES,
   campDefence,
@@ -106,6 +107,13 @@ export async function viewCamp(client, settlementId, now = Date.now()) {
     // The radio's entire effect. Without it the hour is in the database and none of
     // the player's business; with it, it is the most useful thing on the page.
     raidExpectedAt: fitted.has('radio') ? settlements[0].next_raid_at : null,
+    // Weather is visible to everyone: it is the sky, not a secret.
+    weather: activeAt(state.worldEvents, now).map((event) => ({
+      kind: event.kind,
+      name: WORLD_EVENTS[event.kind]?.name ?? event.kind,
+      description: WORLD_EVENTS[event.kind]?.description ?? '',
+      endsAt: new Date(event.endsAt),
+    })),
     structures: structures.map((s) => {
       const branch = upgradeFor(s.kind);
       return {

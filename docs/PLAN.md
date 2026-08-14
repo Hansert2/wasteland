@@ -248,13 +248,38 @@ The watchtower question is settled by the fuel track, and settled as *both*: scr
 levels buy defence, the radio branch buys warning. That turns two competing readings
 of one number into two distinct purchases in two different currencies.
 
-## Phase 4 — world events
+## Phase 4 — world events ✅
 
-Global timed events (rad storms, caravans, blight) that modulate production and
-expedition danger for everyone at once. Cheap to add to the tick — a table of events
-with a window, and a multiplier applied in `accrueResources` and `resolveExpedition`.
-Deliberately last of the mechanical phases: it is flavour on top of a loop, not new
-decisions.
+Global timed events — rad storms, caravans, blight — that modulate production and
+expedition danger for everyone at once.
+
+**This was filed as "flavour on top of a loop, not new decisions", and that turned out
+to be true of any single event and false of the set.** A rad storm makes going out
+expensive; a caravan season makes it lucrative. They overlap freely, so the one
+question the game already asks — send them now or wait — gets an answer that changes
+week to week, and sometimes an answer that costs something either way.
+
+**No settlement_id, and no scheduler.** Every camp is under the same sky, which is
+what makes an event something that happened to the world rather than to you. Nothing
+generates these on a timer, because there is no cron anywhere in this project and a
+game that resolves an eight-week absence on the next page load should not need a
+process to have been running for the weather to have happened. Instead `slot` is the
+nth event the world has ever had, the whole row derives from one fixed world seed plus
+that number, and any tick that needs slot 41 generates slot 41. The primary key makes
+that safe under concurrency: two camps ticking together both compute the missing
+slots, one wins the insert, and the other's `do nothing` is the right answer.
+
+- **Windows are half-open** — an event covers its start and not its end — so weather
+  that ends exactly as the next begins never double-counts.
+- **Multipliers scale what a roll produced, never how many rolls were taken.** The
+  same rule gear follows, for the same reason: a trip under clear skies must be
+  identical to one taken before there was such a thing as weather, and a test asserts
+  the whole simulation is unchanged when nothing is in force.
+- **Slices are cut at weather boundaries**, so a blight beginning at hour 10 of a
+  20-hour absence halves the garden from hour 10 rather than from login. The tick's
+  slice walk gained a `from` parameter to sample the sky at the start of each slice,
+  since an event beginning exactly at the slice's end belongs to the next one.
+- Overlapping weather composes multiplicatively. Two blights are worse than one.
 
 ## Phase 5 — factions
 

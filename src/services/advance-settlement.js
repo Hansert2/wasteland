@@ -1,5 +1,6 @@
 import { applyTick } from '../game/tick.js';
 import { loadWorld, saveWorld, grantItems } from '../db/world.js';
+import { ensureWorldEvents, loadWorldEvents } from '../db/world-events.js';
 
 /**
  * Bring a settlement up to date: load, simulate, write back.
@@ -23,6 +24,13 @@ export async function advanceSettlement(client, settlementId, now) {
   if (rows.length === 0) throw new Error(`no settlement ${settlementId}`);
 
   const state = await loadWorld(client, settlementId);
+
+  // The weather for the stretch about to be simulated. Generated on demand rather
+  // than by anything scheduled: a camp resolving a six-week absence needs the storms
+  // that happened during it, and nothing was running to have recorded them.
+  await ensureWorldEvents(client, now);
+  state.worldEvents = await loadWorldEvents(client, state.lastTickAt, now);
+
   const { state: advanced, events } = applyTick(state, now);
   await saveWorld(client, advanced);
 

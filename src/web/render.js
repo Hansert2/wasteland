@@ -65,6 +65,7 @@ export function campPage(view, { error } = {}) {
        ${escape(view.foundedAt.toISOString().slice(0, 10))}</p>
     ${error ? `<p class="error">${escape(error)}</p>` : ''}
     ${renderRaidWarning(view.raidExpectedAt)}
+    ${renderWeather(view.weather)}
 
     ${renderEvents(view.events)}
     ${view.survivor ? renderSurvivor(view.survivor) : renderNoSurvivor(view.fallenCount > 0)}
@@ -88,6 +89,28 @@ export function campPage(view, { error } = {}) {
  * the event as well reads as a bug rather than as emphasis.
  */
 const NARRATED_ELSEWHERE = new Set(['item_found']);
+
+/**
+ * What the sky is doing, and for how much longer.
+ *
+ * Shown to everyone with no upgrade required — this is weather, not intelligence.
+ * The hours remaining are the useful half: a storm with four hours left is a reason
+ * to wait, and one with three days left is a reason to change plan.
+ */
+function renderWeather(weather) {
+  if (!weather || weather.length === 0) return '';
+
+  const items = weather
+    .map((event) => {
+      const hoursLeft = (new Date(event.endsAt).getTime() - Date.now()) / 3600000;
+      const left = hoursLeft > 0 ? `${n(hoursLeft)} h left` : 'clearing';
+      return `<li><strong>${escape(event.name)}</strong> (${escape(left)}) &mdash;
+        ${escape(event.description)}</li>`;
+    })
+    .join('');
+
+  return `<h2>The sky</h2><ul class="events">${items}</ul>`;
+}
 
 /**
  * The radio, and the whole of what it bought.

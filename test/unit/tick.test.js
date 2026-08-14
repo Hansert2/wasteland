@@ -700,6 +700,87 @@ test('a camp with no raid on the books gets one scheduled rather than none', () 
   assert.ok(after.settlement.nextRaidAt > T0, 'the tick booked one');
 });
 
+test('a blight halves the garden from its exact hour, not from login', () => {
+  const state = makeState({
+    survivor: null,
+    resources: { food: { amount: 0, ratePerHour: 10, cap: 100_000 } },
+  });
+  state.worldEvents = [{ kind: 'blight', startsAt: T0 + hours(10), endsAt: T0 + hours(20) }];
+
+  const { state: after } = applyTick(state, T0 + hours(30));
+
+  // 10 h at 10/h, then 10 h at 3.5/h under the blight, then 10 h clear again.
+  close(after.settlement.resources.food.amount, 100 + 35 + 100, 'the blight had a beginning and an end');
+});
+
+test('weather changes land on the hour whatever the slice size', () => {
+  const build = () => {
+    const state = makeState({
+      survivor: null,
+      resources: { food: { amount: 0, ratePerHour: 10, cap: 100_000 } },
+    });
+    state.worldEvents = [{ kind: 'blight', startsAt: T0 + hours(10), endsAt: T0 + hours(20) }];
+    return state;
+  };
+
+  // Seven does not divide ten, so without exact boundaries the blight would land late.
+  const awkward = applyTick(build(), T0 + hours(30), { ...CONFIG, stepMs: hours(7) });
+  const fine = applyTick(build(), T0 + hours(30), { ...CONFIG, stepMs: 60_000 });
+
+  close(
+    awkward.state.settlement.resources.food.amount,
+    fine.state.settlement.resources.food.amount,
+    'slice size shifted the total',
+  );
+});
+
+test('a rad storm makes the same trip dirtier without changing what it found', () => {
+  const build = (worldEvents) => {
+    // The default probe region is clean, and a storm has nothing to multiply there.
+    const state = awayState({
+      expedition: {
+        id: 'exp_1',
+        status: 'active',
+        returnsAt: T0 + hours(4),
+        seed: 1234,
+        region: { ...REGION, radiationPerTrip: 20 },
+        resolvedAt: null,
+        log: null,
+      },
+    });
+    state.worldEvents = worldEvents;
+    return state;
+  };
+
+  const clear = applyTick(build([]), T0 + hours(6)).state;
+  const stormy = applyTick(
+    build([{ kind: 'rad_storm', startsAt: T0, endsAt: T0 + hours(24) }]),
+    T0 + hours(6),
+  ).state;
+
+  assert.ok(stormy.survivor.radiation > clear.survivor.radiation, 'the sky was hotter');
+  assert.equal(
+    stormy.settlement.resources.scrap.amount,
+    clear.settlement.resources.scrap.amount,
+    'a storm does not change what was lying around to be found',
+  );
+});
+
+test('a world with no weather in it behaves exactly as it did before there was any', () => {
+  // The compatibility guarantee, same as gear: clear skies must not perturb a thing.
+  const withNone = applyTick(makeState({ survivor: { health: 60 } }), T0 + days(20));
+
+  const withEmpty = makeState({ survivor: { health: 60 } });
+  withEmpty.worldEvents = [];
+  const withEmptyResult = applyTick(withEmpty, T0 + days(20));
+
+  assert.deepStrictEqual(withEmptyResult.state.survivor, withNone.state.survivor);
+  assert.deepStrictEqual(
+    withEmptyResult.state.settlement.resources,
+    withNone.state.settlement.resources,
+  );
+});
+
 test('now must actually be a number', () => {
   assert.throws(() => applyTick(makeState(), new Date(T0)), TypeError);
 });

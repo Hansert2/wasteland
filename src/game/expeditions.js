@@ -9,8 +9,9 @@ import { equipmentOf } from './equipment.js';
  * @param {object} args.region   danger, loot ranges, finds, radiation
  * @param {object} args.survivor health, scavenging skill and pack at the moment of return
  * @param {number} args.seed
+ * @param {{loot: number, radiation: number}} [args.weather] world events in force
  */
-export function resolveExpedition({ region, survivor, seed }) {
+export function resolveExpedition({ region, survivor, seed, weather }) {
   const random = makeRandom(seed);
   const log = [];
 
@@ -18,9 +19,14 @@ export function resolveExpedition({ region, survivor, seed }) {
   // is what keeps an unarmed trip identical to what it rolled before crafting existed.
   const equipment = equipmentOf(survivor);
 
-  const loot = rollLoot(random, region, survivor, log);
+  // The sky follows the same rule for the same reason: it scales what a roll produced
+  // and never how many rolls were taken, so a trip under clear skies is identical to
+  // one taken before there was such a thing as weather.
+  const sky = { loot: 1, radiation: 1, ...weather };
+
+  const loot = rollLoot(random, region, survivor, sky, log);
   const finds = rollFinds(random, region, log);
-  const radiation = rollRadiation(random, region, log);
+  const radiation = rollRadiation(random, region, sky, log);
   const { damage, cause } = rollHazard(random, region, equipment, log);
 
   // Death is decided here rather than left to the tick, because the survivor has to
@@ -38,13 +44,13 @@ export function resolveExpedition({ region, survivor, seed }) {
   return { loot, finds, radiation, damage, died, cause: died ? cause : null, log };
 }
 
-function rollLoot(random, region, survivor, log) {
+function rollLoot(random, region, survivor, sky, log) {
   const loot = {};
   // Scavenging is worth a tenth more per level over the first.
   const skill = 1 + (Math.max(1, survivor.skillScavenging ?? 1) - 1) * 0.1;
 
   for (const [kind, [min, max]] of Object.entries(region.loot ?? {})) {
-    const amount = Math.round(intBetween(random, min, max) * skill);
+    const amount = Math.round(intBetween(random, min, max) * skill * sky.loot);
     if (amount > 0) {
       loot[kind] = amount;
       log.push(`Scavenged ${amount} ${kind}.`);
@@ -71,12 +77,12 @@ function rollFinds(random, region, log) {
   return finds;
 }
 
-function rollRadiation(random, region, log) {
+function rollRadiation(random, region, sky, log) {
   const base = Number(region.radiationPerTrip ?? 0);
   if (base <= 0) return 0;
 
-  // Half to one and a half times the region's nominal dose.
-  const dose = Math.round(base * (0.5 + random()) * 10) / 10;
+  // Half to one and a half times the region's nominal dose, and more under a storm.
+  const dose = Math.round(base * (0.5 + random()) * sky.radiation * 10) / 10;
   if (dose > 0) log.push(`Took ${dose} rads out there.`);
   return dose;
 }

@@ -2,6 +2,12 @@ import { CONFIG } from './constants.js';
 import { resolveExpedition } from './expeditions.js';
 import { nextRaidAt, resolveRaid } from './raids.js';
 import {
+  activeAt,
+  expeditionFactors,
+  nextBoundaryAfter,
+  productionFactors,
+} from './world-events.js';
+import {
   campDefence,
   campWealth,
   productionRates,
@@ -73,7 +79,7 @@ export function applyTick(state, now, config = CONFIG) {
     // expedition returns), so a rate change lands at its true hour and the result
     // cannot depend on how the interval happens to be divided.
     const at = Math.min(cursor + config.stepMs, now, nextEventAfter(next, cursor));
-    advance(next, at - cursor, at, events, config);
+    advance(next, cursor, at, events, config);
     cursor = at;
   }
 
@@ -107,14 +113,24 @@ function nextEventAfter(state, cursor) {
     next = Math.min(next, state.settlement.nextRaidAt);
   }
 
+  // Weather changes are event timestamps like any other: a blight that begins at
+  // hour 10 of a 20-hour absence must halve the garden from hour 10, not from login.
+  next = Math.min(next, nextBoundaryAfter(state.worldEvents, cursor));
+
   return next;
 }
 
 /** One simulation slice, applied in a fixed order. */
-function advance(state, dtMs, at, events, config) {
-  const hours = dtMs / HOUR_MS;
+function advance(state, from, at, events, config) {
+  const hours = (at - from) / HOUR_MS;
 
-  accrueResources(state, hours);
+  // What the sky is doing across this slice, sampled at its start. Slices are cut at
+  // weather boundaries, so the answer holds for the whole slice rather than being an
+  // approximation of it — and an event beginning exactly at `at` belongs to the next
+  // slice, not this one.
+  const weather = activeAt(state.worldEvents, from);
+
+  accrueResources(state, hours, productionFactors(weather));
 
   // Builds finish before anything else looks at the camp: production for the slice
   // just accrued used the old rates, and everything after this instant uses the new.
@@ -319,10 +335,14 @@ function returnExpedition(state, at, events) {
   const expedition = state.expedition;
   const survivor = state.survivor;
 
+  // The sky at the hour they got back. A trip spans hours and the weather may have
+  // turned during it; resolving against the conditions at resolution keeps this in
+  // step with the rest of the outcome, which is also rolled at that instant.
   const outcome = resolveExpedition({
     region: expedition.region,
     survivor,
     seed: expedition.seed,
+    weather: expeditionFactors(activeAt(state.worldEvents, at)),
   });
 
   expedition.resolvedAt = at;
@@ -371,9 +391,12 @@ function returnExpedition(state, at, events) {
  * keep working, which is the mechanical expression of "the settlement outlives its
  * people". Rates are per-hour here; the DB column's unit is converted at load.
  */
-function accrueResources(state, hours) {
-  for (const resource of Object.values(state.settlement.resources)) {
-    resource.amount = clamp(resource.amount + resource.ratePerHour * hours, 0, resource.cap);
+function accrueResources(state, hours, factors = {}) {
+  for (const [kind, resource] of Object.entries(state.settlement.resources)) {
+    // Weather scales the rate, never the stored rate itself: a blight halves what the
+    // garden yields this week without the camp forgetting how big its garden is.
+    const rate = resource.ratePerHour * (factors[kind] ?? 1);
+    resource.amount = clamp(resource.amount + rate * hours, 0, resource.cap);
   }
 }
 
