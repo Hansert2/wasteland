@@ -190,9 +190,45 @@ to a raider.
 
 **Settled: a raid steals and wounds, and never kills outright.** Losing a survivor to
 something you could not have seen while offline is the one death that would feel
-unfair, and the whole tuning guard exists to keep death the price of neglect rather
-than of having a life. A raid can leave someone at 3 health and no stores, which the
-tick may well finish off later — but that death is then the player's to prevent.
+unfair. The tick holds a raided survivor at 1 health rather than killing them, and a
+test asserts that across 200 seeds against someone already at 1.
+
+That rule turns out to hold structurally, not just at the moment of the raid: a raid
+takes a share of *current stores* and never touches production, so a food-positive
+camp always recovers. Raiders cannot starve a working camp even indirectly, which is
+what makes "no unfair offline death" true rather than merely intended.
+
+**The schedule may only depend on structures, never on stores.** This is a real
+constraint rather than a preference. Stores accrue continuously, so their value at a
+given instant differs in the last decimal places depending on how the interval was
+sliced; scheduling from that made the next raid's hour drift between a one-minute walk
+and a seven-hour one, and the drift compounded across a month. Structure levels are
+integers that change only at build completions, which are themselves slice boundaries.
+It reads better anyway — what raiders notice from outside is the buildings, and what
+they carry off depends on the stores, which `resolveRaid` still sees in full.
+
+Measured over thirty days of total neglect, eight seeds each:
+
+    camp                    raids  repelled  taken   died
+    starting camp             4.1       0.0   1145    0/8
+    established, no tower     7.8       0.0   8564    0/8
+    established, tower 3      2.5       5.3   1006    0/8
+    established, tower 6      1.8       6.0    707    0/8
+
+Nobody dies in any configuration, and the watchtower stops being decoration: it repels
+most raids and cuts losses roughly eightfold, while wealth stays flat at 16 whatever
+its level. Leave a rich camp undefended for a month and it is picked clean, which is
+the intended price of hoarding without walls.
+
+One honest weakness: the wound half of "steal and wound" is nearly invisible to an
+offline player, because regeneration outpaces it between visits days apart. It matters
+when you log in straight after a raid and want to send someone somewhere dangerous,
+and it is deliberately not allowed to compound into death — but it is much the weaker
+half of the mechanic.
+
+Still unbuilt: the **watchtower → radio** fuel branch, which turns a raid into a
+scheduled, visible event rather than a surprise. The defence half is done; the warning
+half is the remaining piece of this phase.
 
 The watchtower question is settled by the fuel track, and settled as *both*: scrap
 levels buy defence, the radio branch buys warning. That turns two competing readings

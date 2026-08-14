@@ -23,7 +23,7 @@ export async function settlementIdForPlayer(client, playerId) {
 /** Read a settlement and its living survivor into the shape `applyTick` expects. */
 export async function loadWorld(client, settlementId) {
   const { rows: settlements } = await client.query(
-    'select id, last_tick_at from settlements where id = $1',
+    'select id, last_tick_at, raid_seed, raid_count, next_raid_at from settlements where id = $1',
     [settlementId],
   );
   const settlement = settlements[0];
@@ -170,6 +170,11 @@ export async function loadWorld(client, settlementId) {
       id: settlement.id,
       resources,
       structures,
+      // The raid schedule. `next_raid_at` is null until the tick decides it, which it
+      // does from the wealth the camp has at that moment rather than at founding.
+      raidSeed: Number(settlement.raid_seed),
+      raidCount: settlement.raid_count,
+      nextRaidAt: settlement.next_raid_at?.getTime() ?? null,
       upgrades: upgradeRows.filter((row) => row.installed_at !== null).map((row) => row.upgrade),
     },
     survivor,
@@ -201,10 +206,17 @@ export async function loadWorld(client, settlementId) {
 export async function saveWorld(client, state) {
   const settlementId = state.settlement.id;
 
-  await client.query('update settlements set last_tick_at = $2 where id = $1', [
-    settlementId,
-    new Date(state.lastTickAt),
-  ]);
+  await client.query(
+    `update settlements
+        set last_tick_at = $2, raid_count = $3, next_raid_at = $4
+      where id = $1`,
+    [
+      settlementId,
+      new Date(state.lastTickAt),
+      state.settlement.raidCount ?? 0,
+      state.settlement.nextRaidAt == null ? null : new Date(state.settlement.nextRaidAt),
+    ],
+  );
 
   for (const [kind, resource] of Object.entries(state.settlement.resources)) {
     // The cap is written back too: a shelter that finished building mid-interval

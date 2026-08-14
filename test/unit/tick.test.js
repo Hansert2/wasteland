@@ -26,6 +26,12 @@ function makeState(overrides = {}) {
   return {
     lastTickAt: T0,
     settlement: {
+      raidSeed: 42,
+      raidCount: 0,
+      // Ten years out, so a test that is not about raiders never meets one. Leaving
+      // this null would schedule a raid on the first tick and quietly turn every
+      // other assertion in this file into a test of the raid table.
+      nextRaidAt: T0 + days(3650),
       resources: {
         food: { amount: 50, ratePerHour: 2, cap: 500 },
         water: { amount: 50, ratePerHour: 2, cap: 500 },
@@ -580,6 +586,118 @@ test('the fitting hour does not depend on how finely the interval is sliced', ()
 
   assert.equal(coarse.state.fitting.installedAt, T0 + hours(4));
   assert.equal(fine.state.fitting.installedAt, T0 + hours(4));
+});
+
+const raidedState = (overrides = {}, settlement = {}) => {
+  const state = makeState(overrides);
+  state.settlement.nextRaidAt = T0 + hours(4);
+  state.settlement.structures = [
+    { id: 1, kind: 'shelter', level: 2, buildCompletesAt: null },
+    { id: 2, kind: 'garden', level: 3, buildCompletesAt: null },
+    ...(settlement.structures ?? []),
+  ];
+  state.settlement.resources.scrap = { amount: 400, ratePerHour: 0, cap: 600 };
+  Object.assign(state.settlement, settlement.overrides ?? {});
+  return state;
+};
+
+test('raiders arrive on the hour and carry off part of the stores', () => {
+  const before = raidedState();
+  const scrapBefore = before.settlement.resources.scrap.amount;
+
+  const { state, events } = applyTick(before, T0 + hours(6));
+  const raids = events.filter((e) => e.type === 'raid');
+
+  assert.equal(raids.length, 1);
+  assert.equal(raids[0].at, T0 + hours(4), 'at their hour, not at login');
+  assert.ok(state.settlement.resources.scrap.amount < scrapBefore, 'they took something');
+  assert.ok(raids[0].log.join(' ').length > 0, 'and the player is told what happened');
+});
+
+test('a raid wounds but never kills, however badly it goes', () => {
+  // The settled rule. Losing a survivor to something you could not have seen while
+  // offline is the one death that would feel unfair.
+  for (let seed = 0; seed < 200; seed++) {
+    const state = raidedState({ survivor: { health: 1 } }, { overrides: { raidSeed: seed } });
+    const { state: after } = applyTick(state, T0 + hours(5));
+
+    assert.equal(after.survivor.alive, true, `seed ${seed} killed them outright`);
+    assert.ok(after.survivor.health >= 1, `seed ${seed} took them below 1`);
+  }
+});
+
+test('a watchtower turns raids away, and softens the ones it does not', () => {
+  const outcomes = (defence) => {
+    let repelled = 0;
+    let taken = 0;
+    for (let seed = 0; seed < 120; seed++) {
+      const state = raidedState(
+        {},
+        { structures: [{ id: 3, kind: 'watchtower', level: defence, buildCompletesAt: null }],
+          overrides: { raidSeed: seed } },
+      );
+      const scrapBefore = state.settlement.resources.scrap.amount;
+      const { state: after, events } = applyTick(state, T0 + hours(5));
+
+      if (events.some((e) => e.type === 'raid_repelled')) repelled += 1;
+      taken += scrapBefore - after.settlement.resources.scrap.amount;
+    }
+    return { repelled, taken };
+  };
+
+  const bare = outcomes(0);
+  const guarded = outcomes(5);
+
+  assert.equal(bare.repelled, 0, 'an undefended camp is never spared');
+  assert.ok(guarded.repelled > 0, 'a tower sends some of them home');
+  assert.ok(guarded.taken < bare.taken, 'and the rest leave with less');
+});
+
+test('a camp with nothing worth taking is left alone', () => {
+  const poor = makeState({ survivor: null, resources: {
+    food: { amount: 0, ratePerHour: 0, cap: 500 },
+    water: { amount: 0, ratePerHour: 0, cap: 500 },
+    scrap: { amount: 0, ratePerHour: 0, cap: 500 },
+  } });
+  poor.settlement.nextRaidAt = T0 + hours(4);
+  poor.settlement.structures = [{ id: 1, kind: 'garden', level: 1, buildCompletesAt: null }];
+
+  const { events } = applyTick(poor, T0 + hours(6));
+  const raid = events.find((e) => e.type === 'raid');
+
+  assert.deepEqual(raid.taken, {}, 'nothing to take');
+  assert.match(raid.log.join(' '), /nothing worth carrying/);
+});
+
+test('a long absence resolves a sequence of raids, not one big one', () => {
+  const { state, events } = applyTick(raidedState(), T0 + days(30));
+  const raids = events.filter((e) => e.type === 'raid' || e.type === 'raid_repelled');
+
+  assert.ok(raids.length > 1, `expected several raids in a month, got ${raids.length}`);
+  assert.equal(state.settlement.raidCount, raids.length, 'the count keeps up');
+
+  const hours = raids.map((r) => r.at);
+  assert.deepEqual(hours, [...hours].sort((a, b) => a - b), 'and they arrive in order');
+  assert.ok(state.settlement.nextRaidAt > T0 + days(30), 'with the next one already booked');
+});
+
+test('the raid schedule does not depend on how finely the interval is sliced', () => {
+  const coarse = applyTick(raidedState(), T0 + days(20), { ...CONFIG, stepMs: hours(7) });
+  const fine = applyTick(raidedState(), T0 + days(20), { ...CONFIG, stepMs: 60_000 });
+
+  assert.deepEqual(
+    coarse.events.filter((e) => e.type.startsWith('raid')).map((e) => e.at),
+    fine.events.filter((e) => e.type.startsWith('raid')).map((e) => e.at),
+  );
+  assert.equal(coarse.state.settlement.raidCount, fine.state.settlement.raidCount);
+});
+
+test('a camp with no raid on the books gets one scheduled rather than none', () => {
+  const state = makeState();
+  state.settlement.nextRaidAt = null;
+
+  const { state: after } = applyTick(state, T0 + hours(1));
+  assert.ok(after.settlement.nextRaidAt > T0, 'the tick booked one');
 });
 
 test('now must actually be a number', () => {

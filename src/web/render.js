@@ -116,6 +116,9 @@ function describe(event) {
       return `${when} — brought back ${event.qty} × ${event.slug.replaceAll('_', ' ')}.`;
     case 'build_completed':
       return `${when} — the ${event.kind.replaceAll('_', ' ')} reached level ${event.level}.`;
+    case 'raid':
+    case 'raid_repelled':
+      return `${when} — ${event.log.join(' ')}`;
     case 'upgrade_fitted':
       return `${when} — the crew finished fitting the ${event.name.toLowerCase()}.`;
     case 'craft_delivered':

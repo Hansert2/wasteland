@@ -1,6 +1,13 @@
 import { CONFIG } from './constants.js';
 import { resolveExpedition } from './expeditions.js';
-import { productionRates, radDecayMultiplier, storageCap } from './structures.js';
+import { nextRaidAt, resolveRaid } from './raids.js';
+import {
+  campDefence,
+  campWealth,
+  productionRates,
+  radDecayMultiplier,
+  storageCap,
+} from './structures.js';
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -47,6 +54,19 @@ export function applyTick(state, now, config = CONFIG) {
   // Clock skew or a replayed request: never run the simulation backwards.
   if (now <= next.lastTickAt) return { state: next, events };
 
+  // A camp with no raid on the books gets one put on them now, from the wealth it has
+  // at this instant. Deciding it here — once, before the walk — rather than inside a
+  // slice is what keeps it off the moving-target list: a schedule that drifted with
+  // the stores would make the outcome depend on how the interval was divided.
+  if (next.settlement.nextRaidAt == null) {
+    next.settlement.nextRaidAt = nextRaidAt(
+      next.lastTickAt,
+      visibleWealth(next.settlement),
+      next.settlement.raidSeed ?? 0,
+      next.settlement.raidCount ?? 0,
+    );
+  }
+
   let cursor = next.lastTickAt;
   while (cursor < now) {
     // Slices are cut exactly at pending event timestamps (build completions,
@@ -83,6 +103,10 @@ function nextEventAfter(state, cursor) {
     next = Math.min(next, state.fitting.completesAt);
   }
 
+  if (state.settlement.nextRaidAt != null && state.settlement.nextRaidAt > cursor) {
+    next = Math.min(next, state.settlement.nextRaidAt);
+  }
+
   return next;
 }
 
@@ -95,6 +119,10 @@ function advance(state, dtMs, at, events, config) {
   // Builds finish before anything else looks at the camp: production for the slice
   // just accrued used the old rates, and everything after this instant uses the new.
   completeBuilds(state, at, events);
+
+  // Raiders arrive before the hour is simulated, so a camp stripped of food starves
+  // from that hour rather than from the next one.
+  raid(state, at, events);
 
   // Coming home happens before the hour's hunger is applied, so a survivor who
   // returns carrying food is fed by it rather than starving on the doorstep.
@@ -204,6 +232,74 @@ function completeBuilds(state, at, events) {
     resource.ratePerHour = rates[kind] ?? 0;
     resource.cap = cap;
   }
+}
+
+/**
+ * Raiders, if their hour has come. Possibly several, if you have been away a while:
+ * each one schedules the next before the walk moves on, so a month offline resolves
+ * the whole sequence in order rather than collapsing it into one visit.
+ *
+ * The survivor is held at 1 health rather than killed. That is the settled rule, and
+ * it is the difference between harsh and unfair — a raid can leave someone a wreck in
+ * an empty camp, and the tick may finish them off an hour later, but that death is
+ * then something the player could have prevented.
+ */
+function raid(state, at, events) {
+  const settlement = state.settlement;
+  if (settlement.nextRaidAt == null || settlement.nextRaidAt > at) return;
+
+  const wealth = campWealth(settlement.structures, settlement.resources);
+  const defence = campDefence(settlement.structures);
+
+  const outcome = resolveRaid({
+    wealth,
+    defence,
+    resources: settlement.resources,
+    survivor: state.survivor,
+    seed: Number(settlement.raidSeed ?? 0) + (settlement.raidCount ?? 0),
+  });
+
+  for (const [kind, amount] of Object.entries(outcome.taken)) {
+    const resource = settlement.resources[kind];
+    if (resource) resource.amount = clamp(resource.amount - amount, 0, resource.cap);
+  }
+
+  if (outcome.damage > 0 && state.survivor?.alive) {
+    state.survivor.health = Math.max(1, state.survivor.health - outcome.damage);
+  }
+
+  settlement.raidCount = (settlement.raidCount ?? 0) + 1;
+  settlement.nextRaidAt = nextRaidAt(
+    at,
+    visibleWealth(settlement),
+    settlement.raidSeed ?? 0,
+    settlement.raidCount,
+  );
+
+  events.push({
+    at,
+    type: outcome.repelled ? 'raid_repelled' : 'raid',
+    taken: outcome.taken,
+    damage: outcome.damage,
+    log: outcome.log,
+  });
+}
+
+/**
+ * The wealth a raid schedule is allowed to depend on: structures, never stores.
+ *
+ * Stores accrue continuously, so their exact value at a given instant differs in the
+ * last few decimal places depending on how the interval was sliced. Scheduling from
+ * that made the next raid's hour drift by fractions of a second between a one-minute
+ * walk and a seven-hour one, and the drift compounded across a month. Structure levels
+ * are integers that change only at build completions, which are themselves slice
+ * boundaries — so this is stable by construction.
+ *
+ * It reads better too: what raiders notice from outside is the buildings. What they
+ * carry off depends on the stores, and `resolveRaid` still sees those in full.
+ */
+function visibleWealth(settlement) {
+  return campWealth(settlement.structures);
 }
 
 function isDueBack(state, at) {
