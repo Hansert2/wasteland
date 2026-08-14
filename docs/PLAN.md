@@ -147,10 +147,19 @@ instead of being a second helping of the first.
 
 Built, because they pay off against mechanics that exist today:
 
-- **water purifier → filtration.** Radiation leaves a survivor 2.5× faster. This is
-  the one that earns its keep immediately: radiation, not scrap, is what keeps a
-  survivor at home between trips to the Deep Zone — a trip is worth about 30 rads and
-  they decay at 0.8/h, so the camp is buying back nearly two days of waiting.
+- **water purifier → filtration.** Radiation leaves a survivor 2.5× faster *while
+  they are in the camp*. This is the one that earns its keep immediately: radiation,
+  not scrap, is what keeps a survivor at home between trips to the Deep Zone — a trip
+  is worth about 30 rads and they decay at 0.8/h, so the camp is buying back nearly
+  two days of waiting.
+
+  The "in the camp" half is load-bearing rather than flavour, and simulating sixty
+  days of play is what caught it. The filter left running while its owner was away
+  scrubbed 36 rads over an 18-hour trip that doses 25, so a survivor came home cleaner
+  than they left: radiation stopped being a constraint, and reckless play became
+  *safer* than cautious play. Confined to the camp, the upgrade is worth about 46%
+  more trips and cuts recovery from 32 hours to 13, while an aggressive player still
+  dies exactly as often as they do without it. Ease the constraint, do not delete it.
 - **workshop → machine shop.** Every craft takes a third less time, fixed at the hour
   the order starts, so a machine shop fitted midway does not hurry work already on
   the bench.

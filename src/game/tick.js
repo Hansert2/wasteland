@@ -298,10 +298,18 @@ function simulateSurvivor(state, hours, at, events, config) {
     0,
     100,
   );
-  // Filtration multiplies this. Radiation is what keeps a survivor at home between
-  // trips to the hot places, so scrubbing it faster is the camp buying back time
-  // rather than buying a bigger number.
-  const radDecay = config.radDecayPerHour * radDecayMultiplier(state.settlement.upgrades);
+  // Filtration multiplies this, but only for somebody actually standing in the camp.
+  // The filter is bolted to the water purifier; it does not follow anyone into the
+  // Deep Zone.
+  //
+  // This is load-bearing rather than flavour. An 18-hour trip doses 25 rads, and
+  // filtration left running while away scrubs 36 of them — so a survivor came home
+  // cleaner than they left, radiation stopped being a constraint at all, and going
+  // out recklessly became safer than waiting. Keeping it to the camp means the
+  // upgrade shortens the wait without deleting it.
+  const inCamp = state.expedition?.status !== 'active';
+  const radDecay =
+    config.radDecayPerHour * (inCamp ? radDecayMultiplier(state.settlement.upgrades) : 1);
   survivor.radiation = clamp(survivor.radiation - radDecay * hours, 0, 100);
 
   let delta = healthDelta(survivor, hours, config);

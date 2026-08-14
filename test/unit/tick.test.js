@@ -537,6 +537,31 @@ test('filtration scrubs radiation faster than the camp does on its own', () => {
   close(scrubbed.survivor.radiation, 30, '2.0/h once filtration is fitted');
 });
 
+test('filtration stays in the camp and does not follow anyone into the wasteland', () => {
+  // The balance rests on this. An 18-hour Deep Zone trip doses 25 rads, and
+  // filtration running while away would scrub 36 of them — so a survivor would come
+  // home cleaner than they left, radiation would stop being a constraint, and going
+  // out recklessly would be *safer* than waiting. Measured, not guessed: with the
+  // filter following them, an aggressive policy died 0 times in 5 sixty-day runs;
+  // with it left at home, 5 times out of 5, exactly as it does with no upgrade.
+  const away = makeState({
+    survivor: { radiation: 50 },
+    expedition: {
+      id: 'exp_1',
+      status: 'active',
+      returnsAt: T0 + hours(100),
+      seed: 1,
+      region: REGION,
+      resolvedAt: null,
+      log: null,
+    },
+  });
+  away.settlement.upgrades = ['filtration'];
+
+  const { state } = applyTick(away, T0 + hours(10));
+  close(state.survivor.radiation, 42, 'the base 0.8/h, as though nothing were fitted');
+});
+
 test('a fitting finishing mid-interval changes the rate from its exact hour', () => {
   // The same property the build test pins for production: the slice that ends at the
   // completion hour still runs at the old rate, and everything after it at the new.
