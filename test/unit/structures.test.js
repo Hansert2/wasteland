@@ -4,7 +4,8 @@ import assert from 'node:assert/strict';
 import {
   STRUCTURES,
   UPGRADES,
-  campStrength,
+  campDefence,
+  campWealth,
   craftHoursMultiplier,
   productionRates,
   radDecayMultiplier,
@@ -127,13 +128,38 @@ test('upgrades multiply the thing they were bought to change', () => {
   assert.ok(craftHoursMultiplier(['machine_shop']) < 1, 'a machine shop makes crafts shorter');
 });
 
-test('camp strength counts levels and weights defences', () => {
-  const quiet = campStrength([{ kind: 'garden', level: 3 }]);
-  const fortified = campStrength([
-    { kind: 'garden', level: 3 },
-    { kind: 'watchtower', level: 1 },
-  ]);
+test('building defences does not make a camp a richer-looking target', () => {
+  // The trap this replaced: one number counted levels and defence together, weighting
+  // defence eight per level, so a watchtower quadrupled a starting camp's score. Any
+  // raid frequency reading it would have punished the one building meant to help.
+  const camp = [
+    { kind: 'shelter', level: 1 },
+    { kind: 'garden', level: 1 },
+    { kind: 'water_purifier', level: 1 },
+  ];
+  const fortified = [...camp, { kind: 'watchtower', level: 3 }];
 
-  assert.equal(quiet, 3);
-  assert.equal(fortified, 12, 'a watchtower is worth far more than its level');
+  assert.equal(campWealth(fortified), campWealth(camp), 'a watchtower is not loot');
+  assert.ok(campDefence(fortified) > campDefence(camp), 'but it does defend');
+});
+
+test('wealth is levels plus what is actually in the stores', () => {
+  const camp = [{ kind: 'garden', level: 3 }, { kind: 'watchtower', level: 2 }];
+
+  assert.equal(campWealth(camp), 3, 'three levels of garden, and a tower worth nothing');
+  assert.equal(campDefence(camp), 16);
+
+  // A full larder is the visible part, and the part that can be carried off — so a
+  // raided camp is a less interesting camp next time.
+  const stocked = campWealth(camp, { food: { amount: 400 }, scrap: { amount: 200 } });
+  assert.equal(stocked, 9);
+
+  assert.equal(campWealth(camp, {}), 3, 'empty stores add nothing');
+  assert.equal(campWealth([], undefined), 0, 'and an empty camp is worth nothing at all');
+});
+
+test('defence comes from the watchtower and nowhere else', () => {
+  assert.equal(campDefence([{ kind: 'shelter', level: 9 }]), 0, 'a big shelter is not a wall');
+  assert.equal(campDefence([{ kind: 'watchtower', level: 0 }]), 0, 'unbuilt defends nothing');
+  assert.equal(campDefence([{ kind: 'nonsense', level: 4 }]), 0);
 });

@@ -173,9 +173,20 @@ yet. Stubbing them now would be building on sand:
 
 ## Phase 3 — raids
 
-Threats that arrive on the tick rather than being sought out. `campStrength()` in
-`src/game/structures.js` already exists and is already derived rather than stored,
-because this is the number that decides when raiders take an interest.
+Threats that arrive on the tick rather than being sought out.
+
+**Two numbers decide it, never one.** `campWealth()` is what draws raiders — structure
+levels plus what is sitting in the stores. `campDefence()` is what blunts them, and
+comes from the watchtower alone. Both are in `src/game/structures.js`, both derived
+rather than stored.
+
+They were one function until Phase 3 started. `campStrength()` added levels and
+defence together with defence weighted eight per level, so a single watchtower took a
+starting camp from 3 to 12 while a camp with sixteen levels of infrastructure and no
+defence scored 16. Anything reading that number to decide raider interest would have
+made the one building meant to protect you the one that most invited attack. It is
+split, and a test now asserts that fortifying a camp does not change what it is worth
+to a raider.
 
 **Settled: a raid steals and wounds, and never kills outright.** Losing a survivor to
 something you could not have seen while offline is the one death that would feel

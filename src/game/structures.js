@@ -205,14 +205,49 @@ function round(value) {
   return Math.round(value * 10) / 10;
 }
 
+/** How much of a camp's stores counts as one point of visible wealth. */
+const STORES_PER_WEALTH = 100;
+
 /**
- * Derived, never stored — a column would drift the moment a structure changed, and
- * this is the number that decides when NPC raiders take an interest in Phase 3.
+ * What draws raiders, and what blunts them — two numbers, deliberately.
+ *
+ * These replace a single `campStrength` that added levels and defence together, which
+ * could not work the moment anything read it. Defence was weighted eight per level,
+ * so one watchtower took a starting camp from 3 to 12 while a camp with sixteen
+ * levels of infrastructure and no defence scored 16. Any raid frequency driven by
+ * that number would have made the one building meant to protect you the one that most
+ * invited attack — a cheap watchtower drawing four times the attention of the stores
+ * it was built to guard.
+ *
+ * So: wealth is what a raider wants, defence is what stops them having it. Nothing
+ * should ever add them together again.
+ *
+ * Both stay derived rather than stored, for the reason production is: a column would
+ * drift the moment a structure changed or a store was spent, and drift silently.
  */
-export function campStrength(structures) {
-  return structures.reduce((total, { kind, level }) => {
+export function campWealth(structures, resources) {
+  let wealth = 0;
+
+  for (const { kind, level } of structures ?? []) {
     const spec = STRUCTURES[kind] ?? {};
-    const defence = (spec.defencePerLevel ?? 0) * level;
-    return total + level + defence;
-  }, 0);
+    // A watchtower is not loot. Counting it here is what created the trap.
+    if (spec.defencePerLevel) continue;
+    wealth += level;
+  }
+
+  // Stores are the part a raider can see the point of, and the part they can carry
+  // away — which means a raided camp is a less interesting camp next time.
+  for (const resource of Object.values(resources ?? {})) {
+    wealth += (Number(resource?.amount) || 0) / STORES_PER_WEALTH;
+  }
+
+  return round(wealth);
+}
+
+/** What the camp can put between raiders and the stores. Watchtower only. */
+export function campDefence(structures) {
+  return (structures ?? []).reduce(
+    (total, { kind, level }) => total + (STRUCTURES[kind]?.defencePerLevel ?? 0) * level,
+    0,
+  );
 }

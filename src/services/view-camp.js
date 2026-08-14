@@ -1,7 +1,8 @@
 import { advanceSettlement } from './advance-settlement.js';
 import {
   STRUCTURES,
-  campStrength,
+  campDefence,
+  campWealth,
   productionRates,
   structureEffect,
   upgradeCost,
@@ -99,7 +100,9 @@ export async function viewCamp(client, settlementId, now = Date.now()) {
   return {
     name: settlements[0].name,
     foundedAt: settlements[0].founded_at,
-    strength: campStrength(structures),
+    // Two numbers, never one: what a raider wants, and what stands in their way.
+    wealth: campWealth(structures, state.settlement.resources),
+    defence: campDefence(structures),
     structures: structures.map((s) => {
       const branch = upgradeFor(s.kind);
       return {
