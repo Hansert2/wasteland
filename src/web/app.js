@@ -17,7 +17,8 @@ import { startBuild } from '../services/start-build.js';
 import { startCraft } from '../services/start-craft.js';
 import { startUpgrade } from '../services/start-upgrade.js';
 import { viewCamp } from '../services/view-camp.js';
-import { campPage, landingPage, layout, escape } from './render.js';
+import { viewGraveyard } from '../services/view-graveyard.js';
+import { campPage, graveyardPage, landingPage, layout, escape } from './render.js';
 
 export function createApp() {
   const app = express();
@@ -39,7 +40,6 @@ export function createApp() {
         email: req.body.email,
         password: req.body.password,
         settlementName: req.body.settlementName,
-        survivorName: req.body.survivorName,
         now: Date.now(),
       }),
     );
@@ -82,6 +82,17 @@ export function createApp() {
     });
 
     res.send(campPage(view));
+  });
+
+  app.get('/graveyard', requireAuth, async (req, res) => {
+    const view = await withTransaction(async (client) => {
+      const settlementId = await settlementIdForPlayer(client, req.playerId);
+      if (!settlementId) throw new InputError('This account has no camp.');
+      // No tick: the dead do not change, so there is nothing to bring up to date.
+      return viewGraveyard(client, settlementId);
+    });
+
+    res.send(graveyardPage(view));
   });
 
   app.post('/successor', requireAuth, async (req, res) => {

@@ -30,8 +30,8 @@ async function setup(client, { fuel = 200, purifier = 2, workshop = 2 } = {}) {
     email: `${uniq()}@example.test`,
     password: 'correct horse battery staple',
     settlementName: 'Testcamp',
-    survivorName: 'Vera',
   });
+  await raiseSuccessor(client, settlementId, { name: 'Vera' });
 
   await client.query(
     `update resources set amount = $2 where settlement_id = $1 and kind = 'fuel'`,

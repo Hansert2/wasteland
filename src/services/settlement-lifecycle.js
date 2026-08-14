@@ -19,10 +19,21 @@ const SUCCESSOR_STRUCTURE_LOSS = 1;
 const SUCCESSOR_SALVAGE = 0.5;
 
 /**
- * Create a player, their settlement, and their first survivor as one unit.
+ * Create a player and their settlement. Deliberately *not* their survivor.
+ *
+ * An account owns a camp and never a person: `characters` hangs off `settlements`,
+ * and `player_id` appears nowhere near it. Founding used to create the first survivor
+ * anyway, which made registration ask you to name someone before you had seen the
+ * place, and implied an ownership the schema does not have.
+ *
+ * So a new camp stands empty for exactly as long as it takes to say who is taking it
+ * on, and the first survivor arrives through `raiseSuccessor` like every one after
+ * them. There is no "first survivor" path to keep in step with the successor path,
+ * because there is only the one path.
+ *
  * Caller supplies the transaction; a half-founded account is not a state we allow.
  */
-export async function foundSettlement(client, { email, password, settlementName, survivorName, now = Date.now() }) {
+export async function foundSettlement(client, { email, password, settlementName, now = Date.now() }) {
   const cleanEmail = String(email ?? '').trim().toLowerCase();
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(cleanEmail)) {
     throw new InputError('That does not look like an email address.');
@@ -32,7 +43,6 @@ export async function foundSettlement(client, { email, password, settlementName,
   }
 
   const camp = cleanName(settlementName, 'Camp');
-  const survivor = cleanName(survivorName, 'Survivor');
 
   let playerId;
   try {
@@ -63,8 +73,7 @@ export async function foundSettlement(client, { email, password, settlementName,
     );
   }
 
-  const characterId = await insertSurvivor(client, settlementId, survivor, now);
-  return { playerId, settlementId, characterId };
+  return { playerId, settlementId };
 }
 
 /**
@@ -85,16 +94,28 @@ export async function raiseSuccessor(client, settlementId, { name, now = Date.no
     throw new InputError('Someone is already holding this camp.');
   }
 
+  // Nobody has held this camp before, so there is nothing to inherit and nothing to
+  // have gone to ruin: this is the founder walking in, not a successor picking
+  // through what is left. You cannot inherit a ruin from nobody.
+  const { rows: predecessors } = await client.query(
+    'select 1 from characters where settlement_id = $1 limit 1',
+    [settlementId],
+  );
+  const inherits = predecessors.length > 0;
+
   const { rows: structures } = await client.query(
     'select kind, level from camp_structures where settlement_id = $1',
     [settlementId],
   );
   const reduced = structures.map((s) => ({
     kind: s.kind,
-    level: Math.max(0, s.level - SUCCESSOR_STRUCTURE_LOSS),
+    level: inherits ? Math.max(0, s.level - SUCCESSOR_STRUCTURE_LOSS) : s.level,
   }));
-  await writeStructures(client, settlementId, reduced);
-  await shedUnsupportedUpgrades(client, settlementId, reduced);
+
+  if (inherits) {
+    await writeStructures(client, settlementId, reduced);
+    await shedUnsupportedUpgrades(client, settlementId, reduced);
+  }
 
   // Smaller shelter, smaller stores. Clamping to the new cap is not cosmetic: the
   // resources_within_cap constraint would reject the row otherwise, and a settlement
@@ -105,7 +126,7 @@ export async function raiseSuccessor(client, settlementId, { name, now = Date.no
         set storage_cap = $2,
             amount = least(amount * $3, $2)
       where settlement_id = $1`,
-    [settlementId, cap, SUCCESSOR_SALVAGE],
+    [settlementId, cap, inherits ? SUCCESSOR_SALVAGE : 1],
   );
 
   // Start the clock now so the incoming survivor is not retroactively starved across

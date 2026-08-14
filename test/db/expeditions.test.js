@@ -5,7 +5,7 @@ import { pool } from '../../src/db/pool.js';
 import { loadWorld } from '../../src/db/world.js';
 import { advanceSettlement } from '../../src/services/advance-settlement.js';
 import { dispatchExpedition } from '../../src/services/dispatch-expedition.js';
-import { foundSettlement } from '../../src/services/settlement-lifecycle.js';
+import { foundSettlement, raiseSuccessor } from '../../src/services/settlement-lifecycle.js';
 import { InputError } from '../../src/errors.js';
 
 const hours = (h) => h * 60 * 60 * 1000;
@@ -28,8 +28,8 @@ async function setup(client, region = {}) {
     email: `${uniq()}@example.test`,
     password: 'correct horse battery staple',
     settlementName: 'Testcamp',
-    survivorName: 'Vera',
   });
+  await raiseSuccessor(client, settlementId, { name: 'Vera' });
 
   const slug = `probe_region_${uniq()}`;
   await client.query(

@@ -53,7 +53,6 @@ export function landingPage({ error } = {}) {
       <label>Email <input name="email" type="email" required autocomplete="username"></label>
       <label>Password <input name="password" type="password" required autocomplete="new-password" minlength="8"></label>
       <label>Camp name <input name="settlementName" placeholder="Camp"></label>
-      <label>Survivor name <input name="survivorName" placeholder="Survivor"></label>
       <button type="submit">Begin</button>
     </form>
   `);
@@ -66,7 +65,7 @@ export function campPage(view, { error } = {}) {
     ${error ? `<p class="error">${escape(error)}</p>` : ''}
 
     ${renderEvents(view.events)}
-    ${view.survivor ? renderSurvivor(view.survivor) : renderNoSurvivor()}
+    ${view.survivor ? renderSurvivor(view.survivor) : renderNoSurvivor(view.roster.length > 0)}
     ${view.survivor ? renderExpeditions(view) : ''}
     ${renderResources(view.resources)}
     ${renderInventory(view.inventory)}
@@ -137,14 +136,23 @@ function renderSurvivor(survivor) {
     </table>`;
 }
 
-function renderNoSurvivor() {
+/**
+ * The empty camp. A camp nobody has ever held is not a camp that has been abandoned,
+ * and telling a brand-new player their stores have spoiled would be a lie on the
+ * first screen they see.
+ */
+function renderNoSurvivor(everHeld) {
+  const preamble = everHeld
+    ? `<p>Structures have fallen into disrepair and much of the store has spoiled or
+         been taken. Someone new can take it on.</p>`
+    : `<p>Four walls, a garden, and enough water to start. It needs somebody in it.</p>`;
+
   return `
     <h2>The camp stands empty</h2>
-    <p>Structures have fallen into disrepair and much of the store has spoiled or been
-       taken. Someone new can take it on.</p>
+    ${preamble}
     <form method="post" action="/successor">
       <label>Name <input name="name" placeholder="Survivor" required></label>
-      <button type="submit">Take over the camp</button>
+      <button type="submit">${everHeld ? 'Take over the camp' : 'Move in'}</button>
     </form>`;
 }
 
@@ -349,14 +357,67 @@ function statusCell(structure, buildInFlight, someoneAlive) {
     </form></td>`;
 }
 
+/**
+ * A pointer rather than a table. The detail — what they were carrying, where they
+ * went last — belongs somewhere it can be read properly, and the camp page is long
+ * enough already.
+ */
 function renderRoster(roster) {
   if (roster.length === 0) return '';
-  const rows = roster
-    .map(
-      (r) => `<tr><th>${escape(r.name)}</th><td>${escape(r.cause_of_death)}</td>
-              <td>${n(r.days_survived)} days</td></tr>`,
-    )
-    .join('');
-  return `<h2>Those who held this camp</h2><table>
-    <tr><th>Name</th><th>Cause</th><th>Survived</th></tr>${rows}</table>`;
+  const count =
+    roster.length === 1 ? 'One survivor has' : `${roster.length} survivors have`;
+  return `<h2>Those who held this camp</h2>
+    <p>${count} held this camp before. <a href="/graveyard">The graveyard</a>.</p>`;
+}
+
+/** The memorial. Deliberately not a table: these are people, not rows. */
+export function graveyardPage(view) {
+  const stones = view.fallen.map(headstone).join('');
+
+  const holding = view.holding
+    ? `<p>${escape(view.holding.name)} holds the camp now, since
+       ${escape(new Date(view.holding.bornAt).toISOString().slice(0, 10))}.</p>`
+    : '<p>Nobody holds the camp.</p>';
+
+  return layout(`${view.name} — the fallen`, `
+    <h1>The fallen of ${escape(view.name)}</h1>
+    <p>Founded ${escape(view.foundedAt.toISOString().slice(0, 10))}. The camp outlives
+       its people.</p>
+    ${holding}
+
+    ${view.fallen.length === 0 ? '<p>Nobody has died here yet.</p>' : stones}
+
+    <p><a href="/camp">Back to camp</a></p>
+  `);
+}
+
+function headstone(person) {
+  const died = new Date(person.diedAt).toISOString().slice(0, 10);
+
+  const trips =
+    person.trips === 0
+      ? 'Never left the camp.'
+      : `Made ${person.trips} ${person.trips === 1 ? 'trip' : 'trips'}${
+          person.lastRegion ? `, the last to ${escape(person.lastRegion)}` : ''
+        }.`;
+
+  // The detail that stings, and it was free: nothing cleans up after the dead, so
+  // their pack is still there to be read.
+  const carrying =
+    person.carrying.length === 0
+      ? 'Carrying nothing at all.'
+      : `Carrying ${listOf(person.carrying.map((i) => `${i.qty} × ${escape(i.name)}`))}.`;
+
+  return `
+    <h2>${escape(person.name)}</h2>
+    <p>Held the camp ${n(person.daysSurvived)} days, and died of
+       ${escape(String(person.cause ?? 'unknown causes').replaceAll('_', ' '))} on ${escape(died)}.<br>
+       ${trips}<br>
+       ${carrying}</p>`;
+}
+
+/** "a, b and c" — an inventory should read like someone describing it. */
+function listOf(parts) {
+  if (parts.length <= 1) return parts.join('');
+  return `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}`;
 }

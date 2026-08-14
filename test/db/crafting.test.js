@@ -6,7 +6,7 @@ import { loadWorld } from '../../src/db/world.js';
 import { advanceSettlement } from '../../src/services/advance-settlement.js';
 import { startBuild } from '../../src/services/start-build.js';
 import { startCraft } from '../../src/services/start-craft.js';
-import { foundSettlement } from '../../src/services/settlement-lifecycle.js';
+import { foundSettlement, raiseSuccessor } from '../../src/services/settlement-lifecycle.js';
 import { InputError } from '../../src/errors.js';
 
 const hours = (h) => h * 60 * 60 * 1000;
@@ -35,8 +35,8 @@ async function setup(client, { scrap = 300, workshop = 1, ...recipe } = {}) {
     email: `${uniq()}@example.test`,
     password: 'correct horse battery staple',
     settlementName: 'Testcamp',
-    survivorName: 'Vera',
   });
+  await raiseSuccessor(client, settlementId, { name: 'Vera' });
 
   await client.query(
     `update resources set amount = $2 where settlement_id = $1 and kind = 'scrap'`,

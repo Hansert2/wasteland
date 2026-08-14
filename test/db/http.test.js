@@ -44,12 +44,28 @@ async function register(overrides = {}) {
       email,
       password: 'correct horse battery staple',
       settlementName: 'Testcamp',
-      survivorName: 'Vera',
       ...overrides,
     }),
   });
 
   return { email, response, cookie: sessionCookie(response) };
+}
+
+/**
+ * Registration founds a camp and stops there, so most tests need somebody to move in
+ * before the camp can do anything. This is the same POST the page offers.
+ */
+async function registerAndMoveIn(overrides = {}) {
+  const registered = await register(overrides);
+
+  await fetch(`${base}/successor`, {
+    method: 'POST',
+    redirect: 'manual',
+    headers: { cookie: registered.cookie, 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ name: 'Vera' }),
+  });
+
+  return registered;
 }
 
 function sessionCookie(response) {
@@ -67,9 +83,23 @@ test('registering founds a camp and logs you straight into it', async () => {
   assert.equal(camp.status, 200);
 
   const html = await camp.text();
-  assert.match(html, /Testcamp/);
+  assert.match(html, /Testcamp/, 'the camp is yours');
+  assert.match(html, /Stores/, 'and it is a real camp');
+
+  // The account owns the camp and never a person, so nobody is in it yet — and the
+  // page asks who is moving in rather than inventing someone.
+  assert.match(html, /camp stands empty/i);
+  assert.match(html, /Move in/);
+  assert.doesNotMatch(html, /spoiled or been taken/, 'nothing has gone to ruin yet');
+});
+
+test('the first survivor moves in through the same door as every successor', async () => {
+  const { cookie } = await registerAndMoveIn();
+
+  const html = await (await fetch(`${base}/camp`, { headers: { cookie } })).text();
   assert.match(html, /Vera/);
-  assert.match(html, /Stores/);
+  assert.match(html, /Health/);
+  assert.doesNotMatch(html, /camp stands empty/i);
 });
 
 test('the session cookie is httpOnly and same-site strict', async () => {
@@ -146,7 +176,7 @@ test('a forged session token is not accepted', async () => {
 });
 
 test('a refused action returns you to your camp, not to a login form', async () => {
-  const { cookie } = await register();
+  const { cookie } = await registerAndMoveIn();
 
   // A fresh camp holds 10 scrap; the workshop costs 25.
   const refused = await fetch(`${base}/build`, {
@@ -169,7 +199,7 @@ test('a refused action returns you to your camp, not to a login form', async () 
 });
 
 test('a refused expedition behaves the same way', async () => {
-  const { cookie } = await register();
+  const { cookie } = await registerAndMoveIn();
 
   const refused = await fetch(`${base}/expedition`, {
     method: 'POST',

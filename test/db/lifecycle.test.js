@@ -29,17 +29,17 @@ const newAccount = (overrides = {}) => ({
   email: `${uniq()}@example.test`,
   password: 'correct horse battery staple',
   settlementName: 'Testcamp',
-  survivorName: 'Vera',
   ...overrides,
 });
 
-test('founding a camp creates a playable starting state', async () => {
+test('founding a camp creates a camp and nobody in it', async () => {
   await withRollback(async (client) => {
+    // An account owns a camp and never a person. Founding stops at the camp, and the
+    // first survivor arrives the same way every later one does.
     const { settlementId } = await foundSettlement(client, newAccount());
     const state = await loadWorld(client, settlementId);
 
-    assert.equal(state.survivor.alive, true);
-    assert.equal(state.survivor.health, 100);
+    assert.equal(state.survivor, null, 'nobody has moved in yet');
 
     // The starting camp must be able to run food-positive, or the very first thing
     // a new player experiences is an unavoidable death.
@@ -52,9 +52,35 @@ test('founding a camp creates a playable starting state', async () => {
   });
 });
 
+test('the first survivor moves into a whole camp, not a knocked-back one', async () => {
+  await withRollback(async (client) => {
+    // You cannot inherit a ruin from nobody: the successor penalty is for successors.
+    const { settlementId } = await foundSettlement(client, newAccount());
+
+    const before = await loadWorld(client, settlementId);
+    const stores = Object.fromEntries(
+      Object.entries(before.settlement.resources).map(([kind, r]) => [kind, r.amount]),
+    );
+
+    await raiseSuccessor(client, settlementId, { name: 'Vera' });
+    const after = await loadWorld(client, settlementId);
+
+    assert.equal(after.survivor.alive, true);
+    assert.equal(after.survivor.health, 100);
+
+    const shelter = after.settlement.structures.find((s) => s.kind === 'shelter');
+    assert.equal(shelter.level, 1, 'the shelter did not fall a level on the way in');
+
+    for (const [kind, amount] of Object.entries(stores)) {
+      assert.equal(after.settlement.resources[kind].amount, amount, `${kind} was not halved`);
+    }
+  });
+});
+
 test('a new camp survives a month of neglect on its own production', async () => {
   await withRollback(async (client) => {
     const { settlementId } = await foundSettlement(client, newAccount());
+    await raiseSuccessor(client, settlementId, { name: 'Vera' });
 
     const { events } = await advanceSettlement(client, settlementId, Date.now() + days(30));
     assert.equal(
@@ -98,6 +124,7 @@ test('a bad email or short password is refused before anything is written', asyn
 test('a successor inherits a camp knocked back a level, not a fresh one', async () => {
   await withRollback(async (client) => {
     const { settlementId } = await foundSettlement(client, newAccount());
+    await raiseSuccessor(client, settlementId, { name: 'Vera' });
 
     // Empty the stores so the founder starves, then let the camp stand empty a while.
     await client.query('update resources set amount = 0 where settlement_id = $1', [settlementId]);
@@ -135,6 +162,7 @@ test('a successor inherits a camp knocked back a level, not a fresh one', async 
 test('a successor never leaves resources above the shrunken storage cap', async () => {
   await withRollback(async (client) => {
     const { settlementId } = await foundSettlement(client, newAccount());
+    await raiseSuccessor(client, settlementId, { name: 'Vera' });
 
     await client.query('update resources set amount = storage_cap where settlement_id = $1', [
       settlementId,
@@ -159,6 +187,7 @@ test('a successor never leaves resources above the shrunken storage cap', async 
 test('a successor cannot be raised while someone is still alive', async () => {
   await withRollback(async (client) => {
     const { settlementId } = await foundSettlement(client, newAccount());
+    await raiseSuccessor(client, settlementId, { name: 'Vera' });
 
     await assert.rejects(
       raiseSuccessor(client, settlementId, { name: 'Interloper' }),
