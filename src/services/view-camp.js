@@ -20,7 +20,7 @@ export async function viewCamp(client, settlementId, now = Date.now()) {
   const { state, events } = await advanceSettlement(client, settlementId, now);
 
   const { rows: settlements } = await client.query(
-    'select name, founded_at from settlements where id = $1',
+    'select name, founded_at, next_raid_at from settlements where id = $1',
     [settlementId],
   );
 
@@ -103,6 +103,9 @@ export async function viewCamp(client, settlementId, now = Date.now()) {
     // Two numbers, never one: what a raider wants, and what stands in their way.
     wealth: campWealth(structures, state.settlement.resources),
     defence: campDefence(structures),
+    // The radio's entire effect. Without it the hour is in the database and none of
+    // the player's business; with it, it is the most useful thing on the page.
+    raidExpectedAt: fitted.has('radio') ? settlements[0].next_raid_at : null,
     structures: structures.map((s) => {
       const branch = upgradeFor(s.kind);
       return {

@@ -8,6 +8,7 @@ import { startBuild } from '../../src/services/start-build.js';
 import { startCraft } from '../../src/services/start-craft.js';
 import { startUpgrade } from '../../src/services/start-upgrade.js';
 import { foundSettlement, raiseSuccessor } from '../../src/services/settlement-lifecycle.js';
+import { viewCamp } from '../../src/services/view-camp.js';
 import { InputError } from '../../src/errors.js';
 
 const hours = (h) => h * 60 * 60 * 1000;
@@ -269,6 +270,46 @@ test('but a structure built past the requirement carries its upgrade through', a
 
     const state = await loadWorld(client, settlementId);
     assert.deepEqual(state.settlement.upgrades, ['filtration'], 'the successor inherits it');
+  });
+});
+
+test('the radio buys the hour of the next raid, and nothing else', async () => {
+  await withRollback(async (client) => {
+    const settlementId = await setup(client);
+    await client.query(
+      `update camp_structures set level = 2 where settlement_id = $1 and kind = 'watchtower'`,
+      [settlementId],
+    );
+    const now = Date.now();
+
+    // The tick books a raid on its first run whether anyone can see it or not.
+    await advanceSettlement(client, settlementId, now);
+    const blind = await viewCamp(client, settlementId, now);
+    assert.equal(blind.raidExpectedAt, null, 'without the radio the hour is not yours to know');
+
+    const { rows: scheduled } = await client.query(
+      'select next_raid_at from settlements where id = $1',
+      [settlementId],
+    );
+    assert.ok(scheduled[0].next_raid_at, 'though it is certainly scheduled');
+
+    await startUpgrade(client, settlementId, 'radio', now);
+    await advanceSettlement(client, settlementId, now + hours(9));
+
+    const warned = await viewCamp(client, settlementId, now + hours(9));
+    assert.ok(warned.raidExpectedAt, 'fitted, and the hour is on the page');
+
+    // Informational only: it must not move the raid it reports.
+    const { rows: after } = await client.query(
+      'select next_raid_at, raid_count from settlements where id = $1',
+      [settlementId],
+    );
+    assert.equal(
+      after[0].next_raid_at.getTime(),
+      scheduled[0].next_raid_at.getTime(),
+      'the radio reports the raid, it does not reschedule it',
+    );
+    assert.equal(after[0].raid_count, 0, 'and does not conjure one');
   });
 });
 

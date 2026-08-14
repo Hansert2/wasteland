@@ -64,6 +64,7 @@ export function campPage(view, { error } = {}) {
     <p>Wealth ${view.wealth} &middot; defence ${view.defence} &middot; founded
        ${escape(view.foundedAt.toISOString().slice(0, 10))}</p>
     ${error ? `<p class="error">${escape(error)}</p>` : ''}
+    ${renderRaidWarning(view.raidExpectedAt)}
 
     ${renderEvents(view.events)}
     ${view.survivor ? renderSurvivor(view.survivor) : renderNoSurvivor(view.fallenCount > 0)}
@@ -87,6 +88,25 @@ export function campPage(view, { error } = {}) {
  * the event as well reads as a bug rather than as emphasis.
  */
 const NARRATED_ELSEWHERE = new Set(['item_found']);
+
+/**
+ * The radio, and the whole of what it bought.
+ *
+ * Placed above everything else because it is the only thing on this page with a
+ * deadline. Stores are all a raid can take, so the useful response to this is to
+ * spend them — which is the point: a warning turns a hoard into a decision.
+ */
+function renderRaidWarning(expectedAt) {
+  if (!expectedAt) return '';
+
+  const hoursLeft = (new Date(expectedAt).getTime() - Date.now()) / 3600000;
+  if (hoursLeft <= 0) {
+    return '<p class="error">The radio has gone quiet. They are overdue &mdash; reload.</p>';
+  }
+
+  return `<p class="error">Radio: raiders expected in ${n(hoursLeft)} h.
+    Anything still in the stores is theirs to take.</p>`;
+}
 
 function renderEvents(events) {
   const shown = events.filter((event) => !NARRATED_ELSEWHERE.has(event.type));

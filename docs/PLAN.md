@@ -164,14 +164,20 @@ Built, because they pay off against mechanics that exist today:
   the order starts, so a machine shop fitted midway does not hurry work already on
   the bench.
 
-Designed and deliberately unbuilt, because they modify mechanics that do not exist
-yet. Stubbing them now would be building on sand:
+- **watchtower → radio.** Built with Phase 3. It puts the hour of the next raid on the
+  camp page and does nothing else — the only upgrade with no multiplier. See Phase 3
+  for why that is the right shape rather than a thin one.
 
-- **shelter → reinforced.** Cuts what a raid takes. Phase 3.
-- **watchtower → radio.** Raid warning rather than defence. Phase 3.
-- **garden → greenhouse.** Survives blight and rad storms. Phase 4.
+Not built:
 
-## Phase 3 — raids
+- **shelter → reinforced.** Cuts what a raid takes. No longer blocked — raids exist
+  now — so this is simply undone rather than deferred. Worth weighing against the
+  watchtower first: two upgrades that both reduce raid losses may be one too many, and
+  the watchtower already has the job.
+- **garden → greenhouse.** Survives blight and rad storms, neither of which exists.
+  Still genuinely deferred, to Phase 4. Stubbing it now would be building on sand.
+
+## Phase 3 — raids ✅
 
 Threats that arrive on the tick rather than being sought out.
 
@@ -226,9 +232,17 @@ when you log in straight after a raid and want to send someone somewhere dangero
 and it is deliberately not allowed to compound into death — but it is much the weaker
 half of the mechanic.
 
-Still unbuilt: the **watchtower → radio** fuel branch, which turns a raid into a
-scheduled, visible event rather than a surprise. The defence half is done; the warning
-half is the remaining piece of this phase.
+**The watchtower → radio branch is the warning half, and it changes nothing in the
+simulation.** It is the only upgrade with no multiplier: it puts the hour of the next
+raid on the camp page, and that is all. A test asserts it neither reschedules the raid
+it reports nor conjures one.
+
+That is what makes the watchtower's two jobs genuinely different purchases rather than
+two readings of one number. Its scrap levels protect you while you are *gone*; the
+radio helps only while you are *here*. An offline player gains nothing from it, which
+is the right shape — and the useful response to a warning is to spend the stores,
+since stores are all a raid can take. Warned, a hoard becomes a decision: put it into
+a build or onto the bench, where nobody can carry it off.
 
 The watchtower question is settled by the fuel track, and settled as *both*: scrap
 levels buy defence, the radio branch buys warning. That turns two competing readings

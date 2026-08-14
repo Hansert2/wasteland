@@ -58,9 +58,10 @@ export const STRUCTURES = {
     defencePerLevel: 8,
     baseCost: 40,
     baseHours: 8,
-    // Deliberately honest: this is the one structure with no effect yet. It feeds
-    // campStrength, which nothing reads until raiders exist.
-    summary: 'Camp defence. Nothing has come for the camp yet.',
+    // The only structure that does nothing for you while things are going well. Its
+    // levels feed campDefence, which decides how often raiders turn back at the fence
+    // and how much the rest leave with.
+    summary: 'Turns raiders away, and blunts the ones it cannot. Costs you nothing to look at.',
   },
 };
 
@@ -104,6 +105,22 @@ export const UPGRADES = {
     requiresLevel: 2,
     craftHoursMultiplier: 2 / 3,
     summary: 'Powered tools at the bench: every craft takes a third less time.',
+  },
+  radio: {
+    kind: 'watchtower',
+    name: 'Radio',
+    fuel: 55,
+    hours: 8,
+    requiresLevel: 2,
+    // The only upgrade that changes nothing in the simulation. It buys the hour the
+    // next raid falls due, and nothing else — see `viewCamp`.
+    //
+    // That makes the watchtower's two jobs genuinely different purchases rather than
+    // two readings of one number: its scrap levels turn raiders away while you are
+    // gone, and this tells you when they are coming while you are here. Stores are
+    // all a raid can take, so a warned player spends them — on a build, on the bench
+    // — and turns a hoard into something nobody can carry off.
+    summary: 'Chatter on the wire: you learn when the next raid is due.',
   },
 };
 
