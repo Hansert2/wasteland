@@ -49,6 +49,25 @@ export async function viewCamp(client, settlementId, now = Date.now()) {
     [settlementId],
   );
 
+  const { rows: recipes } = await client.query(
+    `select rec.slug, rec.name, rec.costs, rec.inputs, rec.output_qty,
+            rec.requires_workshop, rec.craft_hours, rec.description,
+            i.name as output_name
+       from recipes rec
+       join items i on i.id = rec.output_item_id
+      order by rec.requires_workshop, rec.craft_hours`,
+  );
+
+  // Re-read for the same reason the expedition is: the tick may have just lifted an
+  // order off the bench, and what the page wants is whatever is on it *now*.
+  const { rows: onTheBench } = await client.query(
+    `select rec.name, co.completes_at
+       from craft_orders co
+       join recipes rec on rec.id = co.recipe_id
+      where co.settlement_id = $1 and co.status = 'active'`,
+    [settlementId],
+  );
+
   const { rows: inventory } = await client.query(
     `select i.name, i.kind, ii.qty
        from inventory_items ii
@@ -74,6 +93,13 @@ export async function viewCamp(client, settlementId, now = Date.now()) {
     events,
     regions,
     inventory,
+    recipes,
+    // What the bench can take on is gated by the workshop, so the page has to know
+    // its level to explain why a recipe has no button rather than just hiding it.
+    workshopLevel: Number(structures.find((s) => s.kind === 'workshop')?.level ?? 0),
+    craft: onTheBench[0]
+      ? { name: onTheBench[0].name, completesAt: onTheBench[0].completes_at }
+      : null,
     expedition: away[0] ? { regionName: away[0].name, returnsAt: away[0].returns_at } : null,
     survivor: state.survivor ? { ...state.survivor, name: survivorRow[0]?.name } : null,
     resources: Object.entries(state.settlement.resources).map(([kind, r]) => ({

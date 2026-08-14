@@ -70,6 +70,7 @@ export function campPage(view, { error } = {}) {
     ${view.survivor ? renderExpeditions(view) : ''}
     ${renderResources(view.resources)}
     ${renderInventory(view.inventory)}
+    ${renderWorkshop(view)}
     ${renderStructures(view.structures, view.buildInFlight, Boolean(view.survivor))}
     ${renderRoster(view.roster)}
 
@@ -77,9 +78,20 @@ export function campPage(view, { error } = {}) {
   `);
 }
 
+/**
+ * Events the trip log already narrates, so the page does not say them twice.
+ *
+ * `item_found` is really an instruction to the caller — "put this in the pack" — that
+ * happens to travel in the same list as the player-facing events. The expedition's
+ * own log line already reported the find in the middle of the story, so rendering
+ * the event as well reads as a bug rather than as emphasis.
+ */
+const NARRATED_ELSEWHERE = new Set(['item_found']);
+
 function renderEvents(events) {
-  if (events.length === 0) return '';
-  const items = events
+  const shown = events.filter((event) => !NARRATED_ELSEWHERE.has(event.type));
+  if (shown.length === 0) return '';
+  const items = shown
     .map((event) => `<li>${escape(describe(event))}</li>`)
     .join('');
   return `<h2>While you were away</h2><ul class="events">${items}</ul>`;
@@ -98,10 +110,16 @@ function describe(event) {
       return event.log
         ? `${when} — ${event.log.join(' ')}`
         : `${when} — an expedition never came home.`;
+    // Filtered out of the camp page by NARRATED_ELSEWHERE; kept so this stays a
+    // total formatter, and so a find reported on its own still has words.
     case 'item_found':
       return `${when} — brought back ${event.qty} × ${event.slug.replaceAll('_', ' ')}.`;
     case 'build_completed':
       return `${when} — the ${event.kind.replaceAll('_', ' ')} reached level ${event.level}.`;
+    case 'craft_delivered':
+      return `${when} — the workshop turned out ${event.qty} × ${event.name}.`;
+    case 'craft_lost':
+      return `${when} — the ${event.name} was finished with nobody left to take it off the bench.`;
     default:
       return `${when} — ${event.type}`;
   }
@@ -165,6 +183,66 @@ function renderInventory(inventory) {
     .map((item) => `<tr><th>${escape(item.name)}</th><td>×${item.qty}</td></tr>`)
     .join('');
   return `<h2>Pack</h2><table>${rows}</table>`;
+}
+
+/**
+ * The bench. A recipe with no button keeps its row and says why — a workshop level
+ * you have not reached yet is a thing to build towards, and hiding it hides the goal.
+ */
+function renderWorkshop(view) {
+  if (view.craft) {
+    const hoursLeft = (new Date(view.craft.completesAt).getTime() - Date.now()) / 3600000;
+    const due = hoursLeft > 0 ? `ready in ${n(hoursLeft)} h` : 'ready — reload to collect it';
+    return `<h2>On the bench</h2>
+      <p>${escape(view.craft.name)} — ${escape(due)}</p>`;
+  }
+
+  if (!view.recipes || view.recipes.length === 0) return '';
+
+  const rows = view.recipes
+    .map((recipe) => {
+      // Most recipes are named after what they make, so naming it twice reads as a
+      // bug. Only the quantity is news in that case.
+      const yields =
+        recipe.output_name === recipe.name
+          ? recipe.output_qty > 1
+            ? `× ${recipe.output_qty}`
+            : ''
+          : `${recipe.output_qty} × ${escape(recipe.output_name)}`;
+      const price = escape(`${priceOf(recipe)}, ${n(recipe.craft_hours)} h`);
+      return `<tr>
+        <th>${escape(recipe.name)}</th>
+        <td>${yields}</td>
+        <td>${price}</td>
+        <td>${craftCell(recipe, view)}</td>
+      </tr>
+      <tr><td colspan="4"><small>${escape(recipe.description ?? '')}</small></td></tr>`;
+    })
+    .join('');
+
+  return `<h2>Workshop</h2><table>${rows}</table>`;
+}
+
+/** Stores and carried materials read as one price, because that is how they are paid. */
+function priceOf(recipe) {
+  const parts = Object.entries(recipe.costs ?? {}).map(([kind, amount]) => `${amount} ${kind}`);
+  for (const input of recipe.inputs ?? []) {
+    parts.push(`${input.qty} × ${input.slug.replaceAll('_', ' ')}`);
+  }
+  return parts.join(', ');
+}
+
+function craftCell(recipe, view) {
+  if (view.workshopLevel < recipe.requires_workshop) {
+    return `<small>needs workshop ${recipe.requires_workshop}</small>`;
+  }
+  // Starting work needs living hands, the same rule builds follow.
+  if (!view.survivor) return '';
+
+  return `<form method="post" action="/craft" style="margin:0">
+      <input type="hidden" name="recipe" value="${escape(recipe.slug)}">
+      <button type="submit">Make</button>
+    </form>`;
 }
 
 function renderResources(resources) {

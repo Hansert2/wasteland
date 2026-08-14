@@ -3,7 +3,7 @@ import { pathToFileURL } from 'node:url';
 import { pool } from './pool.js';
 
 /**
- * Game content: regions and items.
+ * Game content: regions, items and recipes.
  *
  * Content lives in a seed script rather than a migration because it gets edited
  * during balance passes, and a migration that has already run cannot be edited.
@@ -24,6 +24,98 @@ const ITEMS = [
     kind: 'antirad',
     potency: 60,
     description: 'Chalky tablets that scrub the worst of it out.',
+  },
+  {
+    // Potency 0: a material does nothing when carried. It exists to be spent, and it
+    // is the reason a recipe is a recipe rather than a shop counter.
+    slug: 'scavenged_parts',
+    name: 'Scavenged Parts',
+    kind: 'material',
+    potency: 0,
+    description: 'Springs, wire, a motor that might still turn.',
+  },
+  {
+    slug: 'scrap_spear',
+    name: 'Scrap Spear',
+    kind: 'weapon',
+    potency: 25,
+    description: 'Rebar, tape, and the confidence to keep something at arm’s length.',
+  },
+  {
+    slug: 'plate_vest',
+    name: 'Plate Vest',
+    kind: 'armour',
+    potency: 30,
+    description: 'Road signs, cut down and stitched into a jacket. Heavy. Worth it.',
+  },
+  {
+    slug: 'preserved_meal',
+    name: 'Preserved Meal',
+    kind: 'ration',
+    potency: 70,
+    description: 'Camp food, sealed while it was still worth sealing.',
+  },
+  {
+    slug: 'rad_scrubber',
+    name: 'Rad Scrubber',
+    kind: 'antirad',
+    potency: 45,
+    description: 'Home-run chelation. Unpleasant, and better than the alternative.',
+  },
+];
+
+/**
+ * What the workshop can make.
+ *
+ * `costs` are settlement stores; `inputs` are items off the survivor's back. The
+ * split matters: stores accumulate on their own while you are offline, so a recipe
+ * priced only in stores is priced in patience. Pricing gear in `scavenged_parts`
+ * makes it cost a trip into somewhere unpleasant instead.
+ */
+const RECIPES = [
+  {
+    slug: 'scrap_spear',
+    name: 'Scrap Spear',
+    output: 'scrap_spear',
+    output_qty: 1,
+    costs: { scrap: 20 },
+    inputs: [],
+    requires_workshop: 1,
+    craft_hours: 3,
+    description: 'Something to hold between you and whatever is in the dark.',
+  },
+  {
+    slug: 'preserved_meal',
+    name: 'Preserved Meal',
+    output: 'preserved_meal',
+    output_qty: 2,
+    costs: { food: 20, scrap: 5 },
+    inputs: [],
+    requires_workshop: 1,
+    craft_hours: 2,
+    description: 'Turn a surplus you cannot store into a reserve you can carry.',
+  },
+  {
+    slug: 'plate_vest',
+    name: 'Plate Vest',
+    output: 'plate_vest',
+    output_qty: 1,
+    costs: { scrap: 45 },
+    inputs: [{ slug: 'scavenged_parts', qty: 2 }],
+    requires_workshop: 2,
+    craft_hours: 8,
+    description: 'The difference between limping home and not coming home.',
+  },
+  {
+    slug: 'rad_scrubber',
+    name: 'Rad Scrubber',
+    output: 'rad_scrubber',
+    output_qty: 2,
+    costs: { scrap: 15, fuel: 10 },
+    inputs: [{ slug: 'scavenged_parts', qty: 1 }],
+    requires_workshop: 2,
+    craft_hours: 6,
+    description: 'Farmland and the Deep Zone both become survivable with enough of these.',
   },
 ];
 
@@ -62,6 +154,7 @@ const REGIONS = [
     finds: [
       { slug: 'rad_x', chance: 0.2, qty: [1, 2] },
       { slug: 'tinned_stew', chance: 0.3, qty: [1, 2] },
+      { slug: 'scavenged_parts', chance: 0.3, qty: [1, 1] },
     ],
     radiation_per_trip: 2,
     description: 'Sealed for a reason. Sealed things keep well.',
@@ -72,7 +165,10 @@ const REGIONS = [
     danger: 4,
     travel_hours: 12,
     loot: { scrap: [15, 35], fuel: [5, 15], water: [5, 15] },
-    finds: [{ slug: 'tinned_stew', chance: 0.35, qty: [1, 3] }],
+    finds: [
+      { slug: 'tinned_stew', chance: 0.35, qty: [1, 3] },
+      { slug: 'scavenged_parts', chance: 0.4, qty: [1, 2] },
+    ],
     radiation_per_trip: 4,
     description: 'Hulls the size of buildings, and whatever lives in them now.',
   },
@@ -82,7 +178,10 @@ const REGIONS = [
     danger: 5,
     travel_hours: 18,
     loot: { scrap: [25, 60], fuel: [10, 25] },
-    finds: [{ slug: 'rad_x', chance: 0.4, qty: [1, 3] }],
+    finds: [
+      { slug: 'rad_x', chance: 0.4, qty: [1, 3] },
+      { slug: 'scavenged_parts', chance: 0.55, qty: [2, 3] },
+    ],
     radiation_per_trip: 25,
     description: 'Nobody agrees on what is down there. Few go twice.',
   },
@@ -122,7 +221,37 @@ export async function seed(client) {
     );
   }
 
-  return { items: ITEMS.length, regions: REGIONS.length };
+  // Recipes last: every one of them points at an item that must already exist.
+  for (const recipe of RECIPES) {
+    const { rowCount } = await client.query(
+      `insert into recipes
+         (slug, name, output_item_id, output_qty, costs, inputs, requires_workshop, craft_hours, description)
+       select $1, $2, i.id, $3, $4, $5, $6, $7, $8 from items i where i.slug = $9
+       on conflict (slug) do update
+         set name = excluded.name, output_item_id = excluded.output_item_id,
+             output_qty = excluded.output_qty, costs = excluded.costs,
+             inputs = excluded.inputs, requires_workshop = excluded.requires_workshop,
+             craft_hours = excluded.craft_hours, description = excluded.description`,
+      [
+        recipe.slug,
+        recipe.name,
+        recipe.output_qty,
+        JSON.stringify(recipe.costs),
+        JSON.stringify(recipe.inputs),
+        recipe.requires_workshop,
+        recipe.craft_hours,
+        recipe.description,
+        recipe.output,
+      ],
+    );
+    // `insert ... select` writes nothing when the output item is missing, which would
+    // otherwise be a silently absent recipe rather than an error.
+    if (rowCount === 0) {
+      throw new Error(`recipe ${recipe.slug} names an unknown output item: ${recipe.output}`);
+    }
+  }
+
+  return { items: ITEMS.length, regions: REGIONS.length, recipes: RECIPES.length };
 }
 
 // Run directly: `npm run seed`. pathToFileURL rather than string-building the URL:
@@ -130,7 +259,9 @@ export async function seed(client) {
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
     const counts = await seed(pool);
-    console.log(`seeded ${counts.items} items, ${counts.regions} regions`);
+    console.log(
+      `seeded ${counts.items} items, ${counts.regions} regions, ${counts.recipes} recipes`,
+    );
   } catch (error) {
     console.error(`seed failed: ${error.message}`);
     process.exitCode = 1;

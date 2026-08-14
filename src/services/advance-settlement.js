@@ -26,11 +26,15 @@ export async function advanceSettlement(client, settlementId, now) {
   const { state: advanced, events } = applyTick(state, now);
   await saveWorld(client, advanced);
 
-  // Items the tick found are granted here, where slugs can be resolved to rows. A
-  // survivor who died on the way home has no pack to put them in.
-  const finds = events.filter((event) => event.type === 'item_found');
-  if (finds.length > 0 && advanced.survivor?.alive) {
-    await grantItems(client, advanced.survivor.id, finds);
+  // Items the tick produced — found out there, or lifted off the workshop bench —
+  // are granted here, where slugs can be resolved to rows. Both event kinds carry a
+  // slug and a quantity and nothing else, because that is all the tick knows.
+  // A survivor who died on the way home has no pack to put them in.
+  const grants = events.filter(
+    (event) => event.type === 'item_found' || event.type === 'craft_delivered',
+  );
+  if (grants.length > 0 && advanced.survivor?.alive) {
+    await grantItems(client, advanced.survivor.id, grants);
   }
 
   return { state: advanced, events };

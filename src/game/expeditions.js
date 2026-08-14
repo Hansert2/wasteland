@@ -1,4 +1,5 @@
 import { makeRandom, intBetween, chance } from './random.js';
+import { equipmentOf } from './equipment.js';
 
 /**
  * What a trip into a region produced. Pure: no clock, no database, no global
@@ -6,17 +7,21 @@ import { makeRandom, intBetween, chance } from './random.js';
  *
  * @param {object} args
  * @param {object} args.region   danger, loot ranges, finds, radiation
- * @param {object} args.survivor health and scavenging skill at the moment of return
+ * @param {object} args.survivor health, scavenging skill and pack at the moment of return
  * @param {number} args.seed
  */
 export function resolveExpedition({ region, survivor, seed }) {
   const random = makeRandom(seed);
   const log = [];
 
+  // Gear shifts thresholds, never the number of draws taken from the generator. That
+  // is what keeps an unarmed trip identical to what it rolled before crafting existed.
+  const equipment = equipmentOf(survivor);
+
   const loot = rollLoot(random, region, survivor, log);
   const finds = rollFinds(random, region, log);
   const radiation = rollRadiation(random, region, log);
-  const { damage, cause } = rollHazard(random, region, log);
+  const { damage, cause } = rollHazard(random, region, equipment, log);
 
   // Death is decided here rather than left to the tick, because the survivor has to
   // die of what happened out there — "mauled in the Deep Zone", not "starvation" at
@@ -76,16 +81,25 @@ function rollRadiation(random, region, log) {
   return dose;
 }
 
-function rollHazard(random, region, log) {
+function rollHazard(random, region, equipment, log) {
   const danger = Number(region.danger ?? 1);
 
-  if (!chance(random, danger * 0.09)) {
+  // A weapon lowers the odds of trouble rather than winning the fight afterwards:
+  // something that keeps its distance is something you never had to fight.
+  if (!chance(random, danger * 0.09 * equipment.hazardMultiplier)) {
     return { damage: 0, cause: null };
   }
 
-  const damage = intBetween(random, danger * 3, danger * 9);
+  const raw = intBetween(random, danger * 3, danger * 9);
+  const damage = Math.round(raw * equipment.damageMultiplier);
   const cause = HAZARDS[Math.min(danger, HAZARDS.length) - 1];
-  log.push(`${capitalise(cause)} — ${damage} damage.`);
+
+  if (equipment.armour && damage < raw) {
+    const worn = String(equipment.armour.id ?? 'armour').replaceAll('_', ' ');
+    log.push(`${capitalise(cause)} — ${damage} damage; the ${worn} took the rest.`);
+  } else {
+    log.push(`${capitalise(cause)} — ${damage} damage.`);
+  }
 
   return { damage, cause };
 }

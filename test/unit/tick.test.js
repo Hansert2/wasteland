@@ -382,6 +382,90 @@ test('builds finish even when nobody is alive to watch', () => {
   assert.equal(events.filter((e) => e.type === 'build_completed').length, 1);
 });
 
+const craftState = (overrides = {}, craft = {}) =>
+  makeState({
+    craft: {
+      id: 'craft_1',
+      status: 'active',
+      completesAt: T0 + hours(4),
+      resolvedAt: null,
+      name: 'Scrap Spear',
+      output: { slug: 'scrap_spear', qty: 1 },
+      ...craft,
+    },
+    ...overrides,
+  });
+
+test('an order comes off the bench at its hour, and the goods are left to the caller', () => {
+  const { state, events } = applyTick(craftState(), T0 + hours(6));
+
+  assert.equal(state.craft.status, 'delivered');
+  assert.equal(state.craft.resolvedAt, T0 + hours(4), 'resolved at its hour, not at now');
+
+  // The tick deals in slugs; turning one into a row in the pack is the caller's job,
+  // exactly as it is for an expedition's finds.
+  assert.deepEqual(events.filter((e) => e.type === 'craft_delivered'), [
+    {
+      at: T0 + hours(4),
+      type: 'craft_delivered',
+      craftId: 'craft_1',
+      name: 'Scrap Spear',
+      slug: 'scrap_spear',
+      qty: 1,
+    },
+  ]);
+});
+
+test('an order still on the bench is left alone', () => {
+  const { state, events } = applyTick(craftState(), T0 + hours(2));
+
+  assert.equal(state.craft.status, 'active');
+  assert.equal(state.craft.resolvedAt, null);
+  assert.equal(events.length, 0);
+});
+
+test('an order that finishes in an empty camp is forfeit', () => {
+  const { state, events } = applyTick(craftState({ survivor: null }), T0 + hours(6));
+
+  assert.equal(state.craft.status, 'lost');
+  assert.equal(state.craft.resolvedAt, T0 + hours(4));
+  assert.equal(events.filter((e) => e.type === 'craft_lost').length, 1);
+  assert.equal(events.filter((e) => e.type === 'craft_delivered').length, 0);
+});
+
+test('the bench keeps working after a death, but there is nobody to take the result', () => {
+  // Starvation kills at ~53h; the spear is finished at 80h, long after.
+  const { state, events } = applyTick(
+    craftState(starvingState(), { completesAt: T0 + hours(80) }),
+    T0 + days(7),
+  );
+
+  assert.equal(state.survivor.alive, false);
+  assert.ok(state.survivor.diedAt < T0 + hours(80), 'died before it was finished');
+  assert.equal(state.craft.status, 'lost', 'the order was not cancelled at death, only unclaimed');
+  assert.equal(state.craft.resolvedAt, T0 + hours(80), 'it finished on schedule regardless');
+  assert.equal(events.filter((e) => e.type === 'craft_lost').length, 1);
+});
+
+test('an order finished before a death is still delivered', () => {
+  const { state, events } = applyTick(
+    craftState(starvingState(), { completesAt: T0 + hours(4) }),
+    T0 + days(7),
+  );
+
+  assert.equal(state.craft.status, 'delivered');
+  assert.equal(events.filter((e) => e.type === 'craft_delivered').length, 1);
+  assert.equal(state.survivor.alive, false, 'they died later, holding a spear');
+});
+
+test('the delivery hour does not depend on how finely the interval is sliced', () => {
+  const coarse = applyTick(craftState(), T0 + hours(6), { ...CONFIG, stepMs: hours(7) });
+  const fine = applyTick(craftState(), T0 + hours(6), { ...CONFIG, stepMs: 60_000 });
+
+  assert.equal(coarse.state.craft.resolvedAt, T0 + hours(4));
+  assert.equal(fine.state.craft.resolvedAt, T0 + hours(4));
+});
+
 test('now must actually be a number', () => {
   assert.throws(() => applyTick(makeState(), new Date(T0)), TypeError);
 });

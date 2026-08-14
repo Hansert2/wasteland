@@ -14,6 +14,7 @@ import { foundSettlement, raiseSuccessor, InputError } from '../services/settlem
 import { advanceSettlement } from '../services/advance-settlement.js';
 import { dispatchExpedition } from '../services/dispatch-expedition.js';
 import { startBuild } from '../services/start-build.js';
+import { startCraft } from '../services/start-craft.js';
 import { viewCamp } from '../services/view-camp.js';
 import { campPage, landingPage, layout, escape } from './render.js';
 
@@ -122,6 +123,22 @@ export function createApp() {
       const now = Date.now();
       await advanceSettlement(client, settlementId, now);
       await startBuild(client, settlementId, req.body.kind, now);
+    });
+
+    res.redirect('/camp');
+  });
+
+  app.post('/craft', requireAuth, async (req, res) => {
+    await withTransaction(async (client) => {
+      const settlementId = await settlementIdForPlayer(client, req.playerId);
+      if (!settlementId) throw new InputError('This account has no camp.');
+
+      // Advance first, as with builds: the stores and the pack being spent must be
+      // the current ones, and an order that just came off the bench has to free it
+      // before this one is refused.
+      const now = Date.now();
+      await advanceSettlement(client, settlementId, now);
+      await startCraft(client, settlementId, req.body.recipe, now);
     });
 
     res.redirect('/camp');

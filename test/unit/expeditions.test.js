@@ -110,6 +110,97 @@ test('finds respect their probability', () => {
   assert.deepEqual(never.finds, [], 'chance 0 never fires');
 });
 
+const SPEAR = { id: 'scrap_spear', kind: 'weapon', potency: 25, qty: 1 };
+const VEST = { id: 'plate_vest', kind: 'armour', potency: 30, qty: 1 };
+
+test('gear shifts thresholds without changing what is drawn', () => {
+  // The load-bearing property. Gear must never take an extra number out of the
+  // generator, or equipping a spear would silently re-roll the loot table too.
+  for (let seed = 0; seed < 100; seed++) {
+    const bare = resolveExpedition({ region: DEADLY_REGION, survivor: survivor(), seed });
+    const geared = resolveExpedition({
+      region: DEADLY_REGION,
+      survivor: survivor({ inventory: [SPEAR, VEST] }),
+      seed,
+    });
+
+    assert.deepEqual(geared.loot, bare.loot, 'same haul');
+    assert.deepEqual(geared.finds, bare.finds, 'same finds');
+    assert.equal(geared.radiation, bare.radiation, 'same dose');
+  }
+});
+
+test('a weapon keeps trouble at arm’s length; armour absorbs what arrives anyway', () => {
+  const totals = (inventory) => {
+    let hazards = 0;
+    let damage = 0;
+    for (let seed = 0; seed < 400; seed++) {
+      const outcome = resolveExpedition({
+        region: DEADLY_REGION,
+        survivor: survivor({ inventory }),
+        seed,
+      });
+      if (outcome.damage > 0) hazards++;
+      damage += outcome.damage;
+    }
+    return { hazards, damage };
+  };
+
+  const bare = totals([]);
+  const armed = totals([SPEAR]);
+  const armoured = totals([VEST]);
+
+  assert.ok(armed.hazards < bare.hazards, 'a spear means fewer fights');
+  assert.equal(armoured.hazards, bare.hazards, 'armour does not stop trouble finding you');
+  assert.ok(armoured.damage < bare.damage, 'but it does soften it');
+});
+
+test('the survivor uses the better of two weapons without being asked', () => {
+  const twoSpears = [SPEAR, { ...SPEAR, id: 'sharpened_spear', potency: 45 }];
+
+  let better = 0;
+  let worse = 0;
+  for (let seed = 0; seed < 300; seed++) {
+    if (resolveExpedition({ region: DEADLY_REGION, survivor: survivor({ inventory: twoSpears }), seed }).damage > 0) {
+      better++;
+    }
+    if (resolveExpedition({ region: DEADLY_REGION, survivor: survivor({ inventory: [SPEAR] }), seed }).damage > 0) {
+      worse++;
+    }
+  }
+
+  assert.ok(better < worse, 'there is no equip step because there is no decision to make');
+});
+
+test('armour is named in the log when it earns its keep', () => {
+  const softened = [];
+  for (let seed = 0; seed < 200 && softened.length === 0; seed++) {
+    const outcome = resolveExpedition({
+      region: DEADLY_REGION,
+      survivor: survivor({ inventory: [VEST] }),
+      seed,
+    });
+    if (outcome.damage > 0) softened.push(outcome);
+  }
+
+  assert.ok(softened.length > 0, 'expected at least one hazard');
+  assert.match(softened[0].log.join(' '), /plate vest took the rest/);
+});
+
+test('gear can be the difference between limping home and not coming home', () => {
+  const survived = (inventory) => {
+    let count = 0;
+    for (let seed = 0; seed < 400; seed++) {
+      if (!resolveExpedition({ region: DEADLY_REGION, survivor: survivor({ health: 12, inventory }), seed }).died) {
+        count++;
+      }
+    }
+    return count;
+  };
+
+  assert.ok(survived([SPEAR, VEST]) > survived([]), 'gear buys trips home');
+});
+
 test('the generator is uniform enough to trust for loot ranges', () => {
   const random = makeRandom(4242);
   let sum = 0;

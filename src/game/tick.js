@@ -6,13 +6,15 @@ const HOUR_MS = 60 * 60 * 1000;
 
 /**
  * @typedef {{ amount: number, ratePerHour: number, cap: number }} Resource
- * @typedef {{ id: string, kind: 'ration' | 'antirad', potency: number, qty: number }} Item
+ * @typedef {{ id: string, kind: 'ration' | 'antirad' | 'weapon' | 'armour' | 'material',
+ *             potency: number, qty: number }} Item
  *
  * @typedef {object} State
  * @property {number} lastTickAt            epoch ms of the last resolved tick
  * @property {{ resources: Record<string, Resource> }} settlement
  * @property {object|null} survivor         null once nobody is holding the camp
  * @property {object|null} expedition       in-flight expedition, if any
+ * @property {object|null} craft            in-flight workshop order, if any
  */
 
 /**
@@ -72,6 +74,10 @@ function nextEventAfter(state, cursor) {
     next = Math.min(next, state.expedition.returnsAt);
   }
 
+  if (state.craft?.status === 'active' && state.craft.completesAt > cursor) {
+    next = Math.min(next, state.craft.completesAt);
+  }
+
   return next;
 }
 
@@ -94,6 +100,45 @@ function advance(state, dtMs, at, events, config) {
   if (state.survivor?.alive) {
     simulateSurvivor(state, hours, at, events, config);
   }
+
+  // Last, because delivery is the one part of crafting that needs hands, and whether
+  // there are any is only settled once the slice's hunger and radiation have landed.
+  completeCraft(state, at, events);
+}
+
+/**
+ * Deliver a finished workshop order — or fail to.
+ *
+ * Starting an order needs a living survivor and finishing it does not, the same rule
+ * builds follow: the bench keeps working while the camp stands empty. Delivery is
+ * where the two part company. A finished spear has to come off the bench into
+ * somebody's pack, and a camp with nobody left in it has no pack to put it in, so the
+ * order is forfeit exactly as an expedition's haul is when its survivor dies.
+ */
+function completeCraft(state, at, events) {
+  const craft = state.craft;
+  if (!craft || craft.status !== 'active' || craft.completesAt > at) return;
+
+  craft.resolvedAt = at;
+
+  if (!state.survivor?.alive) {
+    craft.status = 'lost';
+    events.push({ at, type: 'craft_lost', craftId: craft.id, name: craft.name });
+    return;
+  }
+
+  craft.status = 'delivered';
+
+  // The goods are granted by the caller, for the same reason expedition finds are:
+  // the tick deals in slugs and has no idea what an item id is.
+  events.push({
+    at,
+    type: 'craft_delivered',
+    craftId: craft.id,
+    name: craft.name,
+    slug: craft.output.slug,
+    qty: craft.output.qty,
+  });
 }
 
 /**
@@ -303,6 +348,9 @@ function kill(state, at, cause, events) {
     events.push({ at, type: 'expedition_lost', expeditionId: state.expedition.id });
   }
 
+  // A craft in flight is deliberately *not* cancelled here. The workshop is a bench
+  // in the camp, not something the survivor carried away with them, so it keeps
+  // working; the order is only forfeit if nobody is alive on the hour it finishes.
   events.push({
     at,
     type: 'survivor_died',

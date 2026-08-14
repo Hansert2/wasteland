@@ -132,11 +132,36 @@ export async function loadWorld(client, settlementId) {
     }
   }
 
+  // The craft order hangs off the settlement rather than the character, so it loads
+  // whether or not anyone is alive to receive it — that is what the 'lost' status is
+  // for. The output travels with the order for the same reason the region travels
+  // with an expedition: the tick resolves it without reaching back into the database.
+  const { rows: crafting } = await client.query(
+    `select co.id, co.status, co.completes_at, rec.name, rec.output_qty, i.slug
+       from craft_orders co
+       join recipes rec on rec.id = co.recipe_id
+       join items i on i.id = rec.output_item_id
+      where co.settlement_id = $1 and co.status = 'active'`,
+    [settlementId],
+  );
+
+  const order = crafting[0];
+
   return {
     lastTickAt: settlement.last_tick_at.getTime(),
     settlement: { id: settlement.id, resources, structures },
     survivor,
     expedition,
+    craft: order
+      ? {
+          id: order.id,
+          status: order.status,
+          completesAt: order.completes_at.getTime(),
+          resolvedAt: null,
+          name: order.name,
+          output: { slug: order.slug, qty: order.output_qty },
+        }
+      : null,
   };
 }
 
@@ -207,6 +232,17 @@ export async function saveWorld(client, state) {
         expedition.log ? JSON.stringify(expedition.log) : null,
       ],
     );
+  }
+
+  const craft = state.craft;
+  if (craft && craft.status !== 'active') {
+    // Only the resolution is written back; nothing about an order changes while it
+    // is still on the bench. The check constraint wants both columns or neither.
+    await client.query('update craft_orders set status = $2, resolved_at = $3 where id = $1', [
+      craft.id,
+      craft.status,
+      new Date(craft.resolvedAt),
+    ]);
   }
 }
 
