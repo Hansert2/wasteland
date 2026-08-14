@@ -1,3 +1,12 @@
+> **Superseded — kept for the record.** This is the original sketch, written before
+> any of it was built. The current plan is [`docs/PLAN.md`](docs/PLAN.md), and that is
+> the one to trust: where the code went somewhere else, the departure is recorded
+> there rather than corrected here. This file is left intact precisely so those
+> departures have something to depart *from* — several of them only make sense
+> alongside the original intent. Expect it to disagree with the game in places. It
+> describes `character_history` as a table (it became a view), crafting gated by skill
+> (it is gated by workshop level), and knows nothing of the fuel track.
+
 # Wasteland RPG — Design & Build Plan (v2)
 
 Post-apocalyptic browser text RPG. Ogame-style persistent state: resources accrue in

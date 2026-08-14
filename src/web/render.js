@@ -65,13 +65,13 @@ export function campPage(view, { error } = {}) {
     ${error ? `<p class="error">${escape(error)}</p>` : ''}
 
     ${renderEvents(view.events)}
-    ${view.survivor ? renderSurvivor(view.survivor) : renderNoSurvivor(view.roster.length > 0)}
+    ${view.survivor ? renderSurvivor(view.survivor) : renderNoSurvivor(view.fallenCount > 0)}
     ${view.survivor ? renderExpeditions(view) : ''}
     ${renderResources(view.resources)}
     ${renderInventory(view.inventory)}
     ${renderWorkshop(view)}
     ${renderStructures(view.structures, view.buildInFlight, Boolean(view.survivor))}
-    ${renderRoster(view.roster)}
+    ${renderRoster(view.fallenCount)}
 
     <form method="post" action="/logout"><button type="submit">Log out</button></form>
   `);
@@ -362,12 +362,11 @@ function statusCell(structure, buildInFlight, someoneAlive) {
  * went last — belongs somewhere it can be read properly, and the camp page is long
  * enough already.
  */
-function renderRoster(roster) {
-  if (roster.length === 0) return '';
-  const count =
-    roster.length === 1 ? 'One survivor has' : `${roster.length} survivors have`;
+function renderRoster(fallenCount) {
+  if (fallenCount === 0) return '';
+  const who = fallenCount === 1 ? 'One survivor has' : `${fallenCount} survivors have`;
   return `<h2>Those who held this camp</h2>
-    <p>${count} held this camp before. <a href="/graveyard">The graveyard</a>.</p>`;
+    <p>${who} held this camp before. <a href="/graveyard">The graveyard</a>.</p>`;
 }
 
 /** The memorial. Deliberately not a table: these are people, not rows. */

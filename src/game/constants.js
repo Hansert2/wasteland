@@ -7,7 +7,7 @@
  * ~37h of drain. Stack several days of stored food on top of that and a well-run
  * camp survives about a week of absence.
  *
- * `test/tick.test.js` asserts that window stays between 36h and 72h, so a balance
+ * `test/unit/tick.test.js` asserts that window stays between 36h and 72h, so a balance
  * pass that accidentally makes the game punish real life will fail the suite.
  *
  * Everything here is data, not logic. Balance passes edit this file only.

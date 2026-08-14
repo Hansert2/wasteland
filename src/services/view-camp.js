@@ -33,11 +33,11 @@ export async function viewCamp(client, settlementId, now = Date.now()) {
     [settlementId],
   );
 
-  const { rows: roster } = await client.query(
-    `select name, cause_of_death, days_survived
-       from character_history
-      where settlement_id = $1
-      order by died_at desc`,
+  // Only the count: the camp page points at the graveyard rather than reproducing it,
+  // so pulling names and causes here would be fetching three columns to call .length
+  // on them.
+  const { rows: fallen } = await client.query(
+    'select count(*)::int as n from character_history where settlement_id = $1',
     [settlementId],
   );
 
@@ -123,7 +123,7 @@ export async function viewCamp(client, settlementId, now = Date.now()) {
     }),
     // Builds and fittings share one crew, so either one occupies the queue.
     buildInFlight: structures.some((s) => s.build_completes_at !== null) || beingFitted !== null,
-    roster,
+    fallenCount: fallen[0].n,
     events,
     regions,
     inventory,

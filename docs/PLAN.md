@@ -18,6 +18,14 @@ These are the ones that are painful to retrofit, so they are settled first.
 what makes the camp outlive its people. A survivor dying knocks the camp back a level
 (`SUCCESSOR_STRUCTURE_LOSS`) and halves the stores; it does not erase them.
 
+**An account owns a camp and never a person.** `player_id` appears on `settlements`
+and `sessions`, and nowhere near `characters` — the chain is player → settlement →
+characters. Registration founds the camp and stops there, so a new camp stands empty
+until you say who is moving in, and the first survivor arrives through
+`raiseSuccessor` like every one after them. There is no separate founder path to keep
+in step with the successor path. The penalty knows the difference: it is skipped when
+nobody has ever held the camp, because you cannot inherit a ruin from nobody.
+
 **One clock per settlement, not one per resource row.** `settlements.last_tick_at` is
 the single timeline. Hunger, production and death all have to agree on what time it
 is, and per-row clocks would let them drift apart.
@@ -50,6 +58,12 @@ Departures from the original sketch, and why:
 
 - **`character_history` is a view, not a table.** Every column it would hold already
   lives on a dead `characters` row. A second copy of the truth would drift.
+- **The graveyard is a page, because nothing cleans up after the dead.** An expired
+  survivor keeps their `inventory_items` rows and every expedition they ever made, so
+  `/graveyard` can say what someone was carrying when they starved and where they went
+  last — all of it already in the database and none of it previously read. The camp
+  page keeps a one-line pointer rather than the roster table it used to hold. This is
+  the only page that skips the tick: the dead do not change.
 - **A `garden` structure was added.** The original structure list had no food
   producer, which would have made starvation unavoidable rather than a consequence of
   neglect — and the offline-death design rests on a camp being able to run
