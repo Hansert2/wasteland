@@ -280,12 +280,89 @@ slots, one wins the insert, and the other's `do nothing` is the right answer.
   slice walk gained a `from` parameter to sample the sky at the start of each slice,
   since an event beginning exactly at the slice's end belongs to the next one.
 - Overlapping weather composes multiplicatively. Two blights are worse than one.
+- **Generation is proportional to the window being simulated, never to the age of the
+  world.** Slots are deliberately not required to be contiguous: `ensureWorldEvents`
+  fills only the slots that could overlap `[from, until]`, in one batched insert. The
+  first version generated every slot from the epoch up to the horizon, which is
+  invisible while the horizon is today and ruinous the moment it is not — a db test
+  that simulates the year 2287 was generating some twenty-four thousand rows per tick,
+  one insert at a time, none of which could overlap the window it asked about. It took
+  the database suite from nine seconds to a hundred and sixty. This property is what
+  has to hold for a game still running years from now, so it is a rule and not a
+  tuning detail.
+
+## What the numbers actually do
+
+Measured against what shipped, not against intent. Filtration taught the lesson that
+made this section exist: it was designed to ease a constraint and turned out to delete
+it, and only simulating sixty days of play found that out.
+
+**Danger does not pay per hour. It pays per trip, and it pays in materials.**
+
+    region                 danger  hours  loot/h  rads/h  finds/trip  hurt
+    The Ruined City             1      4    3.26    0.00        0.25   9.9%
+    Irradiated Farmland         2      6    3.16    1.33        0.15  17.8%
+    Underground Bunkers         3      9    2.84    0.22        1.07  26.7%
+    Coastal Wreckage            4     12    3.75    0.33        1.33  35.3%
+    The Deep Zone               5     18    3.34    1.38        2.16  45.0%
+
+Loot per hour is flat — 2.84 to 3.75 across the whole map — because loot ranges and
+travel times escalate together and cancel. Per *trip* the spread is real: 13 units
+from the city against 60 from the Deep Zone, and finds go from 0.25 to 2.16. Fuel
+drops only in the bottom three rows.
+
+This is defensible and worth keeping, because a check-in game is limited by check-ins
+rather than by hours: one expedition runs at a time, so what a player actually
+collects is per trip. And the danger tiers still gate the things that matter —
+scavenged parts and fuel, which is to say all of crafting and the whole fuel track.
+The honest caveat is that a player who checks in constantly and re-sends immediately
+is rationally steered to the safest region for bulk resources. Left as it is
+deliberately: retuning the loot ranges would invalidate everything below.
+
+**A healthy survivor cannot die on an expedition.** Maximum hazard damage at danger 5
+is 45 against 100 health, so death threatens only the already-wounded. That makes the
+real risk *going out hurt* — impatience — rather than bad luck, which is the same
+shape as everything else here.
+
+**Gear's value is survival, not damage.** In the Deep Zone it saves about 6 damage a
+trip, which regenerates in three hours and is nearly irrelevant. What it does is this:
+
+    survivor at 35 health, Deep Zone     no gear  16.2% dead  ->  spear + vest  0.0%
+    survivor at 20 health, Deep Zone     no gear  37.5% dead  ->  spear + vest 20.2%
+
+"The difference between limping home and not coming home" is the plate vest's flavour
+text, written before any of this was measured, and it turns out to be literally what
+the numbers say.
+
+**A death costs about a week of camp production, at any size.** Undoing the successor
+penalty costs 160 scrap at a level 2 camp and 1049 at level 6 — but 6.7 days and 8.8
+days respectively, because exponential costs and exponential production very nearly
+cancel. A death is a weighty, consistent setback rather than one that scales into
+ruin, which is what makes starting again bearable.
 
 ## Phase 5 — factions
 
 Reputation, traders, gated regions. The largest phase: new tables, new pages, and it
-touches expeditions, resources and items at once. Not started, and not designed —
-doing it before the loop is proven would be building on sand.
+touches expeditions, resources and items at once. Not started, and mostly not designed.
+
+**Settled in advance, because it is the one decision that could quietly undo an
+earlier phase: trade may never produce fuel.** Traders deal in scrap, food, water and
+items, and never in fuel.
+
+Fuel is the only resource nothing in the camp produces — it comes back solely from the
+loot of the three most dangerous regions. That is what the whole fuel track is priced
+against: scrap is patience, fuel is danger money, and filtration, the machine shop and
+the radio are all things you earned by going somewhere unpleasant. A trader selling
+fuel for scrap would make the second currency reachable without risk, and the fuel
+track would collapse into the first one.
+
+Note that `test/unit/structures.test.js` guards this from one direction only — it
+asserts no *structure* produces fuel. A trader would walk straight past that test.
+This paragraph is the guard until there is code to point one at.
+
+Still open, and worth settling before building rather than during: whether reputation
+gates **regions**, **prices**, or **who raids you** — that last would wire this phase
+back into Phase 3 — and whether traders need a page of their own or fold into the camp.
 
 ## Not planned
 

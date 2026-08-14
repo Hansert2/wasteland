@@ -21,7 +21,7 @@ const HOUR_MS = 60 * 60 * 1000;
 export const WORLD_EPOCH = Date.UTC(2026, 0, 1);
 
 /** Average hours between the start of one event and the next. */
-const MEAN_GAP_HOURS = 96;
+export const MEAN_GAP_HOURS = 96;
 
 export const WORLD_EVENTS = {
   rad_storm: {

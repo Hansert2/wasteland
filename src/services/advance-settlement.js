@@ -28,7 +28,7 @@ export async function advanceSettlement(client, settlementId, now) {
   // The weather for the stretch about to be simulated. Generated on demand rather
   // than by anything scheduled: a camp resolving a six-week absence needs the storms
   // that happened during it, and nothing was running to have recorded them.
-  await ensureWorldEvents(client, now);
+  await ensureWorldEvents(client, state.lastTickAt, now);
   state.worldEvents = await loadWorldEvents(client, state.lastTickAt, now);
 
   const { state: advanced, events } = applyTick(state, now);
