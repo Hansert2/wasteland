@@ -20,22 +20,42 @@ import { tradeWithCaravan } from '../services/trade.js';
 import { viewCamp } from '../services/view-camp.js';
 import { viewGraveyard } from '../services/view-graveyard.js';
 import { campPage, graveyardPage, landingPage, layout, escape } from './render.js';
+import { credentialKey, rateLimit } from './rate-limit.js';
 
 export function createApp() {
   const app = express();
 
   app.disable('x-powered-by');
+
+  // Off unless told otherwise, and that is the safe default rather than a shrug:
+  // trusting X-Forwarded-For when nothing sets it lets any caller claim any address
+  // and walk straight through the rate limiter. Set TRUST_PROXY to the number of
+  // proxies in front of this app — 1 behind a single reverse proxy — and leave it
+  // unset when the process is reachable directly.
+  if (process.env.TRUST_PROXY) {
+    app.set('trust proxy', Number(process.env.TRUST_PROXY) || process.env.TRUST_PROXY);
+  }
+
   // Bodies here are short forms; a small cap keeps a stray large POST cheap to reject.
   app.use(express.urlencoded({ extended: false, limit: '10kb' }));
   app.use(readCookies);
   app.use(loadSession);
+
+  // Credential endpoints only. Everything else is behind a session cookie, and a
+  // logged-in player hammering their own camp page costs a tick they already own.
+  const credentialLimit = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 10,
+    key: credentialKey,
+    message: 'Too many attempts for that account. Wait a few minutes and try again.',
+  });
 
   app.get('/', (req, res) => {
     if (req.playerId) return res.redirect('/camp');
     res.send(landingPage());
   });
 
-  app.post('/register', async (req, res) => {
+  app.post('/register', credentialLimit, async (req, res) => {
     const { playerId } = await withTransaction((client) =>
       foundSettlement(client, {
         email: req.body.email,
@@ -49,7 +69,7 @@ export function createApp() {
     res.redirect('/camp');
   });
 
-  app.post('/login', async (req, res) => {
+  app.post('/login', credentialLimit, async (req, res) => {
     const email = String(req.body.email ?? '').trim().toLowerCase();
 
     const { rows } = await pool.query(
@@ -208,9 +228,9 @@ export function createApp() {
  * reason, not at a login form — showing someone a login form while they are already
  * logged in reads as being signed out, which is a worse bug than the one they hit.
  */
-async function renderErrorForPlayer(req, res, message) {
+async function renderErrorForPlayer(req, res, message, status = 400) {
   if (!req.playerId) {
-    return res.status(400).send(landingPage({ error: message }));
+    return res.status(status).send(landingPage({ error: message }));
   }
 
   try {
@@ -220,7 +240,7 @@ async function renderErrorForPlayer(req, res, message) {
       return viewCamp(client, settlementId, Date.now());
     });
 
-    if (view) return res.status(400).send(campPage(view, { error: message }));
+    if (view) return res.status(status).send(campPage(view, { error: message }));
   } catch (error) {
     // The camp could not be rendered; fall through rather than masking the original
     // problem with a second one.
@@ -228,7 +248,7 @@ async function renderErrorForPlayer(req, res, message) {
   }
 
   return res
-    .status(400)
+    .status(status)
     .send(layout('Not possible', `<p class="error">${escape(message)}</p>
       <p><a href="/camp">Back to camp</a></p>`));
 }
@@ -291,5 +311,7 @@ function errorHandler(error, req, res, next) {
       .send(layout('Error', '<h1>Something went wrong</h1><p><a href="/">Back</a></p>'));
   }
 
-  renderErrorForPlayer(req, res, error.message).catch(next);
+  // Status carried through rather than flattened to 400: a rate-limited caller
+  // must see a 429, or the Retry-After header above it is a lie.
+  renderErrorForPlayer(req, res, error.message, status).catch(next);
 }

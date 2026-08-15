@@ -166,6 +166,33 @@ test('logging out revokes the session server-side, not just in the browser', asy
   assert.equal(replay.headers.get('location'), '/');
 });
 
+test('grinding a password list is refused, and the account still works from elsewhere', async () => {
+  const { email } = await register();
+  const wrong = () =>
+    fetch(`${base}/login`, {
+      method: 'POST',
+      redirect: 'manual',
+      body: new URLSearchParams({ email, password: 'not the password' }),
+    });
+
+  // Ten in the window are allowed; the eleventh is not.
+  let last;
+  for (let i = 0; i < 11; i++) last = await wrong();
+
+  assert.equal(last.status, 429, 'the grinder is stopped');
+  assert.ok(Number(last.headers.get('retry-after')) > 0, 'and told when to come back');
+  assert.match(await last.text(), /Too many attempts/i);
+
+  // The limiter keys on address *and* account, so a different account from the same
+  // address is unaffected — being attacked must not lock out the rest of the site.
+  const other = await fetch(`${base}/login`, {
+    method: 'POST',
+    redirect: 'manual',
+    body: new URLSearchParams({ email: 'someone-else@example.test', password: 'whatever' }),
+  });
+  assert.equal(other.status, 401, 'a different door is still answered');
+});
+
 test('a forged session token is not accepted', async () => {
   const camp = await fetch(`${base}/camp`, {
     headers: { cookie: 'wasteland_session=totally-made-up' },
