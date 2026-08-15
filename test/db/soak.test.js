@@ -10,7 +10,8 @@ import { startCraft } from '../../src/services/start-craft.js';
 import { startUpgrade } from '../../src/services/start-upgrade.js';
 import { tradeWithCaravan } from '../../src/services/trade.js';
 import { foundSettlement, raiseSuccessor } from '../../src/services/settlement-lifecycle.js';
-import { STRUCTURE_KINDS, UPGRADES, upgradeCost } from '../../src/game/structures.js';
+import { UPGRADES, upgradeCost } from '../../src/game/structures.js';
+import { ensureWorldEvents } from '../../src/db/world-events.js';
 import { FACTIONS } from '../../src/game/factions.js';
 import { InputError } from '../../src/errors.js';
 
@@ -44,6 +45,16 @@ async function withRollback(fn) {
   }
 }
 
+/**
+ * The soak's clock. Fixed rather than derived from Date.now(): weather slots are
+ * anchored to the world epoch, so a wall-clock T0 meant every run played under
+ * different skies — code review caught the file promising exact replayability while
+ * two of its three randomness sources still rolled with the clock. It also keeps the
+ * soak's world_events slots (April–July) disjoint from every other suite's (which
+ * generate near the real today), so no test queues on another's uncommitted inserts.
+ */
+const T0 = Date.UTC(2026, 3, 1);
+
 /** Deterministic camp: the founding seeds are pinned so a failure replays exactly. */
 async function foundPinned(client, now) {
   const { settlementId } = await foundSettlement(client, {
@@ -58,6 +69,22 @@ async function foundPinned(client, now) {
   );
   await raiseSuccessor(client, settlementId, { name: 'Sol', now });
   return settlementId;
+}
+
+/**
+ * The third randomness source, pinned. `dispatchExpedition` rolls a fresh
+ * `Math.random` seed per trip — right for the game, wrong for a test that promises
+ * replayable failures — so after each dispatch the trip's seed is overwritten with
+ * one derived from the check-in number. The outcome is still rolled by the real
+ * resolution path; only the dice are loaded.
+ */
+async function pinExpeditionSeed(client, settlementId, checkin) {
+  await client.query(
+    `update expeditions e set seed = $2
+       from characters c
+      where c.id = e.character_id and c.settlement_id = $1 and e.status = 'active'`,
+    [settlementId, 100_000 + checkin * 7919],
+  );
 }
 
 /** Swallow refusals — a player clicking a button that says no — never real errors. */
@@ -131,8 +158,14 @@ async function checkInvariants(client, settlementId, now, label) {
 }
 
 test('ninety days of attentive play holds every invariant at every check-in', async () => {
+  // Committed outside the rollback, deliberately. The soak holds its transaction for
+  // seconds, and world_events inserts left uncommitted hold speculative unique-index
+  // locks that other suites' ensureWorldEvents calls would queue behind. The rows are
+  // canonical — pure functions of the fixed world seed — so committing them writes
+  // nothing that generation would not have written anyway.
+  await ensureWorldEvents(pool, T0 - days(15), T0 + days(95));
+
   await withRollback(async (client) => {
-    const T0 = Date.now() - days(100);
     const settlementId = await foundPinned(client, T0);
 
     // The itinerary: safe and short while green, hot and long once equipped.
@@ -142,7 +175,9 @@ test('ninety days of attentive play holds every invariant at every check-in', as
     ];
 
     let deaths = 0;
-    const tallies = { raids: 0, caravans: 0, trades: 0, builds: 0, crafts: 0, fits: 0 };
+    const tallies = {
+      raids: 0, caravans: 0, trades: 0, builds: 0, crafts: 0, fits: 0, expeditions: 0,
+    };
 
     for (let checkin = 0; checkin < 180; checkin++) {
       // Twice daily, jittered — and starting an hour after founding, because a
@@ -154,6 +189,9 @@ test('ninety days of attentive play holds every invariant at every check-in', as
       const { events } = await advanceSettlement(client, settlementId, now);
       tallies.raids += events.filter((e) => e.type === 'raid' || e.type === 'raid_repelled').length;
       tallies.caravans += events.filter((e) => e.type === 'caravan_arrived').length;
+      tallies.expeditions += events.filter(
+        (e) => e.type === 'expedition_returned' || e.type === 'expedition_lost',
+      ).length;
       for (const event of events) {
         assert.ok(event.at <= now, `an event from the future: ${event.type}`);
       }
@@ -167,11 +205,14 @@ test('ninety days of attentive play holds every invariant at every check-in', as
         state = await loadWorld(client, settlementId);
       }
 
-      // Trade with whoever is at the gate, most visits. Refusals are fine.
-      for (const faction of Object.keys(FACTIONS)) {
-        if (checkin % 2 === 0) {
+      // Trade with whoever is at the gate, most visits. Refusals are fine. The offer
+      // index walks the whole catalogue: review caught the first version gating on
+      // even check-ins and *also* indexing by `checkin % 4`, which together could
+      // only ever reach offers 0 and 2.
+      if (checkin % 2 === 0) {
+        for (const faction of Object.keys(FACTIONS)) {
           if (await attempt(() =>
-            tradeWithCaravan(client, settlementId, { faction, offer: checkin % 4 }, now),
+            tradeWithCaravan(client, settlementId, { faction, offer: (checkin / 2) % 4 }, now),
           )) tallies.trades += 1;
         }
       }
@@ -199,7 +240,9 @@ test('ninety days of attentive play holds every invariant at every check-in', as
         state.survivor.radiation > 40 || state.survivor.health < 50
           ? 'the_fence_line'
           : rotation[checkin % rotation.length];
-      await attempt(() => dispatchExpedition(client, settlementId, region, now));
+      if (await attempt(() => dispatchExpedition(client, settlementId, region, now))) {
+        await pinExpeditionSeed(client, settlementId, checkin);
+      }
 
       await checkInvariants(client, settlementId, now, `check-in ${checkin}`);
     }
@@ -210,6 +253,11 @@ test('ninety days of attentive play holds every invariant at every check-in', as
     assert.ok(tallies.caravans > 5, `only ${tallies.caravans} caravan visits`);
     assert.ok(tallies.trades > 3, `only ${tallies.trades} trades`);
     assert.ok(tallies.crafts > 3, `only ${tallies.crafts} crafts`);
+    // The two floors the first version forgot — and they are the two systems this
+    // soak exists for. Without them, a renamed region slug or an upgrade regression
+    // could zero out expeditions or fittings for ninety days and stay green.
+    assert.ok(tallies.expeditions > 20, `only ${tallies.expeditions} expeditions resolved`);
+    assert.ok(tallies.fits > 0, `no fuel upgrade was ever fitted (${tallies.fits})`);
 
     const final = await loadWorld(client, settlementId);
     const levels = final.settlement.structures.reduce((t, s) => t + s.level, 0);
@@ -218,8 +266,9 @@ test('ninety days of attentive play holds every invariant at every check-in', as
 });
 
 test('ninety days of total neglect resolves in one tick and stays consistent', async () => {
+  await ensureWorldEvents(pool, T0 - days(15), T0 + days(95));
+
   await withRollback(async (client) => {
-    const T0 = Date.now() - days(100);
     const settlementId = await foundPinned(client, T0);
     const now = T0 + days(90);
 
