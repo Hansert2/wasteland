@@ -76,11 +76,42 @@ Everything else is already safe for concurrency, and deliberately so:
   wins the insert and `on conflict do nothing` making the loser correct.
 - Every queue-of-one is a partial unique index in the database, not a check in code.
 
+## Deploying to Fly
+
+`Dockerfile` is host-agnostic — the same image runs on Render or Railway, and moving
+means deleting `fly.toml` and setting the same environment. What follows is the
+recommended path, and it has been run as far as it can be from this machine: the image
+builds, migrates against a real Postgres, serves `/health` and the landing page, and
+runs as a non-root user on Node 22.
+
+```
+fly launch --no-deploy          # claim a name; it will read fly.toml
+fly postgres create             # or attach an existing cluster
+fly postgres attach <cluster>   # sets DATABASE_URL as a secret
+fly deploy
+fly open
+```
+
+`fly.toml` already sets `NODE_ENV` (via the Dockerfile), `PORT`, `TRUST_PROXY=1` and a
+release command that migrates and seeds before the new version takes traffic — a
+failed migration aborts the deploy rather than half-applying it.
+
+**It scales to zero, and the game is unusually suited to that.** There is no cron, no
+scheduler and no background work anywhere: raids, caravans and weather are generated
+on demand by whoever next looks, precisely so an absence needs nothing running to have
+happened during it. A sleeping machine and a machine nobody has opened are the same
+thing to the simulation, so it costs nothing between check-ins and wakes on the next
+request. That was a design decision made for testability, and it pays a second time
+here.
+
+**One machine only**, which `fly.toml` says loudly. The credential rate limiter counts
+in memory; a second instance is a second counter and twice the allowance.
+
 ## Health
 
-There is no `/health` endpoint yet — add one before putting this behind anything that
-expects to poll for readiness. `GET /` is a cheap public page that touches the
-database only for the session lookup, so it is a reasonable stand-in meanwhile.
+`GET /health` returns `{"status":"ok"}`, or 503 with the driver's error code when
+Postgres is unreachable. It is registered ahead of the body parser, cookie reader and
+session lookup, so a probe every thirty seconds costs one `select 1` and nothing else.
 
 ## Something to know about the clock
 

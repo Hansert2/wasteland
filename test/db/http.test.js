@@ -111,6 +111,16 @@ test('the session cookie is httpOnly and same-site strict', async () => {
   assert.match(header, /SameSite=Strict/i);
 });
 
+test('health answers without a session, a cookie or a body', async () => {
+  // What a load balancer polls. It must answer while the app is too broken to serve
+  // a page, and must not cost a session lookup on every probe.
+  const health = await fetch(`${base}/health`);
+
+  assert.equal(health.status, 200);
+  assert.deepEqual(await health.json(), { status: 'ok' });
+  assert.equal(health.headers.get('set-cookie'), null, 'a probe is not a visitor');
+});
+
 test('the camp is not visible without a session', async () => {
   const camp = await fetch(`${base}/camp`, { redirect: 'manual' });
 

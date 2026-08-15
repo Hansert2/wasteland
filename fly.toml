@@ -1,0 +1,55 @@
+# Fly configuration. The Dockerfile beside this is host-agnostic, so moving to
+# Render or Railway later means deleting this file and setting the same environment.
+#
+# Change `app` to whatever name `fly launch` claims, and `primary_region` to one near
+# you — the game resolves elapsed time on page load, so latency is cosmetic, but a
+# database in the same region is not.
+app = "wasteland"
+primary_region = "ams"
+
+[build]
+  dockerfile = "Dockerfile"
+
+# Migrations run before the new version takes traffic, and abort the deploy if they
+# fail. The seed runs with them: it upserts content by natural key, which is how a
+# balance change to regions or recipes reaches a running game.
+[deploy]
+  release_command = "sh -c 'node src/db/migrate.js && node src/db/seed.js'"
+
+[env]
+  PORT = "8080"
+  # One proxy in front, terminating TLS. This is what makes req.ip the caller's
+  # address rather than Fly's, which the credential rate limiter depends on.
+  TRUST_PROXY = "1"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+
+  # Scale to zero, and this game is unusually well suited to it. There is no cron, no
+  # scheduler and no background work anywhere — world events and raids are generated
+  # on demand by whoever next looks, precisely so an absence needs nothing running to
+  # have happened during it. A sleeping machine and a machine nobody has opened are
+  # the same thing to the simulation, so it can cost nothing between check-ins.
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  # **One machine.** The credential rate limiter counts in memory, so a second
+  # instance means a second counter and twice the allowance. Raise this only after
+  # moving that counter into Postgres — see src/web/rate-limit.js and docs/DEPLOYING.md.
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 200
+    hard_limit = 250
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "10s"
+    method = "GET"
+    path = "/health"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

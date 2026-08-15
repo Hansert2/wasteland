@@ -1,0 +1,11 @@
+# The image is source plus production dependencies. Everything below is either
+# rebuilt inside the image, irrelevant to running it, or must never leave this machine.
+node_modules
+.git
+.env
+docs
+test
+tools
+scripts
+*.md
+docker-compose.yml

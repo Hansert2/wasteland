@@ -36,6 +36,20 @@ export function createApp() {
     app.set('trust proxy', Number(process.env.TRUST_PROXY) || process.env.TRUST_PROXY);
   }
 
+  // Ahead of everything else on purpose: a readiness probe should not parse a body,
+  // read a cookie or cost a session lookup, and it must answer while the app is too
+  // broken to serve a page. The one thing it does check is the thing that actually
+  // fails — whether Postgres is reachable — because an app that cannot reach its
+  // database has nothing to offer and should be taken out of rotation.
+  app.get('/health', async (req, res) => {
+    try {
+      await pool.query('select 1');
+      res.json({ status: 'ok' });
+    } catch (error) {
+      res.status(503).json({ status: 'no database', error: error.code ?? 'unknown' });
+    }
+  });
+
   // Bodies here are short forms; a small cap keeps a stray large POST cheap to reject.
   app.use(express.urlencoded({ extended: false, limit: '10kb' }));
   app.use(readCookies);
