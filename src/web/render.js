@@ -104,17 +104,19 @@ function countdown(at, done = 'now') {
 /**
  * How many decimals a store is shown to.
  *
- * Three, because fewer is a counter that does not count. The stores tick every second
- * but a fresh camp gains 0.7 food an hour, so at one decimal the visible digit moves
- * once every eight and a half minutes and the number looks frozen — which is exactly
- * what it looked like. At three it moves every two to five seconds, which is the
- * simulation's real behaviour finally showing through: it has always tracked
- * fractions, the display was just rounding them away.
+ * One. Three was tried, on the reasoning that a fresh camp gains 0.7 food an hour and
+ * a single decimal therefore only moves every eight and a half minutes — a live
+ * counter that looks frozen. Three did move, every few seconds, and looked like
+ * noise: two digits of precision nobody acts on, on four rows, changing constantly.
+ *
+ * The rate beside it is what actually answers "is my camp working", and it says so
+ * in one legible figure without demanding to be watched. A number that changes
+ * slowly because the thing it counts changes slowly is telling the truth.
  *
  * Declared once and interpolated into the script below, so the browser and the server
  * cannot disagree about it the way the two clock formatters could.
  */
-const STORE_DECIMALS = 3;
+const STORE_DECIMALS = 1;
 
 /**
  * The whole of the client-side JavaScript, and it is meant to stay that way.
