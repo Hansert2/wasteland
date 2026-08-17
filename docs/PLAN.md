@@ -555,6 +555,160 @@ The questions this section used to hold open — what reputation gates, who hold
 how traders arrive, whether standing can fall — were all settled above on 2026-08-14.
 Region-gating is the one deliberately parked rather than decided.
 
+## The next three phases — designed 2026-08-17, none of them built
+
+Every phase above shipped, and then the player played it. The verdict was "a bit dull",
+and pressed on what that meant it came back as three things and not one: **too little
+happens per visit, nothing is a surprise, and there is nothing to work toward.** The
+five commits before this section were decimals and live counters — polish, which makes
+a thin loop legible without making it thicker.
+
+Two directions were settled at the same time and constrain all three phases. **Play
+leans active**: the game should reward checking in, not merely tolerate it. And **other
+camps become visible but never interactive** — news, neighbours, rankings, wreckage, and
+nothing another camp can do to yours.
+
+One diagnosis was raised and rejected, recorded so it is not raised again as if it were
+new. The survivor is mechanically interchangeable — `stamina`, `skill_combat`,
+`skill_crafting` and `skill_medicine` have been columns since migration `001` that
+nothing reads, and `skill_scavenging` is read once in `src/game/expeditions.js` for a
++10% loot multiplier that nothing ever raises above its default of 1, so it is
+permanently 1.0. That is all true, and it is not what the game feels short of. It
+returns in Phase 7, where three concurrent people make a difference between them into a
+decision; one sequential person only made it flavour.
+
+### Phase 6 — encounters in the field
+
+*Against: no surprises, too little per visit.*
+
+An expedition is a dispatch and a log. You pick a region, and some hours later you read
+what was decided the instant you clicked. Everything between departure and return is a
+timer, and the only uncertainty in the game resolves while nobody is watching.
+
+**A trip becomes a handful of moments rather than one roll.** Each expedition draws,
+from the seed it already carries, a small number of moments at known hours of the trip —
+a sealed door, a lit fire in the distance, a choice of routes. A moment is a half-open
+window. Load the camp page while one is open and you choose; miss it and the survivor
+chooses for themselves.
+
+**The unattended outcome is exactly the game as it stands today, and this is the
+load-bearing rule.** The default for every moment is what the expedition would have done
+before Phase 6 existed. Attending can add upside and a risk you knowingly took; it can
+never restore a baseline that absence took away. Death is the price of neglect, not of a
+weekend away — and by the same logic a thinner haul must not be the price of a working
+day. This is what lets an active-leaning phase ship without quietly converting the idle
+loop into a punishment.
+
+**Moments must not change what is drawn.** Same rule as gear and as weather, for the
+third time and the same reason: a trip where every moment defaults must be identical,
+roll for roll, to a trip taken before encounters existed. That is the test, and it is
+the same test `test/unit/expeditions.test.js` already knows how to write.
+
+The tick needs nothing new to carry this. It already walks the interval in slices cut at
+pending timestamps; a moment is one more such timestamp, and an expedition already
+resolves from a stored seed so a retried request replays the trip instead of re-rolling
+it.
+
+**The radio gets a second job, and it is the same job it already has.** Without it, you
+find a moment by happening to load the page inside its window. With it, the camp page
+says when the next one is due. Its scrap levels protect you while you are gone; the radio
+helps only while you are here — which is exactly what was written about it in Phase 3,
+now paying off twice.
+
+What a moment can offer, all priced in things that already exist: press on for more loot
+at more danger, turn back and bank the haul early, spend food, water or meds from the
+pack for a margin, or spend hours investigating something for a find.
+
+**Watch item, to be bounded before it ships:** this makes an attentive player strictly
+richer than an absent one, which is new. Total upside per trip should be capped at
+roughly one region step — attending a Deep Zone run should not out-earn a region that
+does not exist. Measure it the way filtration was measured, over sixty days, before
+believing it.
+
+### Phase 7 — a camp with people in it
+
+*Against: too little per visit.*
+
+**One survivor is the bottleneck on every verb in the game.** Builds and crafts need
+living hands to start, expeditions need a body, and there is exactly one. A camp whose
+survivor is nine hours into the Underground Bunkers can do nothing at all, and "nothing
+at all" is most visits. That is the structural cause of a thin check-in, and no amount of
+new content fixes it while the camp has one pair of hands.
+
+**Beds are what a shelter level buys.** Population is capped by the shelter, which gives
+the one structure with no interesting effect something to do and makes the cap something
+you build toward.
+
+The schema is most of the way there already: `characters` hangs off `settlements` and
+never off `players`, and `characters_one_living_idx` in migration `001` is the only thing
+enforcing the singular. Dropping it is the change; the chain player → settlement →
+characters is unaffected, and an account still owns a camp and never a person.
+
+**The successor penalty moves from a death to an emptying.** A camp is knocked back when
+the last of its people is gone, not each time one of them dies. An individual death costs
+their gear, their labour and whatever they had learned — real, and survivable. Losing
+everybody costs the camp, exactly as it does now. Without this, three survivors would
+mean three times the penalty and the phase would make the game harsher while trying to
+make it fuller.
+
+**New people arrive; they are not born.** A wanderer at the gate, a passenger with a
+caravan — scheduled from a seed on the raid and caravan pattern, so a month's absence
+resolves the arrivals it missed and nothing needs a cron. **Every mouth eats**, which is
+what stops population being a free multiplier: growing the camp raises its running cost,
+and a camp that grows faster than its garden starves faster than it builds.
+
+**This is where the dormant survivor columns get used or get dropped.** Telling three
+people apart is a decision — who do I send into the Deep Zone, who stays on the bench —
+and that is what `skill_scavenging`, `skill_combat`, `skill_crafting`, `skill_medicine`
+and `stamina` were always for. Traits rolled at arrival, skills that rise with use. Any
+of the five that still has no reader when this phase is done should be dropped from the
+schema rather than left as furniture for a third time.
+
+**The balance guard has to be restated before any of this is tuned.** The 36-to-72-hour
+starvation window in `test/unit/tick.test.js` is written against one survivor's
+consumption. Three survivors empty the stores three times as fast, so the guard must
+become a statement about a camp at its bed cap rather than about a person, or Phase 7
+silently reintroduces exactly the punish-a-weekend-away failure the constant was written
+to prevent.
+
+### Phase 8 — the road
+
+*Against: nothing to work toward.*
+
+A soft goal and deliberately not an ending: the camp keeps going, and there is always a
+next milestone and a picture of how far you have come. A win condition would need a
+prestige-and-reset loop, and a game about a place that outlives its people should not
+take the place away.
+
+**The road is the region reconnecting, one link at a time.** A link costs weeks of fuel
+and parts rather than hours of scrap — the first thing in the game priced above the
+patience curve, and therefore the first thing the fence cannot buy. It is the natural
+sink for the currency the fuel track made scarce on purpose.
+
+**Each link brings a neighbour into view.** Their name, their size, whether they are
+still there at all. Some links open a standing trade post, some open a region, some are
+worth only the sight of somebody else out there. Other camps as news is what makes the
+world inhabited without introducing a single new failure mode: nothing another camp does
+can touch yours, so "resolve an eight-week absence on the next page load, with no process
+having been running" survives intact. That guarantee is worth more than interactivity.
+
+**One question deliberately left open, to be settled before building:** whether the
+neighbours on the road are real player camps read at page load, or generated from the
+world seed the way weather is. Generated is cheaper, always available, and consistent
+with everything above; real camps are more interesting exactly once there is more than
+one player. It does not need answering until the map is built.
+
+### Why this order
+
+Phase 6 is first because it is the cheapest of the three and it is the only one that
+answers two complaints at once — it reuses the seed, the slice walk, the half-open
+window and the radio, and adds no schema. Phase 7 is the largest and the most likely to
+disturb balance, so it wants a soak test that already covers encounters. Phase 8 is a
+destination, and a destination is worth least while the journey is still thin.
+
+If a visit still feels thin after Phase 6, that is the signal to bring Phase 7 forward
+rather than to keep adding moments to a trip.
+
 ## Not planned
 
 - **Alts.** `settlements_player_idx` is unique on `player_id`. Drop it if this ever
