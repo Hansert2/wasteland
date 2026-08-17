@@ -170,7 +170,7 @@ test('a recipe beyond the workshop is refused', async () => {
     );
 
     await client.query(
-      `update camp_structures set level = 2 where settlement_id = $1 and kind = 'workshop'`,
+      `update camp_structures set level = 4 where settlement_id = $1 and kind = 'workshop'`,
       [settlementId],
     );
     await startCraft(client, settlementId, recipeSlug);

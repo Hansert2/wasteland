@@ -4,10 +4,12 @@ import { InputError } from '../errors.js';
 
 export { InputError };
 
+// Level two of the small three, which is level one of the old scale: output per
+// level was halved, so a camp starts with twice as many to be handed the same camp.
 const STARTING_STRUCTURES = [
-  { kind: 'shelter', level: 1 },
-  { kind: 'garden', level: 1 },
-  { kind: 'water_purifier', level: 1 },
+  { kind: 'shelter', level: 2 },
+  { kind: 'garden', level: 2 },
+  { kind: 'water_purifier', level: 2 },
   { kind: 'workshop', level: 0 },
   { kind: 'watchtower', level: 0 },
 ];
@@ -15,7 +17,8 @@ const STARTING_STRUCTURES = [
 const STARTING_AMOUNTS = { food: 40, water: 40, scrap: 10, fuel: 0 };
 
 /** What a new survivor inherits: the camp, minus a bite taken out of it. */
-const SUCCESSOR_STRUCTURE_LOSS = 1;
+// Two levels, which is the one level it always was on the old scale.
+const SUCCESSOR_STRUCTURE_LOSS = 2;
 const SUCCESSOR_SALVAGE = 0.5;
 
 /**

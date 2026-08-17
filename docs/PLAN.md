@@ -382,6 +382,33 @@ not two:
   therefore the thing that makes the fast levels reachable at all. A cheap build you
   cannot afford is not an improvement.
 
+**A level is now worth half what it was, and there are twice as many of them.** The
+first rescale cut times and costs without touching output, which made the same
+production roughly three times cheaper to reach. This second pass puts that back:
+every `perLevel` was halved, starting levels doubled so a new camp is handed exactly
+the camp it was handed before, and both growth exponents replaced by their square
+roots so the curve keeps its shape across twice the steps. Reaching a given output is
+deliberately about **2.3× dearer and 2.4× longer** than it was an hour ago.
+
+The square roots are not decoration. Doubling the level count under the old exponent
+would have put a garden of twelve food an hour at two hundred thousand scrap instead
+of two and a half — the arithmetic was checked before any of it was written.
+
+Two things had to move with it, and both are the sort of thing that would have been
+found much later by someone confused:
+
+- **`campWealth` counts half a point per level.** Levels doubled, so counting them
+  whole would have doubled every camp's apparent wealth overnight and with it how
+  often raiders call, for no change in what the camp actually holds.
+- **Everything that names a level was restated**: fuel upgrades want level 4, recipes
+  want workshop 2 and 4, and the successor knock takes two levels, which is the one
+  level it always was.
+
+Measured after: a new camp is indistinguishable from the player's side — food +0.7/h,
+water +1.75/h, next garden 7 scrap and a minute — and an attentive first hour still
+buys five builds. Only the numbers on the level counters changed, and the distance
+between here and a big camp.
+
 Measured, first hour, attentive player: **one build without the short regions, four
 with them** — and a return to read every ten minutes. Four structure levels at ten
 minutes, seven at an hour, eleven at three hours, twenty at twelve.

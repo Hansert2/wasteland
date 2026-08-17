@@ -5,7 +5,7 @@ import { pool } from '../../src/db/pool.js';
 import { loadWorld } from '../../src/db/world.js';
 import { advanceSettlement } from '../../src/services/advance-settlement.js';
 import { startBuild } from '../../src/services/start-build.js';
-import { upgradeCost } from '../../src/game/structures.js';
+import { STRUCTURES, upgradeCost } from '../../src/game/structures.js';
 import { foundSettlement, raiseSuccessor } from '../../src/services/settlement-lifecycle.js';
 import { InputError } from '../../src/errors.js';
 
@@ -67,7 +67,11 @@ test('starting a build pays scrap now and delivers the level later', async () =>
     const built = done.settlement.structures.find((s) => s.kind === 'workshop');
     assert.equal(built.level, 1);
     assert.equal(built.buildCompletesAt, null);
-    assert.equal(done.settlement.resources.scrap.ratePerHour, 1, 'the workshop now produces');
+    assert.equal(
+      done.settlement.resources.scrap.ratePerHour,
+      STRUCTURES.workshop.perLevel,
+      'the workshop now produces',
+    );
   });
 });
 
@@ -137,7 +141,7 @@ test('a finished shelter raises every storage cap, persistently', async () => {
       [settlementId],
     );
     assert.equal(rows.length, 1, 'all four caps moved together');
-    assert.equal(Number(rows[0].storage_cap), capBefore + 250);
+    assert.equal(Number(rows[0].storage_cap), capBefore + STRUCTURES.shelter.storagePerLevel);
   });
 });
 

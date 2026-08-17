@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import { applyTick } from '../../src/game/tick.js';
 import { CONFIG } from '../../src/game/constants.js';
+import { STRUCTURES } from '../../src/game/structures.js';
 
 const T0 = Date.UTC(2287, 0, 1);
 const hours = (h) => h * 60 * 60 * 1000;
@@ -329,21 +330,28 @@ test('a build finishing mid-interval changes production from its exact hour', ()
   const state = makeState({
     resources: { scrap: { amount: 0, ratePerHour: 1, cap: 100000 } },
   });
-  // Workshop level 1 producing 1/hr, upgrading to level 2 at hour 10 of 20.
+  // A workshop at level 2 upgrading to 3 at hour 10 of 20. Levels rather than rates
+  // are stated here so the test survives a change to what a level is worth.
+  const perLevel = STRUCTURES.workshop.perLevel;
   state.settlement.structures = [
     { id: 1, kind: 'shelter', level: 400, buildCompletesAt: null },
-    { id: 2, kind: 'workshop', level: 1, buildCompletesAt: T0 + hours(10) },
+    { id: 2, kind: 'workshop', level: 2, buildCompletesAt: T0 + hours(10) },
   ];
+  state.settlement.resources.scrap.ratePerHour = perLevel * 2;
 
   const { state: after, events } = applyTick(state, T0 + hours(20));
 
-  // 10 hours at 1/hr, then 10 hours at 2/hr — not 20 or 40.
-  assert.equal(after.settlement.resources.scrap.amount, 30);
-  assert.equal(after.settlement.structures[1].level, 2);
+  // Ten hours at two levels' worth, then ten at three — not twenty of either.
+  close(
+    after.settlement.resources.scrap.amount,
+    perLevel * 2 * 10 + perLevel * 3 * 10,
+    'the rate changed at hour 10',
+  );
+  assert.equal(after.settlement.structures[1].level, 3);
   assert.equal(after.settlement.structures[1].buildCompletesAt, null);
   assert.deepEqual(
     events.filter((e) => e.type === 'build_completed'),
-    [{ at: T0 + hours(10), type: 'build_completed', kind: 'workshop', level: 2 }],
+    [{ at: T0 + hours(10), type: 'build_completed', kind: 'workshop', level: 3 }],
   );
 });
 
@@ -354,8 +362,9 @@ test('the completion hour does not depend on slice size, even an awkward one', (
     });
     state.settlement.structures = [
       { id: 1, kind: 'shelter', level: 400, buildCompletesAt: null },
-      { id: 2, kind: 'workshop', level: 1, buildCompletesAt: T0 + hours(10) },
+      { id: 2, kind: 'workshop', level: 2, buildCompletesAt: T0 + hours(10) },
     ];
+    state.settlement.resources.scrap.ratePerHour = STRUCTURES.workshop.perLevel * 2;
     return state;
   };
 
@@ -370,7 +379,12 @@ test('the completion hour does not depend on slice size, even an awkward one', (
     awkward.state.settlement.resources.scrap.amount -
       fine.state.settlement.resources.scrap.amount,
   );
-  assert.equal(awkward.state.settlement.resources.scrap.amount, 30);
+  const perLevel = STRUCTURES.workshop.perLevel;
+  close(
+    awkward.state.settlement.resources.scrap.amount,
+    perLevel * 2 * 10 + perLevel * 3 * 10,
+    'the awkward slicing still changed rate at hour 10',
+  );
   assert.ok(drift < 1e-6, `slice size shifted the total by ${drift}`);
 });
 
@@ -387,10 +401,15 @@ test('a finished shelter raises the storage cap from its completion hour', () =>
 
   const { state: after } = applyTick(state, T0 + hours(10));
 
-  // Five hours pinned at the old cap of 100, then five hours of growth at 6/hr
-  // under the new cap of 350.
-  assert.equal(after.settlement.resources.food.cap, 350);
-  assert.equal(after.settlement.resources.food.amount, 130);
+  // Five hours pinned at the old cap of 100, then five hours of growth under the
+  // raised one. Note the rate for those second five hours is the *garden's* — the
+  // fixture's 6/hr is overwritten when the build completes, because finishing a
+  // structure recomputes every rate from what the camp now has.
+  const raised = 100 + STRUCTURES.shelter.storagePerLevel;
+  const gardenRate = STRUCTURES.garden.perLevel * 5;
+
+  assert.equal(after.settlement.resources.food.cap, raised);
+  close(after.settlement.resources.food.amount, 100 + 5 * gardenRate, 'grew at the real rate');
 });
 
 test('builds finish even when nobody is alive to watch', () => {

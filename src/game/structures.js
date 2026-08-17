@@ -28,34 +28,34 @@ export const STRUCTURE_KINDS = [
  */
 export const STRUCTURES = {
   shelter: {
-    storagePerLevel: 250,
+    storagePerLevel: 125,
     baseCost: 6,
     baseMinutes: 0.75,
     summary: 'Storage, shared across every resource. Anything over the cap is lost.',
   },
   garden: {
     produces: 'food',
-    perLevel: 1.2,
+    perLevel: 0.6,
     baseCost: 4,
     baseMinutes: 0.5,
     summary: 'Grows food. One level already outpaces what a survivor eats.',
   },
   water_purifier: {
     produces: 'water',
-    perLevel: 2.5,
+    perLevel: 1.25,
     baseCost: 5,
     baseMinutes: 0.6,
     summary: 'Cleans water, the other thing they cannot go without.',
   },
   workshop: {
     produces: 'scrap',
-    perLevel: 1,
+    perLevel: 0.5,
     baseCost: 5,
     baseMinutes: 0.6,
     summary: 'Salvages scrap, and its level is what unlocks recipes at the bench.',
   },
   watchtower: {
-    defencePerLevel: 8,
+    defencePerLevel: 4,
     baseCost: 8,
     baseMinutes: 1,
     // The only structure that does nothing for you while things are going well. Its
@@ -91,7 +91,7 @@ export const UPGRADES = {
     name: 'Filtration',
     fuel: 60,
     hours: 1,
-    requiresLevel: 2,
+    requiresLevel: 4,
     // Radiation is the real limiter on going back to the Deep Zone: a trip doses
     // ~25 rads nominal and they decay at 0.8/h, so a survivor spends the better part
     // of a day and a half waiting to leave again. This is the camp buying that back.
@@ -103,7 +103,7 @@ export const UPGRADES = {
     name: 'Machine Shop',
     fuel: 75,
     hours: 1.25,
-    requiresLevel: 2,
+    requiresLevel: 4,
     craftHoursMultiplier: 2 / 3,
     summary: 'Powered tools at the bench: every craft takes a third less time.',
   },
@@ -112,7 +112,7 @@ export const UPGRADES = {
     name: 'Radio',
     fuel: 55,
     hours: 1,
-    requiresLevel: 2,
+    requiresLevel: 4,
     // The only upgrade that changes nothing in the simulation. It buys the hour the
     // next raid falls due, and nothing else — see `viewCamp`.
     //
@@ -152,9 +152,17 @@ function multiplierOf(installed, field) {
   return total;
 }
 
-/** How fast the two curves climb. Time doubles a level; cost is a little gentler. */
-const TIME_GROWTH = 2;
-const COST_GROWTH = 1.7;
+/**
+ * How fast the two curves climb.
+ *
+ * Square roots because a level is now worth half what it used to be: output per
+ * level was halved and the level count doubled, so the growth per level has to be
+ * the square root of the old growth for the curve to keep its shape. Without that,
+ * doubling the levels under the old exponent would have put a garden of twelve
+ * food an hour at two hundred thousand scrap instead of two and a half.
+ */
+const TIME_GROWTH = Math.SQRT2;
+const COST_GROWTH = Math.sqrt(1.7);
 
 /**
  * Cost and duration to build the *next* level.
@@ -270,7 +278,10 @@ export function campWealth(structures, resources) {
     const spec = STRUCTURES[kind] ?? {};
     // A watchtower is not loot. Counting it here is what created the trap.
     if (spec.defencePerLevel) continue;
-    wealth += level;
+    // Half a point a level, because a level is half what it was: halving output per
+    // level doubled the level count, and counting them whole would have doubled every
+    // camp's apparent wealth and with it how often raiders call.
+    wealth += level / 2;
   }
 
   // Stores are the part a raider can see the point of, and the part they can carry

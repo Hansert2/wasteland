@@ -68,8 +68,10 @@ test('the first survivor moves into a whole camp, not a knocked-back one', async
     assert.equal(after.survivor.alive, true);
     assert.equal(after.survivor.health, 100);
 
+    const shelterBefore = before.settlement.structures.find((s) => s.kind === 'shelter');
     const shelter = after.settlement.structures.find((s) => s.kind === 'shelter');
-    assert.equal(shelter.level, 1, 'the shelter did not fall a level on the way in');
+    assert.equal(shelter.level, shelterBefore.level, 'the shelter did not fall on the way in');
+    assert.ok(shelter.level > 0, 'and there was something there to lose');
 
     for (const [kind, amount] of Object.entries(stores)) {
       assert.equal(after.settlement.resources[kind].amount, amount, `${kind} was not halved`);
@@ -138,7 +140,8 @@ test('a successor inherits a camp knocked back a level, not a fresh one', async 
       `select level from camp_structures where settlement_id = $1 and kind = 'shelter'`,
       [settlementId],
     );
-    assert.equal(before.rows[0].level, 1);
+    const stood = Number(before.rows[0].level);
+    assert.ok(stood > 0, 'there was a shelter to lose');
 
     await raiseSuccessor(client, settlementId, { name: 'Boris' });
 
@@ -146,7 +149,10 @@ test('a successor inherits a camp knocked back a level, not a fresh one', async 
       `select level from camp_structures where settlement_id = $1 and kind = 'shelter'`,
       [settlementId],
     );
-    assert.equal(after.rows[0].level, 0, 'the shelter fell a level');
+    assert.ok(
+      Number(after.rows[0].level) < stood,
+      `the shelter fell: ${stood} -> ${after.rows[0].level}`,
+    );
 
     const state = await loadWorld(client, settlementId);
     assert.equal(state.survivor.alive, true, 'someone is holding the camp again');

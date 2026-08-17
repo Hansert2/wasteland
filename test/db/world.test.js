@@ -5,6 +5,7 @@ import { pool } from '../../src/db/pool.js';
 import { loadWorld } from '../../src/db/world.js';
 import { advanceSettlement } from '../../src/services/advance-settlement.js';
 import { viewCamp } from '../../src/services/view-camp.js';
+import { STRUCTURES } from '../../src/game/structures.js';
 
 const T0 = Date.UTC(2287, 0, 1);
 const hours = (h) => h * 60 * 60 * 1000;
@@ -127,7 +128,7 @@ test('loadWorld translates schema vocabulary into simulation vocabulary', async 
     // ratePerHour came from the garden's level, not from a column on this row.
     assert.deepEqual(state.settlement.resources.food, {
       amount: 50,
-      ratePerHour: 1.2,
+      ratePerHour: STRUCTURES.garden.perLevel,
       cap: 100000,
     });
     assert.equal(state.survivor.alive, true);
@@ -148,7 +149,11 @@ test('advancing a supplied settlement accrues resources and persists them', asyn
 
     const reloaded = await loadWorld(client, settlementId);
     assert.equal(reloaded.lastTickAt, T0 + hours(10));
-    assert.equal(reloaded.settlement.resources.scrap.amount, 10, '1/hr for 10 hours');
+    assert.equal(
+      reloaded.settlement.resources.scrap.amount,
+      STRUCTURES.workshop.perLevel * 10,
+      'ten hours of one workshop level',
+    );
     assert.equal(reloaded.survivor.alive, true);
   });
 });
@@ -238,7 +243,11 @@ test('a starved survivor is retired, and the camp keeps producing without them',
     // with no survivor at all — and its production is unaffected by that.
     const reloaded = await loadWorld(client, settlementId);
     assert.equal(reloaded.survivor, null);
-    assert.equal(reloaded.settlement.resources.scrap.amount, 240, '1/hr for the full 10 days');
+    assert.equal(
+      reloaded.settlement.resources.scrap.amount,
+      STRUCTURES.workshop.perLevel * 24 * 10,
+      'ten full days of one workshop level',
+    );
   });
 });
 

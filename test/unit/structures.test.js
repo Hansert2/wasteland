@@ -23,9 +23,9 @@ test('production scales with level and lands on the right resource', () => {
     { kind: 'workshop', level: 3 },
   ]);
 
-  assert.equal(rates.food, 2.4);
-  assert.equal(rates.water, 2.5);
-  assert.equal(rates.scrap, 3);
+  assert.equal(rates.food, STRUCTURES.garden.perLevel * 2);
+  assert.equal(rates.water, STRUCTURES.water_purifier.perLevel);
+  assert.equal(rates.scrap, STRUCTURES.workshop.perLevel * 3);
   assert.equal(rates.fuel, 0, 'nothing produces fuel yet');
 });
 
@@ -52,8 +52,11 @@ test('a level 1 garden outproduces a survivor, so a basic camp is sustainable', 
 });
 
 test('storage comes from the shelter, with a floor for a camp that has none', () => {
-  assert.equal(storageCap([]), 100);
-  assert.equal(storageCap([{ kind: 'shelter', level: 2 }]), 600);
+  assert.equal(storageCap([]), 100, 'a camp with no shelter still has somewhere to put things');
+  assert.equal(
+    storageCap([{ kind: 'shelter', level: 2 }]),
+    100 + STRUCTURES.shelter.storagePerLevel * 2,
+  );
 });
 
 test('the build curve runs from seconds to days', () => {
@@ -65,11 +68,13 @@ test('the build curve runs from seconds to days', () => {
   assert.ok(first.hours * 3600 < 60, `a first garden takes ${first.hours * 3600}s`);
   assert.ok(first.scrap <= 10, 'and is affordable from what a new camp is given');
 
-  const middling = upgradeCost('garden', 8);
-  assert.ok(middling.hours > 1 && middling.hours < 24, `level 9 takes ${middling.hours}h`);
+  // Halving output per level doubled the level count, so these milestones sit twice
+  // as deep as they used to. The span is the point, not where it is indexed.
+  const middling = upgradeCost('garden', 16);
+  assert.ok(middling.hours > 1 && middling.hours < 24, `level 17 takes ${middling.hours}h`);
 
-  const late = upgradeCost('garden', 13);
-  assert.ok(late.hours > 48, `level 14 takes ${(late.hours / 24).toFixed(1)} days`);
+  const late = upgradeCost('garden', 26);
+  assert.ok(late.hours > 48, `level 27 takes ${(late.hours / 24).toFixed(1)} days`);
   assert.ok(late.scrap > first.scrap * 100, 'with a cost to match');
 
   assert.equal(upgradeCost('nonsense', 0), null);
@@ -87,16 +92,23 @@ test('every structure can say what it does', () => {
 test('the effect described is the effect produced', () => {
   // The description is derived from the same numbers as the rates, so the two cannot
   // drift: if this ever disagrees, one of them is lying to the player.
-  // The page rounds; the simulation must not. 1.2 × 3 is 3.5999999999999996, and the
-  // player should read "+3.6 food/h" while the tick keeps every digit.
-  assert.equal(structureEffect('garden', 3), '+3.6 food/h');
-  const rate = productionRates([{ kind: 'garden', level: 3 }]).food;
-  assert.ok(Math.abs(rate - 3.6) < 1e-9, `described 3.6, produces ${rate}`);
+  // The page rounds; the simulation must not. Six tenths times seven is
+  // 4.199999999999999, and the player should read "+4.2 food/h" while the tick keeps
+  // every digit of it.
+  const level = 7;
+  const expected = STRUCTURES.garden.perLevel * level;
+  assert.equal(structureEffect('garden', level), `+${Math.round(expected * 10) / 10} food/h`);
+  const rate = productionRates([{ kind: 'garden', level }]).food;
+  assert.ok(Math.abs(rate - expected) < 1e-9, `described ${expected}, produces ${rate}`);
 
-  assert.equal(structureEffect('shelter', 2), '600 storage');
-  assert.equal(storageCap([{ kind: 'shelter', level: 2 }]), 600);
+  const shelterCap = 100 + STRUCTURES.shelter.storagePerLevel * 2;
+  assert.equal(structureEffect('shelter', 2), `${shelterCap} storage`);
+  assert.equal(storageCap([{ kind: 'shelter', level: 2 }]), shelterCap);
 
-  assert.equal(structureEffect('watchtower', 2), '16 defence');
+  assert.equal(
+    structureEffect('watchtower', 2),
+    `${STRUCTURES.watchtower.defencePerLevel * 2} defence`,
+  );
 });
 
 test('an unbuilt structure admits it does nothing', () => {
@@ -153,17 +165,19 @@ test('building defences does not make a camp a richer-looking target', () => {
 });
 
 test('wealth is levels plus what is actually in the stores', () => {
-  const camp = [{ kind: 'garden', level: 3 }, { kind: 'watchtower', level: 2 }];
+  const camp = [{ kind: 'garden', level: 4 }, { kind: 'watchtower', level: 2 }];
 
-  assert.equal(campWealth(camp), 3, 'three levels of garden, and a tower worth nothing');
-  assert.equal(campDefence(camp), 16);
+  // Half a point a level, so wealth stayed on its old scale when levels doubled —
+  // otherwise every camp would have looked twice as rich to raiders overnight.
+  assert.equal(campWealth(camp), 2, 'four levels of garden, and a tower worth nothing');
+  assert.equal(campDefence(camp), STRUCTURES.watchtower.defencePerLevel * 2);
 
   // A full larder is the visible part, and the part that can be carried off — so a
   // raided camp is a less interesting camp next time.
   const stocked = campWealth(camp, { food: { amount: 400 }, scrap: { amount: 200 } });
-  assert.equal(stocked, 9);
+  assert.equal(stocked, 8, 'six hundred in the stores is six more points of interest');
 
-  assert.equal(campWealth(camp, {}), 3, 'empty stores add nothing');
+  assert.equal(campWealth(camp, {}), 2, 'empty stores add nothing');
   assert.equal(campWealth([], undefined), 0, 'and an empty camp is worth nothing at all');
 });
 

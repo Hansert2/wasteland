@@ -27,7 +27,7 @@ async function withRollback(fn) {
 }
 
 /** A camp with fuel in the tank and the structures the fuel track needs. */
-async function setup(client, { fuel = 200, purifier = 2, workshop = 2 } = {}) {
+async function setup(client, { fuel = 200, purifier = 4, workshop = 4 } = {}) {
   const { settlementId } = await foundSettlement(client, {
     email: `${uniq()}@example.test`,
     password: 'correct horse battery staple',
@@ -137,11 +137,14 @@ test('an upgrade needs the structure it bolts onto', async () => {
 
     await assert.rejects(
       startUpgrade(client, settlementId, 'filtration'),
-      (error) => error instanceof InputError && /water purifier at level 2/i.test(error.message),
+      (error) =>
+        error instanceof InputError &&
+        new RegExp(`water purifier at level ${UPGRADES.filtration.requiresLevel}`, 'i')
+          .test(error.message),
     );
 
     await client.query(
-      `update camp_structures set level = 2 where settlement_id = $1 and kind = 'water_purifier'`,
+      `update camp_structures set level = 4 where settlement_id = $1 and kind = 'water_purifier'`,
       [settlementId],
     );
     await startUpgrade(client, settlementId, 'filtration');
@@ -254,17 +257,20 @@ const levelOf = async (client, settlementId, kind) => {
 
 test('a successor loses an upgrade the knocked-back camp can no longer hold up', async () => {
   await withRollback(async (client) => {
-    const settlementId = await setup(client, { purifier: 2 });
+    // Fitted at exactly the level it needs, so the successor's knock takes it under.
+    const needed = UPGRADES.filtration.requiresLevel;
+    const settlementId = await setup(client, { purifier: needed });
     await fitThenKill(client, settlementId);
 
-    assert.equal(await levelOf(client, settlementId, 'water_purifier'), 1, 'knocked back');
+    const left = await levelOf(client, settlementId, 'water_purifier');
+    assert.ok(left < needed, `knocked back from ${needed} to ${left}`);
 
     const state = await loadWorld(client, settlementId);
     assert.deepEqual(state.settlement.upgrades, [], 'filtration came off with the camp');
 
     // And it is genuinely gone, not merely hidden: it can be bought again.
     await client.query(
-      `update camp_structures set level = 2 where settlement_id = $1 and kind = 'water_purifier'`,
+      `update camp_structures set level = 4 where settlement_id = $1 and kind = 'water_purifier'`,
       [settlementId],
     );
     await startUpgrade(client, settlementId, 'filtration');
@@ -274,10 +280,13 @@ test('a successor loses an upgrade the knocked-back camp can no longer hold up',
 test('but a structure built past the requirement carries its upgrade through', async () => {
   await withRollback(async (client) => {
     // This is the decision the rule creates: overbuilding is insurance against death.
-    const settlementId = await setup(client, { purifier: 3 });
+    // Built far enough past the requirement that the knock cannot take it under.
+    const needed = UPGRADES.filtration.requiresLevel;
+    const settlementId = await setup(client, { purifier: needed + 2 });
     await fitThenKill(client, settlementId);
 
-    assert.equal(await levelOf(client, settlementId, 'water_purifier'), 2, 'still meets it');
+    const left = await levelOf(client, settlementId, 'water_purifier');
+    assert.ok(left >= needed, `survived the knock at ${left}, needing ${needed}`);
 
     const state = await loadWorld(client, settlementId);
     assert.deepEqual(state.settlement.upgrades, ['filtration'], 'the successor inherits it');
@@ -288,7 +297,7 @@ test('the radio buys the hour of the next raid, and nothing else', async () => {
   await withRollback(async (client) => {
     const settlementId = await setup(client);
     await client.query(
-      `update camp_structures set level = 2 where settlement_id = $1 and kind = 'watchtower'`,
+      `update camp_structures set level = 4 where settlement_id = $1 and kind = 'watchtower'`,
       [settlementId],
     );
     const now = Date.now();
