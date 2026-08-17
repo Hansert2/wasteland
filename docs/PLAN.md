@@ -409,6 +409,30 @@ water +1.75/h, next garden 7 scrap and a minute — and an attentive first hour 
 buys five builds. Only the numbers on the level counters changed, and the distance
 between here and a big camp.
 
+**Build time is deliberately steeper than that square root, and it is the one number
+here chosen from measurement rather than derived.** Growing time and cost together
+left the build crew idle 7% of the time, and that quietly retired the queue of one:
+
+    time growth      crew busy at garden level 6 / 10 / 16 / 20 / 26
+    1.414 (paired)      7%    9%   14%   19%    30%
+    1.5   (chosen)      8%   13%   29%   50%   100%
+    1.55                9%   17%   45%   88%   100%
+
+A queue of one only forces a choice while the crew is the scarce thing. It had
+stopped being scarce — not because the queue got longer but because it became
+instant — so nothing was ever built *instead of* anything, and "choosing what to
+build next is the game" had become false while nobody was looking.
+
+At 1.5 the early game stays click-heavy, which is what onboarding needs and what the
+8% figure means; the middle is a real coin-toss between waiting for scrap and waiting
+for the crew; and the deep game is time-gated the way the original curve was. Steeper
+values were measured and rejected: 1.55 and 1.6 put a single late level at thirty and
+seventy days, which is the same failure wearing the other hat.
+
+Onboarding is untouched by it — identical build counts through the first twelve hours
+— because early play is gated on scrap, not on the crew. That is the 8% saying the
+same thing twice.
+
 Measured, first hour, attentive player: **one build without the short regions, four
 with them** — and a return to read every ten minutes. Four structure levels at ten
 minutes, seven at an hour, eleven at three hours, twenty at twelve.

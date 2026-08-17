@@ -155,13 +155,28 @@ function multiplierOf(installed, field) {
 /**
  * How fast the two curves climb.
  *
- * Square roots because a level is now worth half what it used to be: output per
- * level was halved and the level count doubled, so the growth per level has to be
- * the square root of the old growth for the curve to keep its shape. Without that,
- * doubling the levels under the old exponent would have put a garden of twelve
- * food an hour at two hundred thousand scrap instead of two and a half.
+ * **Cost** is the square root of the old growth, because a level is now worth half
+ * what it used to be: output per level was halved and the level count doubled, so
+ * the growth per level has to be the square root for the curve to keep its shape.
+ * Without that, doubling the levels under the old exponent would have put a garden
+ * of twelve food an hour at two hundred and thirty thousand scrap instead of two and
+ * a half thousand.
+ *
+ * **Time is deliberately steeper than that square root**, and this is the one number
+ * here chosen from measurement rather than derived. Time and cost growing together
+ * left the build crew idle: builds finished so far inside the time it took to earn
+ * the next one that the queue of one stopped being a constraint at all, and with it
+ * went "choosing what to build next is the game" — not because the queue got longer
+ * but because it became instant. Scrap was the only thing anyone ever waited for.
+ *
+ * At 1.5 the crew is busy 8% of the time at level 6, 29% by 16, and 50% by level 20,
+ * where a garden reaches twelve food an hour. Early play stays click-heavy, which is
+ * what the onboarding needs; mid-play is a real coin-toss between waiting for scrap
+ * and waiting for the crew; and the deep game is time-gated the way the original
+ * curve was. Anything steeper (1.55, 1.6) put a single late level at thirty to
+ * seventy days, which is the same failure wearing the other hat.
  */
-const TIME_GROWTH = Math.SQRT2;
+const TIME_GROWTH = 1.5;
 const COST_GROWTH = Math.sqrt(1.7);
 
 /**
