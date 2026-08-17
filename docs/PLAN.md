@@ -630,6 +630,64 @@ rather than estimated. The cheaper version — reporting only the survivor's con
 was considered and rejected: without a haul-so-far there is nothing to weigh, and a
 moment degrades from a situation into a prompt.
 
+**The timeline is a reporting projection. The simulation still resolves exactly once, at
+`returns_at`.** This is the correction that keeps the whole phase honest, and it was
+nearly missed. If the timeline were the simulation — if a hazard placed at hour 11 killed
+the survivor at hour 11 — then they would stop eating seven hours earlier than they do
+today, and the unattended trip would no longer be identical. The guarantee would break
+quietly, in the way that is hardest to notice.
+
+So damage is *reported* as taken at hour 11 and *applied* on return, which is already how
+the game works and was simply never visible. Health at a moment, which the lethality rule
+needs, is therefore `current health − damage reported so far`: a computed value, not a
+simulated one. Nothing about when anybody dies changes.
+
+#### Settled: how the haul is attributed, and why there is nothing to reconcile
+
+The question was first written down as "splitting integer loot across segments so the
+parts sum exactly", which is a genuinely awkward problem — largest remainder, drift,
+reconciliation at the end. It was the wrong framing, and the right one dissolves it.
+
+**Do not split. Define the cumulative directly:**
+
+    carried(kind, h) = floor(total[kind] × progress(h) + jitter[kind])
+
+`progress` is monotone with `progress(0) = 0` and `progress(1) = 1`. Exactness at the
+end is then automatic — there are no parts to reconcile and no error to accumulate — and
+the report can never go backwards because `progress` never does. An entire class of bug
+stops existing rather than getting solved.
+
+`jitter[kind]` is a value in `[0, 1)` drawn per resource per trip from the timeline
+generator. Without it, `floor` puts a haul of one scrap at the very last instant of the
+trip and nowhere else; with it, small hauls surface somewhere sensible instead.
+Exactness survives untouched, because `floor(total + jitter) = total` for an integer
+total and a jitter under one.
+
+**`floor` rather than `round`, deliberately:** never report something they have not
+picked up yet. It also gives turning back the right shape — bailing at nine tenths of the
+way brings home nine tenths, and nothing is rounded up as a parting gift.
+
+**`progress` is shaped, not linear:** little on the way out, most of it in the middle,
+little on the walk home. Any monotone curve anchored at 0 and 1 is safe, so this is free
+to tune. Per-trip jitter on the *curve* is deliberately left out for now — the per-kind
+offset already breaks up the mechanical feel, and a jittered curve is one more thing that
+has to be proven to still end at exactly 1.
+
+Radiation takes the same treatment at one decimal place. Finds and the hazard are not
+quantities but discrete events: the timeline generator gives each an hour, and they are
+reported once that hour has passed. Exact by construction, nothing to sum.
+
+Choices extend the curve piecewise rather than replacing it. Pressing on at hour 11 adds
+its bonus over the hours that remain; turning back at hour 11 banks `carried(kind, 11)`
+and forfeits the rest, which is exact by definition rather than by arithmetic.
+
+**The haul is shown on the camp page whenever a survivor is out, not only at a moment.**
+An expedition in flight stops being a bare countdown and becomes something worth looking
+at — which is the "too little per visit" complaint answered on every check-in rather than
+only on the two or three that happen to catch a window. It costs the moments nothing:
+what makes a moment special is the *choice*, and the choice is still only there while the
+window is open.
+
 #### What the tick has to do: nothing
 
 Recorded as a **departure from this phase as first sketched.** The sketch said a moment
