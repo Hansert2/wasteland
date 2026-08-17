@@ -579,7 +579,8 @@ decision; one sequential person only made it flavour.
 
 ### Phase 6 — encounters in the field
 
-*Against: no surprises, too little per visit.*
+*Against: no surprises, too little per visit.* Worked through in detail 2026-08-17;
+still not built.
 
 An expedition is a dispatch and a log. You pick a region, and some hours later you read
 what was decided the instant you clicked. Everything between departure and return is a
@@ -599,15 +600,70 @@ weekend away — and by the same logic a thinner haul must not be the price of a
 day. This is what lets an active-leaning phase ship without quietly converting the idle
 loop into a punishment.
 
-**Moments must not change what is drawn.** Same rule as gear and as weather, for the
-third time and the same reason: a trip where every moment defaults must be identical,
-roll for roll, to a trip taken before encounters existed. That is the test, and it is
-the same test `test/unit/expeditions.test.js` already knows how to write.
+#### Three generators, and why the base one is never touched
 
-The tick needs nothing new to carry this. It already walks the interval in slices cut at
-pending timestamps; a moment is one more such timestamp, and an expedition already
-resolves from a stored seed so a retried request replays the trip instead of re-rolling
-it.
+**Moments must not change what is drawn.** Same rule as gear and as weather, for the
+third time and the same reason. The mechanism is the part worth writing down: moments
+and their consequences draw from **separate generators salted off the same seed** —
+`makeRandom(mix(seed, 'moments'))` and `makeRandom(mix(seed, 'timeline'))` — and never
+from the one `resolveExpedition` already opens. The base draw sequence is therefore
+untouched by construction rather than by discipline, and a trip where every moment
+defaults is identical to one taken before encounters existed, roll for roll, without
+anyone having to remember not to break it.
+
+#### The timeline: how a mid-trip report can be true
+
+A moment reports the trip honestly — *"six hours in, carrying 22 scrap, took 14 damage
+from a collapsing floor"* — and that is the whole reason attending is worth doing. It is
+also the one thing here that cannot be faked, because the numbers have to agree with
+what eventually lands in the stores.
+
+So the base outcome gains a **timeline**: the same rolls as today, *attributed to hours*.
+The timeline generator places the hazard at an hour, places each find at an hour, and
+splits the loot across segments. Because it is a separate generator, the totals are
+identical to today's; only their distribution in time is new, and on an unattended trip
+that distribution is never observed by anyone. `stateAt(timeline, hours)` is then a pure
+function giving the truthful report at any instant.
+
+This is the largest single piece of Phase 6 and it exists solely to make the report real
+rather than estimated. The cheaper version — reporting only the survivor's condition —
+was considered and rejected: without a haul-so-far there is nothing to weigh, and a
+moment degrades from a situation into a prompt.
+
+#### What the tick has to do: nothing
+
+Recorded as a **departure from this phase as first sketched.** The sketch said a moment
+would be "one more timestamp" for the slice walk. It is not. A trip already resolves in
+one shot at `returns_at`, so a choice is simply an extra input to `resolveExpedition`,
+and the pure signature grows one argument:
+
+    resolveExpedition({ region, survivor, seed, weather, choices })
+
+`choices` defaults to empty, which is today's game. The slice walk, the event types and
+the tick's structure are all untouched. The one exception is turning back, which moves
+`returns_at` — and that is a write at the moment of choosing, not a slice boundary.
+
+#### Schema: one column
+
+Moments derive from the seed, so they are never stored. Only the player's answers are:
+`choices jsonb not null default '[]'` on `expeditions`, holding `{index, option}` pairs.
+The settlement lock already serialises this against ticks, exactly as it does trades.
+
+#### Where the moments fall, and how missable they are
+
+Count scales with travel time — none below two hours, one at four to six, two at nine to
+twelve, three at eighteen. The short regions deliberately have none: a ten-minute fence
+run has no interior to have a moment in, and the fence is already the attentive player's
+faucet.
+
+Windows are proportional to the trip rather than fixed, which is the answer to the
+question of whether this becomes a page you have to sit on. Roughly `travel_hours ÷
+(count × 3)`, floored at about forty-five minutes: two hours on a Deep Zone run, an hour
+and a half in the Bunkers. Check in two or three times across a long trip and you catch
+most of them; check in once and you catch one; never and you get today's game exactly.
+Moments are also placed in the trip's interior, never in the first or last tenth, so
+there is always a report worth reading and always enough trip left for the choice to
+matter.
 
 **The radio gets a second job, and it is the same job it already has.** Without it, you
 find a moment by happening to load the page inside its window. With it, the camp page
@@ -615,15 +671,61 @@ says when the next one is due. Its scrap levels protect you while you are gone; 
 helps only while you are here — which is exactly what was written about it in Phase 3,
 now paying off twice.
 
-What a moment can offer, all priced in things that already exist: press on for more loot
-at more danger, turn back and bank the haul early, spend food, water or meds from the
-pack for a margin, or spend hours investigating something for a find.
+#### The four verbs
 
-**Watch item, to be bounded before it ships:** this makes an attentive player strictly
-richer than an absent one, which is new. Total upside per trip should be capped at
-roughly one region step — attending a Deep Zone run should not out-earn a region that
-does not exist. Measure it the way filtration was measured, over sixty days, before
-believing it.
+All priced in things that already exist:
+
+- **Press on** — more loot from the remaining segment, at more danger and more hours.
+- **Investigate** — spend hours for a shot at a find.
+- **Spend** — burn food, water or meds from the pack for a margin.
+- **Turn back** — bank what the timeline says they are carrying, forfeit the rest, come
+  home early. This is the defensive verb, and it is the one that makes the report
+  load-bearing: you turn back *because* the news was bad. Without it, attending is only
+  ever greed, and a decision with upside on every branch is not a decision.
+
+#### Lethality: disclosure, not a special case
+
+A choice can kill only a survivor who was already in trouble, and the page says so before
+you commit. The rule needs no threshold constant and no special-casing, because it falls
+out of arithmetic already in the game: **an option whose worst case exceeds the
+survivor's health at that moment is shown with an explicit warning, and is never offered
+without one.** A survivor at full health never sees a warning, because the worst case
+cannot reach them — the same way maximum hazard at danger 5 is 45 against 100 health
+today. "A healthy survivor cannot die on an expedition" survives Phase 6 intact, and the
+real risk stays what it has always been here: going out hurt.
+
+#### What the log says about a moment you missed
+
+A neutral mention: *"They passed a sealed door and kept going."* Present in the return
+log, with nothing implying a loss. The alternative — naming what was forfeited — is the
+stronger pull toward checking in often and was rejected for it: an idle player would be
+told they had played it wrong on every single trip, which is the same failure as an
+unfair offline death wearing a politer hat. A missed moment is a thing that happened, not
+a bill.
+
+#### The bound on attentive play
+
+This makes an attentive player strictly richer than an absent one, which is new to this
+game and is the thing most likely to go wrong quietly. The target: **attending every
+moment on a trip is worth at most one region step of loot** — roughly 35% on the mid
+regions, so about 12% for each of the Deep Zone's three. Fully attending the Deep Zone
+should land near a region that does not exist, and never past it.
+
+That is a tuning target verified by measurement, not a runtime clamp. Measure it over
+sixty days the way filtration was measured, and do not believe it before then — the
+filtration lesson was precisely that a mechanic designed to ease a constraint had deleted
+it, and only simulation found out.
+
+#### The tests that hold it up
+
+1. **The big one:** for many seeds, `choices: []` reproduces the pre-Phase-6 outcome
+   exactly — loot, finds, rads, hazard, death, log.
+2. The moments and timeline generators never advance the base generator.
+3. Timeline segments sum to the outcome's totals, at every hour.
+4. No option whose worst case would kill is ever offered unwarned.
+5. A choice submitted outside its window is rejected; a repeated identical choice is a
+   no-op and a conflicting one is refused.
+6. Measured, not asserted: the attentive-play bound above.
 
 ### Phase 7 — a camp with people in it
 
