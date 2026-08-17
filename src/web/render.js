@@ -31,7 +31,7 @@ export function layout(title, body) {
 <html lang="en">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${escape(title)}</title><style>${STYLE}</style></head>
-<body>${body}</body></html>`;
+<body>${body}<script>${TIMERS}</script></body></html>`;
 }
 
 const n = (value, places = 1) => Number(value).toFixed(places);
@@ -52,6 +52,69 @@ function duration(hours) {
   if (h < 48) return `${n(h)} h`;
   return `${n(h / 24)} days`;
 }
+
+/**
+ * A duration that keeps counting after the page is rendered.
+ *
+ * Every timer here used to be a number computed once and then frozen, which was
+ * defensible while a build took four hours — you would close the tab and come back
+ * tomorrow. The pacing rescale made a first workshop take thirty-six seconds, and a
+ * frozen countdown on a thirty-six second build is just wrong: things now finish
+ * while you are looking at them. Found by playing it, which is the only way this
+ * kind of thing gets found.
+ *
+ * The element carries the instant rather than the text, so the script below can
+ * re-render it every second without knowing what it is counting towards.
+ */
+function countdown(at, done = 'now') {
+  const until = new Date(at).getTime();
+  const left = (until - Date.now()) / 3600000;
+  return `<span data-until="${until}" data-done="${escape(done)}">${
+    escape(left > 0 ? duration(left) : done)
+  }</span>`;
+}
+
+/**
+ * The whole of the client-side JavaScript, and it is meant to stay that way.
+ *
+ * Ticks every visible timer once a second, and reloads when one runs out — because
+ * the server is the only thing that knows what a finished build actually produced.
+ * Only timers that were still running at page load can trigger that reload: one that
+ * had already expired when the HTML was generated is showing the server's own "done"
+ * text, and reloading for it would loop forever.
+ */
+const TIMERS = `
+(() => {
+  const fmt = (ms) => {
+    const s = Math.round(ms / 1000);
+    if (s < 60) return s + 's';
+    if (s < 3600) return Math.round(s / 60) + ' min';
+    if (s < 172800) return (s / 3600).toFixed(1) + ' h';
+    return (s / 86400).toFixed(1) + ' days';
+  };
+
+  const live = [...document.querySelectorAll('[data-until]')]
+    .filter((el) => Number(el.dataset.until) > Date.now());
+  if (live.length === 0) return;
+
+  let reloading = false;
+  const tick = () => {
+    for (const el of live) {
+      const left = Number(el.dataset.until) - Date.now();
+      if (left > 0) { el.textContent = fmt(left); continue; }
+      el.textContent = el.dataset.done;
+      if (!reloading) {
+        reloading = true;
+        // A moment's grace so the server's clock is unambiguously past the hour.
+        setTimeout(() => location.reload(), 1200);
+      }
+    }
+  };
+
+  tick();
+  setInterval(tick, 1000);
+})();
+`;
 
 export function landingPage({ error } = {}) {
   return layout('Wasteland', `
@@ -121,9 +184,7 @@ function renderWeather(weather) {
 
   const items = weather
     .map((event) => {
-      const hoursLeft = (new Date(event.endsAt).getTime() - Date.now()) / 3600000;
-      const left = hoursLeft > 0 ? `${duration(hoursLeft)} left` : 'clearing';
-      return `<li><strong>${escape(event.name)}</strong> (${escape(left)}) &mdash;
+      return `<li><strong>${escape(event.name)}</strong> (${countdown(event.endsAt, 'clearing')} left) &mdash;
         ${escape(event.description)}</li>`;
     })
     .join('');
@@ -146,7 +207,7 @@ function renderRaidWarning(expectedAt) {
     return '<p class="error">The radio has gone quiet. They are overdue &mdash; reload.</p>';
   }
 
-  return `<p class="error">Radio: raiders expected in ${duration(hoursLeft)}.
+  return `<p class="error">Radio: raiders expected in ${countdown(expectedAt, 'any moment')}.
     Anything still in the stores is theirs to take.</p>`;
 }
 
@@ -231,10 +292,10 @@ function renderExpeditions(view) {
     const hoursLeft = (new Date(view.expedition.returnsAt).getTime() - Date.now()) / 3600000;
     const due =
       hoursLeft > 0
-        ? `due back in ${duration(hoursLeft)}`
+        ? `due back in ${countdown(view.expedition.returnsAt, 'now')}`
         : 'overdue — reload to see what came back';
     return `<h2>Away</h2>
-      <p>${escape(view.expedition.regionName)} — ${escape(due)}</p>`;
+      <p>${escape(view.expedition.regionName)} — ${due}</p>`;
   }
 
   const rows = view.regions
@@ -272,9 +333,9 @@ function renderInventory(inventory) {
 function renderWorkshop(view) {
   if (view.craft) {
     const hoursLeft = (new Date(view.craft.completesAt).getTime() - Date.now()) / 3600000;
-    const due = hoursLeft > 0 ? `ready in ${duration(hoursLeft)}` : 'ready — reload to collect it';
+    const due = hoursLeft > 0 ? `ready in ${countdown(view.craft.completesAt, 'now')}` : 'ready — reload to collect it';
     return `<h2>On the bench</h2>
-      <p>${escape(view.craft.name)} — ${escape(due)}</p>`;
+      <p>${escape(view.craft.name)} — ${due}</p>`;
   }
 
   if (!view.recipes || view.recipes.length === 0) return '';
@@ -337,9 +398,9 @@ function renderCaravan(caravan, someoneAlive) {
 
   if (!caravan.visiting) {
     const hoursOut = (new Date(caravan.arrivesAt).getTime() - Date.now()) / 3600000;
-    const when = hoursOut > 0 ? `expected in ${duration(hoursOut)}` : 'expected — reload';
+    const when = hoursOut > 0 ? `expected in ${countdown(caravan.arrivesAt, 'now')}` : 'expected — reload';
     return `<h2>On the road</h2>
-      <p>A caravan from ${escape(caravan.name)}, ${escape(when)}.</p>`;
+      <p>A caravan from ${escape(caravan.name)}, ${when}.</p>`;
   }
 
   const hoursLeft = (new Date(caravan.departsAt).getTime() - Date.now()) / 3600000;
@@ -366,7 +427,7 @@ function renderCaravan(caravan, someoneAlive) {
 
   return `<h2>${escape(caravan.name)} — at the gate</h2>
     <p><small>${escape(caravan.description)}</small><br>
-       Moving on in ${escape(duration(hoursLeft))}. Standing ${describeStanding(caravan.standing)}
+       Moving on in ${countdown(caravan.departsAt, 'now')}. Standing ${describeStanding(caravan.standing)}
        ${caravan.standing < 0 ? '&mdash; their prices show it.' : caravan.standing > 0 ? '&mdash; the rates are friendly.' : '&mdash; strangers pay list price.'}</p>
     <table>${rows}</table>`;
 }
@@ -439,8 +500,8 @@ function upgradeRow(structure, buildInFlight, someoneAlive) {
 
   if (upgrade.fittingUntil) {
     const hoursLeft = (new Date(upgrade.fittingUntil).getTime() - Date.now()) / 3600000;
-    const when = hoursLeft > 0 ? `being fitted, ${duration(hoursLeft)} left` : 'fitted, reload';
-    return `<tr><td colspan="5"><small>${label} <em>(${escape(when)})</em></small></td></tr>`;
+    const when = hoursLeft > 0 ? `being fitted, ${countdown(upgrade.fittingUntil, 'now')} left` : 'fitted, reload';
+    return `<tr><td colspan="5"><small>${label} <em>(${when})</em></small></td></tr>`;
   }
 
   if (structure.level < upgrade.requiresLevel) {
@@ -472,8 +533,8 @@ function purposeOf(structure) {
 function statusCell(structure, buildInFlight, someoneAlive) {
   if (structure.build_completes_at) {
     const hoursLeft = (new Date(structure.build_completes_at).getTime() - Date.now()) / 3600000;
-    const when = hoursLeft > 0 ? `done in ${duration(hoursLeft)}` : 'done — reload';
-    return `<td colspan="2">building level ${structure.level + 1}, ${escape(when)}</td>`;
+    const when = hoursLeft > 0 ? `done in ${countdown(structure.build_completes_at, 'now')}` : 'done — reload';
+    return `<td colspan="2">building level ${structure.level + 1}, ${when}</td>`;
   }
 
   if (!structure.nextCost) return '<td></td><td></td>';
