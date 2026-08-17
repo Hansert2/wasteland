@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { pool } from '../../src/db/pool.js';
 import { loadWorld } from '../../src/db/world.js';
 import { advanceSettlement } from '../../src/services/advance-settlement.js';
+import { viewCamp } from '../../src/services/view-camp.js';
 
 const T0 = Date.UTC(2287, 0, 1);
 const hours = (h) => h * 60 * 60 * 1000;
@@ -179,6 +180,40 @@ test('loadWorld orders its arrays, so two loads of one world always match', asyn
 
     assert.deepEqual(kinds, [...kinds].sort(), 'structures come back in a defined order');
     assert.ok(kinds.length > 1, 'and there are enough of them for order to mean anything');
+  });
+});
+
+test('the rate the camp page shows is the rate the stores actually move at', async () => {
+  await withRollback(async (client) => {
+    // The page used to report gross production: it ignored the survivor eating and
+    // ignored the weather, so during a blight it promised food climbing while the
+    // stores fell. A rate is only useful if it predicts the next hour.
+    const { settlementId } = await seed(client);
+    const now = Date.now();
+
+    await client.query('update settlements set last_tick_at = $2 where id = $1', [
+      settlementId,
+      new Date(now),
+    ]);
+
+    const view = await viewCamp(client, settlementId, now);
+    const before = await loadWorld(client, settlementId);
+
+    await advanceSettlement(client, settlementId, now + hours(1));
+    const after = await loadWorld(client, settlementId);
+
+    for (const shown of view.resources) {
+      const moved =
+        after.settlement.resources[shown.kind].amount -
+        before.settlement.resources[shown.kind].amount;
+
+      // An hour of the shown rate should be an hour of real movement. Tolerance is
+      // for the slice walk's floating point, not for the rate being approximate.
+      assert.ok(
+        Math.abs(moved - shown.ratePerHour) < 0.01,
+        `${shown.kind}: page said ${shown.ratePerHour}/h, stores moved ${moved.toFixed(3)}`,
+      );
+    }
   });
 });
 

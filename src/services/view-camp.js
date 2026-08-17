@@ -1,5 +1,6 @@
 import { advanceSettlement } from './advance-settlement.js';
-import { WORLD_EVENTS, activeAt } from '../game/world-events.js';
+import { WORLD_EVENTS, activeAt, productionFactors } from '../game/world-events.js';
+import { CONFIG } from '../game/constants.js';
 import { FACTIONS, caravanVisit, priceAt, standingOf } from '../game/factions.js';
 import {
   STRUCTURES,
@@ -146,6 +147,13 @@ export async function viewCamp(client, settlementId, now = Date.now()) {
 
   const rates = productionRates(structures);
 
+  // What the sky is doing to production, and what the survivor takes back out. Both
+  // are part of "the rate" as a player experiences it; neither used to be counted.
+  const weatherFactors = productionFactors(activeAt(state.worldEvents, now));
+  const eats = state.survivor
+    ? { food: CONFIG.foodPerHour, water: CONFIG.waterPerHour }
+    : {};
+
   return {
     name: settlements[0].name,
     foundedAt: settlements[0].founded_at,
@@ -204,11 +212,22 @@ export async function viewCamp(client, settlementId, now = Date.now()) {
       : null,
     expedition: away[0] ? { regionName: away[0].name, returnsAt: away[0].returns_at } : null,
     survivor: state.survivor ? { ...state.survivor, name: survivorRow[0]?.name } : null,
+    /**
+     * The rate a player can act on: what the stores will actually do next hour.
+     *
+     * This used to report gross production, which was wrong in two directions at
+     * once. It ignored the survivor eating — a level 1 garden reads +1.2 while the
+     * camp nets +0.7 — and it ignored the weather, so during a blight the page
+     * promised +1.2 food/h while the true figure was 0.42 gross and *negative* once
+     * the survivor was fed. A number that says food is climbing while it falls is
+     * worse than no number.
+     */
     resources: Object.entries(state.settlement.resources).map(([kind, r]) => ({
       kind,
       amount: r.amount,
       cap: r.cap,
-      ratePerHour: rates[kind] ?? 0,
+      ratePerHour:
+        (rates[kind] ?? 0) * (weatherFactors[kind] ?? 1) - (eats[kind] ?? 0),
     })),
   };
 }

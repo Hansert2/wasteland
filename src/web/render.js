@@ -129,10 +129,27 @@ export const TIMERS = `
 
   const live = [...document.querySelectorAll('[data-until]')]
     .filter((el) => Number(el.dataset.until) > Date.now());
-  if (live.length === 0) return;
+
+  // Stores accrue continuously, so between loads they are extrapolated from the rate
+  // the server sent. That rate is already net of the survivor and the weather, which
+  // is why this is a straight line and not a simulation — the moment it would need to
+  // be more than that, the page has reloaded anyway.
+  const stores = [...document.querySelectorAll('[data-amount]')];
+  const opened = Date.now();
+
+  if (live.length === 0 && stores.length === 0) return;
 
   let reloading = false;
   const tick = () => {
+    const elapsedHours = (Date.now() - opened) / 3600000;
+
+    for (const el of stores) {
+      const projected =
+        Number(el.dataset.amount) + Number(el.dataset.rate) * elapsedHours;
+      const clamped = Math.max(0, Math.min(Number(el.dataset.cap), projected));
+      el.textContent = clamped.toFixed(1);
+    }
+
     for (const el of live) {
       const left = Number(el.dataset.until) - Date.now();
       if (left > 0) { el.textContent = fmt(left); continue; }
@@ -484,12 +501,30 @@ function describeStanding(standing) {
   return `${word} (${standing > 0 ? '+' : ''}${n(standing, 0)})`;
 }
 
+/**
+ * The stores, climbing or falling in front of you.
+ *
+ * The amount carries its rate and cap so the script can extrapolate between loads,
+ * which is what an idle game's numbers are supposed to do — a camp that visibly
+ * fills is the whole feedback loop, and a static number made it look stalled.
+ *
+ * The rate is net: production, scaled by whatever the weather is doing, minus what
+ * the survivor eats. A negative one is shown rather than hidden, because a store
+ * quietly draining is the single most useful thing this table can tell you.
+ */
 function renderResources(resources) {
   const rows = resources
-    .map(
-      (r) => `<tr><th>${escape(r.kind)}</th><td>${n(r.amount)} / ${n(r.cap, 0)}</td>
-              <td>${r.ratePerHour > 0 ? `+${n(r.ratePerHour)}/h` : '&mdash;'}</td></tr>`,
-    )
+    .map((r) => {
+      const rate =
+        r.ratePerHour === 0
+          ? '&mdash;'
+          : `${r.ratePerHour > 0 ? '+' : ''}${n(r.ratePerHour)}/h`;
+
+      return `<tr><th>${escape(r.kind)}</th>
+        <td><span data-amount="${r.amount}" data-rate="${r.ratePerHour}"
+                  data-cap="${r.cap}">${n(r.amount)}</span> / ${n(r.cap, 0)}</td>
+        <td>${rate}</td></tr>`;
+    })
     .join('');
   return `<h2>Stores</h2><table>${rows}</table>`;
 }
