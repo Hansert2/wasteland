@@ -102,6 +102,21 @@ function countdown(at, done = 'now') {
 }
 
 /**
+ * How many decimals a store is shown to.
+ *
+ * Three, because fewer is a counter that does not count. The stores tick every second
+ * but a fresh camp gains 0.7 food an hour, so at one decimal the visible digit moves
+ * once every eight and a half minutes and the number looks frozen — which is exactly
+ * what it looked like. At three it moves every two to five seconds, which is the
+ * simulation's real behaviour finally showing through: it has always tracked
+ * fractions, the display was just rounding them away.
+ *
+ * Declared once and interpolated into the script below, so the browser and the server
+ * cannot disagree about it the way the two clock formatters could.
+ */
+const STORE_DECIMALS = 3;
+
+/**
  * The whole of the client-side JavaScript, and it is meant to stay that way.
  *
  * Ticks every visible timer once a second, and reloads when one runs out — because
@@ -147,7 +162,7 @@ export const TIMERS = `
       const projected =
         Number(el.dataset.amount) + Number(el.dataset.rate) * elapsedHours;
       const clamped = Math.max(0, Math.min(Number(el.dataset.cap), projected));
-      el.textContent = clamped.toFixed(1);
+      el.textContent = clamped.toFixed(${STORE_DECIMALS});
     }
 
     for (const el of live) {
@@ -522,7 +537,8 @@ function renderResources(resources) {
 
       return `<tr><th>${escape(r.kind)}</th>
         <td><span data-amount="${r.amount}" data-rate="${r.ratePerHour}"
-                  data-cap="${r.cap}">${n(r.amount)}</span> / ${n(r.cap, 0)}</td>
+                  data-cap="${r.cap}">${n(r.amount, STORE_DECIMALS)}</span>
+            / ${n(r.cap, 0)}</td>
         <td>${rate}</td></tr>`;
     })
     .join('');
