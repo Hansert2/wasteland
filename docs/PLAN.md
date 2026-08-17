@@ -683,6 +683,118 @@ All priced in things that already exist:
   load-bearing: you turn back *because* the news was bad. Without it, attending is only
   ever greed, and a decision with upside on every branch is not a decision.
 
+**Turning back is offered at every moment rather than being a moment of its own.** It is
+the standing option underneath all of them, which means the report always has a use and
+no encounter ever has to be written to ask "should they come home."
+
+#### The content, and the rule that keeps it from rotting
+
+Encounter content fails in a predictable way, and the failure is structural rather than
+a writing problem: twenty moments get written, they all reduce to *press on for more* or
+*hold back for less*, and within three trips the player stops reading the prose and picks
+the known-best option. The writing becomes decoration on a multiplier. No amount of good
+prose survives that, so the shape has to prevent it.
+
+**Each moment keys off a different piece of state, and no two moments on one trip may
+key off the same one.** A Deep Zone run then asks three genuinely different questions
+instead of the same question three times. It is enforceable at generation and it is a
+test, not an intention.
+
+The axes:
+
+    axis          the question it actually asks
+    health        how hurt are they right now
+    radiation     the dose so far, and whether meds are in the pack
+    time          when they get home — a raid due, or you wanting them out again
+    haul          what they are already carrying, and whether the camp can even store it
+    supplies      what is actually in the pack
+    standing      whose people these are, and what they think of the camp
+
+**Two of those axes wire Phase 6 into phases that already shipped, which is the point.**
+*Time* makes "+2 hours for a shot at a find" a completely different decision when the
+radio says raiders are due in four — Phase 3 and Phase 6 talking to each other with no
+new mechanics between them. *Standing* was found while writing the exemplars below and
+is the reason there are six axes and not the five first sketched: it puts the rivalry out
+in the field instead of only at the gate, and it costs nothing but content because
+`standingOf` and `rivalOf` already exist.
+
+*Haul* has a second-order property worth keeping: loot over the storage cap is already
+simply lost, so overloading is worthless to a camp with a full shelter. The decision
+reaches back into the camp rather than staying on the road.
+
+#### Six exemplars, one per axis
+
+Written to the established voice — flat declarative, then a turn — and fully specified,
+so the shape can be judged before twenty more are written. Defaults are marked; the
+default is always what a sensible person does alone, because the tick's survivor has
+never been an idiot.
+
+**Time — the welded door.** *Underground Bunkers, Coastal Wreckage.*
+> A door someone welded shut from the outside. That was a decision, once.
+- *Leave it* — default.
+- Work it open — two hours, and one extra find roll at even odds.
+
+**Radiation — the wind turns.** *Irradiated Farmland, The Deep Zone.*
+> The wind turns and the counter starts clicking. There is a culvert half a mile back.
+- *Push through* — default; the dose as rolled.
+- Sit it out — ninety minutes, and most of the dose.
+- Take the tablets — one rad-med from the pack, nearly all of the dose, no time lost.
+
+**Health — something has kept pace.** *The Deep Zone.*
+> Something has kept pace with them for an hour. It has not closed.
+- *Keep moving* — default.
+- Go to ground — an hour lost, and the trail with it; nothing scavenged in that hour.
+- Turn and face it — settle it now, at whatever health they have. Removes the trip's
+  remaining hazard and yields whatever it was guarding. **Warned** when the worst case
+  exceeds their health.
+
+**Haul — the container.** *Coastal Wreckage.*
+> A container split along its seam, and more inside than one person moves.
+- *Take what fits* — default.
+- Overload — a third again on the rest of the trip, an hour slower, and clumsy where
+  clumsy costs. Worth nothing if the shelter is already full.
+
+**Supplies — the tin.** *Any long region.*
+> They have walked on nothing since dawn. There is a sealed tin in the pack and a long
+> way still to go.
+- *Save it* — default.
+- Eat it — one preserved ration, health back for the rest of the trip.
+
+This is the preventive form of the health axis, and it gives the ration recipe a second
+job: "turn a surplus you cannot store into a reserve you can carry" was written about
+storage, and this is what carrying it is *for*.
+
+**Standing — the fire.** *Any long region.*
+> A fire an hour old, still warm, and three sets of boot prints leaving it. The prints
+> are not running.
+- *Keep off the skyline* — default.
+- Hail them — which crew it is comes from the moment generator, and what happens comes
+  from standing with them. Trusted, they trade a little and part friendly. Hostile, they
+  take something, or worse. **Warned** when hostile and hurt.
+
+#### Where the content lives
+
+`src/game/moments.js` — pure data beside pure functions, the `STRUCTURES` and `FACTIONS`
+pattern. Deliberately **not** `src/db/seed.js`, which is where recipes and regions live:
+those are rows other tables join to, and a moment derives from the seed and is never
+stored, so it needs no row and no migration.
+
+#### How we would know the content worked
+
+Two targets, both measurable in the soak harness, because "does it feel repetitive" is
+exactly the kind of question this project has learned not to answer by intuition:
+
+- **Repeat rate** — trips before the same moment comes round again. Repetition is what
+  kills this content, so it is a number rather than a feeling.
+- **Option distribution** — no option should be right in more than about 60% of realistic
+  states. If *press on* wins 85% of the time, the moment is a tax on attention rather
+  than a decision, and the prose failure above has simply reappeared as a number.
+
+**Volume: six first, then judge.** One exemplar per axis, fully built, is enough to find
+out whether a Deep Zone run feels like three different questions — and cheap to throw
+away if it does not. Filling out to roughly four per axis comes after that, and not
+before.
+
 #### Lethality: disclosure, not a special case
 
 A choice can kill only a survivor who was already in trouble, and the page says so before
