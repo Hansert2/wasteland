@@ -46,11 +46,38 @@ const n = (value, places = 1) => Number(value).toFixed(places);
  */
 function duration(hours) {
   const h = Number(hours);
-  if (!Number.isFinite(h) || h <= 0) return 'now';
-  if (h < 1 / 60) return `${Math.max(1, Math.round(h * 3600))}s`;
-  if (h < 1) return `${Math.round(h * 60)} min`;
-  if (h < 48) return `${n(h)} h`;
-  return `${n(h / 24)} days`;
+  if (!Number.isFinite(h)) return 'now';
+  return clock(Math.round(h * 3600));
+}
+
+/**
+ * A span of time as hours, minutes and seconds.
+ *
+ * Rounded units — "2.1 h", "12 min" — are fine to read once and useless to watch: a
+ * countdown that sits on "2.1 h" for six minutes looks broken even when it is not.
+ * Seconds are what make a timer legibly alive, so they are always shown below a day.
+ *
+ * Three units at most. Past a day the seconds are noise nobody is watching tick, and
+ * a build cost of "9d 03h 12m" is already at the edge of what fits in a table cell.
+ *
+ * The client script below repeats this logic rather than importing it — the whole of
+ * that script is twenty lines of inline JavaScript with no build step to share
+ * modules through. If either changes, change both; a test asserts they agree.
+ */
+export function clock(totalSeconds) {
+  const t = Math.max(0, Math.round(Number(totalSeconds) || 0));
+  if (t <= 0) return 'now';
+
+  const d = Math.floor(t / 86400);
+  const h = Math.floor((t % 86400) / 3600);
+  const m = Math.floor((t % 3600) / 60);
+  const s = t % 60;
+  const pad = (value) => String(value).padStart(2, '0');
+
+  if (d > 0) return `${d}d ${pad(h)}h ${pad(m)}m`;
+  if (h > 0) return `${h}h ${pad(m)}m ${pad(s)}s`;
+  if (m > 0) return `${m}m ${pad(s)}s`;
+  return `${s}s`;
 }
 
 /**
@@ -83,14 +110,21 @@ function countdown(at, done = 'now') {
  * had already expired when the HTML was generated is showing the server's own "done"
  * text, and reloading for it would loop forever.
  */
-const TIMERS = `
+export const TIMERS = `
 (() => {
+  // Mirrors clock() in render.js. Kept in step by a test that runs both.
   const fmt = (ms) => {
-    const s = Math.round(ms / 1000);
-    if (s < 60) return s + 's';
-    if (s < 3600) return Math.round(s / 60) + ' min';
-    if (s < 172800) return (s / 3600).toFixed(1) + ' h';
-    return (s / 86400).toFixed(1) + ' days';
+    const t = Math.max(0, Math.round(ms / 1000));
+    if (t <= 0) return 'now';
+    const d = Math.floor(t / 86400);
+    const h = Math.floor((t % 86400) / 3600);
+    const m = Math.floor((t % 3600) / 60);
+    const s = t % 60;
+    const pad = (v) => String(v).padStart(2, '0');
+    if (d > 0) return d + 'd ' + pad(h) + 'h ' + pad(m) + 'm';
+    if (h > 0) return h + 'h ' + pad(m) + 'm ' + pad(s) + 's';
+    if (m > 0) return m + 'm ' + pad(s) + 's';
+    return s + 's';
   };
 
   const live = [...document.querySelectorAll('[data-until]')]
