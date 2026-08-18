@@ -611,6 +611,23 @@ untouched by construction rather than by discipline, and a trip where every mome
 defaults is identical to one taken before encounters existed, roll for roll, without
 anyone having to remember not to break it.
 
+**`mix` does not exist yet, and it is the load-bearing line of the whole phase.**
+`src/game/random.js` has `makeRandom`, `intBetween`, `chance` and `newSeed`, and no way
+to derive one seed from another. It needs a string salt hashed to a uint32 — `makeRandom`
+takes `Number(seed) >>> 0` — combined with the seed and avalanched, FNV-1a over the salt
+then a mixing round is ample. It is not cryptography and does not need to be.
+
+**What it does need is to be frozen the moment the first expedition uses it.** An
+expedition's seed is stored on the row and replayed at resolution, so the trip a player
+is on right now is defined by exactly this arithmetic. Changing `mix` later — tightening
+it, tidying it, "improving" the constants — silently re-rolls every trip in flight and
+every trip any test has ever pinned. It is the same rule as an applied migration, and it
+wants the same comment saying so at the top of the function.
+
+Two tests, and the second matters more than it looks: that the three streams from one
+seed show no usable correlation, and a **golden-value test pinning exact outputs**, so a
+future refactor cannot quietly change what everyone's expedition does.
+
 #### The timeline: how a mid-trip report can be true
 
 A moment reports the trip honestly — *"six hours in, carrying 22 scrap, took 14 damage
@@ -947,6 +964,13 @@ stronger pull toward checking in often and was rejected for it: an idle player w
 told they had played it wrong on every single trip, which is the same failure as an
 unfair offline death wearing a politer hat. A missed moment is a thing that happened, not
 a bill.
+
+**Mechanically it is a line in `outcome.log`, not an event of its own.** The log is
+already the trip's narrative — the tick pushes one `expedition_returned` event carrying
+`log`, and `render.js` joins it into a sentence. A moment is part of that story and
+belongs in sequence with the scavenging and the hazard, not as a separately timestamped
+entry beside it. This also means `describe()` in `render.js` grows no new case: the
+rendering change for missed moments is nothing at all.
 
 #### The page
 
