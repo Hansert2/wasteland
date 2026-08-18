@@ -15,6 +15,9 @@
  * one taken before any of this existed.
  */
 import { makeRandom, mix } from './random.js';
+import { FACTIONS } from './factions.js';
+
+const FACTION_SLUGS = Object.keys(FACTIONS).sort();
 
 /** The salt. Changing it re-rolls which moments every trip offers; see `mix`. */
 export const MOMENTS_SALT = 'moments';
@@ -279,10 +282,18 @@ export function momentsFor(region, seed) {
     const centre = from + band * (index + 0.5);
     const atHour = centre + (random() - 0.5) * room;
 
+    // Whose fire it is, for the moments that are about that. Drawn immediately after
+    // the placement of the moment it belongs to, so the order stays stated and stable.
+    const faction =
+      MOMENTS[key].axis === 'standing'
+        ? FACTION_SLUGS[Math.floor(random() * FACTION_SLUGS.length)]
+        : null;
+
     return {
       index,
       key,
       axis: MOMENTS[key].axis,
+      faction,
       prose: MOMENTS[key].prose,
       // Turning back is assembled in here rather than written into every moment: the
       // content declares what is particular to it, and the trip adds what is always

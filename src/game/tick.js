@@ -437,6 +437,11 @@ function returnExpedition(state, at, events) {
     survivor,
     seed: expedition.seed,
     weather: expeditionFactors(activeAt(state.worldEvents, at)),
+    // Whatever the player answered while they were out. An empty list is the trip
+    // exactly as it would have resolved before any of this existed.
+    choices: expedition.choices,
+    // Only a parley reads these, and only for the crew whose fire it was.
+    standings: state.settlement.standings,
   });
 
   expedition.resolvedAt = at;
@@ -460,6 +465,10 @@ function returnExpedition(state, at, events) {
   }
 
   survivor.radiation = clamp(survivor.radiation + outcome.radiation, 0, 100);
+  // Healing before damage: a ration eaten at hour six was eaten before whatever
+  // happened at hour eleven, and settling them the other way round would let the same
+  // trip kill a survivor who ate in time.
+  survivor.health = clamp(survivor.health + (outcome.healed ?? 0), 0, 100);
   survivor.health = clamp(survivor.health - outcome.damage, 0, 100);
 
   // Items are granted by the caller: the tick has no idea what an item id is, and

@@ -1,6 +1,7 @@
 import { makeRandom, intBetween, chance, mix } from './random.js';
 import { equipmentOf } from './equipment.js';
 import { EFFECTS_SALT, momentsFor } from './moments.js';
+import { standingOf } from './factions.js';
 import { stateAt, timelineOf } from './timeline.js';
 
 /**
@@ -13,9 +14,9 @@ import { stateAt, timelineOf } from './timeline.js';
  * @param {number} args.seed
  * @param {{loot: number, radiation: number}} [args.weather] world events in force
  * @param {{index: number, option: string}[]} [args.choices] answers to the trip's moments
- * @param {number} [args.standing] standing with the crew a parley might meet
+ * @param {Record<string, number>} [args.standings] standing per faction, for a parley
  */
-export function resolveExpedition({ region, survivor, seed, weather, choices, standing = 0 }) {
+export function resolveExpedition({ region, survivor, seed, weather, choices, standings }) {
   const random = makeRandom(seed);
   const log = [];
 
@@ -35,13 +36,18 @@ export function resolveExpedition({ region, survivor, seed, weather, choices, st
 
   const trip = applyChoices(
     { loot, finds, radiation, damage, cause, healed: 0, log },
-    { region, survivor, seed, choices, standing },
+    { region, survivor, seed, choices, standings },
   );
 
   // Death is decided here rather than left to the tick, because the survivor has to
   // die of what happened out there — "mauled in the Deep Zone", not "starvation" at
   // whatever the camp's food happened to be that hour.
-  const died = trip.damage >= survivor.health;
+  //
+  // Anything they ate out there counts towards surviving it, and is capped at full
+  // health the same way the tick caps it. Without that, this and the tick would
+  // disagree: a survivor could be declared dead here and walk home there.
+  const mended = Math.min(100, Number(survivor.health) + trip.healed);
+  const died = trip.damage >= mended;
   if (died) {
     trip.log.push(`They did not make it back from ${region.name}.`);
   } else if (trip.damage > 0) {
@@ -81,7 +87,7 @@ export function resolveExpedition({ region, survivor, seed, weather, choices, st
  *
  * The numbers on the options themselves are provisional; see `src/game/moments.js`.
  */
-function applyChoices(trip, { region, survivor, seed, choices, standing }) {
+function applyChoices(trip, { region, survivor, seed, choices, standings }) {
   if (!choices || choices.length === 0) return trip;
 
   const moments = momentsFor(region, seed);
@@ -123,7 +129,9 @@ function applyChoices(trip, { region, survivor, seed, choices, standing }) {
       trip.log.push('They ate, and walked better for it.');
     }
     if (option.findChance) investigate(trip, region, random, option.findChance);
-    if (option.parley) parley(trip, timeline, at, random, standing);
+    if (option.parley) {
+      parley(trip, timeline, at, random, standingOf(standings ?? {}, moment.faction));
+    }
     if (option.hazard) confront(trip, random, equipment, option.hazard.danger);
   }
 

@@ -112,8 +112,8 @@ export async function loadWorld(client, settlementId) {
     // The region travels with the expedition because resolution is pure: the tick
     // must be able to roll an outcome without reaching back into the database.
     const { rows: active } = await client.query(
-      `select e.id, e.status, e.returns_at, e.seed,
-              r.slug, r.name, r.danger, r.loot, r.finds, r.radiation_per_trip
+      `select e.id, e.status, e.returns_at, e.seed, e.choices,
+              r.slug, r.name, r.danger, r.travel_hours, r.loot, r.finds, r.radiation_per_trip
          from expeditions e
          join regions r on r.id = e.region_id
         where e.character_id = $1 and e.status = 'active'`,
@@ -127,12 +127,18 @@ export async function loadWorld(client, settlementId) {
         status: row.status,
         returnsAt: row.returns_at.getTime(),
         seed: row.seed,
+        // What the player answered while it was in flight. Read-only in the tick: the
+        // route writes these, resolution only ever reads them.
+        choices: row.choices ?? [],
         resolvedAt: null,
         log: null,
         region: {
           slug: row.slug,
           name: row.name,
           danger: row.danger,
+          // Carried because moments are placed across the trip, so resolution cannot
+          // work out when anything was offered without knowing how long it was.
+          travelHours: Number(row.travel_hours),
           loot: row.loot,
           finds: row.finds,
           radiationPerTrip: row.radiation_per_trip,

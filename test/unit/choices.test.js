@@ -200,9 +200,9 @@ test('standing decides a parley, and hostility costs', () => {
     const choices = [{ index: hail.index, option: hail.option }];
     const total = (loot) => Object.values(loot).reduce((sum, value) => sum + value, 0);
 
-    const trusted = total(trip(seed, { choices, standing: 90 }).loot);
-    const strangers = total(trip(seed, { choices, standing: 0 }).loot);
-    const hated = total(trip(seed, { choices, standing: -90 }).loot);
+    const trusted = total(trip(seed, { choices, standings: { junction_crews: 90, green_river: 90 } }).loot);
+    const strangers = total(trip(seed, { choices, standings: {} }).loot);
+    const hated = total(trip(seed, { choices, standings: { junction_crews: -90, green_river: -90 } }).loot);
 
     assert.ok(trusted >= strangers, `seed ${seed}: friends do better than strangers`);
     assert.ok(hated <= strangers, `seed ${seed}: enemies do worse`);
