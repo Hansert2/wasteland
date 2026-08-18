@@ -14,6 +14,17 @@ const STYLE = `
   .error { padding: 0.5rem; border: 1px solid currentColor; }
   form { margin: 1rem 0; }
   label { display: block; margin: 0.5rem 0; }
+
+  /* A section that just changed under the player, because the page updates in place
+     rather than reloading. Without a cue, things change while you are reading a
+     different part of the page and you never notice — which is worse than the reload
+     it replaced. Neutral grey so it works on any ground the redesign chooses. */
+  @keyframes changed {
+    from { background-color: rgba(127, 127, 127, 0.28); }
+    to   { background-color: transparent; }
+  }
+  section.changed { animation: changed 1.2s ease-out; }
+  @media (prefers-reduced-motion: reduce) { section.changed { animation: none; } }
 `;
 
 /** Every interpolation in this file goes through here. */
@@ -121,13 +132,27 @@ function countdown(at, done = 'now') {
 const STORE_DECIMALS = 1;
 
 /**
- * The whole of the client-side JavaScript, and it is meant to stay that way.
+ * The whole of the client-side JavaScript, and it is meant to stay small.
  *
- * Ticks every visible timer once a second, and reloads when one runs out — because
- * the server is the only thing that knows what a finished build actually produced.
- * Only timers that were still running at page load can trigger that reload: one that
- * had already expired when the HTML was generated is showing the server's own "done"
- * text, and reloading for it would loop forever.
+ * It does three things: ticks every visible timer once a second, extrapolates the
+ * stores between server states, and — when a timer runs out or the player acts —
+ * fetches a fresh copy of the page and swaps in the sections that changed.
+ *
+ * **The fetch is not optional and never was.** The server is the only thing that knows
+ * what a finished build produced, what an expedition brought home, or whether the
+ * survivor came back; outcomes roll from seeds server-side and the tick runs during
+ * the render. This used to be a full `location.reload()`, and the only thing that has
+ * changed is that the new HTML is applied in place instead of replacing the document.
+ * Anything that removes the round trip entirely breaks the game.
+ *
+ * Two invariants that are easy to lose and produce infinite loops if lost:
+ *
+ * - **Only timers with a future instant are armed.** Re-checked on every swap, not
+ *   once at load. An already-expired timer is showing the server's own "done" text,
+ *   and asking the server about it again would never stop.
+ * - **A response with no sections in it is a full navigation** — an expired session
+ *   renders the landing page — so it falls back to a reload rather than swapping
+ *   nothing and appearing frozen.
  */
 export const TIMERS = `
 (() => {
@@ -139,21 +164,60 @@ export const TIMERS = `
   const clock = ${clock.toString()};
   const fmt = (ms) => clock(ms / 1000);
 
-  const live = [...document.querySelectorAll('[data-until]')]
-    .filter((el) => Number(el.dataset.until) > Date.now());
+  let live = [];
+  let stores = [];
+  let since = Date.now();
+  let busy = false;
 
-  // Stores accrue continuously, so between loads they are extrapolated from the rate
-  // the server sent. That rate is already net of the survivor and the weather, which
-  // is why this is a straight line and not a simulation — the moment it would need to
-  // be more than that, the page has reloaded anyway.
-  const stores = [...document.querySelectorAll('[data-amount]')];
-  const opened = Date.now();
+  // Re-read after every swap, so the future-only rule holds per render rather than
+  // once per page.
+  const scan = () => {
+    live = [...document.querySelectorAll('[data-until]')]
+      .filter((el) => Number(el.dataset.until) > Date.now());
+    // Stores accrue continuously, so between server states they are extrapolated from
+    // the rate the server sent. That rate is already net of the survivor and the
+    // weather, which is why this is a straight line and not a simulation — the moment
+    // it would need to be more than that, fresh state has arrived anyway.
+    stores = [...document.querySelectorAll('[data-amount]')];
+    since = Date.now();
+  };
 
-  if (live.length === 0 && stores.length === 0) return;
+  const apply = (html) => {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const incoming = doc.querySelectorAll('section[id^="s-"]');
+    if (incoming.length === 0) { location.reload(); return; }
 
-  let reloading = false;
+    for (const next of incoming) {
+      const current = document.getElementById(next.id);
+      if (!current || current.innerHTML === next.innerHTML) continue;
+      current.innerHTML = next.innerHTML;
+      if (next.innerHTML.trim() === '') continue;
+      // Restart the cue even if it is already running.
+      current.classList.remove('changed');
+      void current.offsetWidth;
+      current.classList.add('changed');
+    }
+
+    scan();
+    tick();
+  };
+
+  const fail = (fallback) => () => fallback();
+
+  // An expired timer still has to ask the server what happened; it just does not throw
+  // the document away to do it.
+  const pull = () => {
+    if (busy) return;
+    busy = true;
+    fetch(location.pathname, { credentials: 'same-origin' })
+      .then((res) => res.text())
+      .then(apply)
+      .catch(fail(() => location.reload()))
+      .finally(() => { busy = false; });
+  };
+
   const tick = () => {
-    const elapsedHours = (Date.now() - opened) / 3600000;
+    const elapsedHours = (Date.now() - since) / 3600000;
 
     for (const el of stores) {
       const projected =
@@ -166,14 +230,37 @@ export const TIMERS = `
       const left = Number(el.dataset.until) - Date.now();
       if (left > 0) { el.textContent = fmt(left); continue; }
       el.textContent = el.dataset.done;
-      if (!reloading) {
-        reloading = true;
-        // A moment's grace so the server's clock is unambiguously past the hour.
-        setTimeout(() => location.reload(), 1200);
-      }
+      pull();
     }
   };
 
+  // Actions post in place too. A form outside a section — logging out, and everything
+  // on the landing page — is left alone and navigates as it always did.
+  document.addEventListener('submit', (event) => {
+    const form = event.target;
+    if (!form.closest('section[id^="s-"]')) return;
+
+    event.preventDefault();
+    if (busy) return;
+    busy = true;
+
+    const button = event.submitter;
+    if (button) button.disabled = true;
+
+    // urlencoded, because that is what the server parses. A refusal comes back as the
+    // same page carrying an error, so success and failure need no separate handling.
+    fetch(form.action, {
+      method: 'POST',
+      credentials: 'same-origin',
+      body: new URLSearchParams(new FormData(form)),
+    })
+      .then((res) => res.text())
+      .then(apply)
+      .catch(fail(() => form.submit()))
+      .finally(() => { busy = false; if (button) button.disabled = false; });
+  });
+
+  scan();
   tick();
   setInterval(tick, 1000);
 })();
@@ -201,25 +288,48 @@ export function landingPage({ error } = {}) {
   `);
 }
 
+/**
+ * One updatable region of the page.
+ *
+ * The page updates in place rather than reloading, and the client script does that by
+ * comparing these against the same ids in a freshly fetched copy — so an id is a
+ * contract, not decoration. Two rules follow from that and are easy to break by
+ * accident:
+ *
+ * - **A section is always rendered, even when it is empty.** A caravan that arrives
+ *   while the page is open has to have somewhere to appear. Omitting the empty case
+ *   would mean it never shows up until the player navigated.
+ * - **Forms inside a section are submitted in place; forms outside one navigate.**
+ *   That is how logging out still leaves the page, with no extra markup to remember.
+ */
+const section = (id, html) => `<section id="s-${id}">${html ?? ''}</section>`;
+
 export function campPage(view, { error } = {}) {
   return layout(view.name, `
-    <h1>${escape(view.name)}</h1>
-    <p>Wealth ${view.wealth} &middot; defence ${view.defence} &middot; founded
-       ${escape(view.foundedAt.toISOString().slice(0, 10))}</p>
-    ${error ? `<p class="error">${escape(error)}</p>` : ''}
-    ${renderRaidWarning(view.raidExpectedAt)}
-    ${renderWeather(view.weather)}
+    ${section('head', `
+      <h1>${escape(view.name)}</h1>
+      <p>Wealth ${view.wealth} &middot; defence ${view.defence} &middot; founded
+         ${escape(view.foundedAt.toISOString().slice(0, 10))}</p>`)}
+    ${section('error', error ? `<p class="error">${escape(error)}</p>` : '')}
+    ${section('raid', renderRaidWarning(view.raidExpectedAt))}
+    ${section('sky', renderWeather(view.weather))}
 
-    ${renderEvents(view.events)}
-    ${view.survivor ? renderSurvivor(view.survivor) : renderNoSurvivor(view.fallenCount > 0)}
-    ${view.survivor ? renderExpeditions(view) : ''}
-    ${renderResources(view.resources)}
-    ${renderCaravan(view.caravan, Boolean(view.survivor))}
-    ${renderInventory(view.inventory)}
-    ${renderWorkshop(view)}
-    ${renderStandings(view.standings)}
-    ${renderStructures(view.structures, view.buildInFlight, Boolean(view.survivor))}
-    ${renderRoster(view.fallenCount)}
+    ${section('events', renderEvents(view.events))}
+    ${section(
+      'survivor',
+      view.survivor ? renderSurvivor(view.survivor) : renderNoSurvivor(view.fallenCount > 0),
+    )}
+    ${section('expedition', view.survivor ? renderExpeditions(view) : '')}
+    ${section('stores', renderResources(view.resources))}
+    ${section('caravan', renderCaravan(view.caravan, Boolean(view.survivor)))}
+    ${section('inventory', renderInventory(view.inventory))}
+    ${section('workshop', renderWorkshop(view))}
+    ${section('standings', renderStandings(view.standings))}
+    ${section(
+      'structures',
+      renderStructures(view.structures, view.buildInFlight, Boolean(view.survivor)),
+    )}
+    ${section('roster', renderRoster(view.fallenCount))}
 
     <form method="post" action="/logout"><button type="submit">Log out</button></form>
   `);
@@ -280,7 +390,9 @@ function renderEvents(events) {
   const items = shown
     .map((event) => `<li>${escape(describe(event))}</li>`)
     .join('');
-  return `<h2>While you were away</h2><ul class="events">${items}</ul>`;
+  // aria-live because this list now grows without the page navigating: a build that
+  // finishes while the player is reading is announced rather than silently appearing.
+  return `<h2>While you were away</h2><ul class="events" aria-live="polite">${items}</ul>`;
 }
 
 function describe(event) {

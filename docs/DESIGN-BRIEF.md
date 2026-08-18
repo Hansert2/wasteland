@@ -122,27 +122,55 @@ The server helper `countdown(at, done)` emits the first pair. `renderResources` 
 the second set. **Route every deadline and every store through those helpers rather
 than writing the attributes by hand**, and the contract takes care of itself.
 
-### 3.2 The auto-reload is mechanical, not cosmetic
+### 3.2 The round trip is mechanical, not cosmetic
 
 **This is the single most important paragraph in this document.**
 
-When a countdown reaches zero, the script reloads the page. That is not a nicety — it
-is *how a finished thing becomes visible*. The server is the only thing that knows what
-a completed build produced, what an expedition brought home, or whether the survivor
-came back at all. The client cannot compute any of it.
+When a countdown reaches zero, the script **fetches a fresh copy of the page and swaps
+in the sections that changed**. The same happens when the player submits an action. That
+round trip is not a nicety — it is *how a finished thing becomes visible*. The server is
+the only thing that knows what a completed build produced, what an expedition brought
+home, or whether the survivor came back at all. The client cannot compute any of it, and
+must never try.
 
 A redesign that renders a deadline as its own hand-rolled timer — entirely reasonable
 markup, looks correct, reviews clean — silently removes this. The page then sits on
 `now` forever, the player waits for a build that already finished, and **nothing fails,
 nothing logs, and no test goes red.**
 
-Two subtleties ride along with it:
+### 3.2.1 The section contract
 
-- **Only timers that were still running at page load may trigger the reload.** One that
-  had already expired when the HTML was generated is displaying the server's own "done"
-  text; reloading for it would loop forever.
+The swap works by matching `<section id="s-…">` elements against the same ids in the
+fetched copy. **Those ids are an interface.** You may restructure everything inside a
+section, move sections around, and restyle them completely — but:
+
+- **Every section must always be rendered, even when empty.** A caravan that arrives
+  while the page is open needs somewhere to appear. Omit the empty case and it never
+  shows up until the player navigates.
+- **Keep the ids, or update the server helper and the client together.** They are
+  matched by string.
+- **A form inside a section is submitted in place; a form outside one navigates.** That
+  is how logging out still leaves the page with no special marking. If you move the
+  logout form inside a section it will stop working properly.
+
+Three more invariants that are easy to lose and produce infinite loops or dead pages:
+
+- **Only timers with a future instant are armed, re-checked after every swap.** An
+  already-expired timer is displaying the server's own "done" text; asking about it
+  again would never stop.
+- **A response containing no sections means a real navigation** — an expired session
+  renders the landing page — and must fall back to a full reload rather than swapping
+  nothing and appearing frozen.
 - **Store extrapolation must clamp to `data-cap`.** Without it the page shows amounts
   the database would refuse to store.
+
+### 3.2.2 The change cue
+
+A section that has just been swapped gets `class="changed"` for about a second. Without
+some cue, a fluid update means things change while the player is reading a different
+part of the page and they never notice — which is worse than the reload it replaced.
+Restyle the animation freely; it currently honours `prefers-reduced-motion`. Please keep
+*something*, and keep the `aria-live` on the event log.
 
 ### 3.3 Escaping
 
@@ -321,8 +349,11 @@ A green suite is necessary and **not sufficient** — it says almost nothing abo
 rendered page. Check these by hand:
 
 1. Start a build that takes under a minute. Watch the countdown reach zero. **The page
-   must reload by itself and show the finished structure.** This is the check that
-   catches the failure in §3.2, and nothing automated catches it today.
+   must update itself in place and show the finished structure**, without navigating and
+   without you touching anything. This is the check that catches the failure in §3.2,
+   and nothing automated catches it today.
+2. Submit an action — a build, a dispatch. The page must update without navigating, and
+   the changed sections must show the cue.
 2. Leave the camp page open for a minute. Store amounts must climb smoothly and stop at
    the cap.
 3. Submit an action that will be refused — send an expedition while one is already out.

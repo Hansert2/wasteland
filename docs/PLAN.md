@@ -1178,15 +1178,37 @@ its work by querying for them:
     data-amount, data-rate, data-cap   a store extrapolated along a straight line
     STORE_DECIMALS                 interpolated into the script, so it cannot drift
 
-**The auto-reload is mechanical, not cosmetic, and this is the thing most likely to be
-lost.** When a countdown reaches zero the script reloads the page, because the server is
-the only thing that knows what a finished build actually produced. A redesign that
-renders a deadline as its own hand-rolled timer — perfectly reasonable-looking markup —
-silently loses that. The page then sits on *now* forever and the game appears to have
-stopped, with nothing failing and nothing in a log. Two further subtleties ride along
-with it: only timers still running at page load may trigger a reload, or an
-already-expired one loops forever; and store extrapolation clamps to `data-cap`, or the
-page shows amounts the database would refuse.
+**The round trip is mechanical, not cosmetic, and this is the thing most likely to be
+lost.** When a countdown reaches zero the script goes back to the server, because the
+server is the only thing that knows what a finished build actually produced. A redesign
+that renders a deadline as its own hand-rolled timer — perfectly reasonable-looking
+markup — silently loses that. The page then sits on *now* forever and the game appears
+to have stopped, with nothing failing and nothing in a log. Two further subtleties ride
+along with it: only timers with a future instant may trigger it, or an already-expired
+one loops forever; and store extrapolation clamps to `data-cap`, or the page shows
+amounts the database would refuse.
+
+**Updated 2026-08-18: the round trip is a fetch and a swap rather than a reload.** The
+requirement was never "must reload" — it is *when a countdown expires, the page must get
+fresh server state and apply it* — and the reload was only the bluntest way to satisfy
+it. The script now fetches the current path, matches `<section id="s-…">` against the
+same ids in the response, and replaces the ones whose contents differ. Actions go the
+same way: a form inside a section posts by `fetch` and applies the result, which needs
+no server change at all, because a refused action already re-renders the whole camp page
+carrying its error and a successful one already redirects to it. Success and failure are
+therefore the same code path.
+
+Three invariants came with it, all of which fail silently rather than loudly:
+a section must be rendered even when empty or a caravan arriving mid-visit has nowhere
+to appear; a response with no sections in it is a real navigation — an expired session
+renders the landing page — and falls back to a reload rather than swapping nothing; and
+the future-only rule on timers is now re-applied after every swap rather than once at
+load.
+
+`SSE` and websockets were considered and rejected. There is no cron and no background
+process anywhere in this game — raids, caravans and weather all derive from seeds
+precisely so that nothing has to be running — and a push channel would need something
+server-side watching each camp, which is the scheduler the whole design exists to avoid.
 
 **So the rule is: nothing renders a deadline except `countdown()`, and nothing renders a
 store except the helper that emits those three attributes.** A redesign may change every
