@@ -53,19 +53,22 @@ export const LONG_REGIONS = [
 ];
 
 /**
- * The starter set: one per axis, fully specified, so the shape can be judged before
- * twenty more are written.
+ * Eighteen moments, three per axis.
+ *
+ * Started as six — one per axis — to judge the shape before writing volume. The shape
+ * held, so this is the volume. Each axis now has three, spread so that every region has
+ * more eligible moments than it has slots, which is what stops a trip offering the same
+ * set every time.
  *
  * Every moment has exactly one `default` option, and it must be a no-op — *what the
  * expedition would have done before any of this existed*. Attending may add upside and
  * a risk the player took knowingly; it may never restore a baseline that absence took
  * away. A test pins that.
  *
- * The numbers on the other options are **provisional and unmeasured**. The plan's
- * target is that attending every moment on a trip is worth at most one region step of
- * loot — roughly a third on the mid regions — and that is a figure to be established
- * with `tools/`, over sixty days, in the way filtration was. Nobody should believe
- * these until then.
+ * The numbers are measured rather than guessed — see `tools/moment-balance.mjs`, which
+ * checks that attending everything stays under one region step of loot, that no option
+ * is simply the right answer, and that a healthy survivor cannot be killed by answering
+ * badly. Re-run it after touching any of them.
  */
 export const MOMENTS = {
   welded_door: {
@@ -202,6 +205,246 @@ export const MOMENTS = {
       },
     ],
   },
+
+  the_climb: {
+    axis: 'health',
+    regions: ['ruined_city', 'underground_bunkers', 'coastal_wreckage'],
+    prose: 'The stair is gone. The shaft beside it is not, and it goes the right way.',
+    options: [
+      { key: 'around', verb: 'default', label: 'Go around', detail: 'they walk on' },
+      {
+        key: 'climb',
+        verb: 'press_on',
+        label: 'Take the shaft',
+        detail: 'half again, if the rungs hold',
+        lootFactor: 1.55,
+        hazard: { danger: 2 },
+      },
+    ],
+  },
+
+  bad_water: {
+    axis: 'health',
+    regions: ['the_service_road', 'ruined_city', 'irradiated_farmland'],
+    prose: 'The canteen has been empty since the pylons. There is a cistern here, and it is not moving.',
+    options: [
+      { key: 'thirst', verb: 'default', label: 'Stay thirsty', detail: 'they walk on' },
+      {
+        key: 'boil',
+        verb: 'wait',
+        label: 'Boil it',
+        detail: 'forty minutes, and they drink safely',
+        hours: 0.7,
+        heals: 26,
+      },
+      {
+        key: 'drink',
+        verb: 'press_on',
+        label: 'Drink it as it is',
+        detail: 'no time lost, and whatever was in it',
+        heals: 26,
+        radiationFactor: 1.5,
+        hazard: { danger: 1 },
+      },
+    ],
+  },
+
+  the_hot_room: {
+    axis: 'radiation',
+    regions: ['underground_bunkers', 'coastal_wreckage', 'the_deep_zone'],
+    prose: 'A room worth stripping, and the counter will not settle while they stand in it.',
+    options: [
+      { key: 'skip', verb: 'default', label: 'Leave it', detail: 'they walk on' },
+      {
+        key: 'strip',
+        verb: 'press_on',
+        label: 'Strip it anyway',
+        detail: 'a good deal more, and a good deal more of the dose',
+        lootFactor: 1.28,
+        radiationFactor: 2.1,
+      },
+      {
+        key: 'quick',
+        verb: 'press_on',
+        label: 'Two minutes, no more',
+        detail: 'the light things only, and barely a reading',
+        lootFactor: 1.12,
+        radiationFactor: 1.15,
+      },
+    ],
+  },
+
+  counter_clicks: {
+    axis: 'radiation',
+    regions: ['irradiated_farmland', 'the_deep_zone'],
+    prose: 'The dosimeter has read the same number for two hours. It is either broken or they are lucky.',
+    options: [
+      { key: 'trust', verb: 'default', label: 'Trust it', detail: 'they walk on' },
+      {
+        key: 'assume',
+        verb: 'wait',
+        label: 'Assume the worst',
+        detail: 'work the shallow ground, an hour longer, and take less of it',
+        hours: 1,
+        lootFactor: 0.9,
+        radiationFactor: 0.45,
+      },
+      {
+        key: 'dose',
+        verb: 'spend',
+        label: 'Dose and carry on',
+        detail: 'one from the pack, and stop wondering',
+        consumes: ['rad_scrubber', 'rad_x'],
+        radiationFactor: 0.15,
+      },
+    ],
+  },
+
+  the_long_way: {
+    axis: 'time',
+    regions: ['the_service_road', 'ruined_city', 'irradiated_farmland'],
+    prose: 'The road bends a long way around a field nobody has crossed in years. There is a reason for the bend.',
+    options: [
+      { key: 'road', verb: 'default', label: 'Keep to the road', detail: 'they walk on' },
+      {
+        key: 'cut',
+        verb: 'press_on',
+        label: 'Cut across',
+        detail: 'the hours the bend would cost, and the ground nobody works',
+        hours: -0.5,
+        lootFactor: 1.4,
+        hazard: { danger: 2 },
+      },
+    ],
+  },
+
+  light_is_going: {
+    axis: 'time',
+    regions: ['ruined_city', 'underground_bunkers', 'coastal_wreckage', 'the_deep_zone'],
+    prose: 'The light is going and there is more here than they have hands for.',
+    options: [
+      { key: 'pack', verb: 'default', label: 'Pack up', detail: 'they walk on' },
+      {
+        key: 'stay',
+        verb: 'investigate',
+        label: 'Work into the dark',
+        detail: 'two hours more, and what the dark is worth',
+        hours: 2,
+        lootFactor: 1.25,
+        findChance: 0.35,
+        hazard: { danger: 2 },
+      },
+    ],
+  },
+
+  too_much_to_carry: {
+    axis: 'haul',
+    regions: ['ruined_city', 'underground_bunkers', 'the_deep_zone'],
+    prose: 'More than one back can take. Some of it will be here next time. Some of it will not.',
+    options: [
+      { key: 'best', verb: 'default', label: 'Take the best of it', detail: 'they walk on' },
+      {
+        key: 'strap',
+        verb: 'press_on',
+        label: 'Strap on what will hold',
+        detail: 'a third again, and slower going with it',
+        hours: 1.5,
+        lootFactor: 1.35,
+      },
+    ],
+  },
+
+  the_ford: {
+    axis: 'haul',
+    regions: ['the_service_road', 'irradiated_farmland', 'coastal_wreckage'],
+    prose: 'The water is moving faster than it looks, and the bridge went before they were born. The long way round is a long way.',
+    options: [
+      // Built wrong the first time: wading was the free default and both alternatives
+      // were pure cost, so it was the right answer 93% of the time. The crossing is the
+      // shortcut now, and the safe road is what it costs you.
+      { key: 'around', verb: 'default', label: 'Take the long way', detail: 'they walk on' },
+      {
+        key: 'ford',
+        verb: 'press_on',
+        label: 'Ford it',
+        detail: 'an hour and a half saved, and whatever the water takes',
+        hours: -1.5,
+        dropsCarried: 0.22,
+      },
+    ],
+  },
+
+  the_medkit: {
+    axis: 'supplies',
+    regions: ['irradiated_farmland', 'the_deep_zone'],
+    prose: 'The hot ground starts here. There is a dose in the pack and a long way across.',
+    options: [
+      { key: 'later', verb: 'default', label: 'Save it for later', detail: 'they walk on' },
+      {
+        key: 'ahead',
+        verb: 'spend',
+        label: 'Take it before crossing',
+        detail: 'one from the pack, ahead of the ground rather than after it',
+        consumes: ['rad_scrubber', 'rad_x'],
+        radiationFactor: 0.15,
+        lootFactor: 1.15,
+      },
+    ],
+  },
+
+  trade_the_spear: {
+    axis: 'supplies',
+    regions: ['the_service_road', 'ruined_city', 'underground_bunkers'],
+    prose: 'A man with nothing wants the spear, and has more scrap than he can carry.',
+    options: [
+      { key: 'keep', verb: 'default', label: 'Keep it', detail: 'they walk on' },
+      {
+        key: 'sell',
+        verb: 'parley',
+        label: 'Give him the spear',
+        detail: 'the weapon off their back, for as much as they can carry',
+        consumes: ['scrap_spear'],
+        lootFactor: 2.1,
+      },
+    ],
+  },
+
+  the_roadblock: {
+    axis: 'standing',
+    regions: ['the_service_road', 'ruined_city', 'irradiated_farmland'],
+    prose: 'Two vehicles across the road and somebody sitting on the bonnet, waiting to be talked to.',
+    options: [
+      { key: 'around', verb: 'default', label: 'Go around', detail: 'the long way, quietly' },
+      {
+        key: 'talk',
+        verb: 'parley',
+        label: 'Walk up and talk',
+        detail: 'whoever they are, and whatever they make of the camp',
+        parley: true,
+        findChance: 0.3,
+      },
+    ],
+  },
+
+  the_wounded: {
+    axis: 'standing',
+    regions: ['underground_bunkers', 'coastal_wreckage', 'the_deep_zone'],
+    prose: 'One of theirs, sat against a wall with a leg that will not take weight. They have seen the survivor.',
+    options: [
+      { key: 'pass', verb: 'default', label: 'Keep walking', detail: 'they walk on' },
+      {
+        key: 'help',
+        verb: 'parley',
+        label: 'Get them upright',
+        detail: 'an hour, a ration, and a story they will tell',
+        hours: 1,
+        consumes: ['preserved_meal', 'tinned_stew'],
+        parley: true,
+        findChance: 0.55,
+      },
+    ],
+  },
+
 };
 
 /**
@@ -219,28 +462,46 @@ export const TURN_BACK = {
   turnBack: true,
 };
 
-/** None below two hours; one at four to six; two at nine to twelve; three at eighteen. */
+/**
+ * How many moments a trip offers.
+ *
+ * Raised across the board after the soak measured a twice-daily player meeting a moment
+ * about once a fortnight. The old table gave the Deep Zone three and everything under
+ * four hours nothing at all, which made encounters a thing that happened on the long
+ * trips of an attentive player and to nobody else.
+ *
+ * The Fence Line still gets none, and always will: ten minutes end to end has no
+ * interior to put anything in. The Old Service Road now gets one, which is the shortest
+ * trip that can hold a window worth catching.
+ */
 export function momentCount(travelHours) {
   const hours = Number(travelHours) || 0;
-  if (hours < 2) return 0;
-  if (hours < 8) return 1;
-  if (hours < 15) return 2;
-  return 3;
+  if (hours < 0.5) return 0;
+  if (hours < 2) return 1;
+  if (hours < 8) return 2;
+  if (hours < 15) return 3;
+  return 4;
 }
 
 /**
  * How long a window stays answerable.
  *
  * Proportional to the trip rather than fixed, so this never becomes a page you have to
- * sit on. The divisor is the coverage dial: at 1.75 the open windows come to a little
- * under sixty per cent of a trip, which is the point where one check-in usually finds
- * something and catching all of them still takes attention or the radio. Full coverage
- * was refused deliberately — it would make timing worthless, and timing is the only
- * thing the radio sells.
+ * sit on. The divisor is the coverage dial, and it was widened to 1.75 (~58% of a trip
+ * open) and then tightened again to 3 (~33%) once there were more moments to catch.
+ *
+ * The two moves belong together and undoing one without the other would be a mistake.
+ * Wide windows on few moments made each encounter easy to catch and rare to meet, which
+ * is the worst of both: you could answer whenever you liked, and seldom had anything to
+ * answer. More moments in narrower windows trades "always catchable" for "actually
+ * happening", which is what a live encounter is supposed to feel like.
+ *
+ * The floor is twelve minutes rather than forty-five, so a forty-five-minute trip on the
+ * Old Service Road can hold a window at all.
  */
 export function windowHours(travelHours, count = momentCount(travelHours)) {
   if (count <= 0) return 0;
-  return Math.max(0.75, (Number(travelHours) || 0) / (count * 1.75));
+  return Math.max(0.2, (Number(travelHours) || 0) / (count * 3));
 }
 
 /**

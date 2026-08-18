@@ -5,7 +5,7 @@ import { pool } from '../../src/db/pool.js';
 import { advanceSettlement } from '../../src/services/advance-settlement.js';
 import { dispatchExpedition } from '../../src/services/dispatch-expedition.js';
 import { foundSettlement, raiseSuccessor } from '../../src/services/settlement-lifecycle.js';
-import { momentsFor } from '../../src/game/moments.js';
+import { momentsFor, walkHomeHours } from '../../src/game/moments.js';
 import { answerMoment } from '../../src/services/answer-moment.js';
 import { InputError } from '../../src/errors.js';
 
@@ -76,11 +76,11 @@ async function stores(client, settlementId) {
  * A trip whose moments are known in advance.
  *
  * The seed is forced after dispatch rather than left to `newSeed`, so the tests below
- * can name a moment instead of hunting for one. Seed 2 on the Deep Zone offers
- * wind_turns (a spend and a wait) at 4.9–8.3, kept_pace (a hazard) at 9.1–12.5, and
- * the_fire (a parley) at 14.4–17.8.
+ * can name a moment instead of hunting for one. Seed 8 on the Deep Zone offers
+ * counter_clicks (a wait and a spend) at 4.51–6.01, too_much_to_carry at 8.18–9.68,
+ * kept_pace (a hazard) at 10.93–12.43, and the_wounded at 14.75–16.25.
  */
-const FIXED_SEED = 2;
+const FIXED_SEED = 8;
 
 async function sendFixed(client, settlementId, slug, now) {
   const { expeditionId } = await dispatchExpedition(client, settlementId, slug, now);
@@ -122,7 +122,7 @@ test('the moments a trip offers are derivable from the seed alone', async () => 
     const { seed } = await send(client, settlementId, slug, Date.now());
 
     const moments = momentsFor({ slug, travelHours }, seed);
-    assert.equal(moments.length, 3, 'the Deep Zone offers three');
+    assert.equal(moments.length, 4, 'the Deep Zone offers four');
 
     // Nothing about them is stored: the row carries a seed and an empty array, and the
     // whole schedule falls out of that.
@@ -212,10 +212,10 @@ test('answering records the choice against the moment it answers', async () => {
     const { settlementId, slug } = await setup(client);
     const id = await sendFixed(client, settlementId, slug, now);
 
-    await answerMoment(client, settlementId, { index: 0, option: 'push' }, now + hours(6));
+    await answerMoment(client, settlementId, { index: 0, option: 'trust' }, now + hours(5));
 
     const { rows } = await client.query('select choices from expeditions where id = $1', [id]);
-    assert.deepStrictEqual(rows[0].choices, [{ index: 0, option: 'push' }]);
+    assert.deepStrictEqual(rows[0].choices, [{ index: 0, option: 'trust' }]);
   });
 });
 
@@ -228,12 +228,12 @@ test('a window that has closed, and one that has not opened, are refused differe
     await sendFixed(client, settlementId, slug, now);
 
     await assert.rejects(
-      answerMoment(client, settlementId, { index: 0, option: 'push' }, now + hours(9)),
+      answerMoment(client, settlementId, { index: 0, option: 'trust' }, now + hours(9)),
       (error) => error instanceof InputError && /has passed/i.test(error.message),
     );
 
     await assert.rejects(
-      answerMoment(client, settlementId, { index: 2, option: 'off' }, now + hours(6)),
+      answerMoment(client, settlementId, { index: 3, option: 'pass' }, now + hours(5)),
       (error) => error instanceof InputError && /not happened yet/i.test(error.message),
     );
   });
@@ -245,10 +245,10 @@ test('a moment can only be answered once', async () => {
     const { settlementId, slug } = await setup(client);
     await sendFixed(client, settlementId, slug, now);
 
-    await answerMoment(client, settlementId, { index: 0, option: 'push' }, now + hours(6));
+    await answerMoment(client, settlementId, { index: 0, option: 'trust' }, now + hours(5));
 
     await assert.rejects(
-      answerMoment(client, settlementId, { index: 0, option: 'wait' }, now + hours(6.5)),
+      answerMoment(client, settlementId, { index: 0, option: 'assume' }, now + hours(5.5)),
       (error) => error instanceof InputError && /already been settled/i.test(error.message),
     );
   });
@@ -261,7 +261,7 @@ test('an option that is not on offer is refused', async () => {
     await sendFixed(client, settlementId, slug, now);
 
     await assert.rejects(
-      answerMoment(client, settlementId, { index: 0, option: 'overload' }, now + hours(6)),
+      answerMoment(client, settlementId, { index: 0, option: 'overload' }, now + hours(5)),
       (error) => error instanceof InputError && /not one of the options/i.test(error.message),
     );
   });
@@ -276,14 +276,14 @@ test('spending something means having it, and the better one goes first', async 
     // The pack is empty: the page may have offered it, but the page is a render of a
     // moment ago, so the service is where this has to be caught.
     await assert.rejects(
-      answerMoment(client, settlementId, { index: 0, option: 'tablets' }, now + hours(6)),
+      answerMoment(client, settlementId, { index: 0, option: 'dose' }, now + hours(5)),
       (error) => error instanceof InputError && /nothing like that in the pack/i.test(error.message),
     );
 
     await give(client, settlementId, 'rad_x', 2);
     await give(client, settlementId, 'rad_scrubber', 1);
 
-    await answerMoment(client, settlementId, { index: 0, option: 'tablets' }, now + hours(6));
+    await answerMoment(client, settlementId, { index: 0, option: 'dose' }, now + hours(5));
 
     const { rows } = await client.query(
       `select i.slug, ii.qty from inventory_items ii
@@ -311,9 +311,9 @@ test('pressing on costs the hours it says it does', async () => {
     // numbers and they move. What is being tested is that the hours an option
     // advertises are the hours it actually charges, whatever they currently are.
     const moment = momentsFor({ slug, travelHours: 18 }, FIXED_SEED)[0];
-    const wait = moment.options.find((option) => option.key === 'wait');
+    const wait = moment.options.find((option) => option.key === 'assume');
 
-    await answerMoment(client, settlementId, { index: 0, option: 'wait' }, now + hours(6));
+    await answerMoment(client, settlementId, { index: 0, option: 'assume' }, now + hours(5));
 
     assert.equal(
       (await returnsAt(client, id)) - before,
@@ -331,11 +331,12 @@ test('turning back brings the return forward by a walk home, not to now', async 
     const { settlementId, slug, travelHours } = await setup(client);
     const id = await sendFixed(client, settlementId, slug, now);
 
-    const at = now + hours(6);
+    const at = now + hours(5);
     await answerMoment(client, settlementId, { index: 0, option: 'turn_back' }, at);
 
+    // min(h, H - h) x 0.5 — five hours out of eighteen is two and a half hours home.
     const home = await returnsAt(client, id);
-    assert.equal(home - at, hours(3), 'three hours out, three hours back');
+    assert.equal(home - at, hours(walkHomeHours(5, travelHours)), 'the walk home is charged');
     assert.ok(home < now + hours(travelHours), 'and still sooner than finishing');
   });
 });
@@ -347,7 +348,7 @@ test('turning back late saves almost nothing, which is the point', async () => {
     const id = await sendFixed(client, settlementId, slug, now);
 
     const at = now + hours(16);
-    await answerMoment(client, settlementId, { index: 2, option: 'turn_back' }, at);
+    await answerMoment(client, settlementId, { index: 3, option: 'turn_back' }, at);
 
     const saved = now + hours(travelHours) - (await returnsAt(client, id));
     assert.ok(saved <= hours(1), `bailing at sixteen hours saved ${saved / hours(1)}h`);
@@ -360,7 +361,7 @@ test('there has to be somebody out there to answer for', async () => {
     const { settlementId, slug } = await setup(client);
 
     await assert.rejects(
-      answerMoment(client, settlementId, { index: 0, option: 'push' }, now),
+      answerMoment(client, settlementId, { index: 0, option: 'trust' }, now),
       (error) => error instanceof InputError && /Nobody is out there/i.test(error.message),
     );
 
@@ -372,7 +373,7 @@ test('there has to be somebody out there to answer for', async () => {
     );
 
     await assert.rejects(
-      answerMoment(client, settlementId, { index: 0, option: 'push' }, now + hours(6)),
+      answerMoment(client, settlementId, { index: 0, option: 'trust' }, now + hours(5)),
       (error) => error instanceof InputError && /nobody out there to answer for/i.test(error.message),
     );
   });

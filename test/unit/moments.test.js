@@ -27,6 +27,9 @@ const REGIONS = {
 };
 
 const region = (slug) => ({ slug, travelHours: REGIONS[slug] });
+
+/** Every region that offers moments at all — which is now everything but the wire. */
+const MOMENT_REGIONS = Object.keys(REGIONS).filter((slug) => slug !== 'the_fence_line');
 const SEEDS = [1, 2, 3, 7, 42, 99, 12345, 65535, 987654321];
 
 test('every moment names a real axis and at least one real region', () => {
@@ -45,7 +48,7 @@ test('every moment has exactly one default, and the default does nothing', () =>
   // stands. Attending may add upside and a chosen risk; it may never restore a baseline
   // that absence took away. A default carrying an effect would break that silently.
   const effects = ['hours', 'lootFactor', 'radiationFactor', 'findChance', 'consumes',
-    'heals', 'hazard', 'clearsHazard', 'parley', 'turnBack'];
+    'heals', 'hazard', 'clearsHazard', 'parley', 'turnBack', 'dropsCarried'];
 
   for (const [key, moment] of Object.entries(MOMENTS)) {
     const defaults = moment.options.filter((option) => option.verb === 'default');
@@ -65,20 +68,25 @@ test('option keys are unique within a moment, so a choice can be recorded by key
   }
 });
 
-test('the short regions have no moments and the long ones do', () => {
+test('only the wire is too short to hold a moment', () => {
+  // Ten minutes end to end has no interior. Everything else does, including the
+  // forty-five minute service road, which is the shortest trip that can hold a
+  // window worth catching.
   assert.equal(momentCount(REGIONS.the_fence_line), 0);
-  assert.equal(momentCount(REGIONS.the_service_road), 0);
 
-  for (const slug of LONG_REGIONS) {
+  for (const slug of MOMENT_REGIONS) {
     assert.ok(momentCount(REGIONS[slug]) > 0, slug);
   }
+
+  // And they scale with the trip rather than all being the same.
+  assert.ok(momentCount(REGIONS.the_deep_zone) > momentCount(REGIONS.ruined_city));
 });
 
 test('every long region can actually fill its moments with distinct axes', () => {
   // The distinct-axis rule is only worth having if the content can satisfy it. A region
   // short of axes silently offers fewer moments, which is a content shortage worth
   // failing on rather than shipping.
-  for (const slug of LONG_REGIONS) {
+  for (const slug of MOMENT_REGIONS) {
     const wanted = momentCount(REGIONS[slug]);
 
     for (const seed of SEEDS) {
@@ -92,7 +100,7 @@ test('every long region can actually fill its moments with distinct axes', () =>
 });
 
 test('moments sit in the interior of the trip, in order, and their windows never overlap', () => {
-  for (const slug of LONG_REGIONS) {
+  for (const slug of MOMENT_REGIONS) {
     const hours = REGIONS[slug];
 
     for (const seed of SEEDS) {
@@ -111,10 +119,11 @@ test('moments sit in the interior of the trip, in order, and their windows never
   }
 });
 
-test('open windows come to roughly sixty per cent of a long trip', () => {
-  // The figure the design commits to: one check-in usually finds something, catching all
-  // of them still takes attention or the radio. Full coverage would make timing
-  // worthless, and timing is all the radio sells.
+test('open windows come to about a third of a trip', () => {
+  // Tightened from ~58% once there were eighteen moments rather than six. The two moves
+  // belong together: wide windows on few moments meant each was easy to catch and rare
+  // to meet, which is the worst of both. Narrower windows on more moments trades
+  // "answerable whenever" for "actually happening".
   for (const slug of ['underground_bunkers', 'coastal_wreckage', 'the_deep_zone']) {
     const hours = REGIONS[slug];
     const coverage = SEEDS.map((seed) => {
@@ -124,7 +133,7 @@ test('open windows come to roughly sixty per cent of a long trip', () => {
     });
 
     const mean = coverage.reduce((sum, value) => sum + value, 0) / coverage.length;
-    assert.ok(mean > 0.45 && mean < 0.7, `${slug}: coverage ${(mean * 100).toFixed(0)}%`);
+    assert.ok(mean > 0.25 && mean < 0.45, `${slug}: coverage ${(mean * 100).toFixed(0)}%`);
   }
 });
 
@@ -132,7 +141,7 @@ test('every moment on a trip offers the way out', () => {
   // "A standing option underneath all of them" has to be true of what the trip actually
   // offers, not just of an exported constant — the first version of this declared
   // TURN_BACK and then never put it anywhere, so nothing could be answered with it.
-  for (const slug of LONG_REGIONS) {
+  for (const slug of MOMENT_REGIONS) {
     for (const seed of SEEDS) {
       for (const moment of momentsFor(region(slug), seed)) {
         const last = moment.options[moment.options.length - 1];
@@ -216,8 +225,10 @@ test('turning back late is never a free win', () => {
 });
 
 test('window length is proportional to the trip and never punishingly short', () => {
-  assert.ok(windowHours(18, 3) > 3, 'a Deep Zone window is hours, not minutes');
-  assert.ok(windowHours(4, 1) > 2, 'and a short trip still gets a real one');
+  assert.ok(windowHours(18, 4) > 1, 'a Deep Zone window is over an hour');
   assert.equal(windowHours(1, 0), 0, 'a trip with no moments has no window');
-  assert.ok(windowHours(2, 1) >= 0.75, 'the floor holds');
+  // Twelve minutes, so a forty-five minute trip can hold a window at all. Short, and
+  // deliberately so — catching one there means being on the page.
+  assert.ok(windowHours(0.75, 1) >= 0.2, 'the floor holds');
+  assert.ok(windowHours(0.75, 1) < 0.4, 'and a short trip gets a short window');
 });

@@ -1121,6 +1121,30 @@ be met more often, the lever is giving the mid-length regions something worth ca
 or accepting that encounters are a Deep-Zone-and-Coastal mechanic and writing them that
 way.
 
+**2026-08-18, second pass: eighteen moments, narrower windows.** The content went from
+six to three per axis, every region except the Fence Line now offers moments, and counts
+rose to four on the Deep Zone. Windows tightened from ~58% of a trip to ~33%, and the
+floor dropped from forty-five minutes to twelve so the forty-five-minute Service Road can
+hold one at all.
+
+Those two moves belong together. Wide windows on few moments meant each encounter was
+easy to catch and rare to meet, which is the worst of both — answerable whenever, and
+seldom anything to answer. The bound survived the change: 21–32% uplift against steps of
+33–49%, and greedy play at full health still kills nobody anywhere.
+
+**The trade lands differently for different players, and the soak measured it.** The
+twice-daily automaton went from nine caught moments in ninety days to **four** — tripling
+the content did not make up for cutting the windows, because it only ever has long trips
+in flight. An attentive player gains: moments now exist on the Service Road, in the City
+and in the Farmland, which are the trips a click-heavy player actually sends. Which
+player the windows serve is a live design question and the dial is the divisor in
+`windowHours()`.
+
+**One of the new moments was built wrong rather than mistuned.** `the_ford` had wading as
+a free default with two alternatives that were pure cost, so it was the right answer 93%
+of the time — an option set where the default dominates by construction, not by numbers.
+Rebuilt so the crossing is the shortcut and the safe road is what it costs you.
+
 **What the instrument cannot see.** The value function converts finds, rads, damage and
 hours into scrap so that options which trade in different currencies can be compared,
 and those conversions are arguable — they are constants at the top of the file for
@@ -1130,6 +1154,13 @@ net *negative*; not charging for the hours an option costs made sitting out a st
 94% of the time; and pricing a tin of stew like a dose of chelation made eating look
 wasteful. Each of those was a fault in the measuring instrument that looked exactly like
 a fault in the game.
+
+**And one it still has: the pack is never sampled.** States vary health and radiation but
+the survivor always carries nothing, while `resolveExpedition` does not check the pack at
+all — the service does. So every `supplies` moment is scored as though spending an item
+you may not have, and `the_tin`, `the_medkit` and `trade_the_spear` will read as
+correctly-declined however they are tuned. Their numbers should be argued about from play,
+not from the table.
 
 #### The tests that hold it up
 

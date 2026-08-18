@@ -322,13 +322,16 @@ test('ninety days of attentive play holds every invariant at every check-in', as
     // Same reasoning as the two above: without a floor, a regression that stopped
     // offering moments at all would run ninety days and stay green.
     //
-    // The floor is low because the measured figure is low — this automaton answers
-    // about nine moments in ninety days, and that is not a fault in the test. It
-    // checks in every twelve hours and spends five rotation slots in eight on regions
-    // too short to have an interior, so the only trips still in flight when it next
-    // looks are the eighteen-hour ones. A twice-daily player meets a moment roughly
-    // once a fortnight. Worth knowing before writing more of them.
-    assert.ok(tallies.moments > 4, `only ${tallies.moments} moments answered`);
+    // The floor is low because the measured figure is low, and it went *down* when
+    // the content tripled. Six moments in wide windows caught nine in ninety days;
+    // eighteen moments in windows a third as wide catch about four. This automaton
+    // checks in every twelve hours, so tightening the windows cost it more than the
+    // extra content gained — the trade lands the other way for an attentive player,
+    // who now meets moments on the service road and in the city as well.
+    //
+    // Which player the windows should serve is a design question, and the dial is the
+    // divisor in windowHours(). This floor only guards against them vanishing.
+    assert.ok(tallies.moments > 2, `only ${tallies.moments} moments answered`);
 
     const final = await loadWorld(client, settlementId);
     const levels = final.settlement.structures.reduce((t, s) => t + s.level, 0);

@@ -122,6 +122,7 @@ function applyChoices(trip, { region, survivor, seed, choices, standings }) {
       trip.log.push('Whatever was waiting further on never found them.');
     }
 
+    if (option.dropsCarried) spill(trip, at, option.dropsCarried);
     if (option.lootFactor) pressOn(trip, timeline, at, option.lootFactor);
     if (option.radiationFactor) shelter(trip, timeline, at, option.radiationFactor);
     if (option.heals) {
@@ -147,6 +148,29 @@ function turnBack(trip, at, moment) {
   trip.damage = at.damage;
   trip.cause = at.cause;
   trip.log.push(`They turned back ${formatHours(moment.atHour)} in, carrying what they had.`);
+}
+
+/**
+ * Lose a share of what is already in the pack.
+ *
+ * The mirror of pressing on, and the reason it exists: every other option that costs
+ * something costs it out of the *rest* of the trip, which is a cost you can only feel
+ * at the end. This one takes what they are visibly carrying right now, which is the
+ * only kind of loss a mid-trip report can make you flinch at.
+ */
+function spill(trip, at, share) {
+  let lost = 0;
+
+  for (const [kind, carried] of Object.entries(at.carrying)) {
+    const gone = Math.round(carried * share);
+    if (gone <= 0) continue;
+    trip.loot[kind] = Math.max(0, (trip.loot[kind] ?? 0) - gone);
+    lost += gone;
+  }
+
+  trip.log.push(
+    lost > 0 ? `They lost ${lost} of what they were carrying.` : 'They kept hold of it.',
+  );
 }
 
 /** A share of what the rest of the trip would have produced, on top of it. */
