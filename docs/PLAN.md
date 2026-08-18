@@ -555,7 +555,11 @@ The questions this section used to hold open — what reputation gates, who hold
 how traders arrive, whether standing can fall — were all settled above on 2026-08-14.
 Region-gating is the one deliberately parked rather than decided.
 
-## The next three phases — designed 2026-08-17, none of them built
+## The next three phases — designed 2026-08-17
+
+Phase 6 began construction 2026-08-18, from the bottom: `mix` in `src/game/random.js`
+and the whole of `src/game/timeline.js` exist and are tested, both of them pure and
+neither yet wired to anything. Phases 7 and 8 are design only.
 
 Every phase above shipped, and then the player played it. The verdict was "a bit dull",
 and pressed on what that meant it came back as three things and not one: **too little

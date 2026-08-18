@@ -30,3 +30,42 @@ export function chance(random, probability) {
 export function newSeed() {
   return Math.floor(Math.random() * 2 ** 31);
 }
+
+/**
+ * A second seed derived from a first, so one stored number can drive several
+ * independent streams.
+ *
+ * An expedition stores one seed and its outcome is rolled from it. Anything added
+ * later that also wants randomness — where the loot fell across the hours, which
+ * moments the trip offers — must not draw from that same generator, or it shifts every
+ * roll after it and the trip silently becomes a different trip. Salting instead gives
+ * each concern its own stream, and makes that separation structural rather than a
+ * thing somebody has to remember.
+ *
+ * FNV-1a over the salt, folded into the seed, then avalanched. Not cryptography; it
+ * only has to decorrelate.
+ *
+ * ═══ THIS FUNCTION IS FROZEN ═══
+ *
+ * Seeds are stored on rows and replayed at resolution, so this arithmetic *is* the
+ * trip a player is currently on. Changing it — tightening it, tidying the constants,
+ * "improving" it — silently re-rolls every expedition in flight and every outcome any
+ * test has pinned. Treat it exactly like an applied migration: it cannot be edited,
+ * only replaced by something new alongside it. `test/unit/random.test.js` pins its
+ * output to fixed values for that reason.
+ */
+export function mix(seed, salt) {
+  let h = 0x811c9dc5;
+  const text = String(salt);
+
+  for (let i = 0; i < text.length; i += 1) {
+    h = Math.imul(h ^ text.charCodeAt(i), 0x01000193);
+  }
+
+  h ^= Math.imul(Number(seed) >>> 0, 0x9e3779b1);
+  h ^= h >>> 16;
+  h = Math.imul(h, 0x21f0aaad);
+  h ^= h >>> 15;
+
+  return h >>> 0;
+}
