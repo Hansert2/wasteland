@@ -60,9 +60,11 @@ function duration(hours) {
  * Three units at most. Past a day the seconds are noise nobody is watching tick, and
  * a build cost of "9d 03h 12m" is already at the edge of what fits in a table cell.
  *
- * The client script below repeats this logic rather than importing it — the whole of
- * that script is twenty lines of inline JavaScript with no build step to share
- * modules through. If either changes, change both; a test asserts they agree.
+ * The client script below cannot import this — it is inline JavaScript with no build
+ * step to share modules through — so it is handed this function's own source instead,
+ * the same way STORE_DECIMALS is interpolated. There is therefore no second copy to
+ * keep in step, and the one rule that makes that work is: **this function must close
+ * over nothing.** Only globals. A test evaluates it in an empty scope to prove it.
  */
 export function clock(totalSeconds) {
   const t = Math.max(0, Math.round(Number(totalSeconds) || 0));
@@ -129,20 +131,13 @@ const STORE_DECIMALS = 1;
  */
 export const TIMERS = `
 (() => {
-  // Mirrors clock() in render.js. Kept in step by a test that runs both.
-  const fmt = (ms) => {
-    const t = Math.max(0, Math.round(ms / 1000));
-    if (t <= 0) return 'now';
-    const d = Math.floor(t / 86400);
-    const h = Math.floor((t % 86400) / 3600);
-    const m = Math.floor((t % 3600) / 60);
-    const s = t % 60;
-    const pad = (v) => String(v).padStart(2, '0');
-    if (d > 0) return d + 'd ' + pad(h) + 'h ' + pad(m) + 'm';
-    if (h > 0) return h + 'h ' + pad(m) + 'm ' + pad(s) + 's';
-    if (m > 0) return m + 'm ' + pad(s) + 's';
-    return s + 's';
-  };
+  // clock() itself, injected rather than copied out by hand — the same trick
+  // STORE_DECIMALS already uses, so the browser and the server cannot disagree.
+  // This is safe only because there is no build step: a minifier would make
+  // Function.prototype.toString untrustworthy, and this would have to go back to a
+  // second copy kept in step by a test. Keep clock() closing over nothing.
+  const clock = ${clock.toString()};
+  const fmt = (ms) => clock(ms / 1000);
 
   const live = [...document.querySelectorAll('[data-until]')]
     .filter((el) => Number(el.dataset.until) > Date.now());

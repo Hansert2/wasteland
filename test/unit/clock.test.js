@@ -4,22 +4,31 @@ import assert from 'node:assert/strict';
 import { TIMERS, clock } from '../../src/web/render.js';
 
 /**
- * The client's formatter, lifted out of the inline script and made callable.
+ * `clock` as the browser gets it: its own source, evaluated in an empty scope.
  *
- * The page carries twenty lines of JavaScript with no build step, so the browser's
- * copy of this logic cannot import the server's — it is duplicated on purpose. What
- * follows makes the duplication safe: the two are run against the same inputs and
- * required to agree, so a change to one that is not made to the other fails here
- * rather than in front of somebody watching a timer.
+ * The page carries twenty lines of inline JavaScript with no build step, so the
+ * browser cannot import this function — it is handed the function's source instead.
+ * That removes the second copy that used to be kept in step by hand, and replaces it
+ * with a single requirement: `clock` must close over nothing but globals.
+ *
+ * `new Function` is what proves it. Its body sees globals and nothing else, so a
+ * `clock` that grew a reference to anything at module scope — a constant, a helper,
+ * another import — throws here instead of silently formatting every timer in every
+ * browser as `undefined`.
  */
-function clientFormatter() {
-  const source = TIMERS.match(/const fmt = \(ms\) => \{[\s\S]*?\n {2}\};/);
-  assert.ok(source, 'could not find fmt in the inline script — has it been rewritten?');
-  return new Function(`${source[0]} return fmt;`)();
+function asTheBrowserGetsIt() {
+  return new Function(`return (${clock.toString()});`)();
 }
 
-test('the server and the browser format a duration identically', () => {
-  const fmt = clientFormatter();
+test('the browser is handed clock itself, not a copy of it', () => {
+  assert.ok(
+    TIMERS.includes(clock.toString()),
+    'the inline script no longer contains clock() — has it been copied out by hand again?',
+  );
+});
+
+test('clock closes over nothing, so handing out its source is safe', () => {
+  const injected = asTheBrowserGetsIt();
 
   const seconds = [
     0, 1, 9, 36, 59, 60, 61, 90, 599, 600, 3599, 3600, 3601, 3661,
@@ -27,7 +36,7 @@ test('the server and the browser format a duration identically', () => {
   ];
 
   for (const s of seconds) {
-    assert.equal(fmt(s * 1000), clock(s), `disagreement at ${s}s`);
+    assert.equal(injected(s), clock(s), `disagreement at ${s}s`);
   }
 });
 
@@ -51,5 +60,5 @@ test('an elapsed or nonsense duration reads as now rather than as a negative', (
   for (const value of [0, -1, -99999, NaN, undefined, null, 'nonsense']) {
     assert.equal(clock(value), 'now', `clock(${String(value)})`);
   }
-  assert.equal(clientFormatter()(-5000), 'now', 'and the browser agrees');
+  assert.equal(asTheBrowserGetsIt()(-5), 'now', 'and the browser agrees');
 });
