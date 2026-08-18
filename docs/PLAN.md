@@ -979,6 +979,22 @@ than a deferral: Phase 6 is the first phase whose whole point *is* what the page
 Nothing below invents a new idiom — `render.js` is deliberately plain HTML, and every
 piece here is a shape the file already uses.
 
+**Read this section knowing the look is scaffolding.** `render.js` says the styling
+exists only to keep the page readable while playing, and the intention is to overhaul the
+graphics properly at some point. So this section is two things layered together, and they
+have very different lifespans:
+
+- **Durable** — the thing with a deadline goes first; a priced choice shows its price
+  beside it; the facts a decision needs sit next to the decision; a number that moves once
+  an hour is not animated; a refused verb speaks in the game's voice. These are about how
+  the game communicates, and they should survive any reskin intact.
+- **Transitional** — `class="error"`, the offers-table shape, the 44rem monospace column,
+  and every literal mock below. These are what plain HTML made convenient, nothing more,
+  and a redesign should feel free to throw all of it away.
+
+Where the two are tangled below, the reasoning is written out rather than the markup, so
+the durable half can be lifted off the transitional half later.
+
 **An open moment goes in the top slot, under the raid warning.** That slot already has a
 stated rule — *"placed above everything else because it is the only thing on this page
 with a deadline"* — and a closing window is the second thing to qualify. It is **not**
