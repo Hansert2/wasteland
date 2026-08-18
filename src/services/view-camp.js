@@ -1,5 +1,13 @@
 import { advanceSettlement } from './advance-settlement.js';
-import { WORLD_EVENTS, activeAt, productionFactors } from '../game/world-events.js';
+import {
+  WORLD_EVENTS,
+  activeAt,
+  expeditionFactors,
+  productionFactors,
+} from '../game/world-events.js';
+import { resolveExpedition } from '../game/expeditions.js';
+import { isOpen, isWarned, momentsFor } from '../game/moments.js';
+import { stateAt, timelineOf } from '../game/timeline.js';
 import { CONFIG } from '../game/constants.js';
 import { FACTIONS, caravanVisit, priceAt, standingOf } from '../game/factions.js';
 import {
@@ -19,6 +27,97 @@ import {
  * to the current instant, so the page can never show stale resources or a survivor
  * who is, as of now, already dead.
  */
+const HOUR_MS = 60 * 60 * 1000;
+
+/**
+ * What is knowable about a trip that is still happening.
+ *
+ * The outcome is resolved *early* here, which looks alarming and is not: an expedition
+ * has always been a pure function of its seed, so rolling it now and rolling it at
+ * `returns_at` give the same trip. Nothing is written and nothing is decided — this is
+ * the same arithmetic the tick will do later, done sooner so the page has something
+ * true to say.
+ *
+ * The weather used is the weather **at the scheduled return**, not the weather now,
+ * because that is what the tick will resolve against. World events are derived rather
+ * than observed, so that hour is already knowable, and using it is what makes the
+ * report land on what actually comes home rather than near it.
+ *
+ * Returns null when nobody is out, which is most of the time.
+ */
+function reportOn(row, state, now) {
+  if (!row) return null;
+
+  const travelHours = Number(row.travel_hours);
+  const seed = Number(row.seed);
+  const region = {
+    slug: row.slug,
+    name: row.name,
+    danger: row.danger,
+    travelHours,
+    loot: row.loot,
+    finds: row.finds,
+    radiationPerTrip: row.radiation_per_trip,
+  };
+
+  const choices = row.choices ?? [];
+  const returnsAt = row.returns_at.getTime();
+  const elapsed = Math.max(0, (now - row.departed_at.getTime()) / HOUR_MS);
+
+  const outcome = resolveExpedition({
+    region,
+    survivor: state.survivor,
+    seed,
+    weather: expeditionFactors(activeAt(state.worldEvents, returnsAt)),
+    choices,
+    standings: state.settlement.standings,
+  });
+
+  const carried = stateAt(timelineOf({ outcome, travelHours, seed }), elapsed);
+  const answered = new Set(choices.map((choice) => Number(choice.index)));
+  const moments = momentsFor(region, seed);
+
+  // Health as it stands out there: what they left with, less what the trip has already
+  // done to them. This is what the warning on a lethal option is measured against, and
+  // it is computed rather than simulated — the tick still applies damage at the return.
+  const health = Math.max(0, Number(state.survivor?.health ?? 0) - carried.damage);
+
+  const open = moments.find(
+    (moment) => !answered.has(moment.index) && isOpen(moment, elapsed),
+  );
+
+  return {
+    regionName: row.name,
+    returnsAt: row.returns_at,
+    hoursOut: elapsed,
+    carrying: carried.carrying,
+    radiation: carried.radiation,
+    damage: carried.damage,
+    cause: carried.cause,
+    findCount: carried.finds.length,
+    health,
+    // The radio's second job, and the same job it already had: it tells you when, and
+    // nothing else. Without it a moment is found by loading the page inside its window.
+    nextMomentAt: null,
+    moment: open
+      ? {
+          index: open.index,
+          prose: open.prose,
+          closesAt: new Date(row.departed_at.getTime() + open.closesAt * HOUR_MS),
+          options: open.options.map((option) => ({
+            key: option.key,
+            label: option.label,
+            detail: option.detail,
+            warned: isWarned(option, health),
+          })),
+        }
+      : null,
+    upcoming: moments
+      .filter((moment) => !answered.has(moment.index) && moment.atHour > elapsed)
+      .map((moment) => new Date(row.departed_at.getTime() + moment.atHour * HOUR_MS)),
+  };
+}
+
 export async function viewCamp(client, settlementId, now = Date.now()) {
   const { state, events } = await advanceSettlement(client, settlementId, now);
 
@@ -53,7 +152,8 @@ export async function viewCamp(client, settlementId, now = Date.now()) {
   // Re-read rather than using the post-tick state: the tick may have just resolved
   // an expedition, and what the page wants is whatever is in flight *now*.
   const { rows: away } = await client.query(
-    `select r.name, e.returns_at
+    `select r.name, r.slug, r.danger, r.travel_hours, r.loot, r.finds, r.radiation_per_trip,
+            e.returns_at, e.departed_at, e.seed, e.choices
        from expeditions e
        join regions r on r.id = e.region_id
        join characters c on c.id = e.character_id
@@ -145,6 +245,15 @@ export async function viewCamp(client, settlementId, now = Date.now()) {
     };
   }
 
+  // The radio's second job, and the same shape as its first: it tells you *when*. Its
+  // scrap levels protect the camp while you are gone; the radio only ever helps while
+  // you are here, so an unfitted camp meets a moment by loading the page inside its
+  // window and never by planning to.
+  const expedition = reportOn(away[0], state, now);
+  if (expedition && fitted.has('radio')) {
+    expedition.nextMomentAt = expedition.upcoming[0] ?? null;
+  }
+
   const rates = productionRates(structures);
 
   // What the sky is doing to production, and what the survivor takes back out. Both
@@ -210,7 +319,7 @@ export async function viewCamp(client, settlementId, now = Date.now()) {
     craft: onTheBench[0]
       ? { name: onTheBench[0].name, completesAt: onTheBench[0].completes_at }
       : null,
-    expedition: away[0] ? { regionName: away[0].name, returnsAt: away[0].returns_at } : null,
+    expedition,
     survivor: state.survivor ? { ...state.survivor, name: survivorRow[0]?.name } : null,
     /**
      * The rate a player can act on: what the stores will actually do next hour.

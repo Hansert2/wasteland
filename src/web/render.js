@@ -311,6 +311,7 @@ export function campPage(view, { error } = {}) {
       <p>Wealth ${view.wealth} &middot; defence ${view.defence} &middot; founded
          ${escape(view.foundedAt.toISOString().slice(0, 10))}</p>`)}
     ${section('error', error ? `<p class="error">${escape(error)}</p>` : '')}
+    ${section('moment', renderMoment(view.expedition))}
     ${section('raid', renderRaidWarning(view.raidExpectedAt))}
     ${section('sky', renderWeather(view.weather))}
 
@@ -462,15 +463,92 @@ function renderNoSurvivor(everHeld) {
     </form>`;
 }
 
+/**
+ * A moment, in the top slot beside the raid warning.
+ *
+ * That slot's rule is that the only thing on the page with a deadline goes first, and a
+ * closing window is the second thing to qualify. It is deliberately *not* given
+ * `class="error"` — that box is the alarm idiom and a moment is an invitation. A warned
+ * option is the exception, and carries its warning where every other option carries its
+ * price.
+ *
+ * The one-line context sentence duplicates what the Away section says further down, on
+ * purpose: a decision needs its facts beside it, and making somebody scroll to find out
+ * whether 34 health is bad would be the whole design failing at the last inch.
+ */
+function renderMoment(expedition) {
+  const moment = expedition?.moment;
+  if (!moment) return '';
+
+  const rows = moment.options
+    .map(
+      (option) => `<tr>
+        <th>${escape(option.label)}</th>
+        <td>${option.warned ? '&#9888; ' : ''}${escape(option.detail)}</td>
+        <td>
+          <form method="post" action="/moment" style="margin:0">
+            <input type="hidden" name="index" value="${moment.index}">
+            <input type="hidden" name="option" value="${escape(option.key)}">
+            <button type="submit">Choose</button>
+          </form>
+        </td>
+      </tr>`,
+    )
+    .join('');
+
+  return `<h2>Contact &mdash; ${countdown(moment.closesAt, 'gone')} to answer</h2>
+    <p>${escape(condition(expedition))}</p>
+    <p><strong>${escape(moment.prose)}</strong></p>
+    <table>${rows}</table>`;
+}
+
+/** "Six hours into the Deep Zone, carrying 22 scrap, at 61 health." */
+function condition(expedition) {
+  const carried = Object.entries(expedition.carrying)
+    .map(([kind, amount]) => `${amount} ${kind}`)
+    .join(', ');
+
+  // `duration` says "now" for anything under a second, which reads as "now into The
+  // Deep Zone" on a survivor who has just walked out of the gate.
+  const how =
+    expedition.hoursOut < 0.05
+      ? `Just set out for ${expedition.regionName}`
+      : `${duration(expedition.hoursOut)} into ${expedition.regionName}`;
+
+  return [
+    how,
+    carried ? `carrying ${carried}` : 'carrying nothing yet',
+    `at ${n(expedition.health, 0)} health`,
+  ].join(', ') + '.';
+}
+
 function renderExpeditions(view) {
   if (view.expedition) {
-    const hoursLeft = (new Date(view.expedition.returnsAt).getTime() - Date.now()) / 3600000;
+    const trip = view.expedition;
+    const hoursLeft = (new Date(trip.returnsAt).getTime() - Date.now()) / 3600000;
     const due =
       hoursLeft > 0
-        ? `due back in ${countdown(view.expedition.returnsAt, 'now')}`
+        ? `due back in ${countdown(trip.returnsAt, 'now')}`
         : 'overdue — reload to see what came back';
-    return `<h2>Away</h2>
-      <p>${escape(view.expedition.regionName)} — ${due}</p>`;
+
+    // The report, which is what makes a check-in that catches no window worth making.
+    // Rendered once and not animated: the haul steps by a whole unit about once an
+    // hour, so a live counter would buy nothing and would cost the client script a copy
+    // of the progress curve.
+    const lines = [`${escape(trip.regionName)} — ${due}`, escape(condition(trip))];
+
+    if (trip.damage > 0) {
+      lines.push(`Hurt out there${trip.cause ? ` — ${escape(trip.cause)}` : ''}.`);
+    }
+    if (trip.radiation > 0) lines.push(`${n(trip.radiation)} rads so far.`);
+    if (trip.findCount > 0) {
+      lines.push(`${trip.findCount} thing${trip.findCount === 1 ? '' : 's'} worth keeping.`);
+    }
+    if (trip.nextMomentAt) {
+      lines.push(`Radio: next contact in ${countdown(trip.nextMomentAt, 'any moment')}.`);
+    }
+
+    return `<h2>Away</h2><p>${lines.join('<br>')}</p>`;
   }
 
   const rows = view.regions

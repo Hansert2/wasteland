@@ -12,6 +12,7 @@ import {
 } from '../auth/sessions.js';
 import { foundSettlement, raiseSuccessor, InputError } from '../services/settlement-lifecycle.js';
 import { advanceSettlement } from '../services/advance-settlement.js';
+import { answerMoment } from '../services/answer-moment.js';
 import { dispatchExpedition } from '../services/dispatch-expedition.js';
 import { startBuild } from '../services/start-build.js';
 import { startCraft } from '../services/start-craft.js';
@@ -203,6 +204,28 @@ export function createApp() {
         client,
         settlementId,
         { faction: req.body.faction, offer: req.body.offer },
+        now,
+      );
+    });
+
+    res.redirect('/camp');
+  });
+
+  app.post('/moment', requireAuth, async (req, res) => {
+    await withTransaction(async (client) => {
+      const settlementId = await settlementIdForPlayer(client, req.playerId);
+      if (!settlementId) throw new InputError('This account has no camp.');
+
+      // Advance first, for the same reason trading does: "is that window still open" is
+      // a question about the current instant. Unlike a caravan, a moment's window closes
+      // on its own while the page sits there, so a stale answer is the ordinary case
+      // rather than an edge one.
+      const now = Date.now();
+      await advanceSettlement(client, settlementId, now);
+      await answerMoment(
+        client,
+        settlementId,
+        { index: req.body.index, option: req.body.option },
         now,
       );
     });
