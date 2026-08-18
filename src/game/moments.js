@@ -20,6 +20,16 @@ import { makeRandom, mix } from './random.js';
 export const MOMENTS_SALT = 'moments';
 
 /**
+ * A third stream, for what a chosen option *does*.
+ *
+ * Separate from `MOMENTS_SALT` rather than sharing it: `momentsFor` has already drawn
+ * from that one to shuffle and place, so re-opening it for consequences would make an
+ * option's find roll the same number as a shuffle draw. Harmless today and the sort of
+ * hidden correlation that is miserable to find later.
+ */
+export const EFFECTS_SALT = 'effects';
+
+/**
  * The six things a moment can be *about*.
  *
  * The rule that makes the content worth reading twice: **no two moments on one trip may
@@ -274,7 +284,10 @@ export function momentsFor(region, seed) {
       key,
       axis: MOMENTS[key].axis,
       prose: MOMENTS[key].prose,
-      options: MOMENTS[key].options,
+      // Turning back is assembled in here rather than written into every moment: the
+      // content declares what is particular to it, and the trip adds what is always
+      // true. It is last because it is the way out, not one of the things on offer.
+      options: [...MOMENTS[key].options, TURN_BACK],
       atHour,
       // Half-open, and clamped: a window running past the return is hours in which the
       // trip is already over.

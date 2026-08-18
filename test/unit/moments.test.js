@@ -128,6 +128,20 @@ test('open windows come to roughly sixty per cent of a long trip', () => {
   }
 });
 
+test('every moment on a trip offers the way out', () => {
+  // "A standing option underneath all of them" has to be true of what the trip actually
+  // offers, not just of an exported constant — the first version of this declared
+  // TURN_BACK and then never put it anywhere, so nothing could be answered with it.
+  for (const slug of LONG_REGIONS) {
+    for (const seed of SEEDS) {
+      for (const moment of momentsFor(region(slug), seed)) {
+        const last = moment.options[moment.options.length - 1];
+        assert.equal(last.key, TURN_BACK.key, `${slug}, seed ${seed}: and it is offered last`);
+      }
+    }
+  }
+});
+
 test('isOpen is half-open, so a window ending as another begins never double-counts', () => {
   const [moment] = momentsFor(region('the_deep_zone'), 42);
 

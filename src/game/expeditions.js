@@ -1,5 +1,7 @@
-import { makeRandom, intBetween, chance } from './random.js';
+import { makeRandom, intBetween, chance, mix } from './random.js';
 import { equipmentOf } from './equipment.js';
+import { EFFECTS_SALT, momentsFor } from './moments.js';
+import { stateAt, timelineOf } from './timeline.js';
 
 /**
  * What a trip into a region produced. Pure: no clock, no database, no global
@@ -10,8 +12,10 @@ import { equipmentOf } from './equipment.js';
  * @param {object} args.survivor health, scavenging skill and pack at the moment of return
  * @param {number} args.seed
  * @param {{loot: number, radiation: number}} [args.weather] world events in force
+ * @param {{index: number, option: string}[]} [args.choices] answers to the trip's moments
+ * @param {number} [args.standing] standing with the crew a parley might meet
  */
-export function resolveExpedition({ region, survivor, seed, weather }) {
+export function resolveExpedition({ region, survivor, seed, weather, choices, standing = 0 }) {
   const random = makeRandom(seed);
   const log = [];
 
@@ -29,19 +33,204 @@ export function resolveExpedition({ region, survivor, seed, weather }) {
   const radiation = rollRadiation(random, region, sky, log);
   const { damage, cause } = rollHazard(random, region, equipment, log);
 
+  const trip = applyChoices(
+    { loot, finds, radiation, damage, cause, healed: 0, log },
+    { region, survivor, seed, choices, standing },
+  );
+
   // Death is decided here rather than left to the tick, because the survivor has to
   // die of what happened out there — "mauled in the Deep Zone", not "starvation" at
   // whatever the camp's food happened to be that hour.
-  const died = damage >= survivor.health;
+  const died = trip.damage >= survivor.health;
   if (died) {
-    log.push(`They did not make it back from ${region.name}.`);
-  } else if (damage > 0) {
-    log.push(`They limped home.`);
+    trip.log.push(`They did not make it back from ${region.name}.`);
+  } else if (trip.damage > 0) {
+    trip.log.push(`They limped home.`);
   } else {
-    log.push(`They returned from ${region.name} without incident.`);
+    trip.log.push(`They returned from ${region.name} without incident.`);
   }
 
-  return { loot, finds, radiation, damage, died, cause: died ? cause : null, log };
+  return {
+    loot: trip.loot,
+    finds: trip.finds,
+    radiation: trip.radiation,
+    damage: trip.damage,
+    healed: trip.healed,
+    died,
+    cause: died ? trip.cause : null,
+    log: trip.log,
+  };
+}
+
+/**
+ * What the player's answers did to a trip that had already been rolled.
+ *
+ * **Nothing here touches the generator above.** Consequences draw from
+ * `mix(seed, 'effects')`, a third stream beside the one the outcome was rolled with and
+ * the one the moments were placed with, so a trip nobody attended is identical to one
+ * taken before any of this existed — roll for roll, not merely in total.
+ *
+ * With no answers this returns the trip it was handed, untouched and without opening a
+ * generator at all. That early return is not an optimisation; it is the guarantee.
+ *
+ * Effects are measured against the timeline **as it was rolled**, not as it stands after
+ * an earlier choice. Pressing on twice therefore adds a bonus over the same original
+ * remainder each time rather than compounding, which is both simpler to reason about and
+ * the conservative reading — the alternative lets two choices multiply into a haul no
+ * region ever offered.
+ *
+ * The numbers on the options themselves are provisional; see `src/game/moments.js`.
+ */
+function applyChoices(trip, { region, survivor, seed, choices, standing }) {
+  if (!choices || choices.length === 0) return trip;
+
+  const moments = momentsFor(region, seed);
+  if (moments.length === 0) return trip;
+
+  const travelHours = Number(region?.travelHours) || 0;
+  const timeline = timelineOf({ outcome: trip, travelHours, seed });
+  const random = makeRandom(mix(seed, EFFECTS_SALT));
+  const equipment = equipmentOf(survivor);
+
+  // Index order, not the order they were answered in: the trip happened in the order the
+  // hours did, and a replay must not depend on how quickly somebody clicked.
+  const answered = [...choices].sort((a, b) => a.index - b.index);
+
+  for (const answer of answered) {
+    const moment = moments[answer.index];
+    if (!moment) continue;
+
+    const option = moment.options.find((candidate) => candidate.key === answer.option);
+    if (!option || option.verb === 'default') continue;
+
+    const at = stateAt(timeline, moment.atHour);
+
+    if (option.turnBack) {
+      turnBack(trip, at, moment);
+      return trip;
+    }
+
+    if (option.clearsHazard && timeline.hazard && timeline.hazard.atHour > moment.atHour) {
+      trip.damage -= timeline.hazard.damage;
+      trip.cause = null;
+      trip.log.push('Whatever was waiting further on never found them.');
+    }
+
+    if (option.lootFactor) pressOn(trip, timeline, at, option.lootFactor);
+    if (option.radiationFactor) shelter(trip, timeline, at, option.radiationFactor);
+    if (option.heals) {
+      trip.healed += option.heals;
+      trip.log.push('They ate, and walked better for it.');
+    }
+    if (option.findChance) investigate(trip, region, random, option.findChance);
+    if (option.parley) parley(trip, timeline, at, random, standing);
+    if (option.hazard) confront(trip, random, equipment, option.hazard.danger);
+  }
+
+  trip.damage = Math.max(0, Math.round(trip.damage));
+  return trip;
+}
+
+/** Bank what the timeline says is in the pack, and leave the rest out there. */
+function turnBack(trip, at, moment) {
+  trip.loot = at.carrying;
+  trip.finds = at.finds;
+  trip.radiation = at.radiation;
+  trip.damage = at.damage;
+  trip.cause = at.cause;
+  trip.log.push(`They turned back ${formatHours(moment.atHour)} in, carrying what they had.`);
+}
+
+/** A share of what the rest of the trip would have produced, on top of it. */
+function pressOn(trip, timeline, at, factor) {
+  let gained = 0;
+
+  for (const [kind, total] of Object.entries(timeline.loot)) {
+    const remaining = total - (at.carrying[kind] ?? 0);
+    const bonus = Math.round(remaining * (factor - 1));
+    if (bonus === 0) continue;
+    trip.loot[kind] = Math.max(0, (trip.loot[kind] ?? 0) + bonus);
+    gained += bonus;
+  }
+
+  if (gained > 0) trip.log.push(`They came away with ${gained} more than they should have.`);
+}
+
+/** Scale only the dose they had not taken yet. What is in them is in them. */
+function shelter(trip, timeline, at, factor) {
+  const remaining = timeline.radiation - at.radiation;
+  if (remaining <= 0) return;
+
+  trip.radiation = Math.round((at.radiation + remaining * factor) * 10) / 10;
+  trip.log.push(`They sat out the worst of it — ${trip.radiation} rads instead of ${timeline.radiation}.`);
+}
+
+/** One extra roll on whatever this region has to find. */
+function investigate(trip, region, random, probability) {
+  const table = region.finds ?? [];
+  if (table.length === 0 || !chance(random, probability)) {
+    trip.log.push('Whatever was behind it was not worth the hours.');
+    return;
+  }
+
+  const find = table[Math.floor(random() * table.length)];
+  const [min, max] = find.qty ?? [1, 1];
+  const qty = intBetween(random, min, max);
+  if (qty <= 0) return;
+
+  trip.finds.push({ slug: find.slug, qty });
+  trip.log.push(`Behind it: ${qty} × ${find.slug.replaceAll('_', ' ')}.`);
+}
+
+/**
+ * Whoever is out there, and what they make of the camp.
+ *
+ * Standing decides it, which is what puts the rivalry out on the road rather than only
+ * at the gate. Provisional thresholds — like every other number in this phase, these
+ * want measuring before anybody believes them.
+ */
+function parley(trip, timeline, at, random, standing) {
+  if (standing <= -25) {
+    const taken = Math.round((at.carrying.scrap ?? 0) * 0.25);
+    if (taken > 0) {
+      trip.loot.scrap = Math.max(0, (trip.loot.scrap ?? 0) - taken);
+      trip.log.push(`They knew the camp, and did not think much of it — ${taken} scrap lighter.`);
+    } else {
+      trip.log.push('They knew the camp, and did not think much of it.');
+    }
+    return;
+  }
+
+  const share = standing >= 25 ? 0.15 : 0.05;
+  let gained = 0;
+
+  for (const [kind, total] of Object.entries(timeline.loot)) {
+    const bonus = Math.round((total - (at.carrying[kind] ?? 0)) * share);
+    if (bonus === 0) continue;
+    trip.loot[kind] = (trip.loot[kind] ?? 0) + bonus;
+    gained += bonus;
+  }
+
+  trip.log.push(
+    gained > 0
+      ? 'They shared what they could spare, and pointed out the good ground.'
+      : 'They shared a fire and little else.',
+  );
+}
+
+/** Settle it now, at whatever health they have. */
+function confront(trip, random, equipment, danger) {
+  const raw = intBetween(random, danger * 3, danger * 9);
+  const damage = Math.round(raw * equipment.damageMultiplier);
+
+  trip.damage += damage;
+  if (damage > 0 && !trip.cause) trip.cause = 'what was following them';
+  trip.log.push(`They stopped and dealt with it — ${damage} damage.`);
+}
+
+function formatHours(hours) {
+  const rounded = Math.round(hours);
+  return rounded === 1 ? 'an hour' : `${rounded} hours`;
 }
 
 function rollLoot(random, region, survivor, sky, log) {
