@@ -306,10 +306,20 @@ test('pressing on costs the hours it says it does', async () => {
     const id = await sendFixed(client, settlementId, slug, now);
 
     const before = await returnsAt(client, id);
-    // wind_turns / wait: ninety minutes to sit out the worst of it.
+
+    // Read the cost from the content rather than restating it: these are balance
+    // numbers and they move. What is being tested is that the hours an option
+    // advertises are the hours it actually charges, whatever they currently are.
+    const moment = momentsFor({ slug, travelHours: 18 }, FIXED_SEED)[0];
+    const wait = moment.options.find((option) => option.key === 'wait');
+
     await answerMoment(client, settlementId, { index: 0, option: 'wait' }, now + hours(6));
 
-    assert.equal(await returnsAt(client, id) - before, hours(1.5), 'the return moved out');
+    assert.equal(
+      (await returnsAt(client, id)) - before,
+      hours(wait.hours),
+      `the return moved out by the ${wait.hours}h it advertises`,
+    );
   });
 });
 

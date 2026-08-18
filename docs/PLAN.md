@@ -1073,6 +1073,50 @@ sixty days the way filtration was measured, and do not believe it before then �
 filtration lesson was precisely that a mechanic designed to ease a constraint had deleted
 it, and only simulation found out.
 
+**Measured 2026-08-18 (`tools/moment-balance.mjs`), and the bound holds:**
+
+    region                 moments   unattended   attended   uplift   step to next
+    The Ruined City            1        17.5        17.6      0.3%        —
+    Irradiated Farmland        1        17.4        18.1      4.5%      140%
+    Underground Bunkers        2        41.6        52.0     25.1%       49%
+    Coastal Wreckage           2        62.0        75.5     21.8%       33%
+    The Deep Zone              3        82.3       107.6     30.7%        —
+
+Against the greediest possible player — one who evaluates every branch and takes the
+best — attending is worth 22–31% on the regions that have moments worth answering,
+against region steps of 33–49%. Under the bound everywhere, and close enough to the ~35%
+the design aimed at.
+
+**The lethality guarantee survives contact with a perfect player.** Greedy play at full
+health kills nobody, in any region, over four thousand trips each. And the more
+interesting half: at 35 health in the Deep Zone, attending takes the death rate from
+**17.0% down to 0.4%**. Attending is worth most when you are in trouble, which is
+exactly what "you turn back *because* the news was bad" was supposed to mean and is now
+a measured fact rather than an intention.
+
+Three options were retuned on the evidence: overloading a container was taken 9% of the
+time and is now 42%; going to ground was 4% and is now 8%; sitting out a rad storm was
+either always or never right depending on the hour cost, and at one hour it is 30%.
+
+**One target is knowingly missed. `the_tin` — the ration — is declined about 70% of the
+time**, against a 60% ceiling. Raising the healing from 32 to 42 was tried and measured
+identical, because healing past the damage actually taken buys nothing. The honest
+reading is that this is a moment which is *correctly* declined most of the time: eating
+your reserve is situational, and a supplies moment whose answer is usually "not yet" is
+not the same failure as an option nobody would ever take. Recorded rather than tuned
+away, because tuning it further would have been fitting the instrument rather than the
+game.
+
+**What the instrument cannot see.** The value function converts finds, rads, damage and
+hours into scrap so that options which trade in different currencies can be compared,
+and those conversions are arguable — they are constants at the top of the file for
+exactly that reason. Three earlier versions of it were wrong in ways that changed the
+conclusions completely: pricing every rad as forced waiting made the Deep Zone read as
+net *negative*; not charging for the hours an option costs made sitting out a storm right
+94% of the time; and pricing a tin of stew like a dose of chelation made eating look
+wasteful. Each of those was a fault in the measuring instrument that looked exactly like
+a fault in the game.
+
 #### The tests that hold it up
 
 1. **The big one:** for many seeds, `choices: []` reproduces the pre-Phase-6 outcome

@@ -95,9 +95,11 @@ export const MOMENTS = {
         key: 'wait',
         verb: 'wait',
         label: 'Sit it out',
-        detail: 'ninety minutes, and most of the dose',
-        hours: 1.5,
-        radiationFactor: 0.35,
+        detail: 'an hour, and most of the dose',
+        // Ninety minutes was more than the dose was worth outside the band where
+        // radiation actually bites, so pushing through was right 65% of the time.
+        hours: 1,
+        radiationFactor: 0.3,
       },
       {
         key: 'tablets',
@@ -122,7 +124,10 @@ export const MOMENTS = {
         label: 'Go to ground',
         detail: 'an hour lost, and the trail with it',
         hours: 1,
-        lootFactor: 0.85,
+        // An hour of scavenging given up, not a sixth of the trip: at 0.85 this was
+        // taken 4% of the time, which made hiding a worse answer than walking on into
+        // whatever was following them.
+        lootFactor: 0.94,
         clearsHazard: true,
       },
       {
@@ -147,9 +152,12 @@ export const MOMENTS = {
         key: 'overload',
         verb: 'press_on',
         label: 'Overload',
-        detail: 'a third again, an hour slower, and clumsy where clumsy costs',
+        detail: 'half again, an hour slower, and clumsy where clumsy costs',
         hours: 1,
-        lootFactor: 1.33,
+        // Measured at 1.33 and taken only 9% of the time — the hazard and the hour
+        // outweighed it, so "take what fits" was right 82% of the time and this was
+        // decoration. See tools/moment-balance.mjs.
+        lootFactor: 1.55,
         hazard: { danger: 2 },
       },
     ],
@@ -168,7 +176,12 @@ export const MOMENTS = {
         label: 'Eat it',
         detail: 'one ration, and something back in them for the rest of it',
         consumes: ['preserved_meal', 'tinned_stew'],
-        heals: 18,
+        // 18 was worth less than the ration it burned; 32 is about a meal. Raising it
+        // to 42 was tried and measured no different, because healing past the damage
+        // actually taken buys nothing — which is why "save it" stays the right answer
+        // about 70% of the time. See the note in docs/PLAN.md: that is a moment which
+        // is usually correctly declined, not a number still waiting to be found.
+        heals: 32,
       },
     ],
   },

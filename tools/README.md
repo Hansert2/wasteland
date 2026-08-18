@@ -1,6 +1,6 @@
 # tools
 
-Not part of the game. These are the measuring instruments, kept because twice now
+Not part of the game. These are the measuring instruments, kept because three times now
 they have found something that reasoning and a green test suite both missed:
 
 - **Filtration deleted the constraint it was designed to ease.** It scrubbed 36 rads
@@ -9,6 +9,11 @@ they have found something that reasoning and a green test suite both missed:
 - **A faster build curve alone would have fixed nothing.** Simulating the first hour
   showed one build at thirty seconds and then the same four-hour wall, because scrap
   income was per-hour. That is why the short regions exist.
+- **Two of Phase 6's options were decoration.** Overloading a container was the right
+  answer 9% of the time and going to ground 4% — written as decisions, shipped as
+  scenery, and invisible to a suite that only ever asked whether they *worked*. The same
+  run found the happier fact that attending a moment takes a wounded survivor's death
+  rate in the Deep Zone from 17% to 0.4%.
 
 The pattern worth keeping: the simulation is a pure function of `(state, now)`, so
 sixty days of play runs in milliseconds and a balance question can be answered rather
@@ -25,12 +30,23 @@ node tools/raid-balance.mjs      # thirty days of neglect, by camp and watchtowe
 node tools/craft-balance.mjs     # what gear is worth, and what a death costs
 ```
 
-`region-balance.mjs` reads the regions from the database, so it needs the wrapper
-that brings Postgres up:
+`region-balance.mjs` and `moment-balance.mjs` read the regions from the database, so
+they need the wrapper that brings Postgres up:
 
 ```
 node scripts/with-db.mjs node --env-file=.env tools/region-balance.mjs
+node scripts/with-db.mjs node --env-file=.env tools/moment-balance.mjs
 ```
+
+**`moment-balance.mjs` carries a value function, and it is the arguable part.** Options
+trade in different currencies — hours for a dose, a risk for a find — so comparing them
+at all means converting finds, rads, damage and hours into scrap. Those conversions are
+constants at the top of the file with their derivations written out, because three
+earlier versions of them were wrong in ways that changed every conclusion: pricing a rad
+as forced waiting made the Deep Zone read as net *negative*; not charging for an
+option's hours made sitting out a storm right 94% of the time; and pricing a tin of stew
+like a dose of chelation made eating look wasteful. Each looked exactly like a fault in
+the game. **Argue with the constants before believing the table.**
 
 ## wl.mjs — the time machine
 
