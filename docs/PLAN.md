@@ -1164,6 +1164,67 @@ destination, and a destination is worth least while the journey is still thin.
 If a visit still feels thin after Phase 6, that is the signal to bring Phase 7 forward
 rather than to keep adding moments to a trip.
 
+## The page contract, and what a redesign must not drop
+
+The look is scaffolding and will be overhauled. Most of `render.js` can be thrown away
+when that happens — but not all of it is decoration, and the parts that are not are
+invisible. Written down before the redesign rather than during it.
+
+**The real interface between server and browser is a handful of data attributes**, not
+the markup around them. `TIMERS` is the whole of the client-side JavaScript and it finds
+its work by querying for them:
+
+    data-until, data-done          a live countdown, and what to say when it expires
+    data-amount, data-rate, data-cap   a store extrapolated along a straight line
+    STORE_DECIMALS                 interpolated into the script, so it cannot drift
+
+**The auto-reload is mechanical, not cosmetic, and this is the thing most likely to be
+lost.** When a countdown reaches zero the script reloads the page, because the server is
+the only thing that knows what a finished build actually produced. A redesign that
+renders a deadline as its own hand-rolled timer — perfectly reasonable-looking markup —
+silently loses that. The page then sits on *now* forever and the game appears to have
+stopped, with nothing failing and nothing in a log. Two further subtleties ride along
+with it: only timers still running at page load may trigger a reload, or an
+already-expired one loops forever; and store extrapolation clamps to `data-cap`, or the
+page shows amounts the database would refuse.
+
+**So the rule is: nothing renders a deadline except `countdown()`, and nothing renders a
+store except the helper that emits those three attributes.** A redesign may change every
+tag, class and layout in the file and must keep routing through those two functions.
+
+### Delete the duplication rather than documenting it
+
+`clock()` exists twice — once in `render.js` and once as `fmt` inside the `TIMERS`
+string — with a comment asking the next person to keep them in step and a test that runs
+both. That is a reasonable guard, and it is a strictly worse pattern than the one the
+same file already uses ten lines earlier, where `STORE_DECIMALS` is *interpolated* into
+the script so that "the browser and the server cannot disagree about it the way the two
+clock formatters could". The file names its own inferior pattern and then keeps it.
+
+It can simply be interpolated too. `clock` is self-contained — it closes over nothing,
+and touches only `Math`, `Number` and `String` — so its source can be injected the same
+way the constant is:
+
+    const fmt = (ms) => (${clock.toString()})(ms / 1000);
+
+The duplication then stops existing rather than being tested, and one whole class of
+reskin bug goes with it. **This is safe precisely because there is no build step** — the
+file already says so, when explaining why the two copies exist at all. If a bundler or
+minifier is ever introduced, `Function.prototype.toString` stops being trustworthy and
+this has to go back to two copies and a test. That condition is the price, and it is
+worth writing down next to the code rather than discovering later.
+
+### Test the contract, so a redesign fails loudly
+
+The remaining risk cannot be deleted, only caught: a redesign that hand-rolls markup and
+drops an attribute. One test closes it — render a camp page from a fixture with known
+pending deadlines, and assert every one of them appears as an element carrying
+`data-until` and `data-done`. A hand-rolled timer then fails the suite instead of quietly
+disabling the reload.
+
+This is the same shape as the existing guard that no structure produces fuel: cheap,
+specific, and aimed at the exact mistake a future change is likely to make.
+
 ## Not planned
 
 - **Alts.** `settlements_player_idx` is unique on `player_id`. Drop it if this ever
