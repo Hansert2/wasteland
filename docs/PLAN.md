@@ -948,6 +948,74 @@ told they had played it wrong on every single trip, which is the same failure as
 unfair offline death wearing a politer hat. A missed moment is a thing that happened, not
 a bill.
 
+#### The page
+
+Six commits of this phase said nothing about the interface, which was an omission rather
+than a deferral: Phase 6 is the first phase whose whole point *is* what the page shows.
+Nothing below invents a new idiom — `render.js` is deliberately plain HTML, and every
+piece here is a shape the file already uses.
+
+**An open moment goes in the top slot, under the raid warning.** That slot already has a
+stated rule — *"placed above everything else because it is the only thing on this page
+with a deadline"* — and a closing window is the second thing to qualify. It is **not**
+given `class="error"`, though: that box is the alarm idiom, and a moment is an invitation.
+The warned variant is the exception, where the alarm is the correct reading.
+
+    Contact — 3h 30m 12s to answer
+
+    They are six hours into the Bunkers, carrying 22 scrap, at 61 health.
+
+    A door someone welded shut from the outside. That was a decision, once.
+
+      Leave it          they walk on                          [ Choose ]
+      Work it open      +2h · a chance at something           [ Choose ]
+      Start for home    bank 22 scrap · home in 2h 30m        [ Choose ]
+
+The option list is the caravan offers table exactly — *what / what it costs / a button* —
+because that table already teaches the player how a priced choice looks here. Turn back
+appears as the last row of every moment, which is what "a standing option underneath all
+of them" means in practice. A warned option carries its warning in the cost column, where
+the price of everything else is: `⚠ they may not survive this · at 34 health`.
+
+**The one-line context sentence is deliberate duplication.** The fuller report lives in
+the *Away* section further down, but a decision needs its facts next to it, and making
+the player scroll to find out whether 34 health is bad would be the whole design failing
+at the last inch.
+
+**The *Away* section stops being a countdown and becomes the report.** Today it is two
+lines — region and due-back. It gains what the timeline knows: what they are carrying,
+what has happened to them, and — with the radio — when the next contact is due. This is
+what makes an expedition worth looking at on a check-in that catches no window, which is
+most of them.
+
+**The haul is rendered once and does not animate, and this is a decision rather than an
+oversight.** Every other countdown on the page ticks, because the pacing rescale made
+things finish while you are looking at them. The haul is the opposite case: `carried()`
+steps by one whole unit roughly every fifty minutes on a Deep Zone run, so animating it
+would buy nothing. It would also cost a great deal — the client script would need the
+progress curve and the per-kind jitter, and `render.js` already carries one duplicated
+formatter with a test pinning the two copies together and a comment asking the next
+person to keep them in step. A second, far hairier duplication for a number that moves
+once an hour is a bad trade. The existing note about store decimals settles it in
+advance: *a number that changes slowly because the thing it counts changes slowly is
+telling the truth.*
+
+**A stale submit is an `InputError`, like every other refused verb.** The window can close
+between rendering the page and clicking the button, and unlike anything else in the game
+that is a routine event rather than an edge case, because windows expire on their own.
+It renders in the ordinary error box and reads in the ordinary voice: **"That moment has
+passed."** No redirect games, no special casing — the camp page re-renders with the
+message, and the countdown already sitting at *passed* explains it.
+
+**What the view has to grow.** `viewCamp` gains `moment` — index, prose, the closing
+instant, and the options with their costs and warned flags already resolved — and
+`expedition` gains the report: `carrying`, the damage and finds so far, and
+`nextMomentAt` when the radio is fitted. All of it computed from the timeline, all of it
+already pure.
+
+The route is `POST /moment` with the index and the chosen option, redirecting to `/camp`
+like every other verb.
+
 #### The bound on attentive play
 
 This makes an attentive player strictly richer than an absent one, which is new to this
