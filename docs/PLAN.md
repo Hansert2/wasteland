@@ -716,12 +716,25 @@ faucet.
 
 Windows are proportional to the trip rather than fixed, which is the answer to the
 question of whether this becomes a page you have to sit on. Roughly `travel_hours ÷
-(count × 3)`, floored at about forty-five minutes: two hours on a Deep Zone run, an hour
-and a half in the Bunkers. Check in two or three times across a long trip and you catch
-most of them; check in once and you catch one; never and you get today's game exactly.
-Moments are also placed in the trip's interior, never in the first or last tenth, so
-there is always a report worth reading and always enough trip left for the choice to
-matter.
+(count × 1.75)`, floored at about forty-five minutes: three and a half hours on a Deep
+Zone run, two and a half in the Bunkers. Moments are also placed in the trip's interior,
+never in the first or last tenth, so there is always a report worth reading and always
+enough trip left for the choice to matter.
+
+**The first draft of this said `× 3`, and claimed two or three check-ins would catch most
+moments. The arithmetic did not agree**, which is recorded because it is the sort of
+error that reads as fine and ships as disappointment: three two-hour windows in an
+eighteen-hour trip leave only a third of it open, so three check-ins catch about *one*
+moment of the three. The design promised an experience its own numbers did not deliver.
+
+At `× 1.75` coverage is a little under sixty percent, and the honest claim is: **one
+check-in during a long trip usually finds something open, two nearly always do, and
+catching all of them still takes either attention or the radio.** Full coverage was
+deliberately not chosen — an always-answerable moment would make timing worthless, which
+would strip the radio of the job the next paragraph gives it, and would repeat the
+mistake Phase 5 avoided when it made caravans missable. This also leans on something
+already settled: the haul shows continuously, so a visit that catches no window is not an
+empty one.
 
 **The radio gets a second job, and it is the same job it already has.** Without it, you
 find a moment by happening to load the page inside its window. With it, the camp page
@@ -729,21 +742,67 @@ says when the next one is due. Its scrap levels protect you while you are gone; 
 helps only while you are here — which is exactly what was written about it in Phase 3,
 now paying off twice.
 
-#### The four verbs
+**The consequence is accepted rather than overlooked: Phase 6 is faint until watchtower
+4.** Timing a check-in is the radio's to sell, so a camp without one meets moments by
+luck. Moving the hour off the radio was considered and rejected — it is the one upgrade
+with no multiplier, and taking away the only thing it sells to make a new phase land
+sooner would leave it with nothing. The widened windows above are what keep the phase
+playable in the meantime, and the continuously shown haul is what keeps an ungated visit
+worth making.
+
+#### The verbs — a closed vocabulary, widened to fit the content
 
 All priced in things that already exist:
 
-- **Press on** — more loot from the remaining segment, at more danger and more hours.
+- **Press on** — more loot from the remaining stretch, at more danger and more hours.
 - **Investigate** — spend hours for a shot at a find.
 - **Spend** — burn food, water or meds from the pack for a margin.
-- **Turn back** — bank what the timeline says they are carrying, forfeit the rest, come
-  home early. This is the defensive verb, and it is the one that makes the report
-  load-bearing: you turn back *because* the news was bad. Without it, attending is only
-  ever greed, and a decision with upside on every branch is not a decision.
+- **Wait** — give up hours to avoid something: a dose, a hazard, a thing on your trail.
+- **Confront** — settle a threat now rather than carry it, at whatever health they have.
+- **Parley** — deal with whoever is out there; the outcome comes from standing.
+- **Turn back** — bank what the timeline says they are carrying, forfeit the rest, and
+  start for home. The defensive verb, and the one that makes the report load-bearing: you
+  turn back *because* the news was bad. Without it, attending is only ever greed, and a
+  decision with upside on every branch is not a decision.
+
+**The first four of these were the whole list, and the content outgrew it while the
+exemplars were being written.** *Sit it out*, *go to ground*, *turn and face it* and
+*hail them* were none of press on, investigate, spend or turn back — so the taxonomy was
+describing a smaller game than the one being designed. Recorded rather than quietly
+patched, because the alternative on the table was free-form effect specs per moment, and
+that trade is worth naming: a closed vocabulary means shared effect code and uniform
+tests, and it costs a plan edit every time content needs a verb that does not exist yet.
+That is the right price here — the verb list is short, and a moment that needs an eighth
+verb is a moment worth thinking about twice.
 
 **Turning back is offered at every moment rather than being a moment of its own.** It is
 the standing option underneath all of them, which means the report always has a use and
 no encounter ever has to be written to ask "should they come home."
+
+#### Turning back has to cost a walk home, or it dominates everything
+
+Caught in an audit of this section against itself, and it is the one real bug the design
+had rather than a gap in it. `progress` tapers at the end — little loot on the walk home —
+and turning back was written as *come home early* with no cost attached. Those two
+together make bailing at four fifths of the way strictly optimal on **every** trip: you
+forfeit almost no loot and save a fifth of the hours. The defensive verb becomes a
+mandatory click, and attending stops being a reward and starts being a chore.
+
+The game has no distance model to fix it with — `travel_hours` is a single number and
+`returns_at` is `now + travel_hours`. So one is invented, and kept as small as it can be:
+**a survivor is as far from home as the trip's midpoint implies, and turning back at hour
+`h` of `H` costs `min(h, H − h) × 0.5` hours before they are through the gate.**
+
+    turn back at   walk home   home at   saved
+    hour 2 of 18       1.0h      3.0h    15.0h
+    hour 9 of 18       4.5h     13.5h     4.5h
+    hour 16 of 18      1.0h     17.0h      1.0h
+
+Cheap when they have barely set out, expensive in the middle where they are furthest from
+anywhere, and worth almost nothing near the end — which is exactly when it should be
+worth almost nothing. Bailing late now saves an hour and forfeits about an hour's loot,
+so it is neutral rather than free, and the verb goes back to meaning what it was written
+to mean: you abandon a trip when the news is bad enough to justify abandoning it.
 
 #### The content, and the rule that keeps it from rotting
 
@@ -830,6 +889,18 @@ storage, and this is what carrying it is *for*.
   from standing with them. Trusted, they trade a little and part friendly. Hostile, they
   take something, or worse. **Warned** when hostile and hurt.
 
+#### Two terms pinned, so nobody has to guess later
+
+**"Any long region" means the five at four hours and over** — the Ruined City, Irradiated
+Farmland, Underground Bunkers, Coastal Wreckage and the Deep Zone. The Fence Line and the
+Old Service Road are the short ones and have no moments at all.
+
+**Weather applies to a moment's effects, through the same multipliers it already
+applies.** A moment never changes what is drawn, so a rad storm scales the dose a *wind
+turns* choice leaves behind exactly as it scales the trip's own dose, and a caravan
+season scales what pressing on brings back. This needs no new code and is written down
+only so that the first person to wonder finds an answer instead of a silence.
+
 #### Where the content lives
 
 `src/game/moments.js` — pure data beside pure functions, the `STRUCTURES` and `FACTIONS`
@@ -843,7 +914,11 @@ Two targets, both measurable in the soak harness, because "does it feel repetiti
 exactly the kind of question this project has learned not to answer by intuition:
 
 - **Repeat rate** — trips before the same moment comes round again. Repetition is what
-  kills this content, so it is a number rather than a feeling.
+  kills this content, so it is a number rather than a feeling, and the number is: **no
+  moment seen twice within five trips to the same region.** Note the six exemplars cannot
+  meet it and are not meant to — the Deep Zone needs three distinct axes and only four
+  exist for it in the starter set, so the first six can be judged on shape and voice but
+  never on repetition.
 - **Option distribution** — no option should be right in more than about 60% of realistic
   states. If *press on* wins 85% of the time, the moment is a tax on attention rather
   than a decision, and the prose failure above has simply reappeared as a number.
