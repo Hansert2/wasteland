@@ -78,17 +78,26 @@ export async function answerMoment(client, settlementId, { index, option }, now 
 
   // Turning back and pressing on are the two answers that move the return. Everything
   // else is settled at resolution and needs nothing here.
+  //
+  // **Nothing can get them home sooner than the walk home.** A shortcut with negative
+  // hours would otherwise be able to set the return before the answer, or before the
+  // departure — cutting across a field saves ninety minutes off a forty-five minute
+  // trip, which is not a faster trip, it is a trip that ends before it started. The
+  // floor is the same one turning back uses, for the same reason: however clever the
+  // route, they still have to walk back.
+  const earliest = now + walkHomeHours(elapsed, travelHours) * HOUR_MS;
+
   if (chosen.key === TURN_BACK.key) {
-    const home = now + walkHomeHours(elapsed, travelHours) * HOUR_MS;
     await client.query('update expeditions set returns_at = $2 where id = $1', [
       expedition.id,
-      new Date(home),
+      new Date(earliest),
     ]);
   } else if (chosen.hours) {
-    await client.query(
-      `update expeditions set returns_at = returns_at + ($2 || ' hours')::interval where id = $1`,
-      [expedition.id, String(chosen.hours)],
-    );
+    const moved = expedition.returns_at.getTime() + Number(chosen.hours) * HOUR_MS;
+    await client.query('update expeditions set returns_at = $2 where id = $1', [
+      expedition.id,
+      new Date(Math.max(moved, earliest)),
+    ]);
   }
 
   return { index: moment.index, option: chosen.key };

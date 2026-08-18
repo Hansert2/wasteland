@@ -60,6 +60,41 @@ test('every moment has exactly one default, and the default does nothing', () =>
   }
 });
 
+test('every option value is inside the range its effect makes sense in', () => {
+  // Eighteen moments is more hand-written numbers than anyone checks by reading, and a
+  // typo here is a silent balance change rather than a crash — dropsCarried at 3 would
+  // take three times what they are carrying and read as a rounding bug.
+  for (const [key, moment] of Object.entries(MOMENTS)) {
+    for (const option of moment.options) {
+      const at = `${key}/${option.key}`;
+      const within = (field, low, high) => {
+        if (option[field] === undefined) return;
+        assert.ok(
+          option[field] >= low && option[field] <= high,
+          `${at}: ${field} = ${option[field]}, outside ${low}..${high}`,
+        );
+      };
+
+      within('lootFactor', 0.5, 2.5);
+      within('radiationFactor', 0, 2.5);
+      within('dropsCarried', 0.01, 0.99);
+      within('findChance', 0.01, 1);
+      within('heals', 1, 100);
+      within('hours', -4, 4);
+
+      if (option.hazard) {
+        assert.ok(
+          option.hazard.danger >= 1 && option.hazard.danger <= 5,
+          `${at}: danger ${option.hazard.danger}`,
+        );
+      }
+      if (option.consumes) {
+        assert.ok(option.consumes.length > 0, `${at}: consumes nothing`);
+      }
+    }
+  }
+});
+
 test('option keys are unique within a moment, so a choice can be recorded by key', () => {
   for (const [key, moment] of Object.entries(MOMENTS)) {
     const keys = moment.options.map((option) => option.key);

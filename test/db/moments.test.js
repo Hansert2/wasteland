@@ -355,6 +355,46 @@ test('turning back late saves almost nothing, which is the point', async () => {
   });
 });
 
+test('a shortcut can never bring them home before they set out', async () => {
+  // Found by reading rather than by failing: two moments carry negative hours, and
+  // the_ford saves ninety minutes off a trip the Old Service Road finishes in
+  // forty-five. Unclamped, that set returns_at before departed_at — a trip ending
+  // before it began, resolving instantly with a full haul.
+  await withRollback(async (client) => {
+    const now = Date.now();
+    const { settlementId } = await setup(client, 'the_service_road');
+
+    // Seed 11 offers the_ford on the Old Service Road: ninety minutes saved off a
+    // forty-five minute trip, which is the worst case and the one that has to hold.
+    const { expeditionId } = await dispatchExpedition(client, settlementId, 'the_service_road', now);
+    await client.query('update expeditions set seed = 11 where id = $1', [expeditionId]);
+
+    const moments = momentsFor({ slug: 'the_service_road', travelHours: 0.75 }, 11);
+    const shortcut = moments
+      .flatMap((moment) => moment.options.map((option) => ({ moment, option })))
+      .find(({ option }) => Number(option.hours) < 0);
+
+    assert.ok(shortcut, 'the fixture still offers a shortcut');
+    assert.ok(Number(shortcut.option.hours) <= -1.5, 'and it is the ninety-minute one');
+
+    const at = now + shortcut.moment.atHour * 3600000 + 1000;
+    await answerMoment(
+      client,
+      settlementId,
+      { index: shortcut.moment.index, option: shortcut.option.key },
+      at,
+    );
+
+    const home = await returnsAt(client, expeditionId);
+    const { rows } = await client.query('select departed_at from expeditions where id = $1', [
+      expeditionId,
+    ]);
+
+    assert.ok(home > rows[0].departed_at.getTime(), 'the return is after the departure');
+    assert.ok(home >= at, 'and not before the answer that caused it');
+  });
+});
+
 test('there has to be somebody out there to answer for', async () => {
   await withRollback(async (client) => {
     const now = Date.now();
