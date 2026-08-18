@@ -22,8 +22,9 @@ spending what you have on the next few hours.
 
 It is text-first by design. Numbers, timers and short prose are the entire interface —
 there is no map, no avatar, no art. **A redesign should make that text beautiful and
-legible, not replace it with graphics.** Think of it as designing a well-set page, a
-terminal, or a good instrument panel, rather than a game UI with a HUD.
+legible rather than replace it with graphics.** Think of it as designing a well-set
+page rather than a game UI with a HUD. (One narrow exception has been granted: bars for
+gauges and store fill. See §2.1.)
 
 **Stack:** Node + Express, server-rendered HTML built by string templates. No React, no
 Tailwind, no component library, no CSS file — one `STYLE` constant and one inline
@@ -31,7 +32,59 @@ Tailwind, no component library, no CSS file — one `STYLE` constant and one inl
 
 ---
 
-## 2. What you may change freely
+## 2. The direction, and what you may change freely
+
+### 2.1 The direction — settled, not open
+
+Four decisions have been made by the game's author. Treat them as the brief rather than
+as suggestions.
+
+**Register: quiet and modern, deliberately qualified.** A calm, legible, contemporary
+interface — not a themed one. No rust textures, no stencil fonts, no terminal-green, no
+"post-apocalyptic" costume on the furniture. The atmosphere lives entirely in the prose,
+and the frame's job is to stay out of its way.
+
+That has a specific failure mode, and avoiding it is most of the work: **if the result
+could be an analytics dashboard with the words swapped out, it has gone wrong.** The
+camp is a place the player is meant to care about, not four numbers to optimise. Three
+deliberate concessions keep the frame quiet without letting it go generic:
+
+1. **Warm neutral grounds, never pure white or pure black.** Off-white with a little
+   warmth in light mode; a warm dark grey — not blue-black, not `#000` — in dark. This
+   is the cheapest and most effective single move, and it is most of what stops the page
+   reading as app chrome.
+2. **The prose is typeset as prose, not as UI text.** The event log, region and item
+   descriptions, faction blurbs and encounter text get their own treatment: larger, more
+   line-height, a face with some character to it, a comfortable measure. Labels, numbers
+   and controls can be a plain modern sans. **This distinction is the single most
+   important typographic decision in the redesign** — it is what stops the writing
+   degrading into flavour text nobody reads.
+3. **One accent, reserved for meaning.** A single warm accent — oxide, amber, something
+   in that family — used *only* for urgency and cost: expiring deadlines, warnings, the
+   raid banner. If it never appears decoratively, its appearance always means something.
+
+And one functional requirement that happens to serve the register: **tabular or
+monospaced figures for anything that ticks.** Countdowns and store amounts re-render
+every second, and proportional digits make them jitter. This is a legibility fix first
+and a quiet nod to instrumentation second.
+
+Restraint list, because "modern" drifts into "generic SaaS" without one: no gradients,
+no drop shadows, no rounded-everything, no icon set, no illustration, no animation
+beyond the timers, no emoji.
+
+**Density: separate views.** The camp page is split into tabs or sibling pages rather
+than one long scroll. See §7.3 for the intended split and the constraints on it.
+
+**Encoding: numbers plus restrained bars.** Bars for the three survivor gauges and for
+store fill, where a proportion is genuinely the point. The exact number stays beside the
+bar — the bar never replaces it. Nothing else gets a chart: no sparklines, no trend
+lines, no map diagram.
+
+**Device: desktop first.** Optimise for a wide window — multiple columns, denser tables,
+more visible at once. Phone must remain usable but is explicitly the compromise rather
+than the target.
+
+### 2.2 What you may change freely
 
 Essentially all of the appearance:
 
@@ -200,8 +253,39 @@ Three pages exist. The camp page is where essentially all the design effort belo
 **Graveyard** (`graveyardPage`) — the roster of the dead, with causes and lifespans.
 
 The camp page is long and information-dense, and that is inherent rather than a defect
-to be solved by hiding things. Progressive disclosure is welcome; removing information
-is not.
+to be solved by hiding things. Splitting it across views is welcome; removing
+information is not.
+
+### 7.3 The intended split, and two constraints on it
+
+A reasonable division of the blocks above — treat the grouping as a starting point and
+the two constraints below as requirements:
+
+| View | Blocks |
+|---|---|
+| **Camp** (default) | Raid warning, the sky, while you were away, stores, structures and builds |
+| **Survivor** | Health/hunger/radiation, away or where to send them, inventory, workshop |
+| **Trade** | Caravan and its offers, faction standings |
+| **Records** | Graveyard, camp history |
+
+**Constraint one: the check-in must land on everything that changed.** *While you were
+away* and the raid warning belong on the default view. The entire loop of this game is
+arriving and reading what happened; if that is behind a click, the redesign has broken
+the game rather than restyled it.
+
+**Constraint two: the auto-reload must return the player to the view they were on.**
+This is a genuine hazard that tabs introduce and that §3.2 does not cover. When a
+countdown expires the page reloads — if views are separate URLs, that is fine, but if
+the reload drops the player back on Camp while they were reading Trade, the game will
+yank them out of what they were doing at unpredictable intervals. Whatever mechanism you
+use, the reload must preserve the current view. Test it by starting a short build and
+then sitting on a different tab until it finishes.
+
+A related note for whoever implements it: timers only exist on the view being rendered,
+so a build finishing while the player is on Trade will not reload anything until they
+navigate. That is acceptable — the server recomputes everything on the next page load —
+but it means the Camp view must never assume it was reloaded the instant something
+completed.
 
 ---
 
@@ -243,8 +327,10 @@ rendered page. Check these by hand:
    the cap.
 3. Submit an action that will be refused — send an expedition while one is already out.
    The message must appear in the game's voice, on the page, not as a raw error.
-4. Narrow the window to a phone width. The page must stay usable; this is a game people
-   check on their phone.
+4. Start a short build, then move to a different view and wait for it to finish. **The
+   reload must leave you where you were**, not on Camp. See §7.3.
+5. Narrow the window to a phone width. The page must stay *usable* — desktop is the
+   target, but a check-in from a phone must not be broken.
 
 ---
 
