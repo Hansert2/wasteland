@@ -71,9 +71,15 @@ export async function answerMoment(client, settlementId, { index, option }, now 
     await spendOne(client, character.id, chosen.consumes);
   }
 
+  // The moment's own name travels with the answer, not just its position. Content is
+  // not frozen the way `mix` is — moments get written, retuned and reordered — and a
+  // trip already in flight recomputes its schedule from the seed on every read. Without
+  // the name, an answer recorded against index 2 lands on whatever now occupies index 2,
+  // and `turn_back` is a key on every moment, so it would still match: the trip would
+  // bank at the wrong hour and nothing would flag it.
   await client.query('update expeditions set choices = $2 where id = $1', [
     expedition.id,
-    JSON.stringify([...choices, { index: moment.index, option: chosen.key }]),
+    JSON.stringify([...choices, { index: moment.index, key: moment.key, option: chosen.key }]),
   ]);
 
   // Turning back and pressing on are the two answers that move the return. Everything

@@ -215,7 +215,7 @@ test('answering records the choice against the moment it answers', async () => {
     await answerMoment(client, settlementId, { index: 0, option: 'trust' }, now + hours(5));
 
     const { rows } = await client.query('select choices from expeditions where id = $1', [id]);
-    assert.deepStrictEqual(rows[0].choices, [{ index: 0, option: 'trust' }]);
+    assert.deepStrictEqual(rows[0].choices, [{ index: 0, key: 'counter_clicks', option: 'trust' }]);
   });
 });
 
@@ -392,6 +392,39 @@ test('a shortcut can never bring them home before they set out', async () => {
 
     assert.ok(home > rows[0].departed_at.getTime(), 'the return is after the departure');
     assert.ok(home >= at, 'and not before the answer that caused it');
+  });
+});
+
+test('an answer names the moment it answered, and is dropped if that moves', async () => {
+  // Found in play. Moment content is not frozen — it gets written, retuned and
+  // reordered — and a trip in flight recomputes its schedule from the seed on every
+  // read. An answer recorded by position alone lands on whatever now occupies that
+  // position, and turn_back is a key on every moment, so a stale index would still
+  // match and bank the trip at the wrong hour with nothing flagging it.
+  await withRollback(async (client) => {
+    const now = Date.now();
+    const { settlementId, slug } = await setup(client);
+    const id = await sendFixed(client, settlementId, slug, now);
+
+    await answerMoment(client, settlementId, { index: 0, option: 'trust' }, now + hours(5));
+
+    const { rows } = await client.query('select choices from expeditions where id = $1', [id]);
+    assert.deepStrictEqual(rows[0].choices, [
+      { index: 0, key: 'counter_clicks', option: 'trust' },
+    ], 'the moment is named, not just numbered');
+
+    // Rewrite it as if the content had shifted under the trip, then resolve.
+    await client.query('update expeditions set choices = $2 where id = $1', [
+      id,
+      JSON.stringify([{ index: 0, key: 'a_moment_that_moved', option: 'turn_back' }]),
+    ]);
+    await advanceSettlement(client, settlementId, now + hours(18) + 1000);
+
+    const { rows: done } = await client.query('select log from expeditions where id = $1', [id]);
+    assert.ok(
+      !done[0].log.some((line) => /turned back/i.test(line)),
+      `a stale answer is dropped rather than applied: ${JSON.stringify(done[0].log)}`,
+    );
   });
 });
 

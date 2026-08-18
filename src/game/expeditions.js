@@ -106,6 +106,12 @@ function applyChoices(trip, { region, survivor, seed, choices, standings }) {
     const moment = moments[answer.index];
     if (!moment) continue;
 
+    // An answer names the moment it answered. If the content has moved under a trip in
+    // flight, the position still resolves but the name does not, and the answer is
+    // dropped rather than applied to whatever took its place. Answers written before
+    // this carried no name and are trusted by position, which is what they were.
+    if (answer.key && moment.key !== answer.key) continue;
+
     const option = moment.options.find((candidate) => candidate.key === answer.option);
     if (!option || option.verb === 'default') continue;
 
