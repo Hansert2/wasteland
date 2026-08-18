@@ -1107,6 +1107,20 @@ not the same failure as an option nobody would ever take. Recorded rather than t
 away, because tuning it further would have been fitting the instrument rather than the
 game.
 
+**A twice-daily player meets a moment about once a fortnight.** The soak was extended
+to answer whatever the field is asking, and over ninety days its automaton answered
+*nine*. That is not a fault in the test and not a fault in the windows: it checks in
+every twelve hours and spends five rotation slots in eight on regions too short to have
+an interior, so the only trips still in flight when it next looks are the eighteen-hour
+ones. The coverage figure of ~58% is a statement about *a long trip*, and a player who
+mostly sends short ones rarely has a long trip running.
+
+This is worth sitting with before writing eighteen more moments. The content is not the
+binding constraint on how often this phase is felt — the itinerary is. If moments should
+be met more often, the lever is giving the mid-length regions something worth catching,
+or accepting that encounters are a Deep-Zone-and-Coastal mechanic and writing them that
+way.
+
 **What the instrument cannot see.** The value function converts finds, rads, damage and
 hours into scrap so that options which trade in different currencies can be compared,
 and those conversions are arguable — they are constants at the top of the file for

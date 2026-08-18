@@ -5,6 +5,8 @@ import { pool } from '../../src/db/pool.js';
 import { loadWorld } from '../../src/db/world.js';
 import { advanceSettlement } from '../../src/services/advance-settlement.js';
 import { dispatchExpedition } from '../../src/services/dispatch-expedition.js';
+import { answerMoment } from '../../src/services/answer-moment.js';
+import { momentsFor, isOpen } from '../../src/game/moments.js';
 import { startBuild } from '../../src/services/start-build.js';
 import { startCraft } from '../../src/services/start-craft.js';
 import { startUpgrade } from '../../src/services/start-upgrade.js';
@@ -99,6 +101,45 @@ async function attempt(fn) {
 }
 
 /** The invariants. Broken state, not bad luck, is what this test exists to catch. */
+/**
+ * Answer one open moment, if the trip in flight is offering one.
+ *
+ * Rotates through the options rather than always taking the default, because a soak
+ * that only ever declines exercises the recording path and none of the consequences.
+ *
+ * Returns false when there is simply nothing to answer — nobody out, or no window open.
+ * That is not a refusal and must not be treated as one: `attempt` swallows InputError
+ * and nothing else, which is exactly right and was not worth weakening for this.
+ */
+async function answerOpenMoment(client, settlementId, now, checkin) {
+  const { rows } = await client.query(
+    `select e.seed, e.departed_at, e.choices, r.slug, r.travel_hours
+       from expeditions e
+       join regions r on r.id = e.region_id
+       join characters c on c.id = e.character_id
+      where c.settlement_id = $1 and c.died_at is null and e.status = 'active'`,
+    [settlementId],
+  );
+  const trip = rows[0];
+  if (!trip) return false;
+
+  const travelHours = Number(trip.travel_hours);
+  const elapsed = (now - trip.departed_at.getTime()) / 3600000;
+  const answered = new Set((trip.choices ?? []).map((choice) => Number(choice.index)));
+
+  const open = momentsFor({ slug: trip.slug, travelHours }, Number(trip.seed)).find(
+    (moment) => !answered.has(moment.index) && isOpen(moment, elapsed),
+  );
+  if (!open) return false;
+
+  // The refusal that does happen here is spending from an empty pack, which is a
+  // player clicking a button that says no — the same thing `attempt` exists for.
+  const option = open.options[checkin % open.options.length];
+  return attempt(() =>
+    answerMoment(client, settlementId, { index: open.index, option: option.key }, now),
+  );
+}
+
 async function checkInvariants(client, settlementId, now, label) {
   const { rows: res } = await client.query(
     'select kind, amount, storage_cap from resources where settlement_id = $1',
@@ -145,6 +186,21 @@ async function checkInvariants(client, settlementId, now, label) {
   assert.ok(st[0].next_raid_at.getTime() > now, `${label}: a raid is booked ahead`);
   assert.ok(st[0].next_caravan_at, `${label}: a caravan is on the books`);
 
+  // An answer is recorded once per moment and the column stays a small array. The
+  // schema enforces the bound; this catches a service that starts writing duplicates.
+  const { rows: inFlight } = await client.query(
+    `select e.choices from expeditions e
+       join characters c on c.id = e.character_id
+      where c.settlement_id = $1 and e.status = 'active'`,
+    [settlementId],
+  );
+  for (const row of inFlight) {
+    const choices = row.choices ?? [];
+    assert.ok(Array.isArray(choices) && choices.length <= 8, `${label}: choices ${JSON.stringify(choices)}`);
+    const indices = choices.map((choice) => Number(choice.index));
+    assert.equal(new Set(indices).size, indices.length, `${label}: a moment answered twice`);
+  }
+
   const { rows: active } = await client.query(
     `select
        (select count(*)::int from expeditions e join characters c on c.id = e.character_id
@@ -177,6 +233,7 @@ test('ninety days of attentive play holds every invariant at every check-in', as
     let deaths = 0;
     const tallies = {
       raids: 0, caravans: 0, trades: 0, builds: 0, crafts: 0, fits: 0, expeditions: 0,
+      moments: 0,
     };
 
     for (let checkin = 0; checkin < 180; checkin++) {
@@ -235,6 +292,10 @@ test('ninety days of attentive play holds every invariant at every check-in', as
         tallies.crafts += 1;
       }
 
+      // Answer whatever the field is asking. Before dispatching, because a moment
+      // only exists while somebody is already out there.
+      if (await answerOpenMoment(client, settlementId, now, checkin)) tallies.moments += 1;
+
       // Keep somebody in the field: short trips while irradiated, the rotation otherwise.
       const region =
         state.survivor.radiation > 40 || state.survivor.health < 50
@@ -258,6 +319,16 @@ test('ninety days of attentive play holds every invariant at every check-in', as
     // could zero out expeditions or fittings for ninety days and stay green.
     assert.ok(tallies.expeditions > 20, `only ${tallies.expeditions} expeditions resolved`);
     assert.ok(tallies.fits > 0, `no fuel upgrade was ever fitted (${tallies.fits})`);
+    // Same reasoning as the two above: without a floor, a regression that stopped
+    // offering moments at all would run ninety days and stay green.
+    //
+    // The floor is low because the measured figure is low — this automaton answers
+    // about nine moments in ninety days, and that is not a fault in the test. It
+    // checks in every twelve hours and spends five rotation slots in eight on regions
+    // too short to have an interior, so the only trips still in flight when it next
+    // looks are the eighteen-hour ones. A twice-daily player meets a moment roughly
+    // once a fortnight. Worth knowing before writing more of them.
+    assert.ok(tallies.moments > 4, `only ${tallies.moments} moments answered`);
 
     const final = await loadWorld(client, settlementId);
     const levels = final.settlement.structures.reduce((t, s) => t + s.level, 0);
