@@ -6,6 +6,8 @@ import { advanceSettlement } from '../../src/services/advance-settlement.js';
 import { dispatchExpedition } from '../../src/services/dispatch-expedition.js';
 import { foundSettlement, raiseSuccessor } from '../../src/services/settlement-lifecycle.js';
 import { momentsFor } from '../../src/game/moments.js';
+import { answerMoment } from '../../src/services/answer-moment.js';
+import { InputError } from '../../src/errors.js';
 
 const hours = (h) => h * 60 * 60 * 1000;
 const uniq = () => Math.random().toString(36).slice(2, 10);
@@ -68,6 +70,41 @@ async function stores(client, settlementId) {
     [settlementId],
   );
   return rows;
+}
+
+/**
+ * A trip whose moments are known in advance.
+ *
+ * The seed is forced after dispatch rather than left to `newSeed`, so the tests below
+ * can name a moment instead of hunting for one. Seed 2 on the Deep Zone offers
+ * wind_turns (a spend and a wait) at 4.9–8.3, kept_pace (a hazard) at 9.1–12.5, and
+ * the_fire (a parley) at 14.4–17.8.
+ */
+const FIXED_SEED = 2;
+
+async function sendFixed(client, settlementId, slug, now) {
+  const { expeditionId } = await dispatchExpedition(client, settlementId, slug, now);
+  await client.query('update expeditions set seed = $2 where id = $1', [
+    expeditionId,
+    FIXED_SEED,
+  ]);
+  return expeditionId;
+}
+
+async function give(client, settlementId, slug, qty = 1) {
+  await client.query(
+    `insert into inventory_items (character_id, item_id, qty)
+     select c.id, i.id, $3 from characters c, items i
+      where c.settlement_id = $1 and c.died_at is null and i.slug = $2`,
+    [settlementId, slug, qty],
+  );
+}
+
+async function returnsAt(client, expeditionId) {
+  const { rows } = await client.query('select returns_at from expeditions where id = $1', [
+    expeditionId,
+  ]);
+  return rows[0].returns_at.getTime();
 }
 
 test('a dispatched expedition starts with nothing answered', async () => {
@@ -166,6 +203,168 @@ test('answering every moment with its default is the trip that would have happen
         `a default answer is silent: ${JSON.stringify(log)}`,
       );
     }
+  });
+});
+
+test('answering records the choice against the moment it answers', async () => {
+  await withRollback(async (client) => {
+    const now = Date.now();
+    const { settlementId, slug } = await setup(client);
+    const id = await sendFixed(client, settlementId, slug, now);
+
+    await answerMoment(client, settlementId, { index: 0, option: 'push' }, now + hours(6));
+
+    const { rows } = await client.query('select choices from expeditions where id = $1', [id]);
+    assert.deepStrictEqual(rows[0].choices, [{ index: 0, option: 'push' }]);
+  });
+});
+
+test('a window that has closed, and one that has not opened, are refused differently', async () => {
+  // Both are reachable from a page that was rendered a moment ago, and they are not the
+  // same news — one is the ordinary case of a window expiring while it was being read.
+  await withRollback(async (client) => {
+    const now = Date.now();
+    const { settlementId, slug } = await setup(client);
+    await sendFixed(client, settlementId, slug, now);
+
+    await assert.rejects(
+      answerMoment(client, settlementId, { index: 0, option: 'push' }, now + hours(9)),
+      (error) => error instanceof InputError && /has passed/i.test(error.message),
+    );
+
+    await assert.rejects(
+      answerMoment(client, settlementId, { index: 2, option: 'off' }, now + hours(6)),
+      (error) => error instanceof InputError && /not happened yet/i.test(error.message),
+    );
+  });
+});
+
+test('a moment can only be answered once', async () => {
+  await withRollback(async (client) => {
+    const now = Date.now();
+    const { settlementId, slug } = await setup(client);
+    await sendFixed(client, settlementId, slug, now);
+
+    await answerMoment(client, settlementId, { index: 0, option: 'push' }, now + hours(6));
+
+    await assert.rejects(
+      answerMoment(client, settlementId, { index: 0, option: 'wait' }, now + hours(6.5)),
+      (error) => error instanceof InputError && /already been settled/i.test(error.message),
+    );
+  });
+});
+
+test('an option that is not on offer is refused', async () => {
+  await withRollback(async (client) => {
+    const now = Date.now();
+    const { settlementId, slug } = await setup(client);
+    await sendFixed(client, settlementId, slug, now);
+
+    await assert.rejects(
+      answerMoment(client, settlementId, { index: 0, option: 'overload' }, now + hours(6)),
+      (error) => error instanceof InputError && /not one of the options/i.test(error.message),
+    );
+  });
+});
+
+test('spending something means having it, and the better one goes first', async () => {
+  await withRollback(async (client) => {
+    const now = Date.now();
+    const { settlementId, slug } = await setup(client);
+    await sendFixed(client, settlementId, slug, now);
+
+    // The pack is empty: the page may have offered it, but the page is a render of a
+    // moment ago, so the service is where this has to be caught.
+    await assert.rejects(
+      answerMoment(client, settlementId, { index: 0, option: 'tablets' }, now + hours(6)),
+      (error) => error instanceof InputError && /nothing like that in the pack/i.test(error.message),
+    );
+
+    await give(client, settlementId, 'rad_x', 2);
+    await give(client, settlementId, 'rad_scrubber', 1);
+
+    await answerMoment(client, settlementId, { index: 0, option: 'tablets' }, now + hours(6));
+
+    const { rows } = await client.query(
+      `select i.slug, ii.qty from inventory_items ii
+         join items i on i.id = ii.item_id
+         join characters c on c.id = ii.character_id
+        where c.settlement_id = $1 order by i.slug`,
+      [settlementId],
+    );
+    const held = Object.fromEntries(rows.map((row) => [row.slug, row.qty]));
+
+    assert.equal(held.rad_x, 2, 'the found tablets are untouched');
+    assert.equal(held.rad_scrubber ?? 0, 0, 'the crafted scrubber went first');
+  });
+});
+
+test('pressing on costs the hours it says it does', async () => {
+  await withRollback(async (client) => {
+    const now = Date.now();
+    const { settlementId, slug } = await setup(client);
+    const id = await sendFixed(client, settlementId, slug, now);
+
+    const before = await returnsAt(client, id);
+    // wind_turns / wait: ninety minutes to sit out the worst of it.
+    await answerMoment(client, settlementId, { index: 0, option: 'wait' }, now + hours(6));
+
+    assert.equal(await returnsAt(client, id) - before, hours(1.5), 'the return moved out');
+  });
+});
+
+test('turning back brings the return forward by a walk home, not to now', async () => {
+  // The whole reason turning back is not a free win: at six hours into an eighteen-hour
+  // trip they are three hours from home, and the design says so — min(h, H-h) x 0.5.
+  await withRollback(async (client) => {
+    const now = Date.now();
+    const { settlementId, slug, travelHours } = await setup(client);
+    const id = await sendFixed(client, settlementId, slug, now);
+
+    const at = now + hours(6);
+    await answerMoment(client, settlementId, { index: 0, option: 'turn_back' }, at);
+
+    const home = await returnsAt(client, id);
+    assert.equal(home - at, hours(3), 'three hours out, three hours back');
+    assert.ok(home < now + hours(travelHours), 'and still sooner than finishing');
+  });
+});
+
+test('turning back late saves almost nothing, which is the point', async () => {
+  await withRollback(async (client) => {
+    const now = Date.now();
+    const { settlementId, slug, travelHours } = await setup(client);
+    const id = await sendFixed(client, settlementId, slug, now);
+
+    const at = now + hours(16);
+    await answerMoment(client, settlementId, { index: 2, option: 'turn_back' }, at);
+
+    const saved = now + hours(travelHours) - (await returnsAt(client, id));
+    assert.ok(saved <= hours(1), `bailing at sixteen hours saved ${saved / hours(1)}h`);
+  });
+});
+
+test('there has to be somebody out there to answer for', async () => {
+  await withRollback(async (client) => {
+    const now = Date.now();
+    const { settlementId, slug } = await setup(client);
+
+    await assert.rejects(
+      answerMoment(client, settlementId, { index: 0, option: 'push' }, now),
+      (error) => error instanceof InputError && /Nobody is out there/i.test(error.message),
+    );
+
+    await sendFixed(client, settlementId, slug, now);
+    await client.query(
+      `update characters set died_at = now(), cause_of_death = 'starvation'
+        where settlement_id = $1 and died_at is null`,
+      [settlementId],
+    );
+
+    await assert.rejects(
+      answerMoment(client, settlementId, { index: 0, option: 'push' }, now + hours(6)),
+      (error) => error instanceof InputError && /nobody out there to answer for/i.test(error.message),
+    );
   });
 });
 

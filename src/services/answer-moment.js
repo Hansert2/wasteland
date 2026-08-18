@@ -110,10 +110,10 @@ async function spendOne(client, characterId, slugs) {
     [characterId, slugs],
   );
 
-  const held = rows.find((row) => slugs.includes(row.slug));
-  if (!held) throw new InputError('There is nothing like that in the pack.');
-
+  // Walked in preference order rather than in whatever order the rows arrived, so a
+  // crafted scrubber goes before a found tablet.
   const best = slugs.map((slug) => rows.find((row) => row.slug === slug)).find(Boolean);
+  if (!best) throw new InputError('There is nothing like that in the pack.');
 
   await client.query('update inventory_items set qty = qty - 1 where id = $1', [best.id]);
   await client.query('delete from inventory_items where id = $1 and qty <= 0', [best.id]);
