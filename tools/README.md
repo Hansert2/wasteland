@@ -1,6 +1,6 @@
 # tools
 
-Not part of the game. These are the measuring instruments, kept because three times now
+Not part of the game. These are the measuring instruments, kept because four times now
 they have found something that reasoning and a green test suite both missed:
 
 - **Filtration deleted the constraint it was designed to ease.** It scrubbed 36 rads
@@ -14,6 +14,11 @@ they have found something that reasoning and a green test suite both missed:
   scenery, and invisible to a suite that only ever asked whether they *worked*. The same
   run found the happier fact that attending a moment takes a wounded survivor's death
   rate in the Deep Zone from 17% to 0.4%.
+- **A dial was about to be tuned to fix something it cannot reach.** A soak figure — four
+  moments met in ninety days — read as the encounter windows failing the absent player.
+  Sweeping the width showed it buys the attentive player nothing at all (703 caught
+  against 701) and buys the absent player half of what simply sending longer trips buys
+  them. The number was a fact about the soak's itinerary, not about the windows.
 
 The pattern worth keeping: the simulation is a pure function of `(state, now)`, so
 sixty days of play runs in milliseconds and a balance question can be answered rather
