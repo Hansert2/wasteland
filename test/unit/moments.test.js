@@ -43,6 +43,29 @@ test('every moment names a real axis and at least one real region', () => {
   }
 });
 
+test('every moment can be named in one short phrase, and no two share a name', () => {
+  // The title is what an outcome is filed under once the situation itself has scrolled
+  // away — on the camp page while the trip is still out, and in the return log after.
+  // A missing one leaves a consequence attached to nothing, which is the whole reason
+  // this exists; a shared one attaches it to the wrong situation, which is worse.
+  const seen = new Set();
+  for (const [key, moment] of Object.entries(MOMENTS)) {
+    assert.ok(moment.title?.length > 0, `${key} has a name`);
+    assert.ok(moment.title.length <= 32, `${key}: "${moment.title}" fits on a line`);
+    assert.ok(!seen.has(moment.title), `${key}: "${moment.title}" is not already taken`);
+    seen.add(moment.title);
+  }
+});
+
+test('a placed moment carries its name with it', () => {
+  // momentsFor rebuilds the moment rather than passing the content row through, so a
+  // field added to MOMENTS and not to the mapping is silently absent everywhere it is
+  // read. That has now happened once per field this phase has added.
+  for (const moment of momentsFor(region('the_deep_zone'), 42)) {
+    assert.equal(moment.title, MOMENTS[moment.key].title);
+  }
+});
+
 test('every moment has exactly one default, and the default does nothing', () => {
   // The load-bearing rule of the whole phase: the unattended outcome is the game as it
   // stands. Attending may add upside and a chosen risk; it may never restore a baseline

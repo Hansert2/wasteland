@@ -5,7 +5,8 @@ import { pool } from '../../src/db/pool.js';
 import { advanceSettlement } from '../../src/services/advance-settlement.js';
 import { dispatchExpedition } from '../../src/services/dispatch-expedition.js';
 import { foundSettlement, raiseSuccessor } from '../../src/services/settlement-lifecycle.js';
-import { momentsFor, walkHomeHours } from '../../src/game/moments.js';
+import { MOMENTS, momentsFor, walkHomeHours } from '../../src/game/moments.js';
+import { viewCamp } from '../../src/services/view-camp.js';
 import { answerMoment } from '../../src/services/answer-moment.js';
 import { InputError } from '../../src/errors.js';
 
@@ -216,6 +217,57 @@ test('answering records the choice against the moment it answers', async () => {
 
     const { rows } = await client.query('select choices from expeditions where id = $1', [id]);
     assert.deepStrictEqual(rows[0].choices, [{ index: 0, key: 'counter_clicks', option: 'trust' }]);
+  });
+});
+
+test('an answered moment stays on the page instead of vanishing', async () => {
+  // The moment box is filtered out of the view the instant it is answered, and for a
+  // while nothing took its place: the player pressed a button, the situation disappeared,
+  // and the game said nothing more until the survivor walked back through the gate hours
+  // later. The answer is recorded here; the consequence is still rolled at the return.
+  await withRollback(async (client) => {
+    const now = Date.now();
+    const { settlementId, slug } = await setup(client);
+    await sendFixed(client, settlementId, slug, now);
+
+    const before = await viewCamp(client, settlementId, now + hours(5));
+    assert.ok(before.expedition.moment, 'a window is open');
+    assert.deepStrictEqual(before.expedition.settled, []);
+
+    await answerMoment(client, settlementId, { index: 0, option: 'trust' }, now + hours(5));
+
+    const after = await viewCamp(client, settlementId, now + hours(5));
+    assert.equal(after.expedition.moment, null, 'the window is spent');
+    assert.equal(after.expedition.settled.length, 1);
+
+    const [settled] = after.expedition.settled;
+    assert.equal(settled.title, MOMENTS.counter_clicks.title);
+    assert.equal(settled.label, 'Trust it');
+    assert.ok(settled.atHour > 0, 'and when it happened');
+
+    // Still reported a good deal later, because the outcome has not landed yet: the
+    // whole gap this closes is the stretch between answering and coming home.
+    const later = await viewCamp(client, settlementId, now + hours(12));
+    assert.equal(later.expedition.settled.length, 1);
+  });
+});
+
+test('an answer whose moment has moved under it is not reported either', async () => {
+  // `applyChoices` drops an answer whose name no longer matches the content at that
+  // index, so the page must drop it too. A view that kept claiming a decision the trip
+  // will silently ignore is worse than one that never mentioned it.
+  await withRollback(async (client) => {
+    const now = Date.now();
+    const { settlementId, slug } = await setup(client);
+    const id = await sendFixed(client, settlementId, slug, now);
+
+    await client.query('update expeditions set choices = $2 where id = $1', [
+      id,
+      JSON.stringify([{ index: 0, key: 'a_moment_that_was_rewritten', option: 'trust' }]),
+    ]);
+
+    const view = await viewCamp(client, settlementId, now + hours(12));
+    assert.deepStrictEqual(view.expedition.settled, []);
   });
 });
 

@@ -122,6 +122,11 @@ function applyChoices(trip, { region, survivor, seed, choices, standings }) {
       return trip;
     }
 
+    // Where this moment's account of itself starts, so it can be signed afterwards.
+    // Above the hazard clause rather than below it: dodging what was waiting further on
+    // is the first thing an answer can narrate, and was the one line this missed.
+    const from = trip.log.length;
+
     if (option.clearsHazard && timeline.hazard && timeline.hazard.atHour > moment.atHour) {
       trip.damage -= timeline.hazard.damage;
       trip.cause = null;
@@ -140,6 +145,8 @@ function applyChoices(trip, { region, survivor, seed, choices, standings }) {
       parley(trip, timeline, at, random, standingOf(standings ?? {}, moment.faction));
     }
     if (option.hazard) confront(trip, random, equipment, option.hazard.danger);
+
+    attribute(trip, moment, from);
   }
 
   trip.damage = Math.max(0, Math.round(trip.damage));
@@ -266,7 +273,37 @@ function confront(trip, random, equipment, danger) {
   trip.log.push(`They stopped and dealt with it — ${damage} damage.`);
 }
 
+/**
+ * Say which moment an outcome came out of.
+ *
+ * The player answered a situation and then read, some hours later, a line of narration
+ * with nothing tying it to the thing they answered — so a decision they made arrived
+ * home anonymous, indistinguishable from the trip happening to them. The title and the
+ * hour are the whole fix; only the first line is signed, because the rest are the same
+ * account continuing.
+ *
+ * **A sentence of its own, rather than a clause joined onto the line it signs.** Three
+ * of these narrations already carry an em dash of their own and one already carries a
+ * colon, so any joining punctuation collides with something: "they sat out the worst of
+ * it — 9.8 rads instead of 25.8" signed with a dash reads as two thoughts fighting.
+ * Signing as a separate sentence also leaves the line it signs exactly as written.
+ *
+ * Turning back signs itself, in `turnBack`, and never reaches here.
+ */
+function attribute(trip, moment, from) {
+  if (trip.log.length === from) return;
+  trip.log[from] = `${moment.title}, ${formatHours(moment.atHour)} in. ${trip.log[from]}`;
+}
+
+/**
+ * Hours in words, and minutes when hours would round to none.
+ *
+ * The rounding was written when only the five long regions had moments, so the worst
+ * case was "2 hours". Short regions now have them too: a moment a fifth of the way into
+ * the forty-five minute Service Road is 0.15 hours, and this said "0 hours in".
+ */
 function formatHours(hours) {
+  if (hours < 0.9) return `${Math.max(1, Math.round(hours * 60))} minutes`;
   const rounded = Math.round(hours);
   return rounded === 1 ? 'an hour' : `${rounded} hours`;
 }

@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { resolveExpedition } from '../../src/game/expeditions.js';
+import { MOMENTS, TURN_BACK, momentsFor } from '../../src/game/moments.js';
 import { makeRandom } from '../../src/game/random.js';
 
 const SAFE_REGION = {
@@ -18,6 +19,16 @@ const DEADLY_REGION = {
   loot: { scrap: [25, 60] },
   finds: [{ slug: 'rad_x', chance: 1, qty: [2, 2] }],
   radiationPerTrip: 25,
+};
+
+/**
+ * The Deep Zone as the seed knows it: slug and travel hours, which is what placing
+ * moments needs and what the two fixtures above deliberately do without.
+ */
+const MOMENT_REGION = {
+  ...DEADLY_REGION,
+  slug: 'the_deep_zone',
+  travelHours: 18,
 };
 
 const survivor = (overrides = {}) => ({ health: 100, skillScavenging: 1, ...overrides });
@@ -213,4 +224,78 @@ test('the generator is uniform enough to trust for loot ranges', () => {
   }
 
   assert.ok(Math.abs(sum / draws - 0.5) < 0.02, 'mean sits near 0.5');
+});
+
+test('an outcome comes home naming the moment it came out of', () => {
+  // The gap this closes: a player answered a situation, and hours later read a line of
+  // narration with nothing tying it back — "they shared a fire and little else" among
+  // eight other lines, indistinguishable from the trip happening to them. Signed once
+  // per moment, on the first line of its account; the rest are that account continuing.
+  let narrated = 0;
+
+  for (let seed = 1; seed <= 60; seed++) {
+    const base = { region: MOMENT_REGION, survivor: survivor(), seed };
+    const unattended = resolveExpedition(base);
+
+    for (const moment of momentsFor(MOMENT_REGION, seed)) {
+      for (const option of moment.options) {
+        if (option.verb === 'default' || option.turnBack) continue;
+
+        const attended = resolveExpedition({
+          ...base,
+          choices: [{ index: moment.index, key: moment.key, option: option.key }],
+        });
+
+        const signed = attended.log.filter((line) => line.startsWith(`${moment.title}, `));
+        if (attended.log.length === unattended.log.length) {
+          assert.equal(signed.length, 0, 'a silent option signs nothing');
+          continue;
+        }
+
+        assert.equal(signed.length, 1, `${moment.key}/${option.key}: ${JSON.stringify(attended.log)}`);
+        assert.match(signed[0], / in\. \S/, 'the signature says when, too');
+        narrated += 1;
+      }
+    }
+  }
+
+  assert.ok(narrated > 50, `the sweep actually exercised the signing (${narrated})`);
+});
+
+test('a trip nobody answered is never signed', () => {
+  // The other half, and the one that would rot quietly: attribution belongs to answers.
+  // If an unattended trip ever grew a title, the phase's load-bearing guarantee would
+  // already be broken somewhere upstream and this is the cheapest place to notice.
+  const titles = Object.values(MOMENTS).map((moment) => moment.title);
+
+  for (let seed = 1; seed <= 60; seed++) {
+    const { log } = resolveExpedition({ region: MOMENT_REGION, survivor: survivor(), seed });
+    for (const line of log) {
+      assert.ok(!titles.some((title) => line.startsWith(`${title}, `)), line);
+    }
+  }
+});
+
+test('a moment early in a short trip is timed in minutes, not in no hours at all', () => {
+  // The Service Road is forty-five minutes, so its first moment lands about seven
+  // minutes in. Rounded to hours that read "0 hours in", which is both wrong and the
+  // kind of wrong that only appears once short regions have moments — which they now do.
+  const region = { ...MOMENT_REGION, slug: 'the_service_road', travelHours: 0.75 };
+
+  for (let seed = 1; seed <= 40; seed++) {
+    const moments = momentsFor(region, seed);
+    if (moments.length === 0) continue;
+    const [moment] = moments;
+
+    const { log } = resolveExpedition({
+      region,
+      survivor: survivor(),
+      seed,
+      choices: [{ index: moment.index, key: moment.key, option: TURN_BACK.key }],
+    });
+
+    const line = log.find((entry) => /turned back/.test(entry));
+    assert.ok(line, JSON.stringify(log));
+    assert.doesNotMatch(line, /0 hours/, line);
+  }
 });

@@ -583,8 +583,9 @@ decision; one sequential person only made it flavour.
 
 ### Phase 6 — encounters in the field
 
-*Against: no surprises, too little per visit.* Worked through in detail 2026-08-17;
-still not built.
+*Against: no surprises, too little per visit.* Worked through in detail 2026-08-17,
+built 2026-08-18, and played on 2026-08-19 — which found the gap recorded at the end of
+"What the page has to grow" below.
 
 An expedition is a dispatch and a log. You pick a region, and some hours later you read
 what was decided the instant you clicked. Everything between departure and return is a
@@ -1043,6 +1044,36 @@ person to keep them in step. A second, far hairier duplication for a number that
 once an hour is a bad trade. The existing note about store decimals settles it in
 advance: *a number that changes slowly because the thing it counts changes slowly is
 telling the truth.*
+
+**An answered moment stays on the page until the trip comes home.** Found by playing it
+on 2026-08-19, and the first thing anyone said about Phase 6 after using it: *"I talked to
+them but didn't see what the result of that interaction was."* Everything was working. The
+answer was recorded, the return was moved, the consequence was queued for `returns_at` —
+and the page said none of it. The moment box is filtered out of the view the instant it is
+answered, so a decision the player had just made vanished on submit, and the outcome was
+still six hours away in a return log that did not name it either.
+
+Two lines fix it, and they are the two ends of the same thread:
+
+- The *Away* report gains what has been settled — `The turning wind, 3h 46m in — Sit it
+  out.` — followed by *"What came of that comes home with them."* That last sentence is
+  the load-bearing one: the honest answer to "what happened?" is *not yet*, and a game
+  that resolves at the return has to be willing to say so.
+- The outcome, when it lands, is **signed with the moment it came out of**: `Their
+  wounded, 3 hours in. They shared a fire and little else.` Every moment therefore needs
+  a short `title` — the prose is the situation, the title is what to call it afterwards.
+
+The signature is a sentence of its own rather than a clause joined on, because three of
+the effect narrations already carry an em dash and one carries a colon, so every joining
+punctuation collided with something.
+
+**The general lesson, which is the reason this is written down rather than just fixed:**
+an action whose consequence is deferred needs the page to acknowledge the *action*, not
+only the eventual consequence. Every other verb in this game changes something visible
+immediately — stores drop, a countdown appears, a row moves. Answering a moment was the
+first verb that legitimately does nothing you can see, and it was built as though the
+outcome would speak for itself. It does not, and the player reads a button that did
+nothing.
 
 **A stale submit is an `InputError`, like every other refused verb.** The window can close
 between rendering the page and clicking the button, and unlike anything else in the game

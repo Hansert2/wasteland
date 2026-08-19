@@ -548,6 +548,18 @@ function renderExpeditions(view) {
       lines.push(`Radio: next contact in ${countdown(trip.nextMomentAt, 'any moment')}.`);
     }
 
+    // What has already been answered, and — the part that was missing — the fact that
+    // it has not happened yet. Answering records a choice and nothing more; the trip is
+    // still rolled at the return, with the answers as an input. Without this the moment
+    // box simply vanished on submit and the page said nothing at all until the survivor
+    // walked back through the gate, which reads exactly like a button that did nothing.
+    for (const answer of trip.settled ?? []) {
+      lines.push(`${escape(answer.title)}, ${duration(answer.atHour)} in — ${escape(answer.label)}.`);
+    }
+    if ((trip.settled ?? []).length > 0) {
+      lines.push('What came of that comes home with them.');
+    }
+
     return `<h2>Away</h2><p>${lines.join('<br>')}</p>`;
   }
 

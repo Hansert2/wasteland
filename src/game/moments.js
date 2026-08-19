@@ -73,6 +73,7 @@ export const LONG_REGIONS = [
 export const MOMENTS = {
   welded_door: {
     axis: 'time',
+    title: 'The welded door',
     regions: ['underground_bunkers', 'coastal_wreckage'],
     prose: 'A door someone welded shut from the outside. That was a decision, once.',
     options: [
@@ -90,6 +91,7 @@ export const MOMENTS = {
 
   wind_turns: {
     axis: 'radiation',
+    title: 'The turning wind',
     regions: ['irradiated_farmland', 'the_deep_zone'],
     prose: 'The wind turns and the counter starts clicking. There is a culvert half a mile back.',
     options: [
@@ -117,6 +119,7 @@ export const MOMENTS = {
 
   kept_pace: {
     axis: 'health',
+    title: 'Whatever was following',
     regions: ['the_deep_zone'],
     prose: 'Something has kept pace with them for an hour. It has not closed.',
     options: [
@@ -147,6 +150,7 @@ export const MOMENTS = {
 
   the_container: {
     axis: 'haul',
+    title: 'The split container',
     regions: ['coastal_wreckage'],
     prose: 'A container split along its seam, and more inside than one person moves.',
     options: [
@@ -168,6 +172,7 @@ export const MOMENTS = {
 
   the_tin: {
     axis: 'supplies',
+    title: 'The last tin',
     regions: LONG_REGIONS,
     prose:
       'They have walked on nothing since dawn. There is a sealed tin in the pack and a long way still to go.',
@@ -191,6 +196,7 @@ export const MOMENTS = {
 
   the_fire: {
     axis: 'standing',
+    title: 'The warm fire',
     regions: LONG_REGIONS,
     prose:
       'A fire an hour old, still warm, and three sets of boot prints leaving it. The prints are not running.',
@@ -208,6 +214,7 @@ export const MOMENTS = {
 
   the_climb: {
     axis: 'health',
+    title: 'The shaft',
     regions: ['ruined_city', 'underground_bunkers', 'coastal_wreckage'],
     prose: 'The stair is gone. The shaft beside it is not, and it goes the right way.',
     options: [
@@ -225,6 +232,7 @@ export const MOMENTS = {
 
   bad_water: {
     axis: 'health',
+    title: 'The still cistern',
     regions: ['the_service_road', 'ruined_city', 'irradiated_farmland'],
     prose: 'The canteen has been empty since the pylons. There is a cistern here, and it is not moving.',
     options: [
@@ -251,6 +259,7 @@ export const MOMENTS = {
 
   the_hot_room: {
     axis: 'radiation',
+    title: 'The hot room',
     regions: ['underground_bunkers', 'coastal_wreckage', 'the_deep_zone'],
     prose: 'A room worth stripping, and the counter will not settle while they stand in it.',
     options: [
@@ -276,6 +285,7 @@ export const MOMENTS = {
 
   counter_clicks: {
     axis: 'radiation',
+    title: 'The quiet dosimeter',
     regions: ['irradiated_farmland', 'the_deep_zone'],
     prose: 'The dosimeter has read the same number for two hours. It is either broken or they are lucky.',
     options: [
@@ -302,6 +312,7 @@ export const MOMENTS = {
 
   the_long_way: {
     axis: 'time',
+    title: 'The bend in the road',
     regions: ['the_service_road', 'ruined_city', 'irradiated_farmland'],
     prose: 'The road bends a long way around a field nobody has crossed in years. There is a reason for the bend.',
     options: [
@@ -320,6 +331,7 @@ export const MOMENTS = {
 
   light_is_going: {
     axis: 'time',
+    title: 'The failing light',
     regions: ['ruined_city', 'underground_bunkers', 'coastal_wreckage', 'the_deep_zone'],
     prose: 'The light is going and there is more here than they have hands for.',
     options: [
@@ -339,6 +351,7 @@ export const MOMENTS = {
 
   too_much_to_carry: {
     axis: 'haul',
+    title: 'More than one back can take',
     regions: ['ruined_city', 'underground_bunkers', 'the_deep_zone'],
     prose: 'More than one back can take. Some of it will be here next time. Some of it will not.',
     options: [
@@ -356,6 +369,7 @@ export const MOMENTS = {
 
   the_ford: {
     axis: 'haul',
+    title: 'The ford',
     regions: ['the_service_road', 'irradiated_farmland', 'coastal_wreckage'],
     prose: 'The water is moving faster than it looks, and the bridge went before they were born. The long way round is a long way.',
     options: [
@@ -376,6 +390,7 @@ export const MOMENTS = {
 
   the_medkit: {
     axis: 'supplies',
+    title: 'The hot ground',
     regions: ['irradiated_farmland', 'the_deep_zone'],
     prose: 'The hot ground starts here. There is a dose in the pack and a long way across.',
     options: [
@@ -394,6 +409,7 @@ export const MOMENTS = {
 
   trade_the_spear: {
     axis: 'supplies',
+    title: 'The man who wants the spear',
     regions: ['the_service_road', 'ruined_city', 'underground_bunkers'],
     prose: 'A man with nothing wants the spear, and has more scrap than he can carry.',
     options: [
@@ -411,6 +427,7 @@ export const MOMENTS = {
 
   the_roadblock: {
     axis: 'standing',
+    title: 'The roadblock',
     regions: ['the_service_road', 'ruined_city', 'irradiated_farmland'],
     prose: 'Two vehicles across the road and somebody sitting on the bonnet, waiting to be talked to.',
     options: [
@@ -428,6 +445,7 @@ export const MOMENTS = {
 
   the_wounded: {
     axis: 'standing',
+    title: 'Their wounded',
     regions: ['underground_bunkers', 'coastal_wreckage', 'the_deep_zone'],
     prose: 'One of theirs, sat against a wall with a leg that will not take weight. They have seen the survivor.',
     options: [
@@ -568,6 +586,11 @@ export function momentsFor(region, seed) {
       key,
       axis: MOMENTS[key].axis,
       faction,
+      // The short name, which is how the moment is referred to anywhere it is not being
+      // read in full: the answered line on the camp page, and the log line its outcome
+      // eventually produces. The prose is the situation; the title is what to call it
+      // afterwards, and without one an outcome comes home attached to nothing.
+      title: MOMENTS[key].title,
       prose: MOMENTS[key].prose,
       // Turning back is assembled in here rather than written into every moment: the
       // content declares what is particular to it, and the trip adds what is always

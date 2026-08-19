@@ -112,6 +112,24 @@ function reportOn(row, state, now) {
           })),
         }
       : null,
+    // What has already been said out there. The moment box disappears the instant it is
+    // answered — it is filtered out of `open` above — and until this existed nothing
+    // took its place, so a decision the player had just made left no trace on the page
+    // and the outcome was still hours away in the return log. The answer is recorded,
+    // the consequence is rolled at `returns_at`, and this is the only thing that says so.
+    settled: choices
+      .map((choice) => {
+        const moment = moments[Number(choice.index)];
+        // Same guard as `applyChoices`: an answer names the moment it answered, and one
+        // whose name no longer matches is not applied, so it must not be reported either.
+        if (!moment || (choice.key && moment.key !== choice.key)) return null;
+        const option = moment.options.find((candidate) => candidate.key === choice.option);
+        return option
+          ? { title: moment.title, label: option.label, atHour: moment.atHour }
+          : null;
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.atHour - b.atHour),
     upcoming: moments
       .filter((moment) => !answered.has(moment.index) && moment.atHour > elapsed)
       .map((moment) => new Date(row.departed_at.getTime() + moment.atHour * HOUR_MS)),
