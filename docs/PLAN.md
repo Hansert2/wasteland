@@ -1285,8 +1285,9 @@ needs a new justification before it is built; "more hands" does not answer this.
 that was swept the same morning and cleared — but because the survivor is *home* at 88%
 of check-ins, and a moment only exists while somebody is out. The first real camp says it
 more sharply still: of fifteen dispatches, nine went to the Fence Line, which by design
-has no interior and never will. Of the six trips that could hold a moment, three were
-answered. **The catch rate was never the problem. The itinerary was.**
+has no interior and never will. Of the six trips that could hold a moment, four were
+answered — and the last of them, the first Deep Zone run after the dispatch table began
+saying what a trip holds, was answered four times out of four. **The catch rate was never the problem. The itinerary was.**
 
 **And the itinerary was chosen from a table that never mentioned contact.** The dispatch
 list showed name, danger, hours and flavour. Nothing on it said that a ten-minute run has
@@ -1363,6 +1364,16 @@ and `stamina` were always for. Traits rolled at arrival, skills that rise with u
 of the five that still has no reader when this phase is done should be dropped from the
 schema rather than left as furniture for a third time.
 
+**Decided 2026-08-19: they stay, for now, and this is the third time.** The phase that
+was going to settle them lost its premise the same day, so dropping them was the obvious
+tidy — and was deliberately not taken, because a re-justified Phase 7 is the likeliest
+home for them and a migration that deletes four columns is easier to write than to
+un-write. The cost is named rather than waved past: **these columns are what misled the
+Phase 7 design in the first place.** A schema describing a survivor system that nothing
+implements reads, to anyone planning against it, as a system that is nearly there. If
+Phase 7 has not been re-justified by the time Phase 8 ships, drop them then and stop
+reasoning about a game that is not in the code.
+
 **The balance guard has to be restated before any of this is tuned.** The 36-to-72-hour
 starvation window in `test/unit/tick.test.js` is written against one survivor's
 consumption. Three survivors empty the stores three times as fast, so the guard must
@@ -1379,9 +1390,8 @@ next milestone and a picture of how far you have come. A win condition would nee
 prestige-and-reset loop, and a game about a place that outlives its people should not
 take the place away.
 
-**The road is the region reconnecting, one link at a time.** A link costs weeks of fuel
-and parts rather than hours of scrap — the first thing in the game priced above the
-patience curve, and therefore the first thing the fence cannot buy. It is the natural
+**The road is the region reconnecting, one link at a time.** A link costs fuel rather
+than hours of scrap — the first thing in the game the fence cannot buy. It is the natural
 sink for the currency the fuel track made scarce on purpose.
 
 **Each link brings a neighbour into view.** Their name, their size, whether they are
@@ -1391,11 +1401,174 @@ world inhabited without introducing a single new failure mode: nothing another c
 can touch yours, so "resolve an eight-week absence on the next page load, with no process
 having been running" survives intact. That guarantee is worth more than interactivity.
 
-**One question deliberately left open, to be settled before building:** whether the
-neighbours on the road are real player camps read at page load, or generated from the
-world seed the way weather is. Generated is cheaper, always available, and consistent
-with everything above; real camps are more interesting exactly once there is more than
-one player. It does not need answering until the map is built.
+#### Settled 2026-08-19: the neighbours are generated
+
+The question this section left open is answered, and the answer is **generated from the
+world seed, the way weather and raids already are.** Cheaper, always available, and it
+keeps the guarantee the phase is built on: nothing runs server-side, so an eight-week
+absence still resolves on one page load. Real camps are more interesting exactly once
+there is more than one player, and today there is one player and no hosting — a road of
+real neighbours would be an empty road.
+
+The seam is worth keeping clean anyway. A neighbour is read through one function of
+`(worldSeed, linkIndex, now)`, and nothing above that function knows where the answer
+came from. Swapping it for a query over real settlements later changes that function and
+nothing else.
+
+**A neighbour's fate is derived, not stored, and that is what makes the road feel
+alive.** Whether they are still there is a function of the same seed and the current
+instant, so a neighbour who was holding on when you linked to them can be gone when you
+look again — news that changes with no cron, no row, and nothing having been running.
+Weather already proved the trick works.
+
+**The fate is news and never a repossession.** What a link bought is bought: a
+destination stays on the dispatch table and a trade post stays open even after the people
+who were there are not. A trade post therefore belongs to a *faction* working the
+reconnected road rather than to the neighbour, which is what keeps the phase's founding
+guarantee true — nothing another camp does can take anything from yours. Without that
+distinction, "your trade post closed because somebody else died" is exactly the failure
+mode this design exists to avoid.
+
+#### Seven links, and an end that is not an ending
+
+**The road is finite: seven links.** The alternative — escalating forever — was rejected
+because an endless road has no denominator, and the phase's whole promise is *a picture
+of how far you have come*. "Three of seven" is a goal. "Three" is a running total.
+
+Reaching the seventh ends nothing. Nothing resets, no prestige loop, the camp keeps
+going exactly as before — the seventh link is a standing fact about this camp rather than
+a win, which is the same reason this section opens by refusing a win condition. If the
+road ever needs to be longer, a later phase extends it; that is a much better problem
+than a treadmill with no edge to measure against.
+
+#### What a link costs, measured rather than sketched
+
+The sketch above said "weeks of fuel". Measured on 2026-08-19, that was too much:
+
+    region                fuel/trip   fuel/day back-to-back
+    Underground Bunkers        5.0                    13.4
+    Coastal Wreckage          10.0                    20.0
+    The Deep Zone             17.5                    23.3
+
+And the real camp, after six days and fifteen trips, held 51 fuel and **had never fitted
+a single upgrade** — the cheapest is the radio at 55. The second currency had not been
+affordable once. Pricing the road above that would have made the phase invisible for a
+month, and a goal you cannot see yourself approaching is not a goal.
+
+So the first link costs about what one fitting costs, and each one after it half again as
+much:
+
+    link      1     2     3     4     5     6     7    total
+    fuel     70   105   158   236   354   532   797     2252
+
+The first link is two or three Deep Zone trips — days, not weeks. The whole road is
+roughly a hundred days of sending someone dangerous places back to back, and three or
+four times that at the rate the real camp has actually been playing. Months, with the
+first step inside a week.
+
+**Fuel only, and not parts.** The sketch said "fuel and parts", and parts turn out to be
+the wrong currency for this in three separate ways. They hang off `character_id`, so
+unlike stores they are a *total* loss on a death rather than a halving. They are already
+crafting's currency — a spear costs two, a vest one — so a road priced in them competes
+with gear rather than with fittings. And the Green River Provisioners sell two for
+fifteen fuel, which makes a parts price a fuel price with extra steps whenever a caravan
+happens to be at the gate. Fuel alone keeps one clean story: **the road is what fuel is
+for.**
+
+#### Progress is committed, not merely afforded
+
+Fuel is **poured into a link** and does not come back out. The alternative — the link
+unlocks when the stores happen to hold enough — was rejected for three reasons, and the
+third is decisive:
+
+- A threshold gives no picture of how far you have come, and the picture is the point.
+- A threshold makes no decision. Committing does: fuel has two sinks now, and choosing
+  the road over filtration is a real choice about what kind of camp this is.
+- **It is not possible past the fourth link.** Storage caps in the hundreds, so a
+  797-fuel link can never sit in the stores at once. Incremental commitment is not a
+  flavour choice; it is the only shape that reaches the end of the road.
+
+**Committed progress survives a succession untouched.** Everything else in the game is
+punished by a death — gear is a total loss, stores are halved, structures drop a level —
+and the road is deliberately exempt, because it is the one thing that measures the camp's
+whole life rather than its current occupant. That is the emotional core of the game
+stated as a rule: the camp outlives its people, and the road is what the camp remembers.
+
+The balance falls out of that rather than needing to be added: **uncommitted fuel is
+still halved on a death, so hoarding is punished and committing is not.** A player who
+pours fuel in as it arrives is protected; one who stockpiles for a bigger link later
+loses half of it the first time somebody does not come home. That is a real decision with
+an edge on both sides, and it costs no new mechanism at all.
+
+#### What a link gives: the neighbour is the destination
+
+Every link brings a neighbour into view, and **reconnecting to a place means you can go
+there.** The reward and the news are the same content rather than two sets written to sit
+beside each other, which is both cheaper and truer: a road is for travelling.
+
+Of the seven, fixed by link index so the page can always say what the next one brings:
+
+- **Four become destinations** — a new region on the dispatch table with its own travel
+  time, loot and moments. This is the strongest reward available, because it feeds
+  straight back into Phase 6: more places means more contact, and contact is what a
+  check-in turned out to be short of.
+- **Two of those four also carry a standing trade post** — a permanent offer set, the
+  deliberate opposite of a caravan, which is missable by design. The road buys
+  reliability, which is a different good from the one Phase 5 sells. Run by whichever
+  faction the camp has standing with, which gives standing a second job rather than
+  inventing a third party.
+- **Three are worth only the sight of somebody else out there**, exactly as this section
+  originally promised. A road where every step pays is a shop, not a road.
+
+#### Schema: one table
+
+    road_links(settlement_id, link_index, fuel, completed_at)
+
+One row per link a camp has started. `fuel` is what has gone in so far; `completed_at` is
+set the instant it meets the cost. Nothing about the neighbour is stored — that is
+derived — so the table holds only what the player actually did.
+
+#### The page
+
+A **road** section showing the links already made with their neighbours and current news,
+then the next link with what it costs, what has gone in, and what it will bring. Beyond
+that, the remaining links as unnamed distance — a count, not a spoiler, so there is a
+picture of the whole without reading the end first.
+
+The commitment form is the ordinary shape: an amount, a button, and a refusal in the
+game's voice when the stores cannot cover it.
+
+The progress figure is a quantity, not a deadline, so it never routes through
+`countdown()` — the page contract's rule, and the road is the first thing to test that
+rule on something which is neither a timer nor a resource bar.
+
+#### What could go wrong, and how we would know
+
+- **The road eats the fuel track.** If every scrap of fuel goes to the road, filtration
+  and the machine shop are never fitted and the second currency quietly becomes a
+  single-purpose token. Measured rather than assumed: a soak that plays a road-focused
+  camp against a fitting-focused one and compares what each can do.
+- **The check-in gets thinner, not thicker.** The road is a place fuel goes, not a new
+  verb per visit — if it becomes the only thing worth looking at, the phase has made the
+  page emptier while claiming to give it a destination. `tools/check-in-density.mjs`
+  measures exactly this, and the before figure is on record.
+- **The far end is too far.** 2252 fuel is priced off one camp measured over six days. If
+  link five reads as a wall in play, the multiplier is a constant, not a design.
+
+#### The tests that hold it up
+
+1. Fuel committed to a link leaves the stores and does not come back.
+2. A link completes when its cost is met and never before, and a link cannot be started
+   before the one ahead of it is done.
+3. A succession leaves committed progress untouched while halving uncommitted stores.
+4. A neighbour is a pure function of the world seed and the link index — same inputs,
+   same neighbour, on any machine and at any time.
+5. A link whose cost exceeds the storage cap is still completable.
+6. The road ends: there is no eighth link, and the seventh completing takes nothing away.
+7. What a link bought is never repossessed — a destination and a trade post outlive the
+   neighbour whose fate turned.
+8. Measured, not asserted: days to the first link, and to the seventh, at a plausible
+   play rate.
 
 ### Why this order
 
@@ -1407,6 +1580,20 @@ destination, and a destination is worth least while the journey is still thin.
 
 If a visit still feels thin after Phase 6, that is the signal to bring Phase 7 forward
 rather than to keep adding moments to a trip.
+
+**That trigger fired on 2026-08-19, and the order changed — but not the way this
+paragraph expected.** The visit did still feel thin, so Phase 7 was measured before it
+was built, and its premise did not survive: every camp verb guards on *alive*, not
+*home*, so a check-in is never empty and a second pair of hands would change one bucket
+on 12% of visits. The reasoning above — "Phase 7 is the largest, so it wants a soak that
+already covers encounters" — was about sequencing a phase that has now lost its
+justification. It needs a new one before it is built, and "more hands" is not it.
+
+So Phase 8 moves up, and the argument against it moves with Phase 7. "A destination is
+worth least while the journey is still thin" assumed Phase 7 would thicken the journey
+first. Nothing is going to, in that shape — and the measurement said the specific shape
+of the thinness is *the same two or three verbs every visit*, which is what a destination
+answers directly: the verbs stop being the point when they are paying for something.
 
 ## The page contract, and what a redesign must not drop
 
