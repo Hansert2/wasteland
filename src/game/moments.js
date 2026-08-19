@@ -140,6 +140,10 @@ export const MOMENTS = {
         key: 'face',
         verb: 'confront',
         label: 'Turn and face it',
+        finding: {
+          missed: 'Whatever it was, it had nothing on it worth carrying.',
+          found: (what) => `It had been carrying ${what}.`,
+        },
         detail: 'settle it now, at whatever health they have',
         hazard: { danger: 5 },
         clearsHazard: true,
@@ -436,6 +440,10 @@ export const MOMENTS = {
         key: 'talk',
         verb: 'parley',
         label: 'Walk up and talk',
+        finding: {
+          missed: 'They talked a while, and were let through with nothing but the road.',
+          found: (what) => `They were pointed at something worth the detour: ${what}.`,
+        },
         detail: 'whoever they are, and whatever they make of the camp',
         parley: true,
         findChance: 0.3,
@@ -454,6 +462,10 @@ export const MOMENTS = {
         key: 'help',
         verb: 'parley',
         label: 'Get them upright',
+        finding: {
+          missed: 'They had nothing to give back but the story.',
+          found: (what) => `They pressed ${what} on the survivor and would not hear otherwise.`,
+        },
         detail: 'an hour, a ration, and a story they will tell',
         hours: 1,
         consumes: ['preserved_meal', 'tinned_stew'],

@@ -140,7 +140,9 @@ function applyChoices(trip, { region, survivor, seed, choices, standings }) {
       trip.healed += option.heals;
       trip.log.push('They ate, and walked better for it.');
     }
-    if (option.findChance) investigate(trip, region, random, option.findChance);
+    if (option.findChance) {
+      investigate(trip, region, random, option.findChance, option.finding);
+    }
     if (option.parley) {
       parley(trip, timeline, at, random, standingOf(standings ?? {}, moment.faction));
     }
@@ -210,11 +212,26 @@ function shelter(trip, timeline, at, factor) {
   trip.log.push(`They sat out the worst of it — ${trip.radiation} rads instead of ${timeline.radiation}.`);
 }
 
-/** One extra roll on whatever this region has to find. */
-function investigate(trip, region, random, probability) {
+/**
+ * One extra roll on whatever this region has to find.
+ *
+ * **The narration is the option's, not this function's.** These two lines were written
+ * for the welded door — "whatever was behind it", "behind it: three parts" — and then
+ * `findChance` turned out to be the natural way to price a shot at something on options
+ * that have no *it* to be behind. Helping a stranger to their feet reported that
+ * whatever was behind them was not worth the hours, which reads as a bug and is one.
+ *
+ * So an option that draws a find says how a find reads for it, and the door's own words
+ * are the fallback rather than the rule. A test holds the line: any option drawing a
+ * find outside the `investigate` verb has to bring its own.
+ */
+function investigate(trip, region, random, probability, words = {}) {
+  const missed = words.missed ?? 'Whatever was behind it was not worth the hours.';
+  const found = words.found ?? ((what) => `Behind it: ${what}.`);
+
   const table = region.finds ?? [];
   if (table.length === 0 || !chance(random, probability)) {
-    trip.log.push('Whatever was behind it was not worth the hours.');
+    trip.log.push(missed);
     return;
   }
 
@@ -224,7 +241,7 @@ function investigate(trip, region, random, probability) {
   if (qty <= 0) return;
 
   trip.finds.push({ slug: find.slug, qty });
-  trip.log.push(`Behind it: ${qty} × ${find.slug.replaceAll('_', ' ')}.`);
+  trip.log.push(found(`${qty} × ${find.slug.replaceAll('_', ' ')}`));
 }
 
 /**

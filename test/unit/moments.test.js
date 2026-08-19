@@ -118,6 +118,24 @@ test('every option value is inside the range its effect makes sense in', () => {
   }
 });
 
+test('an option that draws a find outside investigating brings its own words for it', () => {
+  // The find narration was written for the welded door — "whatever was behind it" — and
+  // `findChance` then became the natural way to price a shot at something on options
+  // with no *it* to be behind. Getting a wounded stranger upright reported that whatever
+  // was behind them was not worth the hours. Found by playing it, not by testing it.
+  for (const [key, moment] of Object.entries(MOMENTS)) {
+    for (const option of moment.options) {
+      if (!option.findChance || option.verb === 'investigate') continue;
+
+      const where = `${key}/${option.key}`;
+      assert.ok(option.finding, `${where}: a ${option.verb} says how a find reads`);
+      assert.ok(option.finding.missed?.length > 0, `${where}: and how a miss reads`);
+      assert.equal(typeof option.finding.found, 'function', `${where}: found names what`);
+      assert.match(option.finding.found('2 × rad x'), /2 × rad x/, `${where}: and uses it`);
+    }
+  }
+});
+
 test('option keys are unique within a moment, so a choice can be recorded by key', () => {
   for (const [key, moment] of Object.entries(MOMENTS)) {
     const keys = moment.options.map((option) => option.key);
