@@ -569,6 +569,7 @@ function renderExpeditions(view) {
         <th>${escape(region.name)}</th>
         <td>danger ${region.danger}</td>
         <td>${escape(duration(region.travel_hours))}</td>
+        <td>${escape(contact(region.moments))}</td>
         <td>
           <form method="post" action="/expedition" style="margin:0">
             <input type="hidden" name="region" value="${escape(region.slug)}">
@@ -576,11 +577,26 @@ function renderExpeditions(view) {
           </form>
         </td>
       </tr>
-      <tr><td colspan="4"><small>${escape(region.description ?? '')}</small></td></tr>`,
+      <tr><td colspan="5"><small>${escape(region.description ?? '')}</small></td></tr>`,
     )
     .join('');
 
   return `<h2>Where to send them</h2><table>${rows}</table>`;
+}
+
+/**
+ * What the trip holds, in the word the rest of the page already uses for it.
+ *
+ * "Contact" is what the radio line and the moment box call an encounter, so the
+ * dispatch table says it the same way rather than inventing a second name for the
+ * same thing. A region with none says *why* — the reason is a fact about the trip's
+ * length, and a player who knows it can choose against it deliberately instead of
+ * discovering over fifteen dispatches that nothing ever happens on a ten-minute run.
+ */
+function contact(count) {
+  const n = Number(count) || 0;
+  if (n === 0) return 'too short for contact';
+  return n === 1 ? '1 contact' : `${n} contacts`;
 }
 
 function renderInventory(inventory) {

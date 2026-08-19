@@ -6,7 +6,7 @@ import {
   productionFactors,
 } from '../game/world-events.js';
 import { resolveExpedition } from '../game/expeditions.js';
-import { isOpen, isWarned, momentsFor } from '../game/moments.js';
+import { isOpen, isWarned, momentCount, momentsFor } from '../game/moments.js';
 import { stateAt, timelineOf } from '../game/timeline.js';
 import { CONFIG } from '../game/constants.js';
 import { FACTIONS, caravanVisit, priceAt, standingOf } from '../game/factions.js';
@@ -163,9 +163,24 @@ export async function viewCamp(client, settlementId, now = Date.now()) {
     [settlementId],
   );
 
-  const { rows: regions } = await client.query(
+  const { rows: regionRows } = await client.query(
     'select slug, name, danger, travel_hours, description from regions order by danger, travel_hours',
   );
+
+  /**
+   * What a region offers, including the one thing the list never said.
+   *
+   * Where to send someone is the decision that settles whether Phase 6 happens at all,
+   * and the table it is made from carried danger, hours and flavour — never contact.
+   * Measured on the first real camp: nine of fifteen dispatches went to the one region
+   * that categorically has no interior, which is less a preference than the absence of
+   * a fact. The count comes from the same function the generator uses, so what the page
+   * promises and what the trip holds cannot drift apart.
+   */
+  const regions = regionRows.map((region) => ({
+    ...region,
+    moments: momentCount(Number(region.travel_hours)),
+  }));
 
   // Re-read rather than using the post-tick state: the tick may have just resolved
   // an expedition, and what the page wants is whatever is in flight *now*.

@@ -1,6 +1,6 @@
 # tools
 
-Not part of the game. These are the measuring instruments, kept because four times now
+Not part of the game. These are the measuring instruments, kept because five times now
 they have found something that reasoning and a green test suite both missed:
 
 - **Filtration deleted the constraint it was designed to ease.** It scrubbed 36 rads
@@ -19,6 +19,14 @@ they have found something that reasoning and a green test suite both missed:
   Sweeping the width showed it buys the attentive player nothing at all (703 caught
   against 701) and buys the absent player half of what simply sending longer trips buys
   them. The number was a fact about the soak's itinerary, not about the windows.
+
+- **A phase was built and the player never met it.** Encounters reached a twice-daily
+  player once in ninety days — and the cause was not the windows, which had just been
+  swept and cleared. The survivor is *home* at 88% of check-ins, and the first real camp
+  spent nine of its fifteen dispatches on the one region that by design has no interior.
+  The same run retired the premise Phase 7 was designed against: every camp verb guards
+  on *alive*, not *home*, so a check-in is never empty and freeing the trip slot would
+  change one bucket on 12% of visits.
 
 The pattern worth keeping: the simulation is a pure function of `(state, now)`, so
 sixty days of play runs in milliseconds and a balance question can be answered rather
@@ -39,12 +47,19 @@ node tools/craft-balance.mjs     # what gear is worth, and what a death costs
 node tools/window-coverage.mjs   # who the encounter windows actually reach
 ```
 
+`check-in-density.mjs` needs the database, and answers a blunter question than any of the
+above: **when you load the page, what is there to do?** It probes rather than reasons —
+every verb is attempted inside a savepoint and rolled back, so the answer comes from the
+real service guards and the refusals are the ones the player would have read. That is why
+it can be trusted against the plan's prose, and it has already contradicted it once.
+
 `region-balance.mjs` and `moment-balance.mjs` read the regions from the database, so
 they need the wrapper that brings Postgres up:
 
 ```
 node scripts/with-db.mjs node --env-file=.env tools/region-balance.mjs
 node scripts/with-db.mjs node --env-file=.env tools/moment-balance.mjs
+node scripts/with-db.mjs node --env-file=.env tools/check-in-density.mjs
 ```
 
 **`moment-balance.mjs` carries a value function, and it is the arguable part.** Options

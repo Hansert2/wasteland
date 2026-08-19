@@ -1227,6 +1227,55 @@ you may not have, and `the_tin`, `the_medkit` and `trade_the_spear` will read as
 correctly-declined however they are tuned. Their numbers should be argued about from play,
 not from the table.
 
+#### Reachability: the phase the player never met
+
+*Measured 2026-08-19, after the verdict on a check-in was still "very thin".*
+
+`tools/check-in-density.mjs` probes every verb at every check-in — attempting each one
+inside a savepoint and rolling it back, so availability is decided by the real service
+guards rather than by a second copy of their reasoning. Ninety days, twice daily:
+
+    dispatch  158/180   88%        craft   177/180   98%
+    build      88/180   49%        trade    33/180   18%
+    fit        29/180   16%        moment    1/180    1%
+
+Two things fall out, and the second is why this section exists.
+
+**A check-in is never empty, so the premise Phase 7 rests on is false.** That phase says
+one survivor is the bottleneck on every verb and a camp whose person is in the field
+"can do nothing at all". Every camp verb guards on `died_at is null` — *alive*, not
+*home* — so builds, fittings, the bench and the caravan are all reachable while somebody
+is nine hours into the Bunkers. The floor is one verb, the median is three, and freeing
+the trip slot entirely moves the histogram by one bucket on 12% of check-ins. Phase 7
+needs a new justification before it is built; "more hands" does not answer this.
+
+**A moment reached the player once in ninety days.** Not because the windows are narrow —
+that was swept the same morning and cleared — but because the survivor is *home* at 88%
+of check-ins, and a moment only exists while somebody is out. The first real camp says it
+more sharply still: of fifteen dispatches, nine went to the Fence Line, which by design
+has no interior and never will. Of the six trips that could hold a moment, three were
+answered. **The catch rate was never the problem. The itinerary was.**
+
+**And the itinerary was chosen from a table that never mentioned contact.** The dispatch
+list showed name, danger, hours and flavour. Nothing on it said that a ten-minute run has
+nothing inside it, or that a Deep Zone trip holds four things to answer — so the region
+that is the top row, the cheapest click and the best scrap per hour is also the one that
+switches the whole phase off, and the page never said so.
+
+The fix is this plan's own rule about decisions, applied to the one decision it had been
+left out of: *the facts a decision needs sit next to the decision.* `viewCamp` gives every
+region its `momentCount`, and the dispatch table renders it in the word the radio line and
+the moment box already use — `4 contacts`, `1 contact`, or `too short for contact` for the
+fence. Derived from the generator's own function, so the page cannot promise a trip the
+generator will not produce.
+
+**This is information, not economics, and that is deliberate.** The Fence Line's ~24
+scrap/h is measured, considered and kept, and a player who reads "too short for contact"
+and sends the fence run anyway has made a real choice rather than an uninformed one. If
+the itinerary does not move now that the table says what it holds, the next lever is what
+the long trips *pay* — a balance change, to be argued with numbers, after this one has
+had its chance.
+
 #### The tests that hold it up
 
 1. **The big one:** for many seeds, `choices: []` reproduces the pre-Phase-6 outcome
@@ -1237,6 +1286,9 @@ not from the table.
 5. A choice submitted outside its window is rejected; a repeated identical choice is a
    no-op and a conflicting one is refused.
 6. Measured, not asserted: the attentive-play bound above.
+7. The region list carries the generator's own contact count, and the fence line's is
+   zero — so a redesign that drops the column fails the suite rather than quietly
+   switching the phase off again.
 
 ### Phase 7 — a camp with people in it
 

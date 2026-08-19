@@ -5,7 +5,7 @@ import { pool } from '../../src/db/pool.js';
 import { advanceSettlement } from '../../src/services/advance-settlement.js';
 import { dispatchExpedition } from '../../src/services/dispatch-expedition.js';
 import { foundSettlement, raiseSuccessor } from '../../src/services/settlement-lifecycle.js';
-import { MOMENTS, momentsFor, walkHomeHours } from '../../src/game/moments.js';
+import { MOMENTS, momentCount, momentsFor, walkHomeHours } from '../../src/game/moments.js';
 import { viewCamp } from '../../src/services/view-camp.js';
 import { answerMoment } from '../../src/services/answer-moment.js';
 import { InputError } from '../../src/errors.js';
@@ -107,6 +107,32 @@ async function returnsAt(client, expeditionId) {
   ]);
   return rows[0].returns_at.getTime();
 }
+
+test('the region list says how much contact a trip holds', async () => {
+  await withRollback(async (client) => {
+    const { settlementId } = await setup(client);
+    const view = await viewCamp(client, settlementId);
+
+    // Every region carries the count, and it is the generator's own answer rather
+    // than a second table that can drift away from it.
+    for (const region of view.regions) {
+      assert.equal(
+        region.moments,
+        momentCount(Number(region.travel_hours)),
+        `${region.slug} promises a count the generator does not agree with`,
+      );
+    }
+
+    // The two ends of the range, named rather than derived, because these are the
+    // rows the choice actually turns on: the faucet that can never offer anything,
+    // and the long trip that is the reason to go.
+    const fence = view.regions.find((r) => r.slug === 'the_fence_line');
+    assert.equal(fence.moments, 0, 'the fence line has no interior and must say so');
+
+    const deep = view.regions.find((r) => r.slug === 'the_deep_zone');
+    assert.ok(deep.moments > 0, 'the deep zone is the trip Phase 6 was written for');
+  });
+});
 
 test('a dispatched expedition starts with nothing answered', async () => {
   await withRollback(async (client) => {
