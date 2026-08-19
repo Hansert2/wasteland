@@ -304,6 +304,31 @@ export function landingPage({ error } = {}) {
  */
 const section = (id, html) => `<section id="s-${id}">${html ?? ''}</section>`;
 
+/**
+ * The camp page, in the order a check-in actually reads.
+ *
+ * Nothing here is styling — the look is still scaffolding — but the *sequence* is not
+ * decoration, and it had drifted into the order things were built in rather than the
+ * order they are used in. Four groups, and the reasoning is worth keeping because a
+ * redesign will want to move all of it:
+ *
+ * 1. **Anything with a deadline**, which is the rule the top slot already had: a moment
+ *    closing, raiders due. The sky sits with them because it changes what a trip is
+ *    worth right now.
+ * 2. **What happened while you were gone**, then the person it happened to and what
+ *    they are carrying. The pack moved up beside the survivor: it hangs off the
+ *    character, dies with them, and reading it three sections away from their health
+ *    made it look like camp stores.
+ * 3. **What the camp is spending on** — stores, then the two things fuel can go to.
+ *    Structures and the road are now adjacent on purpose: a fitting and a link are the
+ *    same 60-to-70 fuel, and the whole decision Phase 8 adds is choosing between them.
+ *    Putting them a screen apart hid the only interesting question in the phase.
+ * 4. **Who you can trade with**, together at last — the caravan at the gate, the post on
+ *    the road, and the standings that price both. Those three were scattered across
+ *    three separate places, which made a post look like a second unrelated shop.
+ *
+ * The graveyard stays at the bottom. It is the one thing on the page that is finished.
+ */
 export function campPage(view, { error } = {}) {
   return layout(view.name, `
     ${section('head', `
@@ -311,6 +336,7 @@ export function campPage(view, { error } = {}) {
       <p>Wealth ${view.wealth} &middot; defence ${view.defence} &middot; founded
          ${escape(view.foundedAt.toISOString().slice(0, 10))}</p>`)}
     ${section('error', error ? `<p class="error">${escape(error)}</p>` : '')}
+
     ${section('moment', renderMoment(view.expedition))}
     ${section('raid', renderRaidWarning(view.raidExpectedAt))}
     ${section('sky', renderWeather(view.weather))}
@@ -320,18 +346,21 @@ export function campPage(view, { error } = {}) {
       'survivor',
       view.survivor ? renderSurvivor(view.survivor, view.strain) : renderNoSurvivor(view.fallenCount > 0),
     )}
-    ${section('expedition', view.survivor ? renderExpeditions(view) : '')}
-    ${section('stores', renderResources(view.resources))}
-    ${section('caravan', renderCaravan(view.caravan, Boolean(view.survivor)))}
     ${section('inventory', renderInventory(view.inventory))}
-    ${section('workshop', renderWorkshop(view))}
-    ${section('standings', renderStandings(view.standings))}
+    ${section('expedition', view.survivor ? renderExpeditions(view) : '')}
+
+    ${section('stores', renderResources(view.resources))}
     ${section(
       'structures',
       renderStructures(view.structures, view.buildInFlight, Boolean(view.survivor)),
     )}
     ${section('road', renderRoad(view.road))}
+    ${section('workshop', renderWorkshop(view))}
+
+    ${section('caravan', renderCaravan(view.caravan, Boolean(view.survivor)))}
     ${section('post', renderPost(view.post, Boolean(view.survivor)))}
+    ${section('standings', renderStandings(view.standings))}
+
     ${section('roster', renderRoster(view.fallenCount))}
 
     <form method="post" action="/logout"><button type="submit">Log out</button></form>
