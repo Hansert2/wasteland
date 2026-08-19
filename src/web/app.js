@@ -17,6 +17,7 @@ import { dispatchExpedition } from '../services/dispatch-expedition.js';
 import { startBuild } from '../services/start-build.js';
 import { startCraft } from '../services/start-craft.js';
 import { startUpgrade } from '../services/start-upgrade.js';
+import { commitToRoad } from '../services/commit-to-road.js';
 import { tradeWithCaravan } from '../services/trade.js';
 import { viewCamp } from '../services/view-camp.js';
 import { viewGraveyard } from '../services/view-graveyard.js';
@@ -206,6 +207,21 @@ export function createApp() {
         { faction: req.body.faction, offer: req.body.offer },
         now,
       );
+    });
+
+    res.redirect('/camp');
+  });
+
+  app.post('/road', requireAuth, async (req, res) => {
+    await withTransaction(async (client) => {
+      const settlementId = await settlementIdForPlayer(client, req.playerId);
+      if (!settlementId) throw new InputError('This account has no camp.');
+
+      // Advance first, as with every other spend: the fuel going up the road has to be
+      // the balance as of now, not as of whenever the page was last drawn.
+      const now = Date.now();
+      await advanceSettlement(client, settlementId, now);
+      await commitToRoad(client, settlementId, req.body.fuel, now);
     });
 
     res.redirect('/camp');

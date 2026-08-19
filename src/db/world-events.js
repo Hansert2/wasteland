@@ -18,7 +18,7 @@ import { eventForSlot, slotAt } from '../game/world-events.js';
  * The world seed. Fixed rather than random: it *is* the world, and regenerating it
  * would silently rewrite history for every camp at once.
  */
-const WORLD_SEED = 20260101;
+export const WORLD_SEED = 20260101;
 
 /**
  * How many slots back to look for weather that is still running.

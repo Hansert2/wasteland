@@ -9,6 +9,8 @@ import { resolveExpedition } from '../game/expeditions.js';
 import { isOpen, isWarned, momentCount, momentsFor } from '../game/moments.js';
 import { stateAt, timelineOf } from '../game/timeline.js';
 import { CONFIG } from '../game/constants.js';
+import { LINKS, linkCost, linkGives, neighbourFor } from '../game/road.js';
+import { WORLD_SEED } from '../db/world-events.js';
 import { FACTIONS, caravanVisit, priceAt, standingOf } from '../game/factions.js';
 import {
   STRUCTURES,
@@ -322,6 +324,54 @@ export async function viewCamp(client, settlementId, now = Date.now()) {
     }
   }
 
+  /**
+   * The road: what has been reached, and what the next link wants.
+   *
+   * Every neighbour is derived here rather than read, so the table holds only what the
+   * player did — and a neighbour's fate is derived against `now`, which is why somebody
+   * standing last week can be gone on this page load with nothing having run.
+   *
+   * What a link bought is never repossessed. A destination stays on the dispatch table
+   * and a trade post stays open after the people are gone, because otherwise "another
+   * camp died, so you lost a shop" would be exactly the cross-camp failure this phase
+   * refuses. The fate is news.
+   */
+  const { rows: roadRows } = await client.query(
+    'select link_index, fuel, completed_at from road_links where settlement_id = $1 order by link_index',
+    [settlementId],
+  );
+
+  const reached = roadRows
+    .filter((row) => row.completed_at !== null)
+    .map((row) => ({
+      ...neighbourFor(WORLD_SEED, Number(row.link_index), now),
+      completedAt: row.completed_at,
+    }));
+
+  const openRow = roadRows.find((row) => row.completed_at === null);
+  const nextIndex = openRow ? Number(openRow.link_index) : reached.length + 1;
+  const nextCost = linkCost(nextIndex);
+
+  const road = {
+    reached,
+    links: LINKS,
+    // Null once the seventh is done: the road ends, and the page says so rather than
+    // offering an eighth that does not exist.
+    next: nextCost === null
+      ? null
+      : {
+          index: nextIndex,
+          cost: nextCost,
+          fuel: Number(openRow?.fuel ?? 0),
+          ...linkGives(nextIndex),
+          // Named, because the player is choosing a known thing — but only this one.
+          // The links past it are a count rather than a list, so there is a picture of
+          // the whole road without reading the end of it first.
+          neighbour: neighbourFor(WORLD_SEED, nextIndex, now).name,
+        },
+    beyond: nextCost === null ? 0 : LINKS - nextIndex,
+  };
+
   const rates = productionRates(structures);
 
   // What the sky is doing to production, and what the survivor takes back out. Both
@@ -341,6 +391,7 @@ export async function viewCamp(client, settlementId, now = Date.now()) {
     // the player's business; with it, it is the most useful thing on the page.
     raidExpectedAt: fitted.has('radio') ? settlements[0].next_raid_at : null,
     caravan,
+    road,
     standings: Object.entries(FACTIONS).map(([slug, spec]) => ({
       slug,
       name: spec.name,

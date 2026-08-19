@@ -330,6 +330,7 @@ export function campPage(view, { error } = {}) {
       'structures',
       renderStructures(view.structures, view.buildInFlight, Boolean(view.survivor)),
     )}
+    ${section('road', renderRoad(view.road))}
     ${section('roster', renderRoster(view.fallenCount))}
 
     <form method="post" action="/logout"><button type="submit">Log out</button></form>
@@ -611,6 +612,61 @@ function contact(count) {
   const n = Number(count) || 0;
   if (n === 0) return 'too short for contact';
   return n === 1 ? '1 contact' : `${n} contacts`;
+}
+
+/**
+ * The road, which is the only thing on this page that measures years.
+ *
+ * Everything else here is about the next few hours: what is finishing, what is due
+ * back, what the stores will do by morning. This section is the one place the camp
+ * gets to be older than its survivor, so it reads as a list of places rather than as
+ * a progress bar with a number on it — the neighbours are the point, and the fuel is
+ * how you get to them.
+ *
+ * Reached links carry their news, which is derived fresh every render: somebody
+ * standing last week can be gone on this load. What they gave is not taken back.
+ */
+function renderRoad(road) {
+  if (!road) return '';
+
+  const reached = road.reached
+    .map(
+      (link) => `<tr>
+        <th>${escape(link.name)}</th>
+        <td>${link.stillThere ? `${link.size} people` : 'empty'}</td>
+        <td>${[link.destination && 'you can go there', link.tradePost && 'trade post']
+          .filter(Boolean).join(', ') || 'in view'}</td>
+      </tr>
+      <tr><td colspan="3"><small>${escape(link.news)}</small></td></tr>`,
+    )
+    .join('');
+
+  // The end of the road is a standing fact about the camp, not a win: nothing resets
+  // and nothing is taken away, so it says so plainly and stops asking for fuel.
+  if (!road.next) {
+    return `<h2>The road</h2>
+      <p>All ${road.links} links. The region is as reconnected as this camp can make it.</p>
+      <table>${reached}</table>`;
+  }
+
+  const gives = [road.next.destination && 'somewhere to go', road.next.tradePost && 'a standing trade post']
+    .filter(Boolean).join(' and ') || 'word of who is out there';
+
+  // The links past the next one are a count rather than a list. A picture of the whole
+  // road without reading the end of it first.
+  const beyond = road.beyond > 0
+    ? `<p><small>${road.beyond} more link${road.beyond === 1 ? '' : 's'} beyond that.</small></p>`
+    : '<p><small>The last link.</small></p>';
+
+  return `<h2>The road &mdash; ${road.reached.length} of ${road.links}</h2>
+    ${reached ? `<table>${reached}</table>` : ''}
+    <p>Next: <strong>${escape(road.next.neighbour)}</strong> &mdash; ${gives}.<br>
+       ${road.next.fuel} of ${road.next.cost} fuel sent up the road.</p>
+    <form method="post" action="/road">
+      <input type="number" name="fuel" min="1" step="1" value="10" required>
+      <button type="submit">Send fuel</button>
+    </form>
+    ${beyond}`;
 }
 
 function renderInventory(inventory) {
