@@ -847,6 +847,9 @@ function craftCell(recipe, view) {
   }
   // Starting work needs living hands, the same rule builds follow.
   if (!view.survivor) return '';
+  // And the same rule the workshop level already follows: keep the row, drop the
+  // button, say what it wants. Hiding it would hide the goal.
+  if (recipe.shortBy) return `<small>${escape(recipe.shortBy)}</small>`;
 
   return `<form method="post" action="/craft" style="margin:0">
       <input type="hidden" name="recipe" value="${escape(recipe.slug)}">
@@ -999,7 +1002,9 @@ function upgradeRow(structure, buildInFlight, someoneAlive) {
   // Fuel only comes home from expeditions, so the cost is worth spelling out.
   const cost = escape(`${upgrade.fuel} fuel, ${duration(upgrade.hours)}`);
   const button =
-    buildInFlight || !someoneAlive
+    upgrade.shortBy
+      ? `<small>${escape(upgrade.shortBy)}</small>`
+      : buildInFlight || !someoneAlive
       ? ''
       : `<form method="post" action="/upgrade" style="margin:0">
           <input type="hidden" name="upgrade" value="${escape(upgrade.slug)}">
@@ -1030,6 +1035,10 @@ function statusCell(structure, buildInFlight, someoneAlive) {
   // The queue holds one build, and starting work needs living hands.
   if (buildInFlight || !someoneAlive) {
     return `<td>${escape(cost)}</td><td></td>`;
+  }
+
+  if (structure.shortBy) {
+    return `<td>${escape(cost)}</td><td><small>${escape(structure.shortBy)}</small></td>`;
   }
 
   return `<td>${escape(cost)}</td>

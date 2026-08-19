@@ -5,6 +5,7 @@ import { pool } from '../../src/db/pool.js';
 import { loadWorld } from '../../src/db/world.js';
 import { advanceSettlement } from '../../src/services/advance-settlement.js';
 import { viewCamp } from '../../src/services/view-camp.js';
+import { campPage } from '../../src/web/render.js';
 import { STRUCTURES } from '../../src/game/structures.js';
 
 const T0 = Date.UTC(2287, 0, 1);
@@ -420,6 +421,61 @@ test('the page says what a radiation figure is costing, not only what it is', as
     assert.ok(
       filtered.hoursToMending < unfiltered.hoursToMending / 2,
       `filtration should more than halve the wait: ${unfiltered.hoursToMending} -> ${filtered.hoursToMending}`,
+    );
+  });
+});
+
+test('a price the camp cannot meet says what it is short by, and offers no button', async () => {
+  await withRollback(async (client) => {
+    // Every priced row rendered its button whether or not the camp could pay: Fit
+    // beside a 60-fuel filtration on 51 fuel, Make beside a vest wanting two parts on a
+    // pack holding one. Both refusals were correct and both arrived after the click,
+    // which is the same fault the moment options had.
+    const { settlementId } = await seed(client);
+
+    await client.query(
+      `update resources set amount = case kind when 'fuel' then 10 else 400 end
+        where settlement_id = $1`,
+      [settlementId],
+    );
+    // A bench good enough that the recipes are gated by materials rather than by
+    // level, which is the guard this test is about.
+    await client.query(
+      `insert into camp_structures (settlement_id, kind, level) values ($1, 'workshop', 5)
+       on conflict (settlement_id, kind) do update set level = 5`,
+      [settlementId],
+    );
+
+    const view = await viewCamp(client, settlementId);
+
+    // A fitting priced in fuel, against a camp that has ten.
+    const withUpgrade = view.structures.find((s) => s.upgrade && !s.upgrade.fitted);
+    assert.ok(withUpgrade, 'some structure has an unfitted branch');
+    assert.match(
+      withUpgrade.upgrade.shortBy,
+      /needs \d+ more fuel/,
+      `expected a shortfall, got ${withUpgrade.upgrade.shortBy}`,
+    );
+
+    // Scrap is plentiful, so the builds themselves are affordable — the guard has to
+    // discriminate rather than simply refusing everything.
+    assert.ok(
+      view.structures.some((s) => s.shortBy === null),
+      'a camp with 400 scrap can afford to build something',
+    );
+
+    // A recipe wanting an item the pack does not hold. Nothing has been granted to
+    // this survivor, so every recipe with an input is short of it.
+    const needsItem = view.recipes.find((r) => (r.inputs ?? []).length > 0);
+    assert.ok(needsItem, 'some recipe is priced in items');
+    assert.match(needsItem.shortBy, /needs .* more /, `got ${needsItem.shortBy}`);
+
+    // And the page follows the bench's rule: keep the row, drop the button, say why.
+    const html = campPage(view);
+    assert.ok(html.includes(needsItem.shortBy), 'the shortfall reaches the page');
+    assert.ok(
+      !html.includes(`name="upgrade" value="${withUpgrade.upgrade.slug}"`),
+      'an unaffordable fitting must not carry a submit button',
     );
   });
 });

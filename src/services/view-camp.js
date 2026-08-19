@@ -203,6 +203,35 @@ function strainOf(survivor, decayPerHour) {
   };
 }
 
+/**
+ * What a price is short by, in the words the player would use.
+ *
+ * Every priced thing on the camp page rendered its button whether or not the camp
+ * could pay: Fit beside a 60-fuel filtration on 51 fuel, Make beside a vest wanting
+ * two parts on a pack holding one. Clicking either returned a refusal that was
+ * correct and arrived too late to be a decision. That is the same fault the moment
+ * options had — a cost the page displays but does not verify is a button that lies —
+ * and it was fixed there first only because that is where it was noticed.
+ *
+ * Returns null when the camp can pay, so the caller can treat it as a plain guard.
+ */
+function shortfall(resources, pack, costs = {}, inputs = []) {
+  const missing = [];
+
+  for (const [kind, amount] of Object.entries(costs)) {
+    // Build costs carry their duration in the same object as their price.
+    if (kind === 'hours') continue;
+    const have = Number(resources[kind]?.amount ?? 0);
+    if (have < amount) missing.push(`${Math.ceil(amount - have)} more ${kind}`);
+  }
+
+  for (const input of inputs) {
+    const have = pack.get(input.slug) ?? 0;
+    if (have < input.qty) missing.push(`${input.qty - have} more ${input.slug.replaceAll('_', ' ')}`);
+  }
+
+  return missing.length > 0 ? `needs ${missing.join(', ')}` : null;
+}
 export async function viewCamp(client, settlementId, now = Date.now()) {
   const { state, events } = await advanceSettlement(client, settlementId, now);
 
@@ -477,6 +506,10 @@ export async function viewCamp(client, settlementId, now = Date.now()) {
     };
   }
 
+  // What the camp can actually pay with: stores, and what is on the survivor.
+  const pack = new Map(inventory.map((item) => [item.slug, Number(item.qty)]));
+  const purse = state.settlement.resources;
+
   const rates = productionRates(structures);
 
   // What the sky is doing to production, and what the survivor takes back out. Both
@@ -515,6 +548,8 @@ export async function viewCamp(client, settlementId, now = Date.now()) {
       return {
         ...s,
         nextCost: upgradeCost(s.kind, s.level),
+        // What the next level is short by, or null when the camp can pay for it.
+        shortBy: shortfall(purse, pack, upgradeCost(s.kind, s.level) ?? {}),
         // What it does now and what the next level buys, so the page can answer
         // "why would I upgrade this" without the player working it out themselves.
         effect: structureEffect(s.kind, s.level),
@@ -525,6 +560,7 @@ export async function viewCamp(client, settlementId, now = Date.now()) {
           ? {
               ...branch,
               fitted: fitted.has(branch.slug),
+              shortBy: shortfall(purse, pack, { fuel: branch.fuel }),
               fittingUntil:
                 beingFitted?.upgrade === branch.slug ? beingFitted.completes_at : null,
             }
@@ -537,7 +573,10 @@ export async function viewCamp(client, settlementId, now = Date.now()) {
     events,
     regions,
     inventory,
-    recipes,
+    recipes: recipes.map((recipe) => ({
+      ...recipe,
+      shortBy: shortfall(purse, pack, recipe.costs ?? {}, recipe.inputs ?? []),
+    })),
     // What the bench can take on is gated by the workshop, so the page has to know
     // its level to explain why a recipe has no button rather than just hiding it.
     workshopLevel: Number(structures.find((s) => s.kind === 'workshop')?.level ?? 0),
