@@ -134,6 +134,37 @@ test('the region list says how much contact a trip holds', async () => {
   });
 });
 
+test('an option the pack cannot pay for says so instead of offering a button', async () => {
+  await withRollback(async (client) => {
+    const { settlementId } = await setup(client);
+    const departed = Date.now();
+    await sendFixed(client, settlementId, 'the_deep_zone', departed);
+
+    // Seed 8 opens counter_clicks at 4.51–6.01 hours in, whose third option spends a
+    // dose out of the pack. The survivor is carrying none.
+    const inside = departed + hours(5);
+    const empty = await viewCamp(client, settlementId, inside);
+    const dose = empty.expedition.moment.options.find((o) => o.consumes);
+
+    assert.ok(dose, 'seed 8 offers a moment with something to spend');
+    assert.equal(dose.missing, true, 'an empty pack cannot pay for it');
+    assert.equal(dose.needs, 'Rad Scrubber or Rad-X', 'and the page says what it wants');
+
+    // The options that cost nothing out of the pack are unaffected — this must not
+    // become a page where every option needs something.
+    for (const option of empty.expedition.moment.options) {
+      if (option.consumes) continue;
+      assert.equal(option.missing, undefined, `${option.key} costs nothing and must say nothing`);
+    }
+
+    // One of the two is enough: the list is a preference order, not a shopping list.
+    await give(client, settlementId, 'rad_x');
+    const stocked = await viewCamp(client, settlementId, inside);
+    const paid = stocked.expedition.moment.options.find((o) => o.consumes);
+    assert.equal(paid.missing, false, 'the second-choice item pays for it too');
+  });
+});
+
 test('a dispatched expedition starts with nothing answered', async () => {
   await withRollback(async (client) => {
     const { settlementId, slug } = await setup(client);

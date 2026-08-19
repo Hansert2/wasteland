@@ -109,6 +109,10 @@ function reportOn(row, state, now) {
             label: option.label,
             detail: option.detail,
             warned: isWarned(option, health),
+            // What it costs out of the pack, if anything. Resolved against what the
+            // survivor is actually carrying by the caller, which is the first place
+            // that knows — see the note there.
+            consumes: option.consumes ?? null,
           })),
         }
       : null,
@@ -214,7 +218,7 @@ export async function viewCamp(client, settlementId, now = Date.now()) {
   );
 
   const { rows: inventory } = await client.query(
-    `select i.name, i.kind, ii.qty
+    `select i.slug, i.name, i.kind, ii.qty
        from inventory_items ii
        join items i on i.id = ii.item_id
        join characters c on c.id = ii.character_id
@@ -285,6 +289,37 @@ export async function viewCamp(client, settlementId, now = Date.now()) {
   const expedition = reportOn(away[0], state, now);
   if (expedition && fitted.has('radio')) {
     expedition.nextMomentAt = expedition.upcoming[0] ?? null;
+  }
+
+  /**
+   * An option priced in something the pack does not hold is not a decision.
+   *
+   * Until this existed the page could not tell the difference: the option rendered like
+   * any other, and the refusal — "There is nothing like that in the pack" — arrived
+   * after the click, on a window with minutes left on it. The generator cannot help,
+   * and should not: a moment is drawn from a region and a seed alone so that attending
+   * one never changes what the trip was going to be. That makes *here* the first point
+   * at which the price and the pack are both known, so here is where they are compared.
+   */
+  if (expedition?.moment) {
+    const wanted = [
+      ...new Set(expedition.moment.options.flatMap((option) => option.consumes ?? [])),
+    ];
+    if (wanted.length > 0) {
+      const { rows: named } = await client.query(
+        'select slug, name from items where slug = any($1)',
+        [wanted],
+      );
+      const names = new Map(named.map((row) => [row.slug, row.name]));
+      const held = new Set(inventory.map((item) => item.slug));
+
+      for (const option of expedition.moment.options) {
+        if (!option.consumes) continue;
+        // Any one of them pays: the list is a preference order, not a shopping list.
+        option.missing = !option.consumes.some((slug) => held.has(slug));
+        option.needs = option.consumes.map((slug) => names.get(slug) ?? slug).join(' or ');
+      }
+    }
   }
 
   const rates = productionRates(structures);

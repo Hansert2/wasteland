@@ -1082,6 +1082,38 @@ It renders in the ordinary error box and reads in the ordinary voice: **"That mo
 passed."** No redirect games, no special casing — the camp page re-renders with the
 message, and the countdown already sitting at *passed* explains it.
 
+**An option the pack cannot pay for is not an option, and the page has to say so before
+the click.** Found by playing on 2026-08-19, eleven minutes from the end of a window: the
+page read *"There is a dose in the pack and a long way across"*, the option beside it read
+*"Take it before crossing"*, and clicking it returned **"There is nothing like that in the
+pack."** The survivor was carrying six rations and a spear. Nothing was broken — the
+option worked exactly as specified for anyone holding a dose — which is why 289 tests had
+nothing to say about it.
+
+Two faults, one in the content and one in the page:
+
+- **The prose asserted what was in the pack, and it cannot know.** A moment is drawn from
+  a region and a seed and nothing else, deliberately, so that attending one never changes
+  what the trip was going to be. Three of the six consuming moments said "there is a
+  sealed tin in the pack", "there is a dose in the pack", "the spear" anyway. All three
+  now describe only what is *out there*; the price lives in the option, where it belongs.
+- **The option rendered identically whether or not it could be taken.** `viewCamp` now
+  resolves each option's `consumes` against the real pack — the first point at which the
+  price and the pack are both known — and marks it `missing` with the item names. The
+  page then follows the bench's existing rule: keep the row, drop the button, say what it
+  wants. `needs Rad Scrubber or Rad-X`.
+
+The server-side check stays exactly where it was, and the comment above it already said
+why: *"the page is a render of a moment ago."* The page leading the refusal does not make
+the refusal redundant — it makes it unreachable from an honest click.
+
+**The general lesson, and it is the same shape as the one above it:** every other refusal
+in the answer path needs a stale page to reach — a window that closed while it was being
+read, a double submit, an index that no longer exists. This one did not. It sat on a
+correctly rendered, currently open window and refused anyway, because the page was
+showing a price it had never checked. **A cost the page displays but does not verify is a
+button that lies.**
+
 **What the view has to grow.** `viewCamp` gains `moment` — index, prose, the closing
 instant, and the options with their costs and warned flags already resolved — and
 `expedition` gains the report: `carrying`, the damage and finds so far, and
@@ -1289,6 +1321,8 @@ had its chance.
 7. The region list carries the generator's own contact count, and the fence line's is
    zero — so a redesign that drops the column fails the suite rather than quietly
    switching the phase off again.
+8. An option priced in something the pack does not hold is reported as `missing`, with
+   the names of what would pay for it, and one that costs nothing out of the pack is not.
 
 ### Phase 7 — a camp with people in it
 

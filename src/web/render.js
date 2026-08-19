@@ -476,6 +476,26 @@ function renderNoSurvivor(everHeld) {
  * purpose: a decision needs its facts beside it, and making somebody scroll to find out
  * whether 34 health is bad would be the whole design failing at the last inch.
  */
+/**
+ * The button, or the reason there isn't one.
+ *
+ * Same shape as the bench, deliberately: a recipe you cannot afford keeps its row and
+ * says which workshop level it wants, because hiding it hides the goal. An option
+ * priced in a dose the survivor is not carrying is the same case — it is a real option
+ * on a real trip, and what it is missing is a thing you can go and craft. What it must
+ * never do is look identical to an option you can take and refuse after the click,
+ * which is what it did until 2026-08-19, on a window with eleven minutes left on it.
+ */
+function momentAction(moment, option) {
+  if (option.missing) return `<small>needs ${escape(option.needs)}</small>`;
+
+  return `<form method="post" action="/moment" style="margin:0">
+            <input type="hidden" name="index" value="${moment.index}">
+            <input type="hidden" name="option" value="${escape(option.key)}">
+            <button type="submit">Choose</button>
+          </form>`;
+}
+
 function renderMoment(expedition) {
   const moment = expedition?.moment;
   if (!moment) return '';
@@ -485,13 +505,7 @@ function renderMoment(expedition) {
       (option) => `<tr>
         <th>${escape(option.label)}</th>
         <td>${option.warned ? '&#9888; ' : ''}${escape(option.detail)}</td>
-        <td>
-          <form method="post" action="/moment" style="margin:0">
-            <input type="hidden" name="index" value="${moment.index}">
-            <input type="hidden" name="option" value="${escape(option.key)}">
-            <button type="submit">Choose</button>
-          </form>
-        </td>
+        <td>${momentAction(moment, option)}</td>
       </tr>`,
     )
     .join('');

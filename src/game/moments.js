@@ -179,7 +179,7 @@ export const MOMENTS = {
     title: 'The last tin',
     regions: LONG_REGIONS,
     prose:
-      'They have walked on nothing since dawn. There is a sealed tin in the pack and a long way still to go.',
+      'They have walked on nothing since dawn, and there is a long way still to go.',
     options: [
       { key: 'save', verb: 'default', label: 'Save it', detail: 'they walk on' },
       {
@@ -396,7 +396,7 @@ export const MOMENTS = {
     axis: 'supplies',
     title: 'The hot ground',
     regions: ['irradiated_farmland', 'the_deep_zone'],
-    prose: 'The hot ground starts here. There is a dose in the pack and a long way across.',
+    prose: 'The hot ground starts here, and a long way across it.',
     options: [
       { key: 'later', verb: 'default', label: 'Save it for later', detail: 'they walk on' },
       {
@@ -415,7 +415,7 @@ export const MOMENTS = {
     axis: 'supplies',
     title: 'The man who wants the spear',
     regions: ['the_service_road', 'ruined_city', 'underground_bunkers'],
-    prose: 'A man with nothing wants the spear, and has more scrap than he can carry.',
+    prose: 'A man with nothing wants a weapon, and has more scrap than he can carry.',
     options: [
       { key: 'keep', verb: 'default', label: 'Keep it', detail: 'they walk on' },
       {
@@ -503,6 +503,17 @@ export const TURN_BACK = {
  * The Fence Line still gets none, and always will: ten minutes end to end has no
  * interior to put anything in. The Old Service Road now gets one, which is the shortest
  * trip that can hold a window worth catching.
+ */
+/**
+ * **Prose may not assert what is in the pack.** A moment is drawn from a region and a
+ * seed and nothing else, so it cannot know what the survivor is carrying — and three of
+ * the six consuming moments said "there is a tin in the pack", "there is a dose in the
+ * pack", "the spear" anyway. Played on 2026-08-19: the page promised a dose, the option
+ * beside it refused on click, and every test passed because the option worked exactly
+ * as specified for a survivor who happened to have one.
+ *
+ * A price belongs in the option's `detail`, where the page can check it against the
+ * real pack and say "needs a Rad Scrubber or Rad-X" before the click rather than after.
  */
 export function momentCount(travelHours) {
   const hours = Number(travelHours) || 0;
