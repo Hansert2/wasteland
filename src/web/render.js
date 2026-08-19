@@ -519,20 +519,51 @@ function renderMoment(expedition) {
 }
 
 /** "Six hours into the Deep Zone, carrying 22 scrap, at 61 health." */
-function condition(expedition) {
+/**
+ * How long they have been gone, in hours and deliberately not in seconds.
+ *
+ * This used to be `duration()`, which is a countdown formatter, so the page printed
+ * "17m 08s into The Millrace" directly beneath a due-back timer that was actually
+ * ticking: one live clock and one frozen one, and the frozen one reads as broken.
+ *
+ * Wiring it to tick would have been the wrong fix. The two would then be counting the
+ * same span from opposite ends — two timers to say one thing — and the page contract
+ * has exactly one job for a live countdown, which is to fetch fresh state when it
+ * expires. Elapsed time never expires.
+ *
+ * Rounded to hours it changes about as slowly as the thing it measures, which is the
+ * argument the haul is already rendered on: a number that changes slowly because the
+ * thing it counts changes slowly is telling the truth.
+ */
+function elapsed(hoursOut, region) {
+  // Under a few minutes there is nothing to round to, and "0 hours in" is a worse
+  // answer than saying what actually happened.
+  if (hoursOut < 0.05) {
+    return region ? `Just set out for ${region}` : 'Just set out';
+  }
+
+  const into = region ? ` into ${region}` : ' in';
+  if (hoursOut < 1) return `Less than an hour${into}`;
+
+  const whole = Math.floor(hoursOut);
+  return `${whole} hour${whole === 1 ? '' : 's'}${into}`;
+}
+
+/**
+ * The one-line state of a trip.
+ *
+ * The region is named only where the surrounding block has not already said it. In the
+ * moment box it has not — that heading is "Contact", and a decision needs to know where
+ * they are. In the Away report the heading *is* the region, so naming it here put the
+ * same words twice in two consecutive lines.
+ */
+function condition(expedition, { region = true } = {}) {
   const carried = Object.entries(expedition.carrying)
     .map(([kind, amount]) => `${amount} ${kind}`)
     .join(', ');
 
-  // `duration` says "now" for anything under a second, which reads as "now into The
-  // Deep Zone" on a survivor who has just walked out of the gate.
-  const how =
-    expedition.hoursOut < 0.05
-      ? `Just set out for ${expedition.regionName}`
-      : `${duration(expedition.hoursOut)} into ${expedition.regionName}`;
-
   return [
-    how,
+    elapsed(expedition.hoursOut, region ? expedition.regionName : null),
     carried ? `carrying ${carried}` : 'carrying nothing yet',
     `at ${n(expedition.health, 0)} health`,
   ].join(', ') + '.';
@@ -551,7 +582,10 @@ function renderExpeditions(view) {
     // Rendered once and not animated: the haul steps by a whole unit about once an
     // hour, so a live counter would buy nothing and would cost the client script a copy
     // of the progress curve.
-    const lines = [`${escape(trip.regionName)} — ${due}`, escape(condition(trip))];
+    const lines = [
+      `${escape(trip.regionName)} — ${due}`,
+      escape(condition(trip, { region: false })),
+    ];
 
     if (trip.damage > 0) {
       lines.push(`Hurt out there${trip.cause ? ` — ${escape(trip.cause)}` : ''}.`);
