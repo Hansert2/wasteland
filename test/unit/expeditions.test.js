@@ -226,6 +226,40 @@ test('the generator is uniform enough to trust for loot ranges', () => {
   assert.ok(Math.abs(sum / draws - 0.5) < 0.02, 'mean sits near 0.5');
 });
 
+test('a quantity in the log says what it is a quantity of', () => {
+  // "They came away with 16 more than they should have." Sixteen what? The line added
+  // scrap, fuel and water together and reported the total, which is not a unit and
+  // cannot be made into one: fuel is the only resource the camp cannot produce, and
+  // sixteen of it is not the same news as sixteen scrap. The base log has said
+  // "Scavenged 12 scrap." since the first phase; these lines now say it the same way.
+  const TWO_KINDS = { ...MOMENT_REGION, loot: { scrap: [25, 60], fuel: [4, 9] } };
+  const NAMES_A_KIND = /[0-9]+ (scrap|food|water|fuel)/;
+  let checked = 0;
+
+  for (let seed = 1; seed <= 80; seed++) {
+    for (const moment of momentsFor(TWO_KINDS, seed)) {
+      for (const option of moment.options) {
+        if (option.verb === 'default') continue;
+
+        const out = resolveExpedition({
+          region: TWO_KINDS,
+          survivor: survivor(),
+          seed,
+          choices: [{ index: moment.index, key: moment.key, option: option.key }],
+        });
+
+        for (const line of out.log) {
+          if (!/more than they should have|They lost /.test(line)) continue;
+          assert.match(line, NAMES_A_KIND, `a quantity with no unit: ${line}`);
+          checked += 1;
+        }
+      }
+    }
+  }
+
+  assert.ok(checked > 20, `the sweep actually found quantities to check (${checked})`);
+});
+
 test('an outcome comes home naming the moment it came out of', () => {
   // The gap this closes: a player answered a situation, and hours later read a line of
   // narration with nothing tying it back — "they shared a fire and little else" among

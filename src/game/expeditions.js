@@ -174,33 +174,33 @@ function turnBack(trip, at, moment) {
  * only kind of loss a mid-trip report can make you flinch at.
  */
 function spill(trip, at, share) {
-  let lost = 0;
+  const lost = {};
 
   for (const [kind, carried] of Object.entries(at.carrying)) {
     const gone = Math.round(carried * share);
     if (gone <= 0) continue;
     trip.loot[kind] = Math.max(0, (trip.loot[kind] ?? 0) - gone);
-    lost += gone;
+    lost[kind] = gone;
   }
 
-  trip.log.push(
-    lost > 0 ? `They lost ${lost} of what they were carrying.` : 'They kept hold of it.',
-  );
+  const said = amounts(lost);
+  trip.log.push(said ? `They lost ${said}.` : 'They kept hold of it.');
 }
 
 /** A share of what the rest of the trip would have produced, on top of it. */
 function pressOn(trip, timeline, at, factor) {
-  let gained = 0;
+  const gained = {};
 
   for (const [kind, total] of Object.entries(timeline.loot)) {
     const remaining = total - (at.carrying[kind] ?? 0);
     const bonus = Math.round(remaining * (factor - 1));
     if (bonus === 0) continue;
     trip.loot[kind] = Math.max(0, (trip.loot[kind] ?? 0) + bonus);
-    gained += bonus;
+    gained[kind] = bonus;
   }
 
-  if (gained > 0) trip.log.push(`They came away with ${gained} more than they should have.`);
+  const said = amounts(gained);
+  if (said) trip.log.push(`They came away with ${said} more than they should have.`);
 }
 
 /** Scale only the dose they had not taken yet. What is in them is in them. */
@@ -319,6 +319,30 @@ function attribute(trip, moment, from) {
  * case was "2 hours". Short regions now have them too: a moment a fifth of the way into
  * the forty-five minute Service Road is 0.15 hours, and this said "0 hours in".
  */
+/**
+ * A handful of resources, in the words the rest of the log already uses.
+ *
+ * These two lines used to add the kinds together and report the total — "16 more than
+ * they should have" — which is a number with no unit because it has no unit: it was
+ * scrap and fuel and water summed as though they were the same thing. They are not,
+ * and the game is built on their not being: fuel is the one resource the camp cannot
+ * produce, and the whole second currency is priced against that scarcity. Sixteen of
+ * it and sixteen scrap are not the same news.
+ *
+ * The base log has said `Scavenged 12 scrap.` since the first phase. This says it the
+ * same way, so a moment's effect reads like the rest of the trip rather than like a
+ * score.
+ */
+function amounts(byKind) {
+  const parts = Object.entries(byKind)
+    .filter(([, amount]) => amount > 0)
+    .map(([kind, amount]) => `${amount} ${kind}`);
+
+  if (parts.length === 0) return '';
+  if (parts.length === 1) return parts[0];
+  return `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
+}
+
 function formatHours(hours) {
   if (hours < 0.9) return `${Math.max(1, Math.round(hours * 60))} minutes`;
   const rounded = Math.round(hours);
