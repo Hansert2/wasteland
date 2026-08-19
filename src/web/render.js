@@ -331,6 +331,7 @@ export function campPage(view, { error } = {}) {
       renderStructures(view.structures, view.buildInFlight, Boolean(view.survivor)),
     )}
     ${section('road', renderRoad(view.road))}
+    ${section('post', renderPost(view.post, Boolean(view.survivor)))}
     ${section('roster', renderRoster(view.fallenCount))}
 
     <form method="post" action="/logout"><button type="submit">Log out</button></form>
@@ -626,6 +627,40 @@ function contact(count) {
  * Reached links carry their news, which is derived fresh every render: somebody
  * standing last week can be gone on this load. What they gave is not taken back.
  */
+/**
+ * The post on the road: the same goods a caravan carries, and no deadline on them.
+ *
+ * Rendered as its own section rather than folded into the caravan, because the two are
+ * different things wearing the same table. A caravan is a window and reads as one — it
+ * arrives, it has a countdown, it goes. A post has no countdown at all, and giving it
+ * one would be inventing urgency the road exists to remove.
+ */
+function renderPost(post, alive) {
+  if (!post) return '';
+
+  const rows = post.offers
+    .map(
+      (offer) => `<tr>
+        <th>${offer.qty} &times; ${escape(String(offer.what).replaceAll('_', ' '))}</th>
+        <td>${escape(
+          Object.entries(offer.costs).map(([kind, amount]) => `${amount} ${kind}`).join(', '),
+        )}</td>
+        <td>${alive
+          ? `<form method="post" action="/trade" style="margin:0">
+              <input type="hidden" name="faction" value="${escape(post.faction)}">
+              <input type="hidden" name="offer" value="${offer.index}">
+              <button type="submit">Buy</button>
+            </form>`
+          : ''}</td>
+      </tr>`,
+    )
+    .join('');
+
+  return `<h2>The post on the road</h2>
+    <p>${escape(post.name)} keep it. Standing ${Math.round(post.standing)}.</p>
+    <table>${rows}</table>`;
+}
+
 function renderRoad(road) {
   if (!road) return '';
 

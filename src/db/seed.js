@@ -212,6 +212,76 @@ const REGIONS = [
     radiation_per_trip: 25,
     description: 'Nobody agrees on what is down there. Few go twice.',
   },
+
+  /**
+   * The four the road opens. `requires_link` is the link that reaches them, and until
+   * it is made these rows exist and are simply not offered.
+   *
+   * They are not stronger than the Deep Zone so much as *other*. Loot per hour stays
+   * flat across the long regions on purpose — ranges and travel times escalate together
+   * and cancel — so a new place earns its keep by paying in a different mix, not by
+   * paying more. The Millrace is the only long region that pays water; Sixteen Wells is
+   * the best odds on parts in the game; the Waterworks is fuel at a price in rads; and
+   * Harrow End is simply the longest trip there is, which is the one thing no existing
+   * region can offer a player who checks in twice a day.
+   */
+  {
+    slug: 'the_millrace',
+    name: 'The Millrace',
+    danger: 3,
+    travel_hours: 8,
+    requires_link: 1,
+    loot: { water: [10, 24], scrap: [6, 16], food: [0, 6] },
+    finds: [
+      { slug: 'preserved_meal', chance: 0.25, qty: [1, 2] },
+      { slug: 'scavenged_parts', chance: 0.3, qty: [1, 1] },
+    ],
+    radiation_per_trip: 1,
+    description: 'The wheel still turns. Somebody kept it turning for a long time.',
+  },
+  {
+    slug: 'sixteen_wells',
+    name: 'Sixteen Wells',
+    danger: 4,
+    travel_hours: 14,
+    requires_link: 3,
+    loot: { water: [12, 30], scrap: [10, 24], fuel: [2, 8] },
+    finds: [
+      { slug: 'scavenged_parts', chance: 0.5, qty: [1, 2] },
+      { slug: 'tinned_stew', chance: 0.3, qty: [1, 2] },
+      { slug: 'rad_x', chance: 0.25, qty: [1, 1] },
+    ],
+    radiation_per_trip: 6,
+    description: 'Sixteen shafts, and the water in them has never seen the sky.',
+  },
+  {
+    slug: 'the_waterworks',
+    name: 'The Waterworks',
+    danger: 5,
+    travel_hours: 20,
+    requires_link: 5,
+    loot: { fuel: [14, 30], scrap: [20, 45], water: [0, 8] },
+    finds: [
+      { slug: 'rad_x', chance: 0.45, qty: [1, 3] },
+      { slug: 'scavenged_parts', chance: 0.5, qty: [2, 3] },
+    ],
+    radiation_per_trip: 30,
+    description: 'Pumps the size of houses, and something still drawing power to them.',
+  },
+  {
+    slug: 'harrow_end',
+    name: 'Harrow End',
+    danger: 5,
+    travel_hours: 26,
+    requires_link: 7,
+    loot: { scrap: [35, 80], fuel: [18, 40] },
+    finds: [
+      { slug: 'scavenged_parts', chance: 0.6, qty: [2, 4] },
+      { slug: 'rad_x', chance: 0.4, qty: [2, 3] },
+    ],
+    radiation_per_trip: 28,
+    description: 'The far end of the road, and the reason there is a road.',
+  },
 ];
 
 export async function seed(client) {
@@ -228,13 +298,14 @@ export async function seed(client) {
 
   for (const region of REGIONS) {
     await client.query(
-      `insert into regions (slug, name, danger, travel_hours, description, loot, finds, radiation_per_trip)
-       values ($1, $2, $3, $4, $5, $6, $7, $8)
+      `insert into regions (slug, name, danger, travel_hours, description, loot, finds, radiation_per_trip, requires_link)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        on conflict (slug) do update
          set name = excluded.name, danger = excluded.danger,
              travel_hours = excluded.travel_hours, description = excluded.description,
              loot = excluded.loot, finds = excluded.finds,
-             radiation_per_trip = excluded.radiation_per_trip`,
+             radiation_per_trip = excluded.radiation_per_trip,
+             requires_link = excluded.requires_link`,
       [
         region.slug,
         region.name,
@@ -244,6 +315,7 @@ export async function seed(client) {
         JSON.stringify(region.loot),
         JSON.stringify(region.finds),
         region.radiation_per_trip,
+        region.requires_link ?? null,
       ],
     );
   }

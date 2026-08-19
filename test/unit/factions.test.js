@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import {
+import { postKeeper,
   FACTIONS,
   caravanVisit,
   priceAt,
@@ -100,4 +100,16 @@ test('standing stretches raid gaps for friends and compresses them for enemies',
   assert.ok(friendly.repelBonus > 0 && friendly.softening > 0 && friendly.shareBoost === 1);
   assert.ok(hostile.repelBonus === 0 && hostile.softening === 0 && hostile.shareBoost > 1);
   assert.deepEqual(raidTemper(0), { repelBonus: 0, softening: 0, shareBoost: 1 });
+});
+
+test('the post on the road is kept by whichever crew the camp stands better with', () => {
+  // Derived rather than stored, so burning a crew does not close the post — the rival
+  // takes it over. A road that could be talked out of trading with you would be selling
+  // the one thing it has, which is that somebody is always there.
+  assert.equal(postKeeper({ junction_crews: 40, green_river: -10 }), 'junction_crews');
+  assert.equal(postKeeper({ junction_crews: -80, green_river: 5 }), 'green_river');
+
+  // A fresh camp stands at zero with both, and the post is still kept by somebody.
+  assert.ok(postKeeper({}) in FACTIONS);
+  assert.ok(postKeeper({ junction_crews: 0, green_river: 0 }) in FACTIONS);
 });

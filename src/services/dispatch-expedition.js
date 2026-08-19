@@ -26,11 +26,27 @@ export async function dispatchExpedition(client, settlementId, regionSlug, now =
   if (active.length > 0) throw new InputError('They are already out there.');
 
   const { rows: regions } = await client.query(
-    'select id, name, travel_hours from regions where slug = $1',
+    'select id, name, travel_hours, requires_link from regions where slug = $1',
     [String(regionSlug ?? '')],
   );
   const region = regions[0];
   if (!region) throw new InputError('There is no such place on the map.');
+
+  // A place the road has not reached yet is refused here and not only hidden on the
+  // page, for the reason written above the pack check in answerMoment: the page is a
+  // render of a moment ago, and a form is whatever was posted to it. The page leading a
+  // refusal is what makes the refusal unreachable from an honest click, not what makes
+  // it unnecessary.
+  if (region.requires_link !== null) {
+    const { rows: link } = await client.query(
+      `select 1 from road_links
+        where settlement_id = $1 and link_index = $2 and completed_at is not null`,
+      [settlementId, Number(region.requires_link)],
+    );
+    if (link.length === 0) {
+      throw new InputError(`There is no road to ${region.name} yet.`);
+    }
+  }
 
   const returnsAt = new Date(now + region.travel_hours * HOUR_MS);
 

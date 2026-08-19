@@ -2,11 +2,13 @@ import {
   FACTIONS,
   TRADE_STANDING_GAIN,
   caravanVisit,
+  postKeeper,
   priceAt,
   rivalOf,
 } from '../game/factions.js';
 import { grantItems } from '../db/world.js';
 import { InputError } from '../errors.js';
+import { TRADE_POST_LINKS } from '../game/road.js';
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -46,9 +48,37 @@ export async function tradeWithCaravan(client, settlementId, { faction, offer },
   const open =
     arrival != null && arrival <= now && now < arrival + visit.stayHours * HOUR_MS;
 
-  if (!open) throw new InputError('There is no caravan at the gate.');
-  if (visit.faction !== faction) {
-    throw new InputError(`It is ${FACTIONS[visit.faction].name} at the gate, not them.`);
+  // Two ways the door can be open. A caravan is a window — it arrives, it stays a few
+  // hours, it goes — and a trade post is the road's answer to that: reconnecting to
+  // somewhere means somebody is always there. The post is not a better caravan, it is a
+  // different good, which is the whole reason the road buys reliability rather than
+  // discounts.
+  const { rows: posts } = await client.query(
+    `select r.link_index from road_links r
+      where r.settlement_id = $1 and r.completed_at is not null and r.link_index = any($2)`,
+    [settlementId, TRADE_POST_LINKS],
+  );
+
+  const { rows: allStandings } = await client.query(
+    'select faction, standing from faction_standing where settlement_id = $1',
+    [settlementId],
+  );
+  const held = Object.fromEntries(allStandings.map((row) => [row.faction, Number(row.standing)]));
+  const keeper = posts.length > 0 ? postKeeper(held) : null;
+
+  if (!open && keeper === null) throw new InputError('There is no caravan at the gate.');
+
+  if (open && visit.faction !== faction) {
+    // A caravan at the gate is still *that* crew's caravan. The post is the fallback,
+    // not an override, so trading with the crew who is not standing there goes through
+    // the post if there is one and is refused as it always was if there is not.
+    if (keeper !== faction) {
+      throw new InputError(`It is ${FACTIONS[visit.faction].name} at the gate, not them.`);
+    }
+  }
+
+  if (!open && keeper !== faction) {
+    throw new InputError(`The post on the road is ${FACTIONS[keeper].name}, not them.`);
   }
 
   const goods = spec.offers[Number(offer)];

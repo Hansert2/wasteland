@@ -25,6 +25,23 @@ const HOUR_MS = 60 * 60 * 1000;
  *   how many hours of fence-spam buys it. Everything gated by danger stays priced
  *   in fuel or parts.
  */
+/**
+ * Who keeps the post on a reconnected road.
+ *
+ * The road buys *reliability* — a caravan is missable by design and a post is not —
+ * and the question of whose post it is gives standing a second job rather than
+ * inventing a third party. It is whichever crew the camp stands better with, derived
+ * rather than stored, so burning one does not close the post: the rival takes it over.
+ * A road that could be talked out of trading with you would sell the one thing it has.
+ *
+ * Ties go to the first crew, which only happens at a fresh camp where both are zero.
+ */
+export function postKeeper(standings = {}) {
+  return Object.keys(FACTIONS).reduce((best, slug) =>
+    standingOf(standings, slug) > standingOf(standings, best) ? slug : best,
+  );
+}
+
 export const FACTIONS = {
   junction_crews: {
     name: 'The Junction Crews',

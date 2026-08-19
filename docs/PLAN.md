@@ -1383,7 +1383,8 @@ to prevent.
 
 ### Phase 8 — the road
 
-*Against: nothing to work toward.*
+*Against: nothing to work toward.* Designed and built 2026-08-19, after the measurement
+that retired Phase 7's premise moved this phase up the order.
 
 A soft goal and deliberately not an ending: the camp keeps going, and there is always a
 next milestone and a picture of how far you have come. A win condition would need a
@@ -1554,6 +1555,50 @@ rule on something which is neither a timer nor a resource bar.
   measures exactly this, and the before figure is on record.
 - **The far end is too far.** 2252 fuel is priced off one camp measured over six days. If
   link five reads as a wall in play, the multiplier is a constant, not a design.
+
+#### Built 2026-08-19, and the four things building it settled
+
+**A destination's name is authored; everywhere else the road goes is not.** "The
+neighbour is the destination" ran straight into the fact that a region is *content* —
+loot ranges, prose, and moments that name its slug — and content cannot be written for a
+name that changes per world. So the four destinations are named places (The Millrace,
+Sixteen Wells, The Waterworks, Harrow End) and the three news-only links keep generated
+names. What still varies by world for all seven is everything else about them: how many
+people, whether they are still there, and what the road reports.
+
+**The four new places are not stronger than the Deep Zone, they are *other*.** Loot per
+hour stays flat across the long regions on purpose — ranges and travel times escalate
+together and cancel — so a new place earns its keep by paying in a different mix rather
+than by paying more. The Millrace is the only long region that pays water; Sixteen Wells
+has the best odds on parts in the game; the Waterworks is fuel at a price in rads; and
+Harrow End is a 26-hour trip, which is the one thing no existing region can offer a
+player who checks in twice a day.
+
+**They would have arrived silent, and that was nearly shipped.** Moments name region
+slugs, and no moment names a region that did not exist when it was written — so four
+places whose whole purpose is *somewhere to go* would have been the only places on the
+map with no contact in them, which would have been a grim joke given the week before
+them. The fix is one table rather than four slugs added to sixteen hand-written region
+lists: `PLAYS_LIKE` in `moments.js` says the Millrace plays like the Bunkers, Sixteen
+Wells like the Wreckage, and the two hot ones like the Deep Zone. It is one statement
+about what these places are *like*, in one place, and new content can still name them
+directly — and eventually should.
+
+**The post is kept by whichever crew the camp stands better with, derived rather than
+stored.** That is standing's second job, and the reason it is derived is the interesting
+part: burning a crew does not close the post, it hands it to the rival. A road that could
+be talked out of trading with you would be selling off the one thing it has, which is
+that somebody is always there. The prices are the crew's usual prices moved by standing
+exactly as they are at the gate — the road buys *reliability*, not a discount, because
+cheapness is a good a missable caravan could also sell.
+
+**Gating is one nullable column and two checks.** `regions.requires_link` is null for the
+places that were always there and a link number for the four that are not; `viewCamp`
+filters the dispatch table, and `dispatchExpedition` refuses a locked region outright.
+The second check is not redundant with the first, for the reason written above the pack
+check in `answerMoment`: the page is a render of a moment ago and a form is whatever was
+posted to it. The page leading a refusal is what makes it unreachable from an honest
+click, never what makes it unnecessary.
 
 #### The tests that hold it up
 

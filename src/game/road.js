@@ -66,18 +66,46 @@ export function roadCost() {
  * The first link is a destination on purpose: it is the player's first taste of what
  * the road is for, and 70 fuel is too much to spend on a sentence.
  */
-const GIVES = {
-  1: { destination: true, tradePost: false },
-  2: { destination: false, tradePost: false },
-  3: { destination: true, tradePost: true },
-  4: { destination: false, tradePost: false },
-  5: { destination: true, tradePost: false },
-  6: { destination: false, tradePost: false },
-  7: { destination: true, tradePost: true },
+/**
+ * The four the road can actually be walked to, and the region each one becomes.
+ *
+ * A destination's name is authored rather than drawn, because the place on the other
+ * end of the link *is* the region — its loot, its hours, its prose and the moments that
+ * name its slug are all written content, and content cannot be written for a name that
+ * changes per world. What varies by world is everything else about them: how many
+ * people, whether they are still there, and what the road reports.
+ *
+ * The other three links keep generated names, which is what stops the road being the
+ * same seven sentences in every world.
+ */
+const DESTINATIONS = {
+  1: { slug: 'the_millrace', name: 'The Millrace' },
+  3: { slug: 'sixteen_wells', name: 'Sixteen Wells' },
+  5: { slug: 'the_waterworks', name: 'The Waterworks' },
+  7: { slug: 'harrow_end', name: 'Harrow End' },
 };
 
+/** Which links keep a post open. Both are destinations: nowhere to go, nothing to buy. */
+const TRADE_POSTS = new Set([3, 7]);
+
+/** The same set, for the service that has to ask the database about them. */
+export const TRADE_POST_LINKS = [...TRADE_POSTS];
+
 export function linkGives(index) {
-  return GIVES[Number(index)] ?? null;
+  if (linkCost(index) === null) return null;
+  const n = Number(index);
+
+  return {
+    destination: Boolean(DESTINATIONS[n]),
+    tradePost: TRADE_POSTS.has(n),
+    // The region slug a destination opens, so the caller never has to know the map.
+    region: DESTINATIONS[n]?.slug ?? null,
+  };
+}
+
+/** Every region the road can open, whether or not any camp has reached it. */
+export function roadRegions() {
+  return Object.values(DESTINATIONS).map((where) => where.slug);
 }
 
 /**
@@ -88,9 +116,8 @@ export function linkGives(index) {
  * does. Longer than `LINKS` so which seven a world gets is itself part of the world.
  */
 const NAMES = [
-  'Tannery Row', 'The Millrace', 'Sixteen Wells', 'Coldharbour', 'The Long Yard',
-  'Ashfield', 'Sennen Cross', 'Drybank', 'The Waterworks', 'Fallowmoor',
-  'Kettle Bridge', 'The Sidings', 'Harrow End', 'Saltmarsh', 'The Cut',
+  'Tannery Row', 'Coldharbour', 'The Long Yard', 'Ashfield', 'Sennen Cross',
+  'Drybank', 'Fallowmoor', 'Kettle Bridge', 'The Sidings', 'Saltmarsh', 'The Cut',
 ];
 
 /**
@@ -164,7 +191,11 @@ export function neighbourFor(worldSeed, index, now = Date.now()) {
   if (linkCost(index) === null) return null;
 
   const random = makeRandom(mix(worldSeed, `road:${index}`));
-  const name = shuffle(NAMES, worldSeed, 'names')[Number(index) - 1];
+  const gives = linkGives(index);
+  // A destination is named by its content; everywhere else is named by the world.
+  const name = gives.region
+    ? DESTINATIONS[Number(index)].name
+    : shuffle(NAMES, worldSeed, 'names')[Number(index) - 1];
   const size = intBetween(random, 6, 80);
 
   // Two in five do not make it. The window opens before the world's first day and runs
@@ -185,6 +216,6 @@ export function neighbourFor(worldSeed, index, now = Date.now()) {
     stillThere,
     endsAt,
     news: words[(Number(index) - 1) % words.length],
-    ...linkGives(index),
+    ...gives,
   };
 }

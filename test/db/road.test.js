@@ -5,7 +5,9 @@ import { pool } from '../../src/db/pool.js';
 import { commitToRoad } from '../../src/services/commit-to-road.js';
 import { viewCamp } from '../../src/services/view-camp.js';
 import { foundSettlement, raiseSuccessor } from '../../src/services/settlement-lifecycle.js';
-import { LINKS, linkCost, roadCost } from '../../src/game/road.js';
+import { LINKS, linkCost, linkGives, roadCost } from '../../src/game/road.js';
+import { dispatchExpedition } from '../../src/services/dispatch-expedition.js';
+import { tradeWithCaravan } from '../../src/services/trade.js';
 import { InputError } from '../../src/errors.js';
 
 const uniq = () => Math.random().toString(36).slice(2, 10);
@@ -201,6 +203,72 @@ test('the view says where the road has got to and what the next link wants', asy
   });
 });
 
+test('a place the road has not reached is not on the dispatch table', async () => {
+  await withRollback(async (client) => {
+    const settlementId = await setup(client, 500);
+    const slug = linkGives(1).region;
+
+    const before = await viewCamp(client, settlementId);
+    assert.ok(before.regions.length > 0, 'the map is not empty to begin with');
+    assert.ok(
+      !before.regions.some((r) => r.slug === slug),
+      `${slug} is offered before the road reaches it`,
+    );
+
+    await commitToRoad(client, settlementId, linkCost(1));
+
+    const after = await viewCamp(client, settlementId);
+    const opened = after.regions.find((r) => r.slug === slug);
+    assert.ok(opened, `${slug} should be on the table once the link is made`);
+    assert.equal(after.regions.length, before.regions.length + 1, 'exactly the one');
+
+    // And it arrives with contact in it, which is the whole reason a destination is
+    // the strongest reward the road has.
+    assert.ok(opened.moments > 0, 'a new place the game has nothing to say about');
+  });
+});
+
+test('a dispatch to a place with no road is refused, not merely hidden', async () => {
+  await withRollback(async (client) => {
+    const settlementId = await setup(client, 500);
+    const slug = linkGives(7).region;
+
+    // The page is a render of a moment ago and a form is whatever was posted to it, so
+    // hiding the row is not the check — this is.
+    await assert.rejects(
+      () => dispatchExpedition(client, settlementId, slug),
+      (error) => error instanceof InputError && /no road/i.test(error.message),
+    );
+
+    const { rows } = await client.query(
+      `select e.id from expeditions e
+         join characters c on c.id = e.character_id
+        where c.settlement_id = $1`,
+      [settlementId],
+    );
+    assert.equal(rows.length, 0, 'a refused dispatch leaves nothing behind');
+  });
+});
+
+test('every region the road opens is a real region', async () => {
+  await withRollback(async (client) => {
+    // The map lives in the database and the road's shape lives in code, and the two
+    // meet only by slug. A typo either side would be a link that opens nothing, which
+    // no other test could see.
+    for (let index = 1; index <= LINKS; index += 1) {
+      const slug = linkGives(index).region;
+      if (slug === null) continue;
+
+      const { rows } = await client.query(
+        'select slug, requires_link from regions where slug = $1',
+        [slug],
+      );
+      assert.equal(rows.length, 1, `link ${index} points at ${slug}, which is not a place`);
+      assert.equal(Number(rows[0].requires_link), index, `${slug} disagrees about its link`);
+    }
+  });
+});
+
 test('what a link bought is never repossessed', async () => {
   await withRollback(async (client) => {
     const settlementId = await setup(client, 500);
@@ -213,5 +281,63 @@ test('what a link bought is never repossessed', async () => {
 
     assert.equal(view.road.reached.length, 1);
     assert.equal(view.road.reached[0].destination, true);
+  });
+});
+
+test('a reached post trades when there is no caravan at the gate', async () => {
+  await withRollback(async (client) => {
+    const settlementId = await setup(client, 5000);
+    await client.query(
+      `update resources set storage_cap = 5000, amount = 5000 where settlement_id = $1`,
+      [settlementId],
+    );
+
+    // No caravan is due at a camp founded this instant, which is what makes this the
+    // clean test: before the road, the door is shut.
+    await assert.rejects(
+      () => tradeWithCaravan(client, settlementId, { faction: 'junction_crews', offer: 0 }),
+      (error) => error instanceof InputError && /no caravan at the gate/i.test(error.message),
+    );
+
+    for (let i = 1; i <= 3; i += 1) await commitToRoad(client, settlementId, linkCost(i));
+
+    const view = await viewCamp(client, settlementId);
+    assert.ok(view.post, 'a reached post is on the page');
+    assert.equal(view.post.offers.length > 0, true);
+
+    const out = await tradeWithCaravan(client, settlementId, {
+      faction: view.post.faction,
+      offer: 0,
+    });
+    assert.ok(out.bought, 'the post sells with nobody at the gate');
+
+    // And it is still the crew's own prices: the road buys reliability, not a discount.
+    const spec = view.post.offers[0];
+    assert.deepEqual(out.paid, spec.costs);
+  });
+});
+
+test('the crew you have burned does not keep your post', async () => {
+  await withRollback(async (client) => {
+    const settlementId = await setup(client, 5000);
+    await client.query(
+      `update resources set storage_cap = 5000, amount = 5000 where settlement_id = $1`,
+      [settlementId],
+    );
+    for (let i = 1; i <= 3; i += 1) await commitToRoad(client, settlementId, linkCost(i));
+
+    await client.query(
+      `insert into faction_standing (settlement_id, faction, standing) values ($1, $2, $3)
+       on conflict (settlement_id, faction) do update set standing = excluded.standing`,
+      [settlementId, 'green_river', 60],
+    );
+
+    const view = await viewCamp(client, settlementId);
+    assert.equal(view.post.faction, 'green_river', 'the better-standing crew keeps it');
+
+    await assert.rejects(
+      () => tradeWithCaravan(client, settlementId, { faction: 'junction_crews', offer: 0 }),
+      (error) => error instanceof InputError && /post on the road/i.test(error.message),
+    );
   });
 });

@@ -53,6 +53,28 @@ export const LONG_REGIONS = [
 ];
 
 /**
+ * The road's four, and the region each one plays like.
+ *
+ * Phase 8 opens four new places, and every one of them would have arrived with no
+ * contact in it — moments name region slugs, and no moment names a region that did not
+ * exist when it was written. Shipping a phase whose reward is *somewhere to go* and
+ * having that somewhere be the only silent place on the map would have been a grim
+ * joke, given what the week before it was about.
+ *
+ * The alternative was adding four slugs to sixteen hand-written region lists, which is
+ * sixteen chances to forget one and no statement anywhere about what these places are
+ * like. This says it once: the Millrace plays like the Bunkers, Sixteen Wells like the
+ * Wreckage, and the two hot ones at the far end like the Deep Zone. New content can
+ * still name them directly, and eventually should.
+ */
+const PLAYS_LIKE = {
+  the_millrace: 'underground_bunkers',
+  sixteen_wells: 'coastal_wreckage',
+  the_waterworks: 'the_deep_zone',
+  harrow_end: 'the_deep_zone',
+};
+
+/**
  * Eighteen moments, three per axis.
  *
  * Started as six — one per axis — to judge the shape before writing volume. The shape
@@ -581,8 +603,13 @@ export function momentsFor(region, seed) {
 
   const random = makeRandom(mix(seed, MOMENTS_SALT));
 
+  const like = PLAYS_LIKE[region.slug];
   const eligible = Object.keys(MOMENTS)
-    .filter((key) => MOMENTS[key].regions.includes(region.slug))
+    .filter(
+      (key) =>
+        MOMENTS[key].regions.includes(region.slug) ||
+        (like !== undefined && MOMENTS[key].regions.includes(like)),
+    )
     .sort();
 
   const chosen = pickDistinctAxes(eligible, count, random);

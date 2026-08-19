@@ -24,6 +24,13 @@ const REGIONS = {
   underground_bunkers: 9,
   coastal_wreckage: 12,
   the_deep_zone: 18,
+  // The four the road opens. They are in here so the coverage rules below apply to
+  // them exactly as they do to everywhere else: a place the game sends you to and then
+  // has nothing to say about is a content shortage whatever unlocked it.
+  the_millrace: 8,
+  sixteen_wells: 14,
+  the_waterworks: 20,
+  harrow_end: 26,
 };
 
 const region = (slug) => ({ slug, travelHours: REGIONS[slug] });

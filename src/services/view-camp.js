@@ -9,9 +9,9 @@ import { resolveExpedition } from '../game/expeditions.js';
 import { isOpen, isWarned, momentCount, momentsFor } from '../game/moments.js';
 import { stateAt, timelineOf } from '../game/timeline.js';
 import { CONFIG } from '../game/constants.js';
-import { LINKS, linkCost, linkGives, neighbourFor } from '../game/road.js';
+import { LINKS, TRADE_POST_LINKS, linkCost, linkGives, neighbourFor } from '../game/road.js';
 import { WORLD_SEED } from '../db/world-events.js';
-import { FACTIONS, caravanVisit, priceAt, standingOf } from '../game/factions.js';
+import { FACTIONS, caravanVisit, postKeeper, priceAt, standingOf } from '../game/factions.js';
 import {
   STRUCTURES,
   campDefence,
@@ -170,23 +170,9 @@ export async function viewCamp(client, settlementId, now = Date.now()) {
   );
 
   const { rows: regionRows } = await client.query(
-    'select slug, name, danger, travel_hours, description from regions order by danger, travel_hours',
+    `select slug, name, danger, travel_hours, description, requires_link
+       from regions order by danger, travel_hours`,
   );
-
-  /**
-   * What a region offers, including the one thing the list never said.
-   *
-   * Where to send someone is the decision that settles whether Phase 6 happens at all,
-   * and the table it is made from carried danger, hours and flavour — never contact.
-   * Measured on the first real camp: nine of fifteen dispatches went to the one region
-   * that categorically has no interior, which is less a preference than the absence of
-   * a fact. The count comes from the same function the generator uses, so what the page
-   * promises and what the trip holds cannot drift apart.
-   */
-  const regions = regionRows.map((region) => ({
-    ...region,
-    moments: momentCount(Number(region.travel_hours)),
-  }));
 
   // Re-read rather than using the post-tick state: the tick may have just resolved
   // an expedition, and what the page wants is whatever is in flight *now*.
@@ -341,6 +327,10 @@ export async function viewCamp(client, settlementId, now = Date.now()) {
     [settlementId],
   );
 
+  const opened = new Set(
+    roadRows.filter((row) => row.completed_at !== null).map((row) => Number(row.link_index)),
+  );
+
   const reached = roadRows
     .filter((row) => row.completed_at !== null)
     .map((row) => ({
@@ -372,6 +362,60 @@ export async function viewCamp(client, settlementId, now = Date.now()) {
     beyond: nextCost === null ? 0 : LINKS - nextIndex,
   };
 
+  /**
+   * Where this camp can be sent, and what it will find when it gets there.
+   *
+   * Two things the list did not used to carry. **Contact**, because where to send
+   * someone is the decision that settles whether Phase 6 happens at all, and the table
+   * it is made from listed danger, hours and flavour and never once mentioned
+   * encounters — nine of the first real camp's fifteen dispatches went to the one
+   * region that categorically has no interior. And **the road**, because four of these
+   * places are not reachable until a link is made.
+   *
+   * The moment count comes from the generator's own function, so what the page promises
+   * and what the trip holds cannot drift apart.
+   */
+  const regions = regionRows
+    .filter((region) => region.requires_link === null || opened.has(Number(region.requires_link)))
+    .map((region) => ({
+      ...region,
+      moments: momentCount(Number(region.travel_hours)),
+    }));
+
+  /**
+   * The post on the road, if this camp keeps one.
+   *
+   * The same offers a caravan carries, always open. That is deliberately *not* a
+   * discount — the prices are the crew's usual prices, moved by standing exactly as
+   * they are at the gate — because the road buys reliability, which is a different good
+   * from cheapness and the only one a missable caravan cannot also sell.
+   */
+  let post = null;
+  if (TRADE_POST_LINKS.some((index) => opened.has(index))) {
+    const keeper = postKeeper(standings);
+    const spec = FACTIONS[keeper];
+    const standing = standingOf(standings, keeper);
+
+    const slugs = spec.offers.map((offer) => offer.item).filter(Boolean);
+    const { rows: named } = await client.query(
+      'select slug, name from items where slug = any($1)',
+      [slugs],
+    );
+    const names = new Map(named.map((row) => [row.slug, row.name]));
+
+    post = {
+      faction: keeper,
+      name: spec.name,
+      standing,
+      offers: spec.offers.map((offer, index) => ({
+        index,
+        what: offer.item ? names.get(offer.item) ?? offer.item : offer.resource,
+        qty: offer.qty,
+        costs: priceAt(offer, standing),
+      })),
+    };
+  }
+
   const rates = productionRates(structures);
 
   // What the sky is doing to production, and what the survivor takes back out. Both
@@ -392,6 +436,7 @@ export async function viewCamp(client, settlementId, now = Date.now()) {
     raidExpectedAt: fitted.has('radio') ? settlements[0].next_raid_at : null,
     caravan,
     road,
+    post,
     standings: Object.entries(FACTIONS).map(([slug, spec]) => ({
       slug,
       name: spec.name,
