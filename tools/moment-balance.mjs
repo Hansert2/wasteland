@@ -235,16 +235,44 @@ const long = regions.filter((region) => momentsFor(region, 1).length > 0);
 console.log('\n=== 1. What attending is worth ===\n');
 console.log(`  Value counts loot, plus finds at ${FIND}, less rads at ${RAD} and damage at ${DAMAGE}.`);
 console.log('  Those conversions are derived at the top of this file, and arguable.\n');
-console.log('  region                 moments   unattended   attended   uplift   step to next');
+console.log('  region                 moments   unattended   attended   uplift   step to rung');
 
 const unattended = new Map();
 for (const region of long) unattended.set(region.slug, run(region, survivor()));
 
+/**
+ * The next *rung*, not the next row.
+ *
+ * This compared each region to whichever one happened to sit beside it in the sorted
+ * list, which was the same thing back when every region had a tier to itself. Phase 8
+ * opened four more, deliberately priced alongside existing ones rather than above them
+ * — "other, not stronger" — and the map became five rungs with two places on most of
+ * them. Read the old way, every one of those pairs failed the bound by a mile while
+ * saying nothing at all about the game: a sideways move is not the progression the
+ * bound is about, and a step of 1% to a region of equal value is not a step.
+ *
+ * So a rung is anything within SAME_RUNG of this value, and the step is to the first
+ * place actually worth graduating to. The bound itself is unchanged. What changed is
+ * that the map now has choices on it, which is what Phase 8 was for.
+ */
+const SAME_RUNG = 0.1;
+
 for (const [index, region] of long.entries()) {
   const base = unattended.get(region.slug).value;
   const best = run(region, survivor(), greedy).value;
-  const next = long[index + 1];
+
+  const next = long
+    .slice(index + 1)
+    .find((other) => unattended.get(other.slug).value > base * (1 + SAME_RUNG));
   const step = next ? (unattended.get(next.slug).value - base) / base : null;
+
+  // A peer at the same tier is worth naming: it is a choice rather than a ladder, and
+  // the pairs read as a mistake without it.
+  const peers = long.filter(
+    (other) =>
+      other.slug !== region.slug &&
+      Math.abs(unattended.get(other.slug).value - base) <= base * SAME_RUNG,
+  );
 
   console.log(
     '  ' +
@@ -253,12 +281,14 @@ for (const [index, region] of long.entries()) {
       base.toFixed(1).padStart(13) +
       best.toFixed(1).padStart(11) +
       `${((best / base - 1) * 100).toFixed(1)}%`.padStart(9) +
-      (step === null ? '        —' : `${(step * 100).toFixed(0)}%`.padStart(9)),
+      (step === null ? '        —' : `${(step * 100).toFixed(0)}%`.padStart(9)) +
+      (peers.length > 0 ? `   beside ${peers.map((p) => p.name).join(', ')}` : ''),
   );
 }
 
-console.log('\n  The bound: uplift must sit under the step to the next region, or');
-console.log('  attending a trip out-earns a region that does not exist.\n');
+console.log('\n  The bound: uplift must sit under the step to the next rung, or');
+console.log('  attending a trip out-earns a region that does not exist. Regions');
+console.log(`  within ${SAME_RUNG * 100}% of each other share a rung — a choice, not a step.\n`);
 
 console.log('=== 2. Does a healthy survivor still come home? ===\n');
 console.log('  region                 at 100 hp        at 35 hp');
