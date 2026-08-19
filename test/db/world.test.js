@@ -365,3 +365,61 @@ async function deleteFixture(playerId) {
 test.after(async () => {
   await pool.end();
 });
+
+test('the page says what a radiation figure is costing, not only what it is', async () => {
+  await withRollback(async (client) => {
+    // Played on 2026-08-20: the page said "Radiation 62.2" and nothing else. That number
+    // sits just past radThreshold, where a survivor stops healing and starts losing
+    // health — and nothing said so, which line it had crossed, or what it cost. The
+    // figure was right and the tick was right; the page was the part that was silent.
+    const { settlementId } = await seed(client);
+    const now = Date.now();
+
+    const at = async (radiation) => {
+      await client.query(
+        'update characters set radiation = $2 where settlement_id = $1 and died_at is null',
+        [settlementId, radiation],
+      );
+      return (await viewCamp(client, settlementId, now)).strain;
+    };
+
+    // Burning: past the threshold, and the bleed ramps rather than being a flat rate,
+    // so "past 60" and "at 87" have to be different news.
+    const mild = await at(62);
+    const bad = await at(87);
+    assert.equal(mild.state, 'burning');
+    assert.equal(bad.state, 'burning');
+    assert.ok(
+      bad.damagePerHour > mild.damagePerHour * 5,
+      `62 rads costs ${mild.damagePerHour}/h and 87 costs ${bad.damagePerHour}/h`,
+    );
+    assert.ok(mild.hoursToSafe > 0 && bad.hoursToSafe > mild.hoursToSafe);
+
+    // Stalled: nothing lost, nothing regained. The state a Deep Zone run leaves behind
+    // for the better part of two days, and the one the page said least about.
+    const stalled = await at(45);
+    assert.equal(stalled.state, 'stalled');
+    assert.equal(stalled.damagePerHour, 0);
+    assert.ok(stalled.hoursToMending > 0, 'stalled means waiting for something');
+
+    // Mending: the only state in which waiting works, and the only one that says nothing.
+    const clear = await at(12);
+    assert.equal(clear.state, 'mending');
+    assert.equal(clear.hoursToMending, 0);
+
+    // And filtration, which is the upgrade this number exists to sell, actually shows
+    // up in the hours — a player weighing 60 fuel against it should see what it buys.
+    const unfiltered = await at(62);
+    await client.query(
+      `insert into structure_upgrades (settlement_id, kind, upgrade, completes_at, installed_at)
+       values ($1, 'water_purifier', 'filtration', $2, $2)`,
+      [settlementId, new Date(now)],
+    );
+    const filtered = await at(62);
+
+    assert.ok(
+      filtered.hoursToMending < unfiltered.hoursToMending / 2,
+      `filtration should more than halve the wait: ${unfiltered.hoursToMending} -> ${filtered.hoursToMending}`,
+    );
+  });
+});

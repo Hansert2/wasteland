@@ -14,6 +14,7 @@ import { WORLD_SEED } from '../db/world-events.js';
 import { FACTIONS, caravanVisit, postKeeper, priceAt, standingOf } from '../game/factions.js';
 import {
   STRUCTURES,
+  UPGRADES,
   campDefence,
   campWealth,
   productionRates,
@@ -139,6 +140,66 @@ function reportOn(row, state, now) {
     upcoming: moments
       .filter((moment) => !answered.has(moment.index) && moment.atHour > elapsed)
       .map((moment) => new Date(row.departed_at.getTime() + moment.atHour * HOUR_MS)),
+  };
+}
+
+/**
+ * What the survivor's numbers are doing to them, rather than only what they are.
+ *
+ * Found by playing on 2026-08-20: the page said "Radiation 62.2" and nothing else, and
+ * 62.2 happens to sit just past `radThreshold`, where a survivor stops healing and
+ * starts losing health. Nothing was wrong — the number was right and the tick was right
+ * — and the player had no way to know the number had crossed a line, which line, or what
+ * it was costing. The same shape as the moment box that vanished on submit and the
+ * option priced in a dose the pack did not hold: a fact the decision needs, not sitting
+ * next to the decision.
+ *
+ * Three states worth telling apart, because each wants something different from the
+ * player:
+ *
+ * - **Burning.** Past the threshold, losing health every hour. The bleed ramps from
+ *   nothing at the threshold to the full rate at 100, so "past 60" and "at 87" are very
+ *   different news — the figure is given rather than the band.
+ * - **Stalled.** Under the threshold but over `regenRadCeiling`: nothing is being lost
+ *   and nothing is coming back. This is where a Deep Zone run leaves a survivor for the
+ *   better part of two days, and it is the state the page said least about.
+ * - **Mending.** Clear enough to heal, which is the only state in which waiting works.
+ *
+ * `decayPerHour` is passed in rather than read here because filtration changes it, and
+ * the whole point of that upgrade is this number: a player weighing 60 fuel against it
+ * should be able to see what it buys.
+ */
+function strainOf(survivor, decayPerHour) {
+  const rads = Number(survivor.radiation) || 0;
+  const until = (mark) => (rads <= mark ? 0 : (rads - mark) / decayPerHour);
+
+  if (rads >= CONFIG.radThreshold) {
+    const severity = (rads - CONFIG.radThreshold) / (100 - CONFIG.radThreshold);
+    return {
+      state: 'burning',
+      threshold: CONFIG.radThreshold,
+      damagePerHour: CONFIG.radDamagePerHour * severity,
+      hoursToSafe: until(CONFIG.radThreshold),
+      hoursToMending: until(CONFIG.regenRadCeiling),
+    };
+  }
+
+  if (rads >= CONFIG.regenRadCeiling) {
+    return {
+      state: 'stalled',
+      threshold: CONFIG.radThreshold,
+      damagePerHour: 0,
+      hoursToSafe: 0,
+      hoursToMending: until(CONFIG.regenRadCeiling),
+    };
+  }
+
+  return {
+    state: 'mending',
+    threshold: CONFIG.radThreshold,
+    damagePerHour: 0,
+    hoursToSafe: 0,
+    hoursToMending: 0,
   };
 }
 
@@ -485,6 +546,14 @@ export async function viewCamp(client, settlementId, now = Date.now()) {
       : null,
     expedition,
     survivor: state.survivor ? { ...state.survivor, name: survivorRow[0]?.name } : null,
+    // What those numbers are doing to them. Null with nobody in the camp, because a
+    // camp with no survivor has no strain, only an empty chair.
+    strain: state.survivor
+      ? strainOf(
+          state.survivor,
+          CONFIG.radDecayPerHour * (fitted.has('filtration') ? UPGRADES.filtration.radDecayMultiplier : 1),
+        )
+      : null,
     /**
      * The rate a player can act on: what the stores will actually do next hour.
      *

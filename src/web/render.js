@@ -318,7 +318,7 @@ export function campPage(view, { error } = {}) {
     ${section('events', renderEvents(view.events))}
     ${section(
       'survivor',
-      view.survivor ? renderSurvivor(view.survivor) : renderNoSurvivor(view.fallenCount > 0),
+      view.survivor ? renderSurvivor(view.survivor, view.strain) : renderNoSurvivor(view.fallenCount > 0),
     )}
     ${section('expedition', view.survivor ? renderExpeditions(view) : '')}
     ${section('stores', renderResources(view.resources))}
@@ -435,13 +435,32 @@ function describe(event) {
   }
 }
 
-function renderSurvivor(survivor) {
+/**
+ * The consequence of a radiation figure, in the same cell as the figure.
+ *
+ * Not `class="error"`: that box is the alarm idiom and belongs to raids. A survivor
+ * cooking gently is a thing to plan around, not an alarm — and the numbers say how
+ * urgent it is far better than a colour would.
+ */
+function strainNote(strain) {
+  if (!strain || strain.state === 'mending') return '';
+
+  const clear = `clear in ${duration(strain.hoursToMending)}`;
+
+  if (strain.state === 'burning') {
+    return ` &mdash; <small>past ${strain.threshold}: losing ${n(strain.damagePerHour)} health an hour, under ${strain.threshold} in ${duration(strain.hoursToSafe)}, ${clear}</small>`;
+  }
+
+  return ` &mdash; <small>not healing until this is down, ${clear}</small>`;
+}
+
+function renderSurvivor(survivor, strain) {
   return `
     <h2>${escape(survivor.name ?? 'Survivor')}</h2>
     <table>
       <tr><th>Health</th><td>${n(survivor.health)}</td></tr>
       <tr><th>Hunger</th><td>${n(survivor.hunger)}</td></tr>
-      <tr><th>Radiation</th><td>${n(survivor.radiation)}</td></tr>
+      <tr><th>Radiation</th><td>${n(survivor.radiation)}${strainNote(strain)}</td></tr>
     </table>`;
 }
 
