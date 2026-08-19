@@ -30,6 +30,10 @@ node tools/raid-balance.mjs      # thirty days of neglect, by camp and watchtowe
 node tools/craft-balance.mjs     # what gear is worth, and what a death costs
 ```
 
+```
+node tools/window-coverage.mjs   # who the encounter windows actually reach
+```
+
 `region-balance.mjs` and `moment-balance.mjs` read the regions from the database, so
 they need the wrapper that brings Postgres up:
 

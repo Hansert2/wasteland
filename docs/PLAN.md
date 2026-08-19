@@ -1167,9 +1167,43 @@ seldom anything to answer. The bound survived the change: 21–32% uplift agains
 twice-daily automaton went from nine caught moments in ninety days to **four** — tripling
 the content did not make up for cutting the windows, because it only ever has long trips
 in flight. An attentive player gains: moments now exist on the Service Road, in the City
-and in the Farmland, which are the trips a click-heavy player actually sends. Which
-player the windows serve is a live design question and the dial is the divisor in
-`windowHours()`.
+and in the Farmland, which are the trips a click-heavy player actually sends.
+
+**Settled 2026-08-19 by measuring it (`tools/window-coverage.mjs`): the divisor stays at
+3, and the question it was asked to answer turned out to be the wrong question.** Caught
+moments per ninety days, averaged over ten worlds:
+
+    itinerary / cadence        ÷1.75    ÷2.5      ÷3      ÷4      ÷6   offered
+    soak rotation, 10 min        703     703     701     695     695      704
+    soak rotation, hourly        516     479     449     380     283      622
+    soak rotation, twice daily    17      12      10       8       6      210
+    deep zone only, twice daily   63      42      36      26      18      343
+
+Three things fall out, and the first two settle it:
+
+- **The dial buys the attentive player nothing.** 703 against 701 — they catch what is
+  offered at any setting, so widening the window is not a trade between an attentive
+  player and an absent one. It is a gift to the semi-absent one, priced in the timing
+  skill that everyone else is playing.
+- **The itinerary is a stronger lever than the dial, by roughly double.** For a
+  twice-daily player, changing what they *send* is worth 10 → 36 moments; opening the
+  windows all the way to 1.75 is worth 10 → 17. The dial cannot reach the player it was
+  being considered for.
+- **So the "four in ninety days" figure is an artefact of the soak's itinerary, not a
+  property of the windows.** That automaton spends five slots in eight on regions under
+  an hour, so it is almost never mid-trip when it next looks. A twice-daily player
+  sending the trips a twice-daily player would actually send — long ones, timed to still
+  be out at the next check-in — meets **nine times as many**, about one every two and a
+  half days, without anything changing.
+
+The soak is not wrong to keep its rotation: it is testing systems, not modelling a
+person. But its moment count is a fact about that rotation and must not be read as a
+fact about the phase, which is exactly how it was nearly read here.
+
+**If the absent player is to be served, the dial is the wrong instrument** — it doubles
+almost nothing. The lever that would work is making a long trip's windows *findable*
+rather than wider, which is already the radio's job and already gated behind watchtower
+4. Whether that gate is too high is a real question, and a different one.
 
 **One of the new moments was built wrong rather than mistuned.** `the_ford` had wading as
 a free default with two alternatives that were pure cost, so it was the right answer 93%
