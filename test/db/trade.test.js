@@ -6,8 +6,9 @@ import { loadWorld } from '../../src/db/world.js';
 import { advanceSettlement } from '../../src/services/advance-settlement.js';
 import { tradeWithCaravan } from '../../src/services/trade.js';
 import { foundSettlement, raiseSuccessor } from '../../src/services/settlement-lifecycle.js';
-import { viewCamp } from '../../src/services/view-camp.js';
 import { FACTIONS, caravanVisit } from '../../src/game/factions.js';
+import { viewCamp } from '../../src/services/view-camp.js';
+import { campPage } from '../../src/web/render.js';
 import { InputError } from '../../src/errors.js';
 
 const hours = (h) => h * 60 * 60 * 1000;
@@ -286,4 +287,36 @@ test('the tick books, announces and rotates visits against the real database', a
 
 test.after(async () => {
   await pool.end();
+});
+
+test('an offer the stores cannot cover says so at the gate, not after the click', async () => {
+  await withRollback(async (client) => {
+    // The refusal above is correct and arrives too late to be a decision. A caravan
+    // stands at the gate for a few hours; working out which of four offers is
+    // affordable should not require the player to click each one and read the error.
+    const { settlementId, now } = await setup(client, { stock: 5 });
+
+    const view = await viewCamp(client, settlementId, now);
+    assert.ok(view.caravan?.visiting, 'the fixture puts a caravan at the gate');
+
+    const first = view.caravan.offers[0];
+    assert.match(first.shortBy, /needs \d+ more scrap/, `got ${first.shortBy}`);
+
+    const html = campPage(view);
+    assert.ok(html.includes(first.shortBy), 'the shortfall reaches the page');
+    assert.ok(
+      !html.includes(`name="offer" value="${first.index}"`),
+      'an offer the camp cannot pay for must not carry a submit button',
+    );
+
+    // And with the stores full, the same offer is a button again — the guard has to
+    // discriminate, not simply refuse.
+    await client.query(
+      `update resources set amount = storage_cap where settlement_id = $1 and kind in ('scrap', 'fuel')`,
+      [settlementId],
+    );
+    const rich = await viewCamp(client, settlementId, now);
+    assert.equal(rich.caravan.offers[0].shortBy, null);
+    assert.ok(campPage(rich).includes(`name="offer" value="${first.index}"`));
+  });
 });

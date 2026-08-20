@@ -314,6 +314,9 @@ export async function viewCamp(client, settlementId, now = Date.now()) {
   );
   const beingFitted = upgradeRows.find((row) => row.installed_at === null) ?? null;
 
+  // What the camp can actually pay with: stores, and what is on the survivor.
+  const pack = new Map(inventory.map((item) => [item.slug, Number(item.qty)]));
+  const purse = state.settlement.resources;
   // The caravan at the gate, or the one on the road. Standing prices the offers.
   const standings = {};
   const { rows: standingRows } = await client.query(
@@ -350,12 +353,19 @@ export async function viewCamp(client, settlementId, now = Date.now()) {
       departsAt: visiting ? new Date(departsAt) : null,
       standing,
       offers: visiting
-        ? spec.offers.map((offer, index) => ({
-            index,
-            what: offer.item ? names.get(offer.item) ?? offer.item : offer.resource,
-            qty: offer.qty,
-            costs: priceAt(offer, standing),
-          }))
+        ? spec.offers.map((offer, index) => {
+            const costs = priceAt(offer, standing);
+            return {
+              index,
+              what: offer.item ? names.get(offer.item) ?? offer.item : offer.resource,
+              qty: offer.qty,
+              costs,
+              // Priced in stores alone, so the pack is not consulted. Standing has
+              // already moved these numbers, which is why the shortfall is worked
+              // out here and not from the list price.
+              shortBy: shortfall(state.settlement.resources, new Map(), costs),
+            };
+          })
         : [],
     };
   }
@@ -450,6 +460,10 @@ export async function viewCamp(client, settlementId, now = Date.now()) {
           neighbour: neighbourFor(WORLD_SEED, nextIndex, now).name,
         },
     beyond: nextCost === null ? 0 : LINKS - nextIndex,
+    // What there is to send. The box asked for a number and never said what the
+    // camp had, so the arithmetic was left to the player on the one page that
+    // already knew the answer.
+    available: Number(state.settlement.resources.fuel?.amount ?? 0),
   };
 
   /**
@@ -497,18 +511,19 @@ export async function viewCamp(client, settlementId, now = Date.now()) {
       faction: keeper,
       name: spec.name,
       standing,
-      offers: spec.offers.map((offer, index) => ({
-        index,
-        what: offer.item ? names.get(offer.item) ?? offer.item : offer.resource,
-        qty: offer.qty,
-        costs: priceAt(offer, standing),
-      })),
+      offers: spec.offers.map((offer, index) => {
+        const costs = priceAt(offer, standing);
+        return {
+          index,
+          what: offer.item ? names.get(offer.item) ?? offer.item : offer.resource,
+          qty: offer.qty,
+          costs,
+          shortBy: shortfall(purse, pack, costs),
+        };
+      }),
     };
   }
 
-  // What the camp can actually pay with: stores, and what is on the survivor.
-  const pack = new Map(inventory.map((item) => [item.slug, Number(item.qty)]));
-  const purse = state.settlement.resources;
 
   const rates = productionRates(structures);
 

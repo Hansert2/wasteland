@@ -727,7 +727,9 @@ function renderPost(post, alive) {
         <td>${escape(
           Object.entries(offer.costs).map(([kind, amount]) => `${amount} ${kind}`).join(', '),
         )}</td>
-        <td>${alive
+        <td>${offer.shortBy
+          ? `<small>${escape(offer.shortBy)}</small>`
+          : alive
           ? `<form method="post" action="/trade" style="margin:0">
               <input type="hidden" name="faction" value="${escape(post.faction)}">
               <input type="hidden" name="offer" value="${offer.index}">
@@ -741,6 +743,33 @@ function renderPost(post, alive) {
   return `<h2>The post on the road</h2>
     <p>${escape(post.name)} keep it. Standing ${Math.round(post.standing)}.</p>
     <table>${rows}</table>`;
+}
+
+/**
+ * The box that sends fuel up the road.
+ *
+ * It used to ask for a number and say nothing about what the camp had, which left
+ * the one piece of arithmetic the page already knew the answer to — how much is
+ * there, how much is left to pay — to the player. It also happily accepted a figure
+ * larger than either, and the service trimmed it silently.
+ *
+ * With no fuel at all there is no form, for the same reason a recipe you cannot
+ * afford has no button: an input that can only be refused is not an offer.
+ */
+function sendFuel(road) {
+  const wanted = road.next.cost - road.next.fuel;
+  const most = Math.floor(Math.min(road.available, wanted));
+
+  if (most < 1) {
+    return `<p><small>No fuel in the stores. Only trips bring it in.</small></p>`;
+  }
+
+  return `<form method="post" action="/road">
+      <input type="number" name="fuel" min="1" max="${most}" step="1"
+             value="${most}" required>
+      <button type="submit">Send fuel</button>
+      <small>${n(road.available)} in the stores, ${n(wanted)} to finish this link.</small>
+    </form>`;
 }
 
 function renderRoad(road) {
@@ -779,10 +808,7 @@ function renderRoad(road) {
     ${reached ? `<table>${reached}</table>` : ''}
     <p>Next: <strong>${escape(road.next.neighbour)}</strong> &mdash; ${gives}.<br>
        ${road.next.fuel} of ${road.next.cost} fuel sent up the road.</p>
-    <form method="post" action="/road">
-      <input type="number" name="fuel" min="1" step="1" value="10" required>
-      <button type="submit">Send fuel</button>
-    </form>
+    ${sendFuel(road)}
     ${beyond}`;
 }
 
@@ -880,8 +906,11 @@ function renderCaravan(caravan, someoneAlive) {
       const price = Object.entries(offer.costs)
         .map(([kind, amount]) => `${amount} ${kind}`)
         .join(', ');
-      const buy =
-        someoneAlive
+      // A caravan is at the gate for a few hours, so an offer the stores cannot
+      // cover is worth naming rather than leaving to be discovered by clicking.
+      const buy = offer.shortBy
+        ? `<small>${escape(offer.shortBy)}</small>`
+        : someoneAlive
           ? `<form method="post" action="/trade" style="margin:0">
               <input type="hidden" name="faction" value="${escape(caravan.faction)}">
               <input type="hidden" name="offer" value="${offer.index}">
