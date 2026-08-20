@@ -55,10 +55,35 @@ const n = (value, places = 1) => Number(value).toFixed(places);
  * unit is wrong at one end or the other — the first camp rendered after the change
  * offered five builds all costing "0.0 h", which is worse than no number at all.
  */
+/**
+ * How long something takes, as a span rather than as a countdown.
+ *
+ * This used to hand its hours to `clock()`, which is the formatter the live countdowns
+ * use — so a static label about a trip that is always exactly eight hours long read
+ * "8h 00m 00s", seconds of precision on a number that has never had seconds in it. The
+ * same mistake as the elapsed time in the Away report, one layer down: a countdown
+ * formatter borrowed for something that is not counting down.
+ *
+ * `clock()` is left exactly as it is. It is interpolated into the browser script and
+ * pinned by a test, and a ticking clock genuinely does want its seconds.
+ *
+ * Two units at most, and never a unit that is zero. Precision below a minute survives
+ * only for spans that are under a minute, where it is the whole answer.
+ */
 function duration(hours) {
   const h = Number(hours);
-  if (!Number.isFinite(h)) return 'now';
-  return clock(Math.round(h * 3600));
+  if (!Number.isFinite(h) || h <= 0) return 'now';
+
+  const totalMinutes = Math.round(h * 60);
+  const days = Math.floor(totalMinutes / 1440);
+  const restHours = Math.floor((totalMinutes % 1440) / 60);
+  const minutes = totalMinutes % 60;
+
+  if (days > 0) return restHours > 0 ? `${days}d ${restHours}h` : `${days}d`;
+  if (restHours > 0) return minutes > 0 ? `${restHours}h ${minutes}m` : `${restHours}h`;
+  if (minutes > 0) return `${minutes}m`;
+
+  return `${Math.round(h * 3600)}s`;
 }
 
 /**
@@ -110,7 +135,10 @@ function countdown(at, done = 'now') {
   const until = new Date(at).getTime();
   const left = (until - Date.now()) / 3600000;
   return `<span data-until="${until}" data-done="${escape(done)}">${
-    escape(left > 0 ? duration(left) : done)
+    // clock(), not duration(): the browser overwrites this every second using
+    // clock() itself, so painting it any other way would change format on the first
+    // tick. A countdown keeps its seconds; a span does not have any.
+    escape(left > 0 ? clock(Math.round(left * 3600)) : done)
   }</span>`;
 }
 
