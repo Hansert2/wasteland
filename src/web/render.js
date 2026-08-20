@@ -807,8 +807,8 @@ function renderRoad(road) {
   // having done it, and a page that keeps explaining itself is a page nobody reads.
   const rule =
     road.reached.length === 0
-      ? `<p>Fuel you put toward a place stays there until it is paid for. Then it is
-           reached, for good.</p>`
+      ? `<p>Fuel you put toward a place is spent — you cannot take it back. It counts
+           toward reaching that place, and once the cost is covered it stays reached.</p>`
       : '';
 
   const beyond =
