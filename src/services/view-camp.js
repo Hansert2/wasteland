@@ -431,12 +431,40 @@ export async function viewCamp(client, settlementId, now = Date.now()) {
     roadRows.filter((row) => row.completed_at !== null).map((row) => Number(row.link_index)),
   );
 
+  /**
+   * What a place actually is, so the road can say it before it is paid for.
+   *
+   * The same facts the dispatch table carries — how far, how dangerous, how much
+   * contact — because 70 fuel against an unknown is not a decision. The road already
+   * fixes which link opens which region precisely so the player is choosing a known
+   * thing; this is the page finally telling them what it is.
+   *
+   * Read from every region rather than the filtered list, since the whole point is
+   * describing places this camp cannot go to yet.
+   */
+  const placeOf = (slug) => {
+    const region = regionRows.find((candidate) => candidate.slug === slug);
+    if (!region) return null;
+
+    return {
+      name: region.name,
+      danger: region.danger,
+      travelHours: Number(region.travel_hours),
+      moments: momentCount(Number(region.travel_hours)),
+      description: region.description,
+    };
+  };
+
   const reached = roadRows
     .filter((row) => row.completed_at !== null)
-    .map((row) => ({
-      ...neighbourFor(WORLD_SEED, Number(row.link_index), now),
-      completedAt: row.completed_at,
-    }));
+    .map((row) => {
+      const who = neighbourFor(WORLD_SEED, Number(row.link_index), now);
+      return {
+        ...who,
+        place: who.region ? placeOf(who.region) : null,
+        completedAt: row.completed_at,
+      };
+    });
 
   const openRow = roadRows.find((row) => row.completed_at === null);
   const nextIndex = openRow ? Number(openRow.link_index) : reached.length + 1;
@@ -458,6 +486,7 @@ export async function viewCamp(client, settlementId, now = Date.now()) {
           // The links past it are a count rather than a list, so there is a picture of
           // the whole road without reading the end of it first.
           neighbour: neighbourFor(WORLD_SEED, nextIndex, now).name,
+          place: linkGives(nextIndex).region ? placeOf(linkGives(nextIndex).region) : null,
         },
     beyond: nextCost === null ? 0 : LINKS - nextIndex,
     // What there is to send. The box asked for a number and never said what the

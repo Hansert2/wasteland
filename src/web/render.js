@@ -771,16 +771,37 @@ function addFuel(road) {
     </form>`;
 }
 
-/** What reaching this link got the camp, in the fewest words that are still true. */
+/**
+ * What reaching a place gets the camp, said as a reward rather than as a category.
+ *
+ * "Somewhere to go" told the player which box the link was in; it did not tell them
+ * whether 70 fuel was worth spending. A destination is worth exactly what a region is
+ * worth, so it says the things a region is judged on — how far, how dangerous, how much
+ * there is to answer out there — in the same words the dispatch table uses.
+ *
+ * And a link that brings only news says so plainly. Three of the seven pay in nothing
+ * but the sight of somebody else out there, which is deliberate — a road where every
+ * step pays is a shop, not a road — and dressing that up would be the page lying about
+ * the design.
+ */
 function linkGot(link) {
-  const parts = [
-    link.destination && 'you can send people here',
-    link.tradePost && 'a trader who is always open',
-  ].filter(Boolean);
+  const parts = [];
 
-  return parts.join(', ') || 'you know they are there';
+  if (link.place) {
+    const contact =
+      link.place.moments > 0
+        ? `${link.place.moments} contact${link.place.moments === 1 ? '' : 's'}`
+        : 'no contact';
+
+    parts.push(
+      `somewhere new to send people &mdash; ${escape(duration(link.place.travelHours))} out, danger ${link.place.danger}, ${contact}`,
+    );
+  }
+
+  if (link.tradePost) parts.push('a trader who never moves on, unlike a caravan');
+
+  return parts.join('<br>') || 'word of who else is out there, and nothing more';
 }
-
 function renderRoad(road) {
   if (!road) return '';
 
