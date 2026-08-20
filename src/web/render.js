@@ -746,30 +746,39 @@ function renderPost(post, alive) {
 }
 
 /**
- * The box that sends fuel up the road.
+ * The box that puts fuel toward the next link.
  *
- * It used to ask for a number and say nothing about what the camp had, which left
- * the one piece of arithmetic the page already knew the answer to — how much is
- * there, how much is left to pay — to the player. It also happily accepted a figure
- * larger than either, and the service trimmed it silently.
+ * "Send fuel up the road" was a metaphor doing a mechanic's job. Nothing is sent
+ * anywhere: fuel comes out of the stores and stays on the link until the link is paid
+ * for. So the button says what it does, and the sentence that explains the rule lives
+ * above the table rather than inside the form, where it was competing with the numbers.
  *
- * With no fuel at all there is no form, for the same reason a recipe you cannot
- * afford has no button: an input that can only be refused is not an offer.
+ * With no fuel at all there is no form, for the same reason a recipe you cannot afford
+ * has no button: an input that can only be refused is not an offer.
  */
-function sendFuel(road) {
+function addFuel(road) {
   const wanted = road.next.cost - road.next.fuel;
   const most = Math.floor(Math.min(road.available, wanted));
 
   if (most < 1) {
-    return `<p><small>No fuel in the stores. Only trips bring it in.</small></p>`;
+    return `<p><small>No fuel in the stores. Only expeditions bring it back.</small></p>`;
   }
 
   return `<form method="post" action="/road">
       <input type="number" name="fuel" min="1" max="${most}" step="1"
              value="${most}" required>
-      <button type="submit">Send fuel</button>
-      <small>${n(road.available)} in the stores, ${n(wanted)} to finish this link.</small>
+      <button type="submit">Add fuel</button>
     </form>`;
+}
+
+/** What reaching this link got the camp, in the fewest words that are still true. */
+function linkGot(link) {
+  const parts = [
+    link.destination && 'you can send people here',
+    link.tradePost && 'a trader who is always open',
+  ].filter(Boolean);
+
+  return parts.join(', ') || 'you know they are there';
 }
 
 function renderRoad(road) {
@@ -779,9 +788,8 @@ function renderRoad(road) {
     .map(
       (link) => `<tr>
         <th>${escape(link.name)}</th>
-        <td>${link.stillThere ? `${link.size} people` : 'empty'}</td>
-        <td>${[link.destination && 'you can go there', link.tradePost && 'trade post']
-          .filter(Boolean).join(', ') || 'in view'}</td>
+        <td>${link.stillThere ? `${link.size} people` : 'nobody left'}</td>
+        <td>${linkGot(link)}</td>
       </tr>
       <tr><td colspan="3"><small>${escape(link.news)}</small></td></tr>`,
     )
@@ -790,25 +798,32 @@ function renderRoad(road) {
   // The end of the road is a standing fact about the camp, not a win: nothing resets
   // and nothing is taken away, so it says so plainly and stops asking for fuel.
   if (!road.next) {
-    return `<h2>The road</h2>
-      <p>All ${road.links} links. The region is as reconnected as this camp can make it.</p>
+    return `<h2>The road &mdash; all ${road.links} reached</h2>
+      <p>The region is as reconnected as this camp can make it.</p>
       <table>${reached}</table>`;
   }
 
-  const gives = [road.next.destination && 'somewhere to go', road.next.tradePost && 'a standing trade post']
-    .filter(Boolean).join(' and ') || 'word of who is out there';
+  // Said once, while it is still news. After a link or two the rule is obvious from
+  // having done it, and a page that keeps explaining itself is a page nobody reads.
+  const rule =
+    road.reached.length === 0
+      ? `<p>Fuel you put toward a place stays there until it is paid for. Then it is
+           reached, for good.</p>`
+      : '';
 
-  // The links past the next one are a count rather than a list. A picture of the whole
-  // road without reading the end of it first.
-  const beyond = road.beyond > 0
-    ? `<p><small>${road.beyond} more link${road.beyond === 1 ? '' : 's'} beyond that.</small></p>`
-    : '<p><small>The last link.</small></p>';
+  const beyond =
+    road.beyond > 0
+      ? `<p><small>${road.beyond} more after that.</small></p>`
+      : '<p><small>The last one.</small></p>';
 
-  return `<h2>The road &mdash; ${road.reached.length} of ${road.links}</h2>
+  return `<h2>The road &mdash; ${road.reached.length} of ${road.links} reached</h2>
+    ${rule}
     ${reached ? `<table>${reached}</table>` : ''}
-    <p>Next: <strong>${escape(road.next.neighbour)}</strong> &mdash; ${gives}.<br>
-       ${road.next.fuel} of ${road.next.cost} fuel sent up the road.</p>
-    ${sendFuel(road)}
+    <p>Working toward <strong>${escape(road.next.neighbour)}</strong> &mdash;
+       ${linkGot(road.next)}.<br>
+       Paid so far: ${n(road.next.fuel, 0)} of ${n(road.next.cost, 0)} fuel.
+       You have ${n(road.available, 0)}.</p>
+    ${addFuel(road)}
     ${beyond}`;
 }
 
