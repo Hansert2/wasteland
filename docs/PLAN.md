@@ -1714,6 +1714,46 @@ check in `answerMoment`: the page is a render of a moment ago and a form is what
 posted to it. The page leading a refusal is what makes it unreachable from an honest
 click, never what makes it unnecessary.
 
+#### Measured 2026-08-20: both fears, answered
+
+`tools/check-in-density.mjs` now plays the same ninety days twice, changing one thing —
+whether the camp fits its upgrades or pours every scrap of fuel into the road — and
+probing all seven verbs at every check-in.
+
+                                road first   fittings first
+      upgrades fitted                    0                3
+      fuel put into the road          1181             1222
+      links reached                      5                5
+      days to the first link           4.0              8.0
+      expeditions sent                 122              107
+      trips spent too hot to go deep    63               33
+      deaths                             3                0
+
+**Nobody-ever-fits-an-upgrade does not happen, and the reason is the one the plan hoped
+for.** The camp that spent 190 fuel on fittings put *more* fuel into the road than the
+camp that spent none — 1222 against 1181 — reached the same five links, wasted half as
+many trips being too irradiated to go anywhere worth going, and did not bury anybody.
+The road-first camp killed three survivors pushing into the Deep Zone without
+filtration. The two sinks feed each other exactly as designed: spending 60 to earn faster
+is how you reach 2252 sooner.
+
+**The check-in got thicker rather than thinner.** The floor is one verb on 1% of
+check-ins and the median is four to five, against a median of three before Phase 8. Two
+things did that, and neither is the road counter itself: a reached trade post makes
+trading possible on 63–78% of check-ins where a caravan alone managed 18%, and the road
+is something worth putting fuel into on 61–71% of them.
+
+**The honest caveat: this is one player, and the instrument had to be repaired three
+times before it measured them.** The first version dispatched off a fixed rotation and
+ignored radiation entirely — which silently rigged the whole comparison, because what
+filtration buys is radiation cleared faster in camp, and an automaton that never waits on
+radiation can never collect it. The second waited on radiation but kept the soak's gentle
+rotation, which doses so little that the threshold was crossed three times in ninety days.
+Only the third — a fuel-chaser, always sending the richest fuel region the survivor can
+currently stand — is the player this question is actually about. The before-figure for
+check-in thickness was measured on the gentle itinerary, so the "three to four or five"
+comparison carries that caveat with it.
+
 #### The tests that hold it up
 
 1. Fuel committed to a link leaves the stores and does not come back.

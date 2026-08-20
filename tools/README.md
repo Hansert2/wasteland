@@ -1,6 +1,6 @@
 # tools
 
-Not part of the game. These are the measuring instruments, kept because six times now
+Not part of the game. These are the measuring instruments, kept because seven times now
 they have found something that reasoning and a green test suite both missed:
 
 - **Filtration deleted the constraint it was designed to ease.** It scrubbed 36 rads
@@ -36,6 +36,16 @@ they have found something that reasoning and a green test suite both missed:
   before death. A `skill_combat` that softened hits would have been the intuitive first
   build and would have been scenery.
 
+- **An instrument can rig its own question, and this one did it twice.** Phase 8 was
+  built fearing that the road would swallow every scrap of fuel and no upgrade would
+  ever be fitted again. The measurement said the fear was real — until it turned out the
+  automaton dispatched on a fixed rotation and never once waited on radiation, which is
+  the entire thing filtration buys. Made radiation-aware, it still barely reached the
+  threshold, because the itinerary it inherited doses almost nothing. Only on the third
+  attempt, playing the fuel-chaser the question is actually about, did the answer come
+  out: the camp that spent 190 fuel on fittings put *more* into the road than the camp
+  that spent none, wasted half as many trips too irradiated to travel, and buried nobody
+  where the other buried three.
 The pattern worth keeping: the simulation is a pure function of `(state, now)`, so
 sixty days of play runs in milliseconds and a balance question can be answered rather
 than argued about. Before trusting a number, measure it.
