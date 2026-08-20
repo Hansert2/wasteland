@@ -74,11 +74,18 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
-    # Published on loopback only. Whatever terminates TLS — cloudflared below, or a
-    # reverse proxy on the host — reaches it here. Nothing else should: the session
-    # cookie is Secure in production, so plain HTTP from outside cannot log in anyway.
+    # Loopback by default, because whatever terminates TLS — cloudflared below, or a
+    # reverse proxy on the host — reaches it from the same box. The tunnel does not
+    # use this mapping at all: it reaches the app at http://app:3000 over the compose
+    # network, so binding wider buys nothing when the tunnel is how you get in.
+    #
+    # APP_BIND widens it anyway — 0.0.0.0 for every interface, or one address for one
+    # interface. Know what you are choosing: the session cookie is Secure in
+    # production, so a browser reaching this over plain http:// on anything other than
+    # localhost will not store it, and the login will appear to work and never stick.
+    # Widen this for a reverse proxy on another host, not to browse it directly.
     ports:
-      - "127.0.0.1:${APP_PORT:-3000}:3000"
+      - "${APP_BIND:-127.0.0.1}:${APP_PORT:-3000}:3000"
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/health || exit 1"]
       interval: 30s
