@@ -1374,6 +1374,77 @@ implements reads, to anyone planning against it, as a system that is nearly ther
 Phase 7 has not been re-justified by the time Phase 8 ships, drop them then and stop
 reasoning about a game that is not in the code.
 
+**Half-resolved on 2026-08-20, by measurement rather than by argument.** Two of the four
+have a design waiting for them below — `skill_medicine`, and whatever finally writes to
+the already-wired `skill_scavenging`. The other two do not: `skill_combat` and `stamina`
+were measured and found to be scenery, so when the drop comes it is those two that go.
+
+#### Skills: measured 2026-08-20, designed, and deliberately not built
+
+The one part of this phase worth rescuing, and the measurement that says which part.
+Written down now because the design is settled and the *timing* is what was declined —
+this is a queued piece of work, not an abandoned one.
+
+**The question was never "can we store a skill".** It is whether the survivor in front of
+you changes *which option wins*. A skill that only makes the reward bigger is a progress
+bar, and the measured complaint about this game is sameness, which a multiplier does not
+touch. `tools/skill-sensitivity.mjs` asks every moment on every trip twice — once for one
+survivor, once for another — and counts how often the answer moves:
+
+    axis                       occasions   answer changed
+    health 100 -> 60              34800       0%
+    health 100 -> 30              34800       8%
+    radiation 0 -> 55             34800      37%
+    radiation 0 -> 75             34800      44%
+    scavenging 1 -> 4             34800       5%
+    scavenging 1 -> 8             34800      10%
+    scavenging 1 -> 20            34800      18%
+
+None of that is hypothetical. `skill_scavenging` has a live reader worth +10% loot a
+point and has never been written to, so turning it up is the experiment rather than a
+simulation of one.
+
+**Build two skills, and only two.**
+
+- **`skill_medicine`**, acting on doses, thresholds and what a spend is worth. Radiation
+  moves the right answer on 44% of moments, which is where all the leverage in this game
+  is. `wind_turns` at 96% and `counter_clicks` at 95% are pure condition questions.
+- **`skill_scavenging`**, already wired, and **generous**. Level 8 — +70% loot — moves
+  one answer in ten. A cautious curve here reads as nothing at all.
+
+**Drop `skill_combat` and `stamina`.** This is the finding worth having, because damage
+mitigation is the obvious first thing anyone would build. Health at 60 changes the answer
+on *zero* of 34,800 occasions: the game already guarantees a healthy survivor cannot die —
+maximum hazard at danger 5 is 45 against 100 health — so softening hits is only a decision
+in the last few points before death, and a skill that softens them is scenery. The plan
+reached the same conclusion about these two columns for a different reason and did not act
+on it; there is now a number behind it.
+
+**What a skill would have to survive.** Two guards, both already measurable:
+
+- The bound in `moment-balance.mjs`: uplift from attending must stay under the step to the
+  next rung. Skills make attending richer, so they push on exactly that number.
+- Death currently costs one to two days of camp production *at any camp size*, and that
+  consistency is what makes starting again bearable. Skills break it — the better you have
+  played, the worse a death becomes. The road's rule is the answer: **the camp keeps some
+  of it.** Skills decay toward a floor rather than to zero, because knowledge is what a
+  camp inherits from its dead. That is the emotional core stated as a mechanic, and it is
+  the same shape as committed road progress surviving a succession.
+
+**Deliberately not built on 2026-08-20, and the reason is sequencing rather than value.**
+Phase 8 had shipped that day and had not been walked a single link. Building the next
+system before measuring the last one is exactly what retired this phase's premise — a
+design resting on an unchecked claim, four days of it, undone in an afternoon. The order
+agreed instead: teach `check-in-density` the road verb, play Phase 8 for a few days, and
+then take this up.
+
+One objection was raised against skills and does *not* stand, recorded so it is not
+raised again as though it were new: that they concentrate their whole effect on moments,
+which the soak measured at one per 180 check-ins. That figure is about a fence-line
+itinerary. A player sending long trips meets three or four moments a trip, which makes
+them among the richest things on the page rather than the rarest — and the dispatch table
+now says which regions those are.
+
 **The balance guard has to be restated before any of this is tuned.** The 36-to-72-hour
 starvation window in `test/unit/tick.test.js` is written against one survivor's
 consumption. Three survivors empty the stores three times as fast, so the guard must
