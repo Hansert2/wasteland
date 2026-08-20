@@ -13,6 +13,8 @@ import { startUpgrade } from '../../src/services/start-upgrade.js';
 import { tradeWithCaravan } from '../../src/services/trade.js';
 import { foundSettlement, raiseSuccessor } from '../../src/services/settlement-lifecycle.js';
 import { UPGRADES, upgradeCost } from '../../src/game/structures.js';
+import { commitToRoad } from '../../src/services/commit-to-road.js';
+import { LINKS, linkCost } from '../../src/game/road.js';
 import { ensureWorldEvents } from '../../src/db/world-events.js';
 import { FACTIONS } from '../../src/game/factions.js';
 import { InputError } from '../../src/errors.js';
@@ -211,6 +213,40 @@ async function checkInvariants(client, settlementId, now, label) {
   );
   assert.ok(active[0].expeditions <= 1 && active[0].crafts <= 1 && active[0].fittings <= 1,
     `${label}: queues over capacity`);
+
+  /**
+   * The road. Phase 8 shipped with unit tests and eleven database tests and was never
+   * once run through ninety days of everything else happening around it — which is the
+   * gap this file exists to close, and the gap the filtration bug lived in.
+   *
+   * Four things, all of which would fail silently: a link cannot be started before the
+   * one ahead of it is done, so the indices are contiguous from one; only one link is
+   * ever part-paid; a finished link holds at least what it cost; and nothing exists
+   * past the end of the road.
+   */
+  const { rows: road } = await client.query(
+    'select link_index, fuel, completed_at from road_links where settlement_id = $1 order by link_index',
+    [settlementId],
+  );
+
+  const open = road.filter((row) => row.completed_at === null);
+  assert.ok(open.length <= 1, `${label}: ${open.length} links part-paid at once`);
+
+  for (const [i, row] of road.entries()) {
+    const index = Number(row.link_index);
+    assert.equal(index, i + 1, `${label}: the road skips to link ${index}`);
+    assert.ok(index <= LINKS, `${label}: link ${index} is past the end of the road`);
+    assert.ok(Number(row.fuel) >= 0, `${label}: link ${index} holds ${row.fuel} fuel`);
+
+    if (row.completed_at !== null) {
+      assert.ok(
+        Number(row.fuel) >= linkCost(index),
+        `${label}: link ${index} finished on ${row.fuel} of ${linkCost(index)}`,
+      );
+    }
+  }
+
+  return road.reduce((total, row) => total + Number(row.fuel), 0);
 }
 
 test('ninety days of attentive play holds every invariant at every check-in', async () => {
@@ -231,9 +267,10 @@ test('ninety days of attentive play holds every invariant at every check-in', as
     ];
 
     let deaths = 0;
+    let roadSoFar = 0;
     const tallies = {
       raids: 0, caravans: 0, trades: 0, builds: 0, crafts: 0, fits: 0, expeditions: 0,
-      moments: 0,
+      moments: 0, links: 0,
     };
 
     for (let checkin = 0; checkin < 180; checkin++) {
@@ -242,6 +279,29 @@ test('ninety days of attentive play holds every invariant at every check-in', as
       // early-returns before the raid and caravan bookkeeping runs. No human can
       // click that fast; the automaton could.
       const now = T0 + hours(1) + checkin * hours(12) + hours(checkin % 3);
+
+      /**
+       * One death, on purpose, because ninety days of careful play never produces one.
+       *
+       * This file said "death is part of the itinerary" and it was not: measured, the
+       * attentive run buries nobody in ninety days, because the automaton retreats to
+       * the fence line whenever it is hurt or hot. So the succession path below — and
+       * every promise that hangs off a succession, including the one that says the road
+       * survives it — had never executed inside this soak at all.
+       *
+       * Not killed with an UPDATE, which was the first attempt and was wrong: it left
+       * the corpse holding an active expedition, and the queue invariant caught it. A
+       * death has to go through the tick, because the tick is what resolves the trip
+       * they were on. So the survivor is walked into a state the tick will not let them
+       * out of, and the game does the killing.
+       */
+      if (checkin === 120) {
+        await client.query(
+          `update characters set health = 3, radiation = 95
+            where settlement_id = $1 and died_at is null`,
+          [settlementId],
+        );
+      }
 
       const { events } = await advanceSettlement(client, settlementId, now);
       tallies.raids += events.filter((e) => e.type === 'raid' || e.type === 'raid_repelled').length;
@@ -296,6 +356,24 @@ test('ninety days of attentive play holds every invariant at every check-in', as
       // only exists while somebody is already out there.
       if (await answerOpenMoment(client, settlementId, now, checkin)) tallies.moments += 1;
 
+      /**
+       * Whatever is spare goes up the road, once the fittings are on.
+       *
+       * The reserve is what keeps the two sinks from starving each other, and the order
+       * is not arbitrary: `tools/check-in-density.mjs` played ninety days both ways and
+       * the camp that fitted first put *more* fuel into the road than the camp that
+       * poured everything in, because filtration buys back the waiting that would
+       * otherwise have been spent too irradiated to travel.
+       */
+      const fuel = state.settlement.resources.fuel.amount;
+      const spare = Math.floor(fuel - (tallies.fits < Object.keys(UPGRADES).length ? 80 : 0));
+      if (spare >= 1) {
+        await attempt(async () => {
+          const out = await commitToRoad(client, settlementId, spare, now);
+          if (out.completed) tallies.links += 1;
+        });
+      }
+
       // Keep somebody in the field: short trips while irradiated, the rotation otherwise.
       const region =
         state.survivor.radiation > 40 || state.survivor.health < 50
@@ -305,7 +383,15 @@ test('ninety days of attentive play holds every invariant at every check-in', as
         await pinExpeditionSeed(client, settlementId, checkin);
       }
 
-      await checkInvariants(client, settlementId, now, `check-in ${checkin}`);
+      const onTheRoad = await checkInvariants(client, settlementId, now, `check-in ${checkin}`);
+      // The road is the one thing a death may not touch. Deaths happen in this run,
+      // and successions with them, so a regression that let raiseSuccessor reach this
+      // table would show up here as progress going backwards.
+      assert.ok(
+        onTheRoad >= roadSoFar,
+        `check-in ${checkin}: road progress fell from ${roadSoFar} to ${onTheRoad}`,
+      );
+      roadSoFar = onTheRoad;
     }
 
     // The soak is about invariants, but a run where nothing happened proves nothing.
@@ -332,6 +418,12 @@ test('ninety days of attentive play holds every invariant at every check-in', as
     // Which player the windows should serve is a design question, and the dial is the
     // divisor in windowHours(). This floor only guards against them vanishing.
     assert.ok(tallies.moments > 2, `only ${tallies.moments} moments answered`);
+    // Same reasoning again: without a floor, a road that silently stopped accepting
+    // fuel would run ninety days and stay green.
+    assert.ok(tallies.links > 0, `ninety days reached ${tallies.links} links`);
+    // The deliberate death above must actually have been taken over from, or half the
+    // invariants below it are being checked against a camp that never lost anybody.
+    assert.ok(deaths > 0, `nobody died, so succession went unexercised`);
 
     const final = await loadWorld(client, settlementId);
     const levels = final.settlement.structures.reduce((t, s) => t + s.level, 0);
