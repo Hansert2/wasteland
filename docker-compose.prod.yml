@@ -101,7 +101,12 @@ services:
     restart: unless-stopped
     command: tunnel --no-autoupdate run
     environment:
-      TUNNEL_TOKEN: ${TUNNEL_TOKEN:?set TUNNEL_TOKEN in .env.prod, or run without --profile tunnel}
+      # Plain interpolation with an empty default, and not the `:?` required form.
+      # Compose interpolates the whole file before it applies profiles, so a required
+      # variable here aborts `up` even for someone who never asked for this service.
+      # Found by someone standing the stack up without the tunnel and being refused.
+      # Empty is only a problem if you actually start it, and cloudflared says so.
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
     depends_on:
       app:
         condition: service_healthy
