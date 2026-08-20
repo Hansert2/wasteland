@@ -76,6 +76,90 @@ Everything else is already safe for concurrency, and deliberately so:
   wins the insert and `on conflict do nothing` making the loser correct.
 - Every queue-of-one is a partial unique index in the database, not a check in code.
 
+## Self-hosting on a Debian VM
+
+The recommended path if you have your own hardware, and the one this repo is set up
+for: `docker-compose.prod.yml` runs the app, its database and a way in, on one box.
+
+It is a small machine's worth of work — **1 vCPU, 1GB RAM, 8GB disk** is comfortable.
+There is no build step, no background worker and no disk state; the heaviest query
+reads one camp.
+
+### The box
+
+Docker inside an LXC container works but wants `nesting=1` and `keyctl=1`, so a small
+VM is less fiddly. On Debian, from the official repository rather than the distro's
+older package:
+
+```
+curl -fsSL https://get.docker.com | sh
+sudo usermod -aG docker "$USER"     # log out and back in
+```
+
+### Standing it up
+
+```
+git clone <your remote> wasteland && cd wasteland
+cp .env.prod.example .env.prod      # set POSTGRES_PASSWORD at minimum
+docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+curl -s localhost:3000/health       # {"status":"ok"}
+```
+
+Migrations and the seed run in their own service before the app starts, which is the
+compose equivalent of the release command in `fly.toml` and has the same property: a
+failed migration stops the deploy rather than half-applying it. Both are idempotent,
+so this is also the upgrade procedure — `git pull` and repeat the same command.
+
+**Never scale the `app` service.** The credential rate limiter counts in memory, so a
+second replica is a second counter and twice the allowance.
+
+### Getting to it from outside
+
+The app publishes on `127.0.0.1` only. Something in front has to terminate TLS,
+because session cookies are `Secure` in production — over plain HTTP the login form
+appears to work and nobody stays logged in.
+
+A **Cloudflare Tunnel** is the least invasive answer, and it is in the compose file
+behind a profile:
+
+```
+docker compose -f docker-compose.prod.yml --env-file .env.prod --profile tunnel up -d
+```
+
+The connector dials out, so nothing inbound is opened at all — no port forward, no
+certificate to renew, and Cloudflare Access in front of the hostname if the game
+should stay private. A reverse proxy with Let's Encrypt does the same job and costs a
+hole in the perimeter instead.
+
+Either way `TRUST_PROXY` must be the real number of hops — one tunnel or one proxy is
+`1`, nothing in front is unset. Check `req.ip` once after standing it up rather than
+assuming: Cloudflare puts the caller in `CF-Connecting-IP`, and the `X-Forwarded-For`
+chain has an extra hop.
+
+### The clock, which matters more here than in most places
+
+The game's whole premise is resolving elapsed time on page load, so a jump *forwards*
+silently simulates that time. A container inherits the host clock; a VM needs its own
+NTP or the QEMU guest agent's time sync. Keep it running.
+
+This is worth knowing before the first snapshot: rolling a VM back and then forward,
+or restoring a database backup into a much later clock, means the next page load
+resolves everything in between. That is the design working exactly as intended, and it
+will still surprise you once.
+
+### Backups
+
+`pg_dump` on a schedule, not only a hypervisor snapshot:
+
+```
+docker compose -f docker-compose.prod.yml exec -T db \
+  pg_dump -U wasteland wasteland | gzip > wasteland-$(date +%F).sql.gz
+```
+
+A snapshot of a running Postgres is a crash-consistent copy and recovers like a power
+cut; a dump is a copy of the game. There is no other state anywhere — no uploads, no
+cache, no files — and the game has no undo.
+
 ## Deploying to Fly
 
 `Dockerfile` is host-agnostic — the same image runs on Render or Railway, and moving

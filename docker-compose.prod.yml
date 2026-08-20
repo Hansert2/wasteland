@@ -1,0 +1,111 @@
+# Self-hosted stack: the app, its database, and a way in.
+#
+# The development file beside this one runs Postgres only, because Node runs on the
+# Windows host there. This one runs everything, and the differences from dev are all
+# deliberate:
+#
+#   - The database publishes no port. Nothing outside this network needs to reach it,
+#     and in dev it is exposed only so Node on Windows can find it.
+#   - Migrations run to completion *before* the app starts, in their own service. That
+#     is the compose equivalent of the release command in fly.toml, and it has the same
+#     property: a failed migration stops the deploy instead of half-applying it.
+#   - Everything restarts unless stopped, because there is nobody watching.
+#
+# Usage:
+#
+#   cp .env.prod.example .env.prod && edit it
+#   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+#
+# One instance. Never scale the `app` service: the credential rate limiter counts in
+# memory, so a second replica is a second counter and twice the allowance. The fix is
+# noted in src/web/rate-limit.js.
+
+name: wasteland
+
+services:
+  db:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-wasteland}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.prod}
+      POSTGRES_DB: ${POSTGRES_DB:-wasteland}
+    volumes:
+      # Mount point is /var/lib/postgresql, NOT .../data — Postgres 18 images store
+      # data in a major-version subdirectory so that `pg_upgrade --link` does not have
+      # to cross a mount boundary. Mounting .../data makes 18+ refuse to start.
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-wasteland} -d ${POSTGRES_DB:-wasteland}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # Runs once and exits. The app waits for it to succeed, so a schema change that
+  # fails takes the deploy down with it rather than letting a half-migrated app serve
+  # traffic. Seeding runs here too: it upserts content by natural key, which is how a
+  # balance change to regions or recipes reaches a running game.
+  migrate:
+    build: .
+    command: sh -c "node src/db/migrate.js && node src/db/seed.js"
+    restart: "no"
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-wasteland}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-wasteland}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  app:
+    build: .
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-wasteland}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-wasteland}
+      NODE_ENV: production
+      PORT: 3000
+      # The number of proxies in front of this process, and it must be the truth.
+      # Express takes the caller's address from X-Forwarded-For when this is set, and
+      # that header is caller-supplied: trusting a hop that does not exist lets anyone
+      # claim any address and walk through the rate limiter. One tunnel or one reverse
+      # proxy is 1. Nothing in front at all is unset.
+      TRUST_PROXY: ${TRUST_PROXY:-1}
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    # Published on loopback only. Whatever terminates TLS — cloudflared below, or a
+    # reverse proxy on the host — reaches it here. Nothing else should: the session
+    # cookie is Secure in production, so plain HTTP from outside cannot log in anyway.
+    ports:
+      - "127.0.0.1:${APP_PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # The way in, and the reason there is no port forward on the router.
+  #
+  # Optional: bring it up with `--profile tunnel`. Cloudflare terminates TLS at the
+  # edge and this connector dials out, so nothing inbound is opened at all — which
+  # also solves the requirement that the app be served over HTTPS or nobody stays
+  # logged in. Put Cloudflare Access in front of the hostname to keep it private.
+  #
+  # Verify req.ip once after standing this up rather than assuming: Cloudflare puts
+  # the caller in CF-Connecting-IP, and the X-Forwarded-For chain has an extra hop.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    profiles: ["tunnel"]
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:?set TUNNEL_TOKEN in .env.prod, or run without --profile tunnel}
+    depends_on:
+      app:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+    name: wasteland_pgdata
