@@ -1,6 +1,6 @@
 # tools
 
-Not part of the game. These are the measuring instruments, kept because five times now
+Not part of the game. These are the measuring instruments, kept because six times now
 they have found something that reasoning and a green test suite both missed:
 
 - **Filtration deleted the constraint it was designed to ease.** It scrubbed 36 rads
@@ -27,6 +27,14 @@ they have found something that reasoning and a green test suite both missed:
   The same run retired the premise Phase 7 was designed against: every camp verb guards
   on *alive*, not *home*, so a check-in is never empty and freeing the trip slot would
   change one bucket on 12% of visits.
+
+- **The obvious skills system would have been the flavour one.** Before designing skills
+  a sixth time, the question was measured: does the survivor in front of you change which
+  option wins? Radiation changes it on 44% of moments and a loot skill on 18% — but
+  health at 60 changes it on *none*, because the game already guarantees a healthy
+  survivor cannot die, so damage mitigation is a decision only in the last few points
+  before death. A `skill_combat` that softened hits would have been the intuitive first
+  build and would have been scenery.
 
 The pattern worth keeping: the simulation is a pure function of `(state, now)`, so
 sixty days of play runs in milliseconds and a balance question can be answered rather
@@ -60,6 +68,7 @@ they need the wrapper that brings Postgres up:
 node scripts/with-db.mjs node --env-file=.env tools/region-balance.mjs
 node scripts/with-db.mjs node --env-file=.env tools/moment-balance.mjs
 node scripts/with-db.mjs node --env-file=.env tools/check-in-density.mjs
+node scripts/with-db.mjs node --env-file=.env tools/skill-sensitivity.mjs
 ```
 
 **`moment-balance.mjs` carries a value function, and it is the arguable part.** Options
