@@ -235,7 +235,31 @@ const long = regions.filter((region) => momentsFor(region, 1).length > 0);
 console.log('\n=== 1. What attending is worth ===\n');
 console.log(`  Value counts loot, plus finds at ${FIND}, less rads at ${RAD} and damage at ${DAMAGE}.`);
 console.log('  Those conversions are derived at the top of this file, and arguable.\n');
-console.log('  region                 moments   unattended   attended   uplift   step to rung');
+/**
+ * One list of widths for the heading and the rows, so a clearer word cannot silently
+ * push a column off its numbers — which is exactly what happened the first time these
+ * were renamed by hand.
+ */
+const COLS = [
+  ['region', 22, 'end'],
+  ['moments', 9, 'start'],
+  ['left alone', 13, 'start'],
+  ['answered', 11, 'start'],
+  ['answering adds', 16, 'start'],
+  ['a better region adds', 22, 'start'],
+];
+
+const row = (values) =>
+  '  ' +
+  values
+    .map((value, i) =>
+      COLS[i][2] === 'end'
+        ? String(value).padEnd(COLS[i][1])
+        : String(value).padStart(COLS[i][1]),
+    )
+    .join('');
+
+console.log(row(COLS.map(([label]) => label)));
 
 const unattended = new Map();
 for (const region of long) unattended.set(region.slug, run(region, survivor()));
@@ -275,19 +299,22 @@ for (const [index, region] of long.entries()) {
   );
 
   console.log(
-    '  ' +
-      region.name.padEnd(22) +
-      String(momentsFor(region, 1).length).padStart(4) +
-      base.toFixed(1).padStart(13) +
-      best.toFixed(1).padStart(11) +
-      `${((best / base - 1) * 100).toFixed(1)}%`.padStart(9) +
-      (step === null ? '        —' : `${(step * 100).toFixed(0)}%`.padStart(9)) +
-      (peers.length > 0 ? `   beside ${peers.map((p) => p.name).join(', ')}` : ''),
+    row([
+      region.name,
+      momentsFor(region, 1).length,
+      base.toFixed(1),
+      best.toFixed(1),
+      `${((best / base - 1) * 100).toFixed(1)}%`,
+      step === null ? '—' : `${(step * 100).toFixed(0)}%`,
+    ]) + (peers.length > 0 ? `   or ${peers.map((p) => p.name).join(', ')}, worth the same` : ''),
   );
 }
 
-console.log('\n  The bound: uplift must sit under the step to the next rung, or');
-console.log('  attending a trip out-earns a region that does not exist. Regions');
+console.log('\n  Read it as: a trip here is worth this much left alone, this much if');
+console.log('  somebody answers its moments, and answering is worth this much more.');
+console.log('  The last column is what going somewhere better would be worth instead.');
+console.log('\n  Answering must stay worth less than moving on, or the map stops');
+console.log('  mattering and the best play is to grind one region carefully. Regions');
 console.log(`  within ${SAME_RUNG * 100}% of each other share a rung — a choice, not a step.\n`);
 
 console.log('=== 2. Does a healthy survivor still come home? ===\n');

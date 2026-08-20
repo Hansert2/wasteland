@@ -10,6 +10,38 @@ This file is that plan, written down after the fact so it stops living only in a
 conversation. Where the code departed from the original sketch, the departure is
 recorded here rather than quietly forgotten.
 
+## The words this file coined, and what they mean
+
+Written down after a reader had to ask what two of them meant. Most of this document is
+prose that explains itself; these are the handful of terms it invented and then went on
+using as though they were obvious. A name that does not say what the thing does is a name
+that costs every later reader a paragraph.
+
+- **The fuel track** — the upgrades that are paid for in fuel rather than scrap: the
+  radio, filtration, the machine shop. Called a *track* because it runs alongside the
+  scrap one and buys a different kind of thing. Where the sentence would be clearer
+  saying **fittings**, it should say fittings.
+- **A fitting** — one of those upgrades, and the verb for installing it. A structure is
+  *built* to a level; an upgrade is *fitted*, once, with no levels.
+- **A moment**, called **contact** on the page — a decision offered mid-expedition, in a
+  window, which the survivor answers for themselves if nobody is looking. The code says
+  moment and the page says contact, deliberately: one is what the thing is, the other is
+  what a survivor on a radio would call it.
+- **Attending** — loading the page while a moment's window is open and answering it.
+  *Unattended* is the same trip with nobody watching, which is the pre-Phase-6 game and
+  the baseline every measurement is taken against.
+- **Uplift** — how much more a trip is worth because somebody answered its moments.
+  Attended value over unattended value. It is a ceiling rather than a likely figure: the
+  measurement takes the greediest possible answers.
+- **A rung** — a group of regions worth roughly the same per trip, within ten percent.
+  The map is not a ladder of ten distinct steps; it is five rungs with two places on most
+  of them, so moving between two regions of equal value is a *choice*, not progress.
+- **The bound** — the rule that uplift must stay under the step to the next rung.
+  Attending a trip must not out-earn going somewhere better, or the map stops mattering
+  and the right play is to grind the region you already have, carefully.
+- **The road** — Phase 8. Seven links, paid for in fuel, each reconnecting the camp to
+  somewhere that was out there all along.
+
 ## The load-bearing decisions
 
 These are the ones that are painful to retrofit, so they are settled first.
@@ -1616,10 +1648,21 @@ rule on something which is neither a timer nor a resource bar.
 
 #### What could go wrong, and how we would know
 
-- **The road eats the fuel track.** If every scrap of fuel goes to the road, filtration
-  and the machine shop are never fitted and the second currency quietly becomes a
-  single-purpose token. Measured rather than assumed: a soak that plays a road-focused
-  camp against a fitting-focused one and compares what each can do.
+- **Nobody ever fits an upgrade again.** The road costs 2252 fuel and all three
+  fittings together cost 190, so the road is twelve times the size of everything else
+  fuel can buy — and it is the only one of the two with a counter that visibly moves.
+  If that framing wins, filtration and the machine shop are simply never fitted: no
+  error, no warning, just a whole system sitting on the page unused while fuel becomes
+  a token for buying links.
+
+  It may well be fine. Filtration pays for itself in fuel — it cuts radiation waiting
+  from two days to under one, which is more trips, which is more fuel — so spending 60
+  to earn faster is how a thinking player reaches 2252 sooner. Which of those two
+  actually happens over months is not something to reason out: run ninety days of a
+  camp that sends every scrap of fuel up the road against one that fits everything
+  first, and see which is further along the road at the end. If the fittings-first camp
+  wins, the two sinks feed each other and the design holds. If it loses, the early
+  links are priced too cheaply against the upgrades.
 - **The check-in gets thinner, not thicker.** The road is a place fuel goes, not a new
   verb per visit — if it becomes the only thing worth looking at, the phase has made the
   page emptier while claiming to give it a destination. `tools/check-in-density.mjs`
