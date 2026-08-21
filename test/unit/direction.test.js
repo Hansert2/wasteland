@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { STEPS, directionFor } from '../../src/game/direction.js';
+import { CONDITIONS, STEPS, directionFor } from '../../src/game/direction.js';
 
 /** A camp that has been round the loop and needs telling nothing. */
 const VETERAN = {
@@ -40,15 +40,27 @@ test('the far step is the one that says what a long trip costs', () => {
   assert.match(step.line, /closing the tab/, 'the whole point: it is an idle loop, not an active one');
 });
 
-test('a camp that has been round the loop is told nothing', () => {
-  assert.equal(directionFor(VETERAN), null);
+const STEP_KEYS = STEPS.map((step) => step.key);
+
+test('a camp that has been round the loop is done being taught', () => {
+  // The chain leaves for good. What speaks after it is a reading of the camp, never
+  // another lesson about the game.
+  const step = directionFor(VETERAN);
+  assert.ok(step === null || !STEP_KEYS.includes(step.key), JSON.stringify(step));
 });
 
-test('and stays told nothing after a successor knocks the structures back', () => {
+test('and stays done after a successor knocks the structures back', () => {
   // SUCCESSOR_STRUCTURE_LOSS takes two levels off everything, which can put a veteran
   // camp under workshop two. State alone would sit it down and teach it about the
   // bench again; the three history facts are what stop that.
-  assert.equal(directionFor({ ...VETERAN, workshopLevel: 0 }), null);
+  const step = directionFor({ ...VETERAN, workshopLevel: 0 });
+  assert.ok(step === null || !STEP_KEYS.includes(step.key), JSON.stringify(step));
+});
+
+test('an unknown camp is not told it is undefended', () => {
+  // Number(undefined) is NaN and NaN < 6 is false, so a missing wealth used to fall
+  // straight through the guard and announce that nothing turned raiders back.
+  assert.equal(directionFor(VETERAN), null);
 });
 
 test('falling into the trap on turn one does not switch the chain off', () => {
@@ -70,5 +82,96 @@ test('every step has a line, and no step is a checklist item', () => {
     const line = step.line(facts);
     assert.match(line, /\.$/, `${step.key} is a sentence`);
     assert.doesNotMatch(line, /\d+ *(scrap|fuel|water|food)\b/, `${step.key} prices nothing`);
+  }
+});
+
+/** A camp past the chain, in good order, with nothing to say about it. */
+const settled = (over = {}) => ({
+  ...VETERAN,
+  stores: [
+    { kind: 'food', amount: 200, cap: 500, ratePerHour: 1.2 },
+    { kind: 'water', amount: 200, cap: 500, ratePerHour: 2.5 },
+    { kind: 'scrap', amount: 100, cap: 500, ratePerHour: 1.5 },
+    { kind: 'fuel', amount: 0, cap: 500, ratePerHour: 0 },
+  ],
+  wealth: 20,
+  defence: 24,
+  upgrade: null,
+  lowest: { kind: 'workshop', level: 3, next: '+1.5 scrap/h' },
+  ...over,
+});
+
+test('a store on its way to empty is the first thing said, with the hour', () => {
+  const step = directionFor(settled({
+    stores: [{ kind: 'water', amount: 6, cap: 500, ratePerHour: -0.5 }],
+  }));
+
+  assert.equal(step.key, 'running_out');
+  assert.match(step.line, /about 12 hours/);
+  assert.match(step.line, /water purifier/, 'and names the one structure that answers it');
+});
+
+test('a rate that will not empty the stores this side of tomorrow is not news', () => {
+  const step = directionFor(settled({
+    stores: [{ kind: 'food', amount: 400, cap: 500, ratePerHour: -0.4 }],
+  }));
+
+  assert.notEqual(step.key, 'running_out', 'a thousand hours out is not a warning');
+});
+
+test('production about to be thrown away is warned before it is being thrown away', () => {
+  // Measured on a real camp: water at 499 of 600, rising at 5.5 an hour. A threshold
+  // on percent-full gives half an hour of notice on a build that takes longer; the
+  // forecast gives eighteen, which is time to do something about it.
+  const soon = directionFor(settled({
+    stores: [{ kind: 'water', amount: 595, cap: 600, ratePerHour: 1 }],
+  }));
+  assert.equal(soon.key, 'overflowing');
+  assert.match(soon.line, /reaches the cap in about 5 hours/);
+  assert.match(soon.line, /shelter/);
+
+  const already = directionFor(settled({
+    stores: [{ kind: 'food', amount: 600, cap: 600, ratePerHour: 1.2 }],
+  }));
+  assert.equal(already.key, 'overflowing');
+  assert.match(already.line, /being thrown away by the hour/);
+
+  const roomy = directionFor(settled({
+    stores: [{ kind: 'water', amount: 100, cap: 600, ratePerHour: 1 }],
+  }));
+  assert.notEqual(roomy.key, 'overflowing', 'five hundred hours of headroom is not news');
+});
+
+test('a camp worth robbing hears how often the fence actually turns them back', () => {
+  // The figure has to come from raids.js or the page promises a number the raid does
+  // not roll against. Eight defence is 8/40, which is a fifth.
+  const step = directionFor(settled({ wealth: 20, defence: 8 }));
+
+  assert.equal(step.key, 'undefended');
+  assert.match(step.line, /one in 5/);
+});
+
+test('and a camp with nothing worth taking is not nagged about a watchtower', () => {
+  const step = directionFor(settled({ wealth: 2, defence: 0 }));
+  assert.notEqual(step.key, 'undefended');
+});
+
+test('a camp in good order gets its position, not an order', () => {
+  const step = directionFor(settled());
+
+  assert.equal(step.key, 'standing');
+  assert.match(step.line, /Nothing pressing/);
+  assert.match(step.line, /workshop is the least of the camp at level 3/);
+  // The line that would answer the question the game exists to ask.
+  assert.doesNotMatch(step.line, /\bbuild\b|\bshould\b|\bnext\b/i);
+});
+
+test('every condition reads a camp it was not given, without throwing', () => {
+  // These run on every page load for every camp, including ones missing facts a future
+  // caller forgot to pass. A crash here takes the whole page with it.
+  for (const condition of CONDITIONS) {
+    for (const facts of [{}, { stores: [] }, { stores: [{}] }, { wealth: null, defence: null }]) {
+      assert.doesNotThrow(() => condition.read(facts), `${condition.key} on ${JSON.stringify(facts)}`);
+    }
   }
 });

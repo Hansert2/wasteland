@@ -7,6 +7,7 @@ import { advanceSettlement } from '../../src/services/advance-settlement.js';
 import { viewCamp } from '../../src/services/view-camp.js';
 import { campPage } from '../../src/web/render.js';
 import { STRUCTURES } from '../../src/game/structures.js';
+import { STEPS } from '../../src/game/direction.js';
 
 const T0 = Date.UTC(2287, 0, 1);
 const hours = (h) => h * 60 * 60 * 1000;
@@ -475,7 +476,7 @@ test('the advice for a new camp is derived from what the camp has actually done'
   });
 });
 
-test('the advice stops for good once the camp has been round the loop', async () => {
+test('the lesson stops for good once the camp has been round the loop', async () => {
   await withRollback(async (client) => {
     // And stays stopped through a successor knock. Two of the five steps can only be
     // asked of the camp as it stands, and a successor takes two levels off everything
@@ -500,8 +501,13 @@ test('the advice stops for good once the camp has been round the loop', async ()
     );
 
     const view = await viewCamp(client, settlementId, T0);
-    assert.equal(view.direction, null, 'no workshop, and still nothing to say');
-    assert.doesNotMatch(campPage(view), /<h2>Next<\/h2>/, 'and no empty block where it was');
+
+    // The block itself does not stop — it goes on reading the camp's numbers for as
+    // long as there is something worth saying. What stops is being taught the game.
+    assert.ok(
+      view.direction === null || !STEPS.some((step) => step.key === view.direction.key),
+      `still being taught: ${JSON.stringify(view.direction)}`,
+    );
   });
 });
 

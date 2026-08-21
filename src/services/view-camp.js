@@ -659,12 +659,60 @@ export async function viewCamp(client, settlementId, now = Date.now()) {
     [settlementId],
   );
 
+  /**
+   * The first fitting the camp could pay for right now, if any.
+   *
+   * Affordable *and* unlocked *and* not already in flight — an upgrade the crew is
+   * halfway through fitting is not something to go and do. Priced in stores alone, the
+   * same as the row that offers the button.
+   */
+  const fittable = structures
+    .map((structure) => ({ structure, branch: upgradeFor(structure.kind) }))
+    .find(
+      ({ structure, branch }) =>
+        branch &&
+        !fitted.has(branch.slug) &&
+        beingFitted === null &&
+        Number(structure.level) >= branch.requiresLevel &&
+        Number(state.settlement.resources.fuel?.amount ?? 0) >= branch.fuel,
+    );
+
+  /**
+   * The least of the camp, among the structures whose next level is unarguably better.
+   *
+   * The watchtower is deliberately not a candidate. It sits at level 0 in most camps
+   * and would therefore be the permanent answer, and whether it is worth anything is a
+   * question about wealth that the `undefended` condition already asks properly.
+   */
+  const lowest = structures
+    .filter((structure) => STRUCTURES[structure.kind]?.defencePerLevel === undefined)
+    .sort((a, b) => Number(a.level) - Number(b.level))[0];
+
   const direction = directionFor({
     hasSurvivor: Boolean(state.survivor),
     workshopLevel,
     ranShort: seen[0].ran_short,
     ranLong: seen[0].ran_long,
     everCrafted: seen[0].ever_crafted,
+    // The camp as it stands, for the half of the advice that never stops. Stores carry
+    // the net rate rather than the gross one, so a forecast off it says what the page
+    // says — see the note on `resources` below, which fixed exactly that once already.
+    stores: Object.entries(state.settlement.resources).map(([kind, r]) => ({
+      kind,
+      amount: Number(r.amount),
+      cap: Number(r.cap),
+      ratePerHour: netRates[kind] ?? 0,
+    })),
+    wealth: campWealth(structures, state.settlement.resources),
+    defence: campDefence(structures),
+    upgrade: fittable ? fittable.branch.name : null,
+    lowest: lowest
+      ? {
+          kind: lowest.kind.replaceAll('_', ' '),
+          level: Number(lowest.level),
+          next: structureEffect(lowest.kind, Number(lowest.level) + 1),
+        }
+      : null,
     // Named rather than described, so the advice points at a row on the table below it
     // instead of at a duration the player has to go and match up themselves.
     shortestRegion: regions.reduce(

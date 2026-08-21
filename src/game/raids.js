@@ -23,7 +23,7 @@ const SLOWEST_INTERVAL_HOURS = 240;
 const FASTEST_INTERVAL_HOURS = 48;
 
 /** Below this much wealth, raiders have to be lucky to find anything worth carrying. */
-const NOT_WORTH_THE_WALK = 6;
+export const NOT_WORTH_THE_WALK = 6;
 
 /** The most of a store a raid can carry off, before defence is taken into account. */
 const MAX_SHARE_TAKEN = 0.35;
@@ -76,6 +76,18 @@ export function nextRaidAt(since, wealth, seed, index, tempo = 1) {
  * @param {{repelBonus: number, softening: number, shareBoost: number}} [args.temper]
  *        standing's effect — `raidTemper`, neutral when omitted
  */
+/**
+ * How often raiders come as far as the fence and think better of it.
+ *
+ * Exported because the camp page has to answer "is the tower worth another level"
+ * with the same number the raid itself will roll against. A second copy of
+ * `defence / 40` living in the advice would drift the first time this is tuned, and
+ * would drift silently — the page would promise a figure raids no longer use.
+ */
+export function repelChance(defence, bonus = 0) {
+  return Math.min(MAX_REPEL_CHANCE, Math.max(0, Number(defence) || 0) / DEFENCE_FOR_REPEL + bonus);
+}
+
 export function resolveRaid({ wealth, defence, resources, survivor, seed, crew, temper }) {
   const random = makeRandom(seed);
   const log = [];
@@ -85,11 +97,7 @@ export function resolveRaid({ wealth, defence, resources, survivor, seed, crew, 
   // A tower does not merely soften a raid; often enough it means there is no raid.
   // This is the watchtower's whole job — and a friendly crew finds its own reasons
   // to think better of it, which is standing doing the same job for free.
-  const repelChance = Math.min(
-    MAX_REPEL_CHANCE,
-    Math.max(0, defence) / DEFENCE_FOR_REPEL + t.repelBonus,
-  );
-  if (chance(random, repelChance)) {
+  if (chance(random, repelChance(defence, t.repelBonus))) {
     log.push(`${who} came as far as the fence, thought better of it, and moved on.`);
     return { repelled: true, taken: {}, damage: 0, log };
   }
