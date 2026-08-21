@@ -175,3 +175,35 @@ test('every condition reads a camp it was not given, without throwing', () => {
     }
   }
 });
+
+test('a camp with nothing to do before they are back is told so, and only then', () => {
+  const dead = { awayHours: 12, opensBeforeReturn: 0 };
+
+  assert.equal(directionFor(settled(dead)).key, 'idle');
+  assert.match(directionFor(settled(dead)).line, /before they are back/);
+
+  // Every condition above it is something the camp could be doing, so reaching the
+  // idle line at all means there was nothing. A camp that can fit an upgrade does not
+  // have a dead evening and must not be told it has one.
+  assert.equal(directionFor(settled({ ...dead, upgrade: 'Filtration' })).key, 'fittable');
+  assert.equal(
+    directionFor(settled({
+      ...dead,
+      stores: [{ kind: 'water', amount: 6, cap: 500, ratePerHour: -0.5 }],
+    })).key,
+    'running_out',
+  );
+});
+
+test('a door opening before the return means the evening is not dead', () => {
+  const step = directionFor(settled({ awayHours: 12, opensBeforeReturn: 1 }));
+  assert.equal(step.key, 'standing');
+});
+
+test('an overdue trip is no trip, because they are already home', () => {
+  // The block this replaced filtered its plan by hours-left, which goes negative when a
+  // trip runs over — so everything dropped out and it announced a dead evening to a
+  // camp whose survivor was standing in it.
+  assert.equal(directionFor(settled({ awayHours: 0, opensBeforeReturn: 0 })).key, 'standing');
+  assert.equal(directionFor(settled({ awayHours: null, opensBeforeReturn: null })).key, 'standing');
+});

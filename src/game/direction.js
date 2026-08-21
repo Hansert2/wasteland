@@ -163,6 +163,23 @@ export const CONDITIONS = [
         : null,
   },
   {
+    key: 'idle',
+    /**
+     * The sentence this whole week started from, and the only part of the old
+     * "Meanwhile, at camp" block that could not be said anywhere else.
+     *
+     * Last, and that placement is the argument: every condition above it is something
+     * the camp can be doing, so reaching here at all means there was nothing. A camp
+     * that can fit an upgrade or is about to lose production over the cap does not have
+     * a dead evening, and does not get told it has one.
+     */
+    read: (facts) =>
+      Number(facts.awayHours) > 0 && facts.opensBeforeReturn === 0
+        ? 'Nothing the camp can pay for before they are back. Whatever happens next ' +
+          'comes home with them.'
+        : null,
+  },
+  {
     key: 'standing',
     read: (facts) =>
       facts.lowest

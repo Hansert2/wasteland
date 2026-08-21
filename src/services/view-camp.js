@@ -625,6 +625,22 @@ export async function viewCamp(client, settlementId, now = Date.now()) {
         (recipe.inputs ?? []).some((input) => (pack.get(input.slug) ?? 0) < input.qty),
     })),
     ...(road.next ? [{ what: `the road to ${road.next.neighbour}`, costs: { fuel: road.next.cost } }] : []),
+    // Fittings, which this list did not have until the two halves of the page were read
+    // side by side and disagreed out loud: the advice said there was fuel enough for the
+    // Radio while the forecast beneath it said the camp could pay for nothing at all.
+    // Both were computed honestly off different lists, which is the worst kind of wrong.
+    ...structures.flatMap((structure) => {
+      const branch = upgradeFor(structure.kind);
+      return branch && !fitted.has(branch.slug)
+        ? [{
+            what: branch.name,
+            costs: { fuel: branch.fuel },
+            // A fitting under its level is waiting on a build, not on an hour — the
+            // same rule the bench recipes get.
+            blocked: Number(structure.level) < branch.requiresLevel,
+          }]
+        : [];
+    }),
   ];
 
   const plans = planFor(doors, have, netRates);
@@ -706,6 +722,18 @@ export async function viewCamp(client, settlementId, now = Date.now()) {
     wealth: campWealth(structures, state.settlement.resources),
     defence: campDefence(structures),
     upgrade: fittable ? fittable.branch.name : null,
+    // The trip, for the one condition that is about the evening rather than the camp.
+    // Clamped at zero so an overdue trip reads as no trip: the survivor is effectively
+    // home, and telling the player nothing can happen before they are back is false the
+    // moment they already are.
+    awayHours: expedition
+      ? Math.max(0, (new Date(expedition.returnsAt).getTime() - now) / HOUR_MS)
+      : null,
+    opensBeforeReturn: expedition
+      ? openWithin(plans, (new Date(expedition.returnsAt).getTime() - now) / HOUR_MS).filter(
+          (plan) => plan.inHours > 0,
+        ).length
+      : null,
     lowest: lowest
       ? {
           kind: lowest.kind.replaceAll('_', ' '),

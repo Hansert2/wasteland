@@ -687,7 +687,7 @@ function renderExpeditions(view) {
       lines.push('What came of that comes home with them.');
     }
 
-    return `<h2>Away</h2><p>${lines.join('<br>')}</p>${renderMeanwhile(view.plans, hoursLeft)}${momentAlarm(trip)}`;
+    return `<h2>Away</h2><p>${lines.join('<br>')}</p>${momentAlarm(trip)}`;
   }
 
   const rows = view.regions
@@ -773,57 +773,29 @@ function momentAlarm(trip) {
 }
 
 /**
- * What the camp can pay for while the survivor is gone, and when.
+ * What the camp can do while they are gone, on the table where the trip is still a
+ * choice.
  *
- * The dead-evening fix, and it is a page fix rather than a balance one on purpose.
- * A new camp opens with ten scrap, spends nine of it on two builds that finish in
- * sixty-six seconds, and is then left at half a scrap an hour against a cheapest next
- * door of five — eight hours of nothing, and no way to know that from the page. The
- * numbers were all there; the subtraction was the player's problem.
+ * **A count, and it must stay a count.** There was a companion to this in the Away
+ * report — the same plan rendered as a list of four doors and the hour each opened —
+ * and it was removed on 2026-08-21 after being read beside the Next block, which
+ * disagreed with it out loud. Three faults, and the third is the one that matters:
  *
- * Three shapes, and the third is the one that matters: **nothing, and nothing coming**
- * is not a shorter version of "here is your list", it is a different situation and gets
- * a different sentence. A player told that outright can go and do something else, which
- * is a far better evening than reloading a page that was never going to change.
+ * - The plan's door list had no fittings in it, so the advice offered the Radio while
+ *   the list beneath said the camp could pay for nothing. Fixed, and it was a real bug
+ *   — this column was wrong too.
+ * - An overdue trip has negative hours left, so every door filtered out and the block
+ *   announced a dead evening to a camp whose survivor was already home.
+ * - **`planFor` is greedy cheapest-first, which is honest for a count and misleading as
+ *   a list.** Spending ten fuel on a Rad Scrubber puts the Radio out of reach, so the
+ *   Radio is dropped — correct, since the camp cannot have both, and useless to read,
+ *   since it silently picks one branch of a fork and never mentions the other.
  *
- * Capped at four. This is meant to be read at a glance and acted on now, and a plan
- * eleven items deep is a spreadsheet — the things past the fourth are hours away and
- * will still be here when the fourth is done.
- */
-function renderMeanwhile(plans, hoursLeft) {
-  if (!plans) return '';
-
-  // Half-open against the return for the same reason the region column is: a door that
-  // opens as they walk back through the gate is not something you did while they were
-  // away, it is something you do with them home and a fresh haul in the stores.
-  const within = plans.filter((plan) => plan.inHours < hoursLeft);
-
-  if (within.length === 0) {
-    return `<p><small>Nothing the camp can pay for before they are back.
-      Whatever happens next comes home with them.</small></p>`;
-  }
-
-  const rows = within
-    .slice(0, 4)
-    .map(
-      (plan) => `<tr>
-        <th>${escape(plan.what)}</th>
-        <td>${plan.inHours <= 0 ? 'now' : `in ${escape(duration(plan.inHours))}`}</td>
-      </tr>`,
-    )
-    .join('');
-
-  return `<p><small>Meanwhile, at camp:</small></p><table>${rows}</table>`;
-}
-
-/**
- * The same fact on the dispatch table, where the trip is still a choice.
- *
- * A count rather than a list, because this is one cell in a table whose job is
- * comparing seven places — and because the interesting reading is binary. Anything
- * above zero means the evening has something in it; zero means the camp goes quiet the
- * moment you click Send, and that is worth knowing *before* you click it rather than
- * four hours into finding out.
+ * A count survives all three, because "will this evening have anything in it" does not
+ * depend on which branch is taken. Anything above zero means yes; zero means the camp
+ * goes quiet the moment you click Send, and that is worth knowing *before* the click
+ * rather than four hours into finding out. The Next block says the same thing in words
+ * once the trip is actually out.
  */
 function meanwhile(count) {
   const n = Number(count) || 0;

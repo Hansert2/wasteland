@@ -600,34 +600,44 @@ test('a plan spends the purse as it walks it', async () => {
   });
 });
 
-test('the page names what there is to do while a trip is out, and when', async () => {
+test('a camp that can do nothing before the return is told so, in the Next block', async () => {
   await withRollback(async (client) => {
+    // This used to be its own block in the Away report, listing four doors and the hour
+    // each opened. It was removed once it could be read beside the Next block, which
+    // contradicted it out loud — see the note on `meanwhile` in render.js. One sentence
+    // was worth keeping and this is where it lives now.
     const { settlementId } = await seed(client, {
-      structures: [{ kind: 'garden', level: 2 }, { kind: 'workshop', level: 1 }],
+      structures: [{ kind: 'garden', level: 2 }],
       amounts: { food: 50, water: 50, scrap: 0, fuel: 0 },
       expedition: true,
     });
 
-    const view = await viewCamp(client, settlementId, T0 + hours(1));
-    assert.ok(view.expedition, 'somebody is out');
-
-    const html = campPage(view);
-    assert.match(html, /Meanwhile, at camp/, 'the away block offers the camp something to do');
-
-    // And the other half, which is the half that was missing: a camp that can do
-    // nothing says so outright rather than rendering an empty list.
-    await client.query(
-      `delete from camp_structures where settlement_id = $1 and kind = 'workshop'`,
+    // Past the chain, so the standing conditions are what speaks.
+    const { rows: regions } = await client.query(
+      `select id from regions where travel_hours < 2 limit 1`,
+    );
+    const { rows: chars } = await client.query(
+      `select id from characters where settlement_id = $1`,
       [settlementId],
     );
-    const stuck = await viewCamp(client, settlementId, T0 + hours(1));
-
-    assert.deepEqual(stuck.plans, [], 'nothing the stores can reach');
-    assert.match(
-      campPage(stuck),
-      /Nothing the camp can pay for before they are back/,
-      'and the page says so instead of going quiet about it',
+    await client.query(
+      `insert into expeditions (character_id, region_id, status, departed_at, returns_at, resolved_at, seed)
+       values ($1, $2, 'returned', $3, $3, $3, 9)`,
+      [chars[0].id, regions[0].id, new Date(T0)],
     );
+    await client.query(
+      `insert into craft_orders (settlement_id, recipe_id, status, completes_at, resolved_at)
+       select $1, id, 'delivered', $2, $2 from recipes limit 1`,
+      [settlementId, new Date(T0)],
+    );
+
+    const view = await viewCamp(client, settlementId, T0 + hours(1));
+    assert.ok(view.expedition, 'somebody is out');
+    assert.equal(view.direction.key, 'idle', JSON.stringify(view.direction));
+    assert.match(campPage(view), /before they are back/);
+
+    // And the block it replaced is gone rather than merely emptied.
+    assert.doesNotMatch(campPage(view), /Meanwhile, at camp/);
   });
 });
 
