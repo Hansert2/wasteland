@@ -258,25 +258,51 @@ Three pages exist. The camp page is where essentially all the design effort belo
 
 **Landing** (`landingPage`) — log in, or found a new camp. Two forms.
 
-**Camp** (`campPage`) — in current order:
+**Camp** (`campPage`) — nineteen blocks, in four groups. **The order is argued, not
+incidental**, and the argument is in the comment above `campPage` as well as here. A
+redesign may move all of it, but should know what it is moving.
 
-| Block | Notes |
-|---|---|
-| Header | Camp name, wealth, defence, founded date |
-| Error box | Only when an action was refused |
-| Raid warning | Only with the radio upgrade fitted. Has a deadline; sits first |
-| The sky | Active world events, each with a countdown |
-| While you were away | Narrative log of what happened since last visit |
-| Survivor | Health, hunger, radiation — or a prompt to raise a successor |
-| Away / Where to send them | Expedition in flight with a countdown, or the region table |
-| Stores | Four resources: live amount, cap, rate per hour |
-| Caravan | Only when one is visiting or on the road. Offers table with prices |
-| Inventory | What the survivor is carrying |
-| Workshop | Craft recipes and the bench |
-| Standings | Reputation with two rival factions |
-| Structures | Five buildings: level, effect, next cost, build button, fuel upgrade |
-| Roster | One line pointing at the graveyard |
-| Log out | |
+Every block is a `<section id="s-…">` and **is rendered even when it has nothing to say**
+— see §3.2.1, this is load-bearing rather than tidy.
+
+*Group 1 — anything with a deadline. It expires, so it goes first.*
+
+| Block | id | Notes |
+|---|---|---|
+| Header | `head` | Camp name, wealth, defence, founded date |
+| Error box | `error` | Only when an action was refused |
+| **Contact** | `moment` | **The most time-critical thing on the page.** A situation, the trip so far, and two to four options each with a cost and a closing countdown. An invitation, not an alarm — except the warned variant. Only while a window is open |
+| Raid warning | `raid` | Only with the radio fitted. Has a deadline |
+| The sky | `sky` | World events in force, each with a countdown, the prose, and **what it costs** — split into what the stores are doing and what a trip would cost. A "Together" line when two stack. Absent about three visits in four |
+
+*Group 2 — what happened while you were gone, then the person it happened to.*
+
+| Block | id | Notes |
+|---|---|---|
+| While you were away | `events` | Narrative log since the last visit |
+| Survivor | `survivor` | Name, what they are known for, health, hunger, radiation — or, when the camp is empty, **the wanderer standing at the gate** with their two sentences and one button. There is no name box and nothing to reroll |
+| Inventory | `inventory` | What the survivor is carrying. Beside the survivor because it dies with them |
+| **Next** | `direction` | One sentence. Teaches a new camp the game and then leaves for good; after that it reads the camp's own numbers and says the first thing that is objectively true and objectively bad. Frequently empty, and that is correct |
+| Away / Where to send them | `expedition` | A trip in flight with its report and countdown, or the dispatch table — name, danger, hours, contact count, and what the camp can do meanwhile |
+
+*Group 3 — what the camp is spending on. Structures and the road are adjacent on purpose: a fitting and a link are the same 60–70 fuel, and choosing between them is the whole decision the fuel track adds.*
+
+| Block | id | Notes |
+|---|---|---|
+| Stores | `stores` | Four resources: live amount, cap, net rate per hour |
+| Structures | `structures` | Five buildings: level, effect, next cost, build button, and the fuel upgrade branch |
+| The road | `road` | Seven links. What has been reached, who is at the end of it, and what the next link costs |
+| Workshop | `workshop` | Craft recipes and the bench |
+
+*Group 4 — who you can trade with, together, because standings price both.*
+
+| Block | id | Notes |
+|---|---|---|
+| Caravan | `caravan` | Only when one is visiting or on the road. Offers with prices and shortfalls |
+| Trade post | `post` | The standing shop on the road, once a link opens one. Same offers, always there |
+| Standings | `standings` | Reputation with two rival factions |
+| Roster | `roster` | One line pointing at the graveyard |
+| Log out | — | Not a section; a bare form, and the client script leaves it alone deliberately |
 
 **Graveyard** (`graveyardPage`) — the roster of the dead, with causes and lifespans.
 
@@ -291,10 +317,20 @@ the two constraints below as requirements:
 
 | View | Blocks |
 |---|---|
-| **Camp** (default) | Raid warning, the sky, while you were away, stores, structures and builds |
+| **Camp** (default) | Contact, raid warning, the sky, while you were away, Next, stores, structures and builds |
 | **Survivor** | Health/hunger/radiation, away or where to send them, inventory, workshop |
+| **Road** | The seven links, who is at the end of them, and the trade post they open |
 | **Trade** | Caravan and its offers, faction standings |
 | **Records** | Graveyard, camp history |
+
+**Contact goes on the default view and nowhere else**, which is the strongest single
+placement claim in this document. It has a countdown measured in tens of minutes, it is
+the only block in the game that is gone if you do not answer it, and it appears without
+warning while a trip is out. A player who has to click through to find it will find it
+closed. It belongs beside the raid warning because they are the same kind of thing.
+
+*Next* goes on the default view for a weaker but real reason: it exists to tell a new
+player what this game is, and a new player does not know there are other views.
 
 **Constraint one: the check-in must land on everything that changed.** *While you were
 away* and the raid warning belong on the default view. The entire loop of this game is
@@ -319,34 +355,51 @@ completed.
 
 ## 8. What is coming, so the design can accommodate it
 
-Two changes are designed and not yet built. Designing around them now is cheaper than
-retrofitting.
+Both items this section used to describe have since happened. **Field encounters
+shipped** and are the Contact block in §7; the *Away* block grew into the report
+described there. They are listed as current rather than future now, which is the only
+correct place for them — but the note about the Contact box reading as an invitation
+rather than an alarm was right and still applies.
 
-**Field encounters.** An expedition will surface *moments* — a situation, a short report
-of the trip so far, and two to four options each with a cost, one of which may carry a
-danger warning. It appears in the top slot beside the raid warning, has its own closing
-countdown, and is the most time-critical thing on the page when present. It needs to
-read as an invitation rather than an alarm — except the warned variant, which should
-read as exactly what it is.
+What is genuinely ahead, and how confident each is:
 
-The *Away* block also grows from two lines into a report: what the survivor is carrying,
-what has happened to them, and when the next contact is due.
+**Certain — more people, described.** `src/game/wanderers.js` holds seven, and the set
+will grow. Nothing structural changes: one arrives, the camp gets them, and the Survivor
+block shows a name, two sentences and what they are known for.
 
-**More than one survivor.** The Survivor block will eventually repeat per person, with
-jobs assigned between them. Do not design it as a fixed singular panel.
+**Likely — journals and side quests.** A found item leading to a situation at a named
+place on the road, resolving as a Contact-shaped encounter somewhere specific. If built,
+it adds one block: something the camp is *holding* that points at somewhere to go. Leave
+room near the road for a thing that is neither a structure nor a store.
+
+**Uncertain, and this is a correction.** This section used to say *"the Survivor block
+will eventually repeat per person… do not design it as a fixed singular panel."* That
+was written for a multi-survivor phase which has since been **retired by measurement** —
+a check-in is never empty, every camp verb guards on *alive* rather than *home*, and
+"more hands" answered a problem the game did not have. It may return on a different
+justification: a survivor earned by playing an encounter well, rather than hired.
+
+So the guidance softens rather than reverses. **Do not hard-code the Survivor block to
+exactly one person**, but do not contort the layout around a roster that may never
+arrive either. One panel that could become a list is the right amount of preparation.
+
+**Not coming.** A broadcast from an organised somewhere, in any form — see §6. The radio
+picks up chatter and nothing else. No global news feed, no message from elsewhere, no
+weather *report*: the sky is something a person standing in a camp looks up at.
 
 ---
 
 ## 9. How to check you have not broken anything
 
 ```
-npm test        # 125 unit tests, no database needed
-npm run test:db # 93 tests against a real Postgres
+npm test        # 235 unit tests, no database needed
+npm run test:db # 138 tests against a real Postgres
 npm run dev     # http://localhost:3000
 ```
 
 A green suite is necessary and **not sufficient** — it says almost nothing about the
-rendered page. Check these by hand:
+rendered page, and every real fault this project has found in its own presentation was
+found by looking at it. Check these by hand:
 
 1. Start a build that takes under a minute. Watch the countdown reach zero. **The page
    must update itself in place and show the finished structure**, without navigating and
@@ -354,14 +407,34 @@ rendered page. Check these by hand:
    and nothing automated catches it today.
 2. Submit an action — a build, a dispatch. The page must update without navigating, and
    the changed sections must show the cue.
-2. Leave the camp page open for a minute. Store amounts must climb smoothly and stop at
+3. Leave the camp page open for a minute. Store amounts must climb smoothly and stop at
    the cap.
-3. Submit an action that will be refused — send an expedition while one is already out.
+4. Submit an action that will be refused — send an expedition while one is already out.
    The message must appear in the game's voice, on the page, not as a raw error.
-4. Start a short build, then move to a different view and wait for it to finish. **The
+5. Start a short build, then move to a different view and wait for it to finish. **The
    reload must leave you where you were**, not on Camp. See §7.3.
-5. Narrow the window to a phone width. The page must stay *usable* — desktop is the
+6. **Send someone to a region with contact, leave the tab open, and do not touch it.**
+   The Contact box must appear on its own when the window opens. It is armed by a
+   *hidden* `countdown()` span in the Away block with no visible text — the easiest
+   thing on this page for a redesign to delete without noticing, and its absence is
+   silent.
+7. Narrow the window to a phone width. The page must stay *usable* — desktop is the
    target, but a check-in from a phone must not be broken.
+
+### 9.1 States to check, not just pages
+
+The camp page is mostly conditional blocks, and a layout that only ever gets looked at
+in one state will be wrong in the others. These six cover everything structural, and
+they are worth rendering as fixtures rather than waiting to meet by chance:
+
+| State | How to reach it |
+|---|---|
+| Empty camp, wanderer at the gate | A fresh account, before pressing the button |
+| Home, nothing pressing | Survivor in camp, stores healthy, clear sky |
+| Away, mid-trip | Dispatch anywhere over four hours |
+| **Contact open** | Both variants — an ordinary one, and one whose worst case exceeds current health, which renders warned |
+| Sky in force | Two events at once, so the "Together" line appears |
+| Dead survivor | The graveyard, and the empty camp that follows |
 
 ---
 
