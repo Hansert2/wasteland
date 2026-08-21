@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import { resolveExpedition } from '../../src/game/expeditions.js';
 import { momentsFor } from '../../src/game/moments.js';
+import { ORDINARY } from '../../src/game/wanderers.js';
 
 /** The Deep Zone as seeded, plus the travel time moments need to be placed in. */
 const DEEP_ZONE = {
@@ -18,7 +19,7 @@ const DEEP_ZONE = {
   radiationPerTrip: 25,
 };
 
-const survivor = (overrides = {}) => ({ health: 100, skillScavenging: 1, ...overrides });
+const survivor = (overrides = {}) => ({ health: 100, skillScavenging: ORDINARY, ...overrides });
 const trip = (seed, extra = {}) =>
   resolveExpedition({ region: DEEP_ZONE, survivor: survivor(), seed, ...extra });
 

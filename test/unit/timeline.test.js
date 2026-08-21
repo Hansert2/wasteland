@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { progress, stateAt, timelineOf } from '../../src/game/timeline.js';
 import { resolveExpedition } from '../../src/game/expeditions.js';
 import { makeRandom } from '../../src/game/random.js';
+import { ORDINARY } from '../../src/game/wanderers.js';
 
 const DEEP_ZONE = {
   name: 'The Deep Zone',
@@ -13,7 +14,7 @@ const DEEP_ZONE = {
   radiationPerTrip: 25,
 };
 
-const survivor = (overrides = {}) => ({ health: 100, skillScavenging: 1, ...overrides });
+const survivor = (overrides = {}) => ({ health: 100, skillScavenging: ORDINARY, ...overrides });
 
 const tripFor = (seed, travelHours = 18) => {
   const outcome = resolveExpedition({ region: DEEP_ZONE, survivor: survivor(), seed });

@@ -7,6 +7,7 @@
  */
 import { applyTick } from '../src/game/tick.js';
 import { campWealth, campDefence } from '../src/game/structures.js';
+import { ORDINARY } from '../src/game/wanderers.js';
 
 const HOUR = 3600_000;
 const T0 = Date.UTC(2287, 0, 1);
@@ -37,7 +38,7 @@ function camp({ levels, tower = 0, stores, seed }) {
       },
     },
     survivor: {
-      id: 1, alive: true, health: 100, hunger: 0, radiation: 0, skillScavenging: 1,
+      id: 1, alive: true, health: 100, hunger: 0, radiation: 0, skillScavenging: ORDINARY,
       bornAt: T0, diedAt: null, causeOfDeath: null, inventory: [],
     },
     expedition: null, craft: null, fitting: null,

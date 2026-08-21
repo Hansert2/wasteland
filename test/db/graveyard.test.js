@@ -52,29 +52,34 @@ const T0 = Date.now() - hours(500);
 test('a camp nobody has died in has an empty graveyard', async () => {
   await withRollback(async (client) => {
     const settlementId = await setup(client);
-    await raiseSuccessor(client, settlementId, { name: 'Vera' });
+    // The name is no longer the player's to give: a wanderer walks in and the camp
+    // gets whoever that is. See src/game/wanderers.js.
+    const { wanderer } = await raiseSuccessor(client, settlementId);
 
     const view = await viewGraveyard(client, settlementId);
     assert.deepEqual(view.fallen, []);
-    assert.equal(view.holding.name, 'Vera', 'and says who is holding it');
+    assert.equal(view.holding.name, wanderer.name, 'and says who is holding it');
   });
 });
 
 test('the fallen are remembered with what it cost them', async () => {
   await withRollback(async (client) => {
     const settlementId = await setup(client);
-    await raiseSuccessor(client, settlementId, { name: 'Vera', now: T0 });
+    const { wanderer: first } = await raiseSuccessor(client, settlementId, { now: T0 });
     await bury(client, settlementId, T0 + hours(48), 'radiation');
-    await raiseSuccessor(client, settlementId, { name: 'Boris', now: T0 + hours(49) });
+    const { wanderer: second } = await raiseSuccessor(client, settlementId, {
+      now: T0 + hours(49),
+    });
 
     const view = await viewGraveyard(client, settlementId);
     assert.equal(view.fallen.length, 1);
 
-    const vera = view.fallen[0];
-    assert.equal(vera.name, 'Vera');
-    assert.equal(vera.cause, 'radiation');
-    assert.equal(vera.daysSurvived, 2, 'held the camp two days');
-    assert.equal(view.holding.name, 'Boris', 'someone else holds it now');
+    const dead = view.fallen[0];
+    assert.equal(dead.name, first.name);
+    assert.equal(dead.cause, 'radiation');
+    assert.equal(dead.daysSurvived, 2, 'held the camp two days');
+    assert.equal(view.holding.name, second.name, 'someone else holds it now');
+    assert.notEqual(second.name, first.name, 'and it is not the same person again');
   });
 });
 
@@ -83,17 +88,23 @@ test('the dead are listed most recent first', async () => {
     const settlementId = await setup(client);
 
     let clock = T0;
-    for (const name of ['Vera', 'Boris', 'Cass']) {
-      await raiseSuccessor(client, settlementId, { name, now: clock });
+    const held = [];
+    for (let i = 0; i < 3; i += 1) {
+      const { wanderer } = await raiseSuccessor(client, settlementId, { now: clock });
+      held.push(wanderer.name);
       clock += hours(24);
       await bury(client, settlementId, clock);
       clock += hours(1);
     }
 
+    // Three different people, because a camp meets all seven wanderers before it meets
+    // anyone twice — which is what the prime count in WANDERERS buys.
+    assert.equal(new Set(held).size, 3, `three arrivals, three people: ${held}`);
+
     const view = await viewGraveyard(client, settlementId);
     assert.deepEqual(
       view.fallen.map((f) => f.name),
-      ['Cass', 'Boris', 'Vera'],
+      [...held].reverse(),
     );
     assert.equal(view.holding, null, 'and nobody is holding the camp');
   });

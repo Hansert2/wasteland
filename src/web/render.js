@@ -372,7 +372,9 @@ export function campPage(view, { error } = {}) {
     ${section('events', renderEvents(view.events))}
     ${section(
       'survivor',
-      view.survivor ? renderSurvivor(view.survivor, view.strain) : renderNoSurvivor(view.fallenCount > 0),
+      view.survivor
+        ? renderSurvivor(view.survivor, view.strain)
+        : renderNoSurvivor(view.fallenCount > 0, view.arriving),
     )}
     ${section('inventory', renderInventory(view.inventory))}
     ${section('direction', renderDirection(view.direction))}
@@ -513,8 +515,16 @@ function strainNote(strain) {
 }
 
 function renderSurvivor(survivor, strain) {
+  // What this one is, under how they are doing. Without it the skills are two hidden
+  // multipliers and the arrival prose was a thing the player read once and never saw
+  // the consequences of — which is the failure the whole feature exists to avoid.
+  const who = survivor.knownFor
+    ? `<p><small>${escape(survivor.knownFor)}.</small></p>`
+    : '';
+
   return `
     <h2>${escape(survivor.name ?? 'Survivor')}</h2>
+    ${who}
     <table>
       <tr><th>Health</th><td>${n(survivor.health)}</td></tr>
       <tr><th>Hunger</th><td>${n(survivor.hunger)}</td></tr>
@@ -527,18 +537,29 @@ function renderSurvivor(survivor, strain) {
  * and telling a brand-new player their stores have spoiled would be a lie on the
  * first screen they see.
  */
-function renderNoSurvivor(everHeld) {
+function renderNoSurvivor(everHeld, arriving) {
   const preamble = everHeld
     ? `<p>Structures have fallen into disrepair and much of the store has spoiled or
-         been taken. Someone new can take it on.</p>`
+         been taken.</p>`
     : `<p>Four walls, a garden, and enough water to start. It needs somebody in it.</p>`;
+
+  // Who is at the gate, named before the button rather than after it. The name box that
+  // used to sit here is gone: a survivor is somebody who turned up, and the page says so
+  // by telling the player who *has* turned up and offering one button about it. There is
+  // deliberately nothing to reroll — reloading shows the same person, because
+  // `wandererFor` derives them from the camp and the count of everyone before them.
+  const atTheGate = arriving
+    ? `<p><strong>${escape(arriving.name)}</strong> is at the gate.
+         ${escape(arriving.arrival)}</p>
+       <p><small>Known for: ${escape(arriving.knownFor)}.</small></p>`
+    : '';
 
   return `
     <h2>The camp stands empty</h2>
     ${preamble}
+    ${atTheGate}
     <form method="post" action="/successor">
-      <label>Name <input name="name" placeholder="Survivor" required></label>
-      <button type="submit">${everHeld ? 'Take over the camp' : 'Move in'}</button>
+      <button type="submit">${everHeld ? 'Let them take it on' : 'Let them stay'}</button>
     </form>`;
 }
 

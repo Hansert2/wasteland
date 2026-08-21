@@ -18,6 +18,7 @@
 import { pool } from '../src/db/pool.js';
 import { resolveExpedition } from '../src/game/expeditions.js';
 import { momentsFor } from '../src/game/moments.js';
+import { ORDINARY } from '../src/game/wanderers.js';
 
 const SEEDS = 4000;
 
@@ -40,7 +41,7 @@ const regions = dbRegions.map((row) => ({
 const survivor = (health = 100, radiation = 0) => ({
   health,
   radiation,
-  skillScavenging: 1,
+  skillScavenging: ORDINARY,
   inventory: [],
 });
 const haul = (loot) => Object.values(loot).reduce((sum, value) => sum + value, 0);

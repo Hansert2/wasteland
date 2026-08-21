@@ -68,7 +68,7 @@ export async function loadWorld(client, settlementId) {
 
   // "The living survivor", singular — the partial unique index guarantees at most one.
   const { rows: characters } = await client.query(
-    `select id, health, hunger, radiation, born_at, skill_scavenging
+    `select id, health, hunger, radiation, born_at, skill_scavenging, skill_medicine
        from characters
       where settlement_id = $1 and died_at is null`,
     [settlementId],
@@ -95,6 +95,9 @@ export async function loadWorld(client, settlementId) {
       hunger: character.hunger,
       radiation: character.radiation,
       skillScavenging: character.skill_scavenging,
+      // Read by the tick, not by any generator: medicine moves where a dose starts
+      // costing the survivor and never what a trip rolled. See `radThresholdFor`.
+      skillMedicine: character.skill_medicine,
       bornAt: character.born_at.getTime(),
       diedAt: null,
       causeOfDeath: null,

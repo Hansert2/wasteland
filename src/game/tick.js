@@ -22,6 +22,7 @@ import {
   radDecayMultiplier,
   storageCap,
 } from './structures.js';
+import { radThresholdFor } from './wanderers.js';
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -552,6 +553,24 @@ function simulateSurvivor(state, hours, at, events, config) {
 }
 
 /** Health change for one slice. Damage ramps across each band rather than snapping on. */
+/**
+ * The dose this survivor carries before it starts costing them.
+ *
+ * `radThreshold` was a single number for everybody, and it is the most decision-moving
+ * number in the game: `tools/skill-sensitivity.mjs` measured radiation moving the right
+ * answer on 44% of moments against 0% for health. So this is where medicine acts, and
+ * the reason it acts here rather than on damage taken — softening hits is the obvious
+ * first idea and was measured to be scenery, because a healthy survivor already cannot
+ * die on a trip.
+ *
+ * Read at every site that asks the question, so a survivor cannot be judged mending by
+ * one clause and irradiated by another. Ordinary medicine returns the constant exactly,
+ * which is what makes this change free for a camp that has not met a wanderer yet.
+ */
+function radLimit(survivor, config) {
+  return radThresholdFor(config.radThreshold, survivor?.skillMedicine);
+}
+
 function healthDelta(survivor, hours, config) {
   let delta = 0;
 
@@ -560,8 +579,9 @@ function healthDelta(survivor, hours, config) {
     delta -= config.starvationDamagePerHour * severity * hours;
   }
 
-  if (survivor.radiation >= config.radThreshold) {
-    const severity = band(survivor.radiation, config.radThreshold);
+  const limit = radLimit(survivor, config);
+  if (survivor.radiation >= limit) {
+    const severity = band(survivor.radiation, limit);
     delta -= config.radDamagePerHour * severity * hours;
   }
 
@@ -582,7 +602,7 @@ function rescue(survivor, at, events, config) {
   const needed =
     survivor.hunger >= config.starvationThreshold
       ? 'ration'
-      : survivor.radiation >= config.radThreshold
+      : survivor.radiation >= radLimit(survivor, config)
         ? 'antirad'
         : null;
   if (!needed) return false;
@@ -630,10 +650,11 @@ function kill(state, at, cause, events) {
 }
 
 function causeOf(survivor, config) {
-  if (survivor.radiation >= config.radThreshold && survivor.hunger < config.starvationThreshold) {
+  const limit = radLimit(survivor, config);
+  if (survivor.radiation >= limit && survivor.hunger < config.starvationThreshold) {
     return 'radiation';
   }
-  if (survivor.radiation >= config.radThreshold) return 'starvation_and_radiation';
+  if (survivor.radiation >= limit) return 'starvation_and_radiation';
   return 'starvation';
 }
 

@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { resolveExpedition } from '../../src/game/expeditions.js';
 import { MOMENTS, TURN_BACK, momentsFor } from '../../src/game/moments.js';
 import { makeRandom } from '../../src/game/random.js';
+import { ORDINARY } from '../../src/game/wanderers.js';
 
 const SAFE_REGION = {
   name: 'The Ruined City',
@@ -31,7 +32,7 @@ const MOMENT_REGION = {
   travelHours: 18,
 };
 
-const survivor = (overrides = {}) => ({ health: 100, skillScavenging: 1, ...overrides });
+const survivor = (overrides = {}) => ({ health: 100, skillScavenging: ORDINARY, ...overrides });
 
 test('the same seed always produces the same trip', () => {
   const args = { region: DEADLY_REGION, survivor: survivor(), seed: 12345 };
@@ -55,7 +56,10 @@ test('loot lands within the region range, scaled by scavenging skill', () => {
     assert.ok(plain.loot.scrap === undefined || plain.loot.scrap <= 14);
   }
 
-  // Skill 6 is +50%, so the ceiling rises with it.
+  // Two points over ordinary is +20%, so the ceiling rises with it. Measured against
+  // ORDINARY rather than against 1: since the scale re-centred, a fixture pinned at 1
+  // is a survivor thirty percent *below* average, and every instrument in tools/ made
+  // the same mistake in the same afternoon.
   let skilledTotal = 0;
   let plainTotal = 0;
   for (let seed = 0; seed < 200; seed++) {
@@ -63,7 +67,7 @@ test('loot lands within the region range, scaled by scavenging skill', () => {
     skilledTotal +=
       resolveExpedition({
         region: SAFE_REGION,
-        survivor: survivor({ skillScavenging: 6 }),
+        survivor: survivor({ skillScavenging: ORDINARY + 2 }),
         seed,
       }).loot.scrap ?? 0;
   }

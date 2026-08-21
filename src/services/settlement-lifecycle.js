@@ -1,6 +1,7 @@
 import { hashPassword, MIN_PASSWORD_LENGTH } from '../auth/passwords.js';
 import { UPGRADES, storageCap } from '../game/structures.js';
 import { InputError } from '../errors.js';
+import { wandererFor } from '../game/wanderers.js';
 
 export { InputError };
 
@@ -86,7 +87,7 @@ export async function foundSettlement(client, { email, password, settlementName,
  * Requires that nobody is currently alive there — the partial unique index would
  * refuse the insert anyway, but failing early gives a message instead of a 23505.
  */
-export async function raiseSuccessor(client, settlementId, { name, now = Date.now() } = {}) {
+export async function raiseSuccessor(client, settlementId, { now = Date.now() } = {}) {
   await client.query('select id from settlements where id = $1 for update', [settlementId]);
 
   const { rows: living } = await client.query(
@@ -148,8 +149,32 @@ export async function raiseSuccessor(client, settlementId, { name, now = Date.no
     new Date(now),
   ]);
 
-  const characterId = await insertSurvivor(client, settlementId, cleanName(name, 'Survivor'), now);
-  return { characterId };
+  /**
+   * Who walks in, and it is not up to anybody.
+   *
+   * Derived from the camp's own seed and the number of people who have held it before —
+   * `caravan_seed` rather than a new column, because it is already a per-camp constant
+   * that exists for exactly this kind of question and a second one would be a migration
+   * to store the same fact twice. The count includes the dead, so a camp on its fourth
+   * survivor meets its fourth wanderer.
+   *
+   * **The player is not offered a choice and cannot refresh for a better one.** That is
+   * the whole design: someone arrives, the place is empty, and they stay. A name box
+   * made every survivor the same person with different spelling; a picker would make
+   * them a stat block with a paragraph attached. See `src/game/wanderers.js`.
+   */
+  const { rows: [camp] } = await client.query(
+    'select caravan_seed from settlements where id = $1',
+    [settlementId],
+  );
+  const { rows: [held] } = await client.query(
+    'select count(*)::int as n from characters where settlement_id = $1',
+    [settlementId],
+  );
+  const wanderer = wandererFor(camp.caravan_seed, held.n);
+
+  const characterId = await insertSurvivor(client, settlementId, wanderer, now);
+  return { characterId, wanderer };
 }
 
 /**
@@ -199,15 +224,17 @@ async function writeStructures(client, settlementId, structures) {
   }
 }
 
-async function insertSurvivor(client, settlementId, name, now) {
-  const { rows } = await client.query(
-    'insert into characters (settlement_id, name, born_at) values ($1, $2, $3) returning id',
-    [settlementId, name, new Date(now)],
-  );
-  return rows[0].id;
-}
-
+/** Camp names are still the player's; survivors are not. */
 function cleanName(value, fallback) {
   const name = String(value ?? '').trim().slice(0, 40);
   return name.length > 0 ? name : fallback;
+}
+
+async function insertSurvivor(client, settlementId, wanderer, now) {
+  const { rows } = await client.query(
+    `insert into characters (settlement_id, name, born_at, skill_scavenging, skill_medicine)
+     values ($1, $2, $3, $4, $5) returning id`,
+    [settlementId, wanderer.name, new Date(now), wanderer.scavenging, wanderer.medicine],
+  );
+  return rows[0].id;
 }

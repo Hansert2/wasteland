@@ -9,6 +9,7 @@ import { answerTo, resolveExpedition } from '../game/expeditions.js';
 import { isOpen, isWarned, momentCount, momentsFor } from '../game/moments.js';
 import { openWithin, planFor } from '../game/planning.js';
 import { directionFor } from '../game/direction.js';
+import { WANDERERS, wandererFor } from '../game/wanderers.js';
 import { stateAt, timelineOf } from '../game/timeline.js';
 import { CONFIG } from '../game/constants.js';
 import { LINKS, TRADE_POST_LINKS, linkCost, linkGives, neighbourFor } from '../game/road.js';
@@ -830,7 +831,31 @@ export async function viewCamp(client, settlementId, now = Date.now()) {
       ? { name: onTheBench[0].name, completesAt: onTheBench[0].completes_at }
       : null,
     expedition,
-    survivor: state.survivor ? { ...state.survivor, name: survivorRow[0]?.name } : null,
+    survivor: state.survivor
+      ? {
+          ...state.survivor,
+          name: survivorRow[0]?.name,
+          // What this one is, matched back from the content by name. Not stored on the
+          // character: the skills are, and they are what the simulation reads — this is
+          // only the sentence that explains them, and a row that cached it would be a
+          // second copy of a string to keep in step.
+          knownFor: WANDERERS.find((w) => w.name === survivorRow[0]?.name)?.knownFor ?? null,
+        }
+      : null,
+    /**
+     * Who is at the gate, when nobody is holding the camp.
+     *
+     * Derived exactly as `raiseSuccessor` will derive them, so the page cannot show one
+     * person and the button admit a different one. The two count different things —
+     * `raiseSuccessor` counts every row in `characters`, this counts `character_history`,
+     * which is the same table filtered to `died_at is not null` — and they agree for the
+     * one state in which either is asked: a camp with nobody in it has no living row, so
+     * every character it has ever had is a dead one. A test pins that the page and the
+     * button name the same person, because the reasoning is sound and invisible.
+     */
+    arriving: state.survivor
+      ? null
+      : wandererFor(settlements[0].caravan_seed, Number(fallen[0].n)),
     // What those numbers are doing to them. Null with nobody in the camp, because a
     // camp with no survivor has no strain, only an empty chair.
     strain: state.survivor

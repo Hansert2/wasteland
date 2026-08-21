@@ -1,6 +1,7 @@
 import { makeRandom, intBetween, chance, mix } from './random.js';
 import { equipmentOf } from './equipment.js';
 import { EFFECTS_SALT, momentsFor } from './moments.js';
+import { ORDINARY } from './wanderers.js';
 import { standingOf } from './factions.js';
 import { stateAt, timelineOf } from './timeline.js';
 
@@ -439,8 +440,26 @@ function formatHours(hours) {
 
 function rollLoot(random, region, survivor, sky, log) {
   const loot = {};
-  // Scavenging is worth a tenth more per level over the first.
-  const skill = 1 + (Math.max(1, survivor.skillScavenging ?? 1) - 1) * 0.1;
+  /**
+   * Scavenging, worth a tenth per level either side of ordinary.
+   *
+   * **Scored against `ORDINARY`, not against one**, and the difference is a balance
+   * change rather than a refactor. Against one, every level was a bonus and the floor
+   * was the baseline — so a scale of real people, averaging four, would have quietly
+   * paid every camp a quarter more loot forever. Against four the average arrival is
+   * exactly the survivor this game has always had, a good one carries thirty percent
+   * more and a poor one thirty percent less, and the economy stays where it was
+   * measured. See `src/game/wanderers.js` and `migrations/013_wanderers.sql`, which
+   * moves the living onto the new scale so nobody is nerfed by a deploy.
+   *
+   * Floored well above zero: a survivor is competent, and a trip that comes home with
+   * almost nothing is a different kind of game.
+   */
+  const level = Number(survivor.skillScavenging);
+  const skill = Math.max(
+    0.5,
+    1 + ((Number.isFinite(level) ? level : ORDINARY) - ORDINARY) * 0.1,
+  );
 
   for (const [kind, [min, max]] of Object.entries(region.loot ?? {})) {
     const amount = Math.round(intBetween(random, min, max) * skill * sky.loot);

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import { createApp } from '../../src/web/app.js';
 import { pool } from '../../src/db/pool.js';
+import { WANDERERS } from '../../src/game/wanderers.js';
 
 /**
  * A real server on a real port against the real database.
@@ -62,7 +63,8 @@ async function registerAndMoveIn(overrides = {}) {
     method: 'POST',
     redirect: 'manual',
     headers: { cookie: registered.cookie, 'content-type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ name: 'Vera' }),
+    // No name to post: the camp gets whoever is at the gate.
+    body: new URLSearchParams({}),
   });
 
   return registered;
@@ -89,7 +91,7 @@ test('registering founds a camp and logs you straight into it', async () => {
   // The account owns the camp and never a person, so nobody is in it yet — and the
   // page asks who is moving in rather than inventing someone.
   assert.match(html, /camp stands empty/i);
-  assert.match(html, /Move in/);
+  assert.match(html, /Let them stay/);
   assert.doesNotMatch(html, /spoiled or been taken/, 'nothing has gone to ruin yet');
 });
 
@@ -97,7 +99,12 @@ test('the first survivor moves in through the same door as every successor', asy
   const { cookie } = await registerAndMoveIn();
 
   const html = await (await fetch(`${base}/camp`, { headers: { cookie } })).text();
-  assert.match(html, /Vera/);
+
+  // Whoever walked in — the camp gets one of the seven and the player names nobody.
+  assert.ok(
+    WANDERERS.some((w) => html.includes(w.name)),
+    'the page names the wanderer who took the camp on',
+  );
   assert.match(html, /Health/);
   assert.doesNotMatch(html, /camp stands empty/i);
 });

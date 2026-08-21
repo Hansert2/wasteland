@@ -71,7 +71,7 @@ async function foundPinned(client, now) {
     'update settlements set raid_seed = 1234567, caravan_seed = 7654321 where id = $1',
     [settlementId],
   );
-  await raiseSuccessor(client, settlementId, { name: 'Sol', now });
+  await raiseSuccessor(client, settlementId, { now });
   return settlementId;
 }
 
@@ -296,6 +296,29 @@ test('ninety days of attentive play holds every invariant at every check-in', as
        * out of, and the game does the killing.
        */
       if (checkin === 120) {
+        /**
+         * The pack is emptied of the one thing that would save them, and without this
+         * the death is a coin toss the suite had been winning by luck.
+         *
+         * `rescue` exists precisely to prevent this: at the radiation threshold it
+         * spends an antirad and pulls the survivor back off the edge. This camp reached
+         * day sixty with twelve of them, so setting health to 3 and radiation to 95
+         * bought one consumed dose, radiation 95 -> 27, and a survivor standing at
+         * **0.087 health**. Alive. The assertion below then failed and every invariant
+         * that hangs off a succession went unchecked for the rest of the run.
+         *
+         * Found when survivors stopped being interchangeable — the camp drew a
+         * different person, carried a different ninety days, and landed the other side
+         * of a margin this test never should have been resting on.
+         */
+        await client.query(
+          `delete from inventory_items
+            where character_id in (
+              select id from characters where settlement_id = $1 and died_at is null
+            )
+              and item_id in (select id from items where kind = 'antirad')`,
+          [settlementId],
+        );
         await client.query(
           `update characters set health = 3, radiation = 95
             where settlement_id = $1 and died_at is null`,
@@ -318,7 +341,7 @@ test('ninety days of attentive play holds every invariant at every check-in', as
       // Death is part of the itinerary. Take over and keep going.
       if (!state.survivor) {
         deaths += 1;
-        await raiseSuccessor(client, settlementId, { name: `Heir${deaths}`, now });
+        await raiseSuccessor(client, settlementId, { now });
         state = await loadWorld(client, settlementId);
       }
 

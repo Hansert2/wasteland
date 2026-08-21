@@ -7,6 +7,7 @@
  */
 import { applyTick } from '../src/game/tick.js';
 import { CONFIG } from '../src/game/constants.js';
+import { ORDINARY } from '../src/game/wanderers.js';
 
 const HOUR = 3600_000;
 const T0 = Date.UTC(2287, 0, 1);
@@ -49,7 +50,7 @@ function makeCamp(upgrades) {
       health: 100,
       hunger: 0,
       radiation: 0,
-      skillScavenging: 1,
+      skillScavenging: ORDINARY,
       bornAt: T0,
       diedAt: null,
       causeOfDeath: null,

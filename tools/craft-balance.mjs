@@ -8,6 +8,7 @@
 import { resolveExpedition } from '../src/game/expeditions.js';
 import { applyTick } from '../src/game/tick.js';
 import { upgradeCost } from '../src/game/structures.js';
+import { ORDINARY } from '../src/game/wanderers.js';
 
 const HOUR = 3600_000;
 const T0 = Date.UTC(2287, 0, 1);
@@ -34,7 +35,7 @@ function damageOver(region, inventory, health = 100) {
   for (let seed = 0; seed < SEEDS; seed++) {
     const out = resolveExpedition({
       region, seed,
-      survivor: { health, skillScavenging: 1, inventory },
+      survivor: { health, skillScavenging: ORDINARY, inventory },
     });
     damage += out.damage;
     if (out.died) deaths += 1;
@@ -109,7 +110,7 @@ for (const level of [2, 4, 6]) {
       },
     },
     survivor: {
-      id: 1, alive: true, health: 100, hunger: 0, radiation: 0, skillScavenging: 1,
+      id: 1, alive: true, health: 100, hunger: 0, radiation: 0, skillScavenging: ORDINARY,
       bornAt: T0, diedAt: null, causeOfDeath: null, inventory: [],
     },
     expedition: null, craft: null, fitting: null,

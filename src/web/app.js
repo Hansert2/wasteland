@@ -141,7 +141,8 @@ export function createApp() {
       // raiseSuccessor resets last_tick_at, so anything not ticked first is lost.
       const now = Date.now();
       await advanceSettlement(client, settlementId, now);
-      await raiseSuccessor(client, settlementId, { name: req.body.name, now });
+      // No name from the form: who turns up is the camp's business, not the player's.
+      await raiseSuccessor(client, settlementId, { now });
     });
 
     res.redirect('/camp');
