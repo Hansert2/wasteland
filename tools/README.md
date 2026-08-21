@@ -105,3 +105,21 @@ node scripts/with-db.mjs node --env-file=.env tools/wl.mjs you@example.com show
 silently done nothing three times — for `structure_upgrades.completes_at` and then
 `settlements.next_raid_at` — and the failure mode each time was an empty event log
 that looked like a broken feature rather than a broken tool.
+
+---
+
+## page-states.mjs — not an instrument, a fixture
+
+The odd one out. Everything else here measures; this one *renders*, and it exists
+because the camp page is mostly conditional blocks and a layout only ever looked at in
+one state will be wrong in the other five. It builds seven of them through the real
+services — empty camp, home, away, contact, contact warned, weather stacking, graveyard
+— and either hands them to `test/db/page-contract.test.js` or writes them to disk.
+
+```
+node scripts/with-db.mjs node --env-file=.env tools/page-states.mjs [outdir]
+```
+
+Two callers, one builder, deliberately. A fixture assembled by hand agrees with
+`viewCamp` on the day it is written and drifts in silence afterwards — which would leave
+the contract test asserting the contract of a page that no longer exists.
