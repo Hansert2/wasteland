@@ -375,6 +375,7 @@ export function campPage(view, { error } = {}) {
       view.survivor ? renderSurvivor(view.survivor, view.strain) : renderNoSurvivor(view.fallenCount > 0),
     )}
     ${section('inventory', renderInventory(view.inventory))}
+    ${section('direction', renderDirection(view.direction))}
     ${section('expedition', view.survivor ? renderExpeditions(view) : '')}
 
     ${section('stores', renderResources(view.resources))}
@@ -686,7 +687,7 @@ function renderExpeditions(view) {
       lines.push('What came of that comes home with them.');
     }
 
-    return `<h2>Away</h2><p>${lines.join('<br>')}</p>`;
+    return `<h2>Away</h2><p>${lines.join('<br>')}</p>${renderMeanwhile(view.plans, hoursLeft)}${momentAlarm(trip)}`;
   }
 
   const rows = view.regions
@@ -696,6 +697,7 @@ function renderExpeditions(view) {
         <td>danger ${region.danger}</td>
         <td>${escape(duration(region.travel_hours))}</td>
         <td>${escape(contact(region.moments))}</td>
+        <td>${escape(meanwhile(region.openWhileAway))}</td>
         <td>
           <form method="post" action="/expedition" style="margin:0">
             <input type="hidden" name="region" value="${escape(region.slug)}">
@@ -703,11 +705,130 @@ function renderExpeditions(view) {
           </form>
         </td>
       </tr>
-      <tr><td colspan="5"><small>${escape(region.description ?? '')}</small></td></tr>`,
+      <tr><td colspan="6"><small>${escape(region.description ?? '')}</small></td></tr>`,
     )
     .join('');
 
   return `<h2>Where to send them</h2><table>${rows}</table>`;
+}
+
+/**
+ * One line telling a new camp what this game is, directly above the table where the
+ * mistake gets made.
+ *
+ * Placed last in the group that ends with the dispatch decision, because that is the
+ * decision it is about: a new player reads the region table top to bottom, finds the
+ * interesting names at the dangerous end, and buys twelve hours of a page that cannot
+ * change. The advice has to arrive before their eye does.
+ *
+ * Deliberately not in the top slot with the raid warning and the closing moment. Those
+ * are there because they expire; this does not, and putting a permanent line among the
+ * things that vanish would teach the player to stop reading that corner of the page.
+ *
+ * Understated on purpose — one heading, one sentence, no list, no progress bar, no
+ * count of steps remaining. See `docs/DESIGN-BRIEF.md` on the voice. It disappears for
+ * good once the camp has been round the loop, which is the other half of not being a
+ * quest log: a quest log is proud of itself and this leaves without saying goodbye.
+ */
+function renderDirection(direction) {
+  if (!direction) return '';
+  return `<h2>Next</h2><p>${escape(direction.line)}</p>`;
+}
+
+/**
+ * A timer set for the instant the next window opens, so the box arrives on its own.
+ *
+ * The page is not a document that sits still — every deadline on it is armed, and when
+ * one runs out the script fetches fresh state and swaps in whatever changed. A build
+ * finishing, a craft coming off the bench, a caravan reaching the gate, the survivor
+ * walking back through it: all of them appear without anybody pressing anything.
+ *
+ * A moment opening did not, and the reason is an accident worth writing down. The
+ * radio's line is rendered with `countdown()`, which emits `data-until`, which the
+ * script arms like any other — so a camp with a radio fitted has *always* had its
+ * moment box appear by itself, and a camp without one has been sitting on a page that
+ * silently declined to update. That is not the radio being worth its fuel. That is the
+ * only upgrade-gated refresh on the page, gated by nobody's decision.
+ *
+ * **So this is not gated, and the radio keeps the job it was sold for.** It tells you
+ * *when* — which is what lets you decide to wait, or to go and do something else and
+ * come back. Without it the window simply arrives unannounced, exactly as a moment met
+ * by reloading at the right minute always did, minus the reloading. A player sitting on
+ * the page watching has attended either way; making them press F5 to prove it was never
+ * a design, it was static HTML.
+ *
+ * Silent, and hidden, because announcing it *is* the radio. `data-done` is empty for
+ * the same reason: when it fires there is nothing to say, only something to fetch.
+ *
+ * Skipped entirely when the radio line is up, since that line already carries a timer
+ * for this instant and two spans would arm two timers for one fetch.
+ */
+function momentAlarm(trip) {
+  if (trip.nextMomentAt) return '';
+
+  const opensAt = (trip.upcoming ?? [])[0];
+  if (!opensAt) return '';
+
+  return `<span hidden>${countdown(opensAt, '')}</span>`;
+}
+
+/**
+ * What the camp can pay for while the survivor is gone, and when.
+ *
+ * The dead-evening fix, and it is a page fix rather than a balance one on purpose.
+ * A new camp opens with ten scrap, spends nine of it on two builds that finish in
+ * sixty-six seconds, and is then left at half a scrap an hour against a cheapest next
+ * door of five — eight hours of nothing, and no way to know that from the page. The
+ * numbers were all there; the subtraction was the player's problem.
+ *
+ * Three shapes, and the third is the one that matters: **nothing, and nothing coming**
+ * is not a shorter version of "here is your list", it is a different situation and gets
+ * a different sentence. A player told that outright can go and do something else, which
+ * is a far better evening than reloading a page that was never going to change.
+ *
+ * Capped at four. This is meant to be read at a glance and acted on now, and a plan
+ * eleven items deep is a spreadsheet — the things past the fourth are hours away and
+ * will still be here when the fourth is done.
+ */
+function renderMeanwhile(plans, hoursLeft) {
+  if (!plans) return '';
+
+  // Half-open against the return for the same reason the region column is: a door that
+  // opens as they walk back through the gate is not something you did while they were
+  // away, it is something you do with them home and a fresh haul in the stores.
+  const within = plans.filter((plan) => plan.inHours < hoursLeft);
+
+  if (within.length === 0) {
+    return `<p><small>Nothing the camp can pay for before they are back.
+      Whatever happens next comes home with them.</small></p>`;
+  }
+
+  const rows = within
+    .slice(0, 4)
+    .map(
+      (plan) => `<tr>
+        <th>${escape(plan.what)}</th>
+        <td>${plan.inHours <= 0 ? 'now' : `in ${escape(duration(plan.inHours))}`}</td>
+      </tr>`,
+    )
+    .join('');
+
+  return `<p><small>Meanwhile, at camp:</small></p><table>${rows}</table>`;
+}
+
+/**
+ * The same fact on the dispatch table, where the trip is still a choice.
+ *
+ * A count rather than a list, because this is one cell in a table whose job is
+ * comparing seven places — and because the interesting reading is binary. Anything
+ * above zero means the evening has something in it; zero means the camp goes quiet the
+ * moment you click Send, and that is worth knowing *before* you click it rather than
+ * four hours into finding out.
+ */
+function meanwhile(count) {
+  const n = Number(count) || 0;
+  if (n === 0) return 'nothing to do meanwhile';
+  return n === 1 ? '1 thing to do meanwhile' : `${n} things to do meanwhile`;
 }
 
 /**

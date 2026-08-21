@@ -7,6 +7,8 @@ import {
 } from '../game/world-events.js';
 import { resolveExpedition } from '../game/expeditions.js';
 import { isOpen, isWarned, momentCount, momentsFor } from '../game/moments.js';
+import { openWithin, planFor } from '../game/planning.js';
+import { directionFor } from '../game/direction.js';
 import { stateAt, timelineOf } from '../game/timeline.js';
 import { CONFIG } from '../game/constants.js';
 import { LINKS, TRADE_POST_LINKS, linkCost, linkGives, neighbourFor } from '../game/road.js';
@@ -508,12 +510,31 @@ export async function viewCamp(client, settlementId, now = Date.now()) {
    * The moment count comes from the generator's own function, so what the page promises
    * and what the trip holds cannot drift apart.
    */
-  const regions = regionRows
-    .filter((region) => region.requires_link === null || opened.has(Number(region.requires_link)))
-    .map((region) => ({
-      ...region,
-      moments: momentCount(Number(region.travel_hours)),
-    }));
+  const regionsOf = (plans) =>
+    regionRows
+      .filter((region) => region.requires_link === null || opened.has(Number(region.requires_link)))
+      .map((region) => ({
+        ...region,
+        moments: momentCount(Number(region.travel_hours)),
+        /**
+         * What the camp will be able to pay for while they are gone.
+         *
+         * The third fact this table needed and did not have: danger and hours describe
+         * the trip, and contact describes what happens on it, but none of them answer
+         * "and what am I doing meanwhile" — which for a new camp sending someone out
+         * for twelve hours is the whole evening. See `src/game/planning.js`.
+         *
+         * Doors already open are excluded, and that is what makes this a column rather
+         * than a repeated number. Whatever the stores can afford this second, they can
+         * afford whichever way the survivor walks — counting it puts the same figure in
+         * every row and tells the player nothing about the choice they are making. What
+         * differs between a ten-minute walk and a twelve-hour one is only ever what the
+         * *hours* buy.
+         */
+        openWhileAway: openWithin(plans, Number(region.travel_hours)).filter(
+          (plan) => plan.inHours > 0,
+        ).length,
+      }));
 
   /**
    * The post on the road, if this camp keeps one.
@@ -562,6 +583,93 @@ export async function viewCamp(client, settlementId, now = Date.now()) {
   const eats = state.survivor
     ? { food: CONFIG.foodPerHour, water: CONFIG.waterPerHour }
     : {};
+
+  /**
+   * The net rate, in the shape `planFor` wants, and the same arithmetic the stores
+   * line already renders. Derived once here rather than twice, because a forecast that
+   * disagrees with the number printed above it is worse than no forecast.
+   */
+  const netRates = {};
+  for (const kind of Object.keys(state.settlement.resources)) {
+    netRates[kind] = (rates[kind] ?? 0) * (weatherFactors[kind] ?? 1) - (eats[kind] ?? 0);
+  }
+  const have = Object.fromEntries(
+    Object.entries(state.settlement.resources).map(([kind, r]) => [kind, Number(r.amount)]),
+  );
+
+  /**
+   * Every door the camp has, priced, for `planFor` to put hours on.
+   *
+   * Assembled here because what counts as a door is a content question and this is the
+   * only place that has read all of the content: the structure levels, the bench, and
+   * the road. Trade is deliberately absent — a caravan leaves, so "affordable in nine
+   * hours" is a promise this cannot keep.
+   */
+  const workshopLevel = Number(structures.find((s) => s.kind === 'workshop')?.level ?? 0);
+  const doors = [
+    ...structures.map((s) => ({
+      what: `${s.kind.replaceAll('_', ' ')} level ${s.level + 1}`,
+      costs: upgradeCost(s.kind, s.level) ?? {},
+    })),
+    ...recipes.map((recipe) => ({
+      what: recipe.name,
+      costs: recipe.costs ?? {},
+      // Two things production cannot fix. A recipe over the workshop's level is waiting
+      // on a build, not on an hour; one short of an item is waiting on an expedition.
+      // Both are real answers and neither is "wait", so neither belongs in a forecast.
+      blocked:
+        Number(recipe.requires_workshop) > workshopLevel ||
+        (recipe.inputs ?? []).some((input) => (pack.get(input.slug) ?? 0) < input.qty),
+    })),
+    ...(road.next ? [{ what: `the road to ${road.next.neighbour}`, costs: { fuel: road.next.cost } }] : []),
+  ];
+
+  const plans = planFor(doors, have, netRates);
+  const regions = regionsOf(plans);
+
+  /**
+   * The three facts that say whether this camp has been shown the game yet.
+   *
+   * History, not state, and keyed on the settlement rather than the survivor: the camp
+   * outlives them, and what the *player* has learned does not die with a character.
+   * Expeditions hang off characters, hence the join; craft orders already hang off the
+   * camp. See `src/game/direction.js` for why the distinction is load-bearing.
+   *
+   * The thresholds are the two the region table is already built around — under two
+   * hours is a walk you wait out, four and over is one you leave running.
+   */
+  const { rows: seen } = await client.query(
+    `select
+       exists (
+         select 1 from expeditions e
+           join characters c on c.id = e.character_id
+           join regions r on r.id = e.region_id
+          where c.settlement_id = $1 and r.travel_hours < 2
+       ) as ran_short,
+       exists (
+         select 1 from expeditions e
+           join characters c on c.id = e.character_id
+           join regions r on r.id = e.region_id
+          where c.settlement_id = $1 and r.travel_hours >= 4
+       ) as ran_long,
+       exists (select 1 from craft_orders where settlement_id = $1) as ever_crafted`,
+    [settlementId],
+  );
+
+  const direction = directionFor({
+    hasSurvivor: Boolean(state.survivor),
+    workshopLevel,
+    ranShort: seen[0].ran_short,
+    ranLong: seen[0].ran_long,
+    everCrafted: seen[0].ever_crafted,
+    // Named rather than described, so the advice points at a row on the table below it
+    // instead of at a duration the player has to go and match up themselves.
+    shortestRegion: regions.reduce(
+      (best, region) =>
+        best === null || Number(region.travel_hours) < Number(best.travel_hours) ? region : best,
+      null,
+    )?.name,
+  });
 
   return {
     name: settlements[0].name,
@@ -616,6 +724,21 @@ export async function viewCamp(client, settlementId, now = Date.now()) {
     fallenCount: fallen[0].n,
     events,
     regions,
+    /**
+     * One line of advice, or nothing. Nothing is the normal state of this field — it
+     * speaks to a camp that has not yet run a short walk, crafted anything and taken a
+     * long trip, and goes quiet permanently once all three are true.
+     */
+    direction,
+    /**
+     * What the camp can do next, and when — soonest first.
+     *
+     * The answer to the question the page could not previously be asked: *is there
+     * anything to do?* Rendered while a trip is out, where it matters most, but derived
+     * unconditionally because the dispatch table needs the same list to say what each
+     * trip length costs you in idle hours.
+     */
+    plans,
     inventory,
     recipes: recipes.map((recipe) => ({
       ...recipe,

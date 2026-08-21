@@ -31,6 +31,16 @@ async function withRollback(fn) {
 
 const uniq = () => Math.random().toString(36).slice(2, 10);
 
+/** A region of a given length, for tests about what a trip's *duration* means. */
+async function region(client, travelHours) {
+  const { rows } = await client.query(
+    `insert into regions (slug, name, danger, travel_hours)
+     values ($1, 'Somewhere', 1, $2) returning id`,
+    [`probe_${uniq()}`, travelHours],
+  );
+  return rows[0].id;
+}
+
 /** A camp that produces food, water and scrap — the default sustainable case. */
 const SUSTAINABLE = [
   { kind: 'shelter', level: 1 },
@@ -422,6 +432,236 @@ test('the page says what a radiation figure is costing, not only what it is', as
       filtered.hoursToMending < unfiltered.hoursToMending / 2,
       `filtration should more than halve the wait: ${unfiltered.hoursToMending} -> ${filtered.hoursToMending}`,
     );
+  });
+});
+
+test('the advice for a new camp is derived from what the camp has actually done', async () => {
+  await withRollback(async (client) => {
+    const { settlementId, characterId } = await seed(client, {
+      structures: [{ kind: 'garden', level: 2 }],
+      amounts: { food: 50, water: 50, scrap: 10, fuel: 0 },
+    });
+
+    const fresh = await viewCamp(client, settlementId, T0);
+    assert.equal(fresh.direction.key, 'workshop', 'no workshop, so nothing here makes scrap');
+
+    // A finished trip somewhere under two hours. This is the join the whole thing
+    // rests on — expeditions hang off the character and the advice is about the camp,
+    // so a survivor who dies must not take the lesson with them.
+    const short = await region(client, 0.17);
+    await client.query(
+      `insert into expeditions (character_id, region_id, status, departed_at, returns_at, resolved_at, seed)
+       values ($1, $2, 'returned', $3, $3, $3, 1)`,
+      [characterId, short, new Date(T0)],
+    );
+    await client.query(
+      `insert into camp_structures (settlement_id, kind, level) values ($1, 'workshop', 1)`,
+      [settlementId],
+    );
+
+    const walked = await viewCamp(client, settlementId, T0);
+    assert.equal(walked.direction.key, 'bench', 'the short walk is done, the bench is not');
+
+    // A long one does not count as a short one, which is the threshold this is built
+    // around: under two hours is a walk you wait out, four and over is one you leave.
+    const long = await region(client, 12);
+    await client.query(
+      `insert into expeditions (character_id, region_id, status, departed_at, returns_at, resolved_at, seed)
+       values ($1, $2, 'returned', $3, $3, $3, 2)`,
+      [characterId, long, new Date(T0)],
+    );
+    const both = await viewCamp(client, settlementId, T0);
+    assert.equal(both.direction.key, 'bench', 'a long trip answers a different question');
+  });
+});
+
+test('the advice stops for good once the camp has been round the loop', async () => {
+  await withRollback(async (client) => {
+    // And stays stopped through a successor knock. Two of the five steps can only be
+    // asked of the camp as it stands, and a successor takes two levels off everything
+    // — so this camp reads as workshop zero and must still be told nothing.
+    const { settlementId, characterId } = await seed(client, {
+      structures: [{ kind: 'garden', level: 2 }],
+      amounts: { food: 50, water: 50, scrap: 10, fuel: 0 },
+    });
+
+    for (const [hours, s] of [[0.17, 1], [12, 2]]) {
+      const id = await region(client, hours);
+      await client.query(
+        `insert into expeditions (character_id, region_id, status, departed_at, returns_at, resolved_at, seed)
+         values ($1, $2, 'returned', $3, $3, $3, $4)`,
+        [characterId, id, new Date(T0), s],
+      );
+    }
+    await client.query(
+      `insert into craft_orders (settlement_id, recipe_id, status, completes_at, resolved_at)
+       select $1, id, 'delivered', $2, $2 from recipes limit 1`,
+      [settlementId, new Date(T0)],
+    );
+
+    const view = await viewCamp(client, settlementId, T0);
+    assert.equal(view.direction, null, 'no workshop, and still nothing to say');
+    assert.doesNotMatch(campPage(view), /<h2>Next<\/h2>/, 'and no empty block where it was');
+  });
+});
+
+test('a first dispatch straight to the deep end does not switch the advice off', async () => {
+  await withRollback(async (client) => {
+    // The player this exists for. Founding a camp and sending someone out for eighteen
+    // hours sets one of the three history facts and none of the understanding.
+    const { settlementId, characterId } = await seed(client, {
+      structures: [{ kind: 'garden', level: 2 }],
+      amounts: { food: 50, water: 50, scrap: 10, fuel: 0 },
+    });
+
+    const deep = await region(client, 18);
+    await client.query(
+      `insert into expeditions (character_id, region_id, status, departed_at, returns_at, seed)
+       values ($1, $2, 'active', $3, $4, 1)`,
+      [characterId, deep, new Date(T0), new Date(T0 + hours(18))],
+    );
+
+    const view = await viewCamp(client, settlementId, T0 + hours(1));
+    assert.equal(view.direction.key, 'workshop', 'still at the beginning, and told so');
+    assert.match(campPage(view), /<h2>Next<\/h2>/);
+  });
+});
+
+test('the dispatch table says what the camp can do while the survivor is gone', async () => {
+  await withRollback(async (client) => {
+    // Played on 2026-08-21: found a new camp, spend the opening scrap, send someone to
+    // Coastal Wreckage for twelve hours, and the page has nothing on it that can change
+    // for twelve hours. Every number needed to know that in advance was already
+    // rendered — a price here, a rate there — and the subtraction was the player's.
+    const { settlementId } = await seed(client, {
+      structures: [{ kind: 'shelter', level: 2 }, { kind: 'garden', level: 2 }],
+      amounts: { food: 50, water: 50, scrap: 0, fuel: 0 },
+    });
+
+    const broke = await viewCamp(client, settlementId, T0);
+    assert.ok(broke.regions.length > 1, 'there is somewhere to send them');
+    assert.ok(
+      broke.regions.every((region) => region.openWhileAway === 0),
+      'a camp with no workshop makes no scrap, so no wait of any length opens a door',
+    );
+
+    // The same camp with a workshop earning half a scrap an hour. Now the hours buy
+    // something, and how much depends entirely on how many of them there are.
+    await client.query(
+      `insert into camp_structures (settlement_id, kind, level) values ($1, 'workshop', 1)`,
+      [settlementId],
+    );
+    // Six, deliberately: enough that the hours buy something and not enough that the
+    // stores already cover everything on the page. A camp rich enough to buy every
+    // door outright has no waits to compare, so the column is flat for the opposite
+    // reason and the test would pass on a broken implementation.
+    await client.query(
+      `update resources set amount = 6 where settlement_id = $1 and kind = 'scrap'`,
+      [settlementId],
+    );
+
+    const earning = await viewCamp(client, settlementId, T0);
+    const by = (slug) => earning.regions.find((region) => region.slug.startsWith(slug));
+    const fence = by('the_fence_line');
+    const deep = by('the_deep_zone');
+
+    assert.ok(fence && deep, 'the shortest and the longest are both on the table');
+    assert.ok(
+      deep.openWhileAway > fence.openWhileAway,
+      `eighteen hours must buy more than ten minutes: ${deep.openWhileAway} vs ${fence.openWhileAway}`,
+    );
+  });
+});
+
+test('a plan spends the purse as it walks it', async () => {
+  await withRollback(async (client) => {
+    // The failure the first version shipped: pricing every door against the same
+    // stores told a camp holding ten scrap that it could do five things costing five
+    // to ten each. Every region read the same number and the column said nothing.
+    const { settlementId } = await seed(client, {
+      structures: [{ kind: 'shelter', level: 2 }, { kind: 'garden', level: 2 }],
+      amounts: { food: 50, water: 50, scrap: 10, fuel: 0 },
+    });
+
+    const view = await viewCamp(client, settlementId, T0);
+    const now = view.plans.filter((plan) => plan.inHours === 0);
+
+    assert.equal(now.length, 1, `ten scrap buys one thing, not ${now.length}`);
+    assert.ok(
+      view.plans.every((plan, i) => i === 0 || plan.inHours >= view.plans[i - 1].inHours),
+      'a plan reads soonest first',
+    );
+  });
+});
+
+test('the page names what there is to do while a trip is out, and when', async () => {
+  await withRollback(async (client) => {
+    const { settlementId } = await seed(client, {
+      structures: [{ kind: 'garden', level: 2 }, { kind: 'workshop', level: 1 }],
+      amounts: { food: 50, water: 50, scrap: 0, fuel: 0 },
+      expedition: true,
+    });
+
+    const view = await viewCamp(client, settlementId, T0 + hours(1));
+    assert.ok(view.expedition, 'somebody is out');
+
+    const html = campPage(view);
+    assert.match(html, /Meanwhile, at camp/, 'the away block offers the camp something to do');
+
+    // And the other half, which is the half that was missing: a camp that can do
+    // nothing says so outright rather than rendering an empty list.
+    await client.query(
+      `delete from camp_structures where settlement_id = $1 and kind = 'workshop'`,
+      [settlementId],
+    );
+    const stuck = await viewCamp(client, settlementId, T0 + hours(1));
+
+    assert.deepEqual(stuck.plans, [], 'nothing the stores can reach');
+    assert.match(
+      campPage(stuck),
+      /Nothing the camp can pay for before they are back/,
+      'and the page says so instead of going quiet about it',
+    );
+  });
+});
+
+test('a trip with a window ahead of it arms a timer, radio or no radio', async () => {
+  await withRollback(async (client) => {
+    // Every other deadline on this page updates itself. A moment opening did not,
+    // except by accident: the radio's line is built with countdown(), which emits the
+    // data-until the client script arms — so a fitted camp has always had its box
+    // appear on its own and an unfitted one has sat on a page that quietly refused to.
+    const { settlementId, characterId } = await seed(client, {
+      structures: [{ kind: 'garden', level: 2 }, { kind: 'workshop', level: 1 }],
+      amounts: { food: 50, water: 50, scrap: 10, fuel: 0 },
+    });
+
+    // A real region, because moments are drawn from a region slug and a seed.
+    const { rows: regions } = await client.query(
+      `select id, travel_hours from regions where slug = 'coastal_wreckage'`,
+    );
+    assert.ok(regions[0], 'the seeded world has the wreckage in it');
+
+    await client.query(
+      `insert into expeditions (character_id, region_id, status, departed_at, returns_at, seed)
+       values ($1, $2, 'active', $3, $4, 7)`,
+      [characterId, regions[0].id, new Date(T0), new Date(T0 + hours(12))],
+    );
+
+    // One minute in: the first window is hours away, so there is something to arm for.
+    const view = await viewCamp(client, settlementId, T0 + hours(1 / 60));
+    assert.ok(view.expedition.upcoming.length > 0, 'a window is still ahead');
+    assert.equal(view.expedition.nextMomentAt, null, 'and no radio to announce it');
+
+    const html = campPage(view);
+    const armed = [...html.matchAll(/data-until="(\d+)"/g)].map((m) => Number(m[1]));
+    const opensAt = view.expedition.upcoming[0].getTime();
+
+    assert.ok(
+      armed.includes(opensAt),
+      'the instant the window opens is armed, so the box arrives without a reload',
+    );
+    assert.doesNotMatch(html, /next contact/i, 'and silently — announcing it is the radio');
   });
 });
 
