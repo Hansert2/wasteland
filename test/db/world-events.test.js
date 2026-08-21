@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import { pool } from '../../src/db/pool.js';
 import { ensureWorldEvents, loadWorldEvents } from '../../src/db/world-events.js';
+import { WORLD_EVENTS } from '../../src/game/world-events.js';
 import { MEAN_GAP_HOURS, WORLD_EPOCH, activeAt } from '../../src/game/world-events.js';
 
 const hours = (h) => h * 60 * 60 * 1000;
@@ -44,7 +45,7 @@ test('the world generates its own weather on demand, with nothing scheduled', as
 
     for (const event of events) {
       assert.ok(event.endsAt > event.startsAt, 'every window runs forwards');
-      assert.ok(['rad_storm', 'caravan', 'blight'].includes(event.kind));
+      assert.ok(Object.keys(WORLD_EVENTS).includes(event.kind));
     }
   });
 });
@@ -108,4 +109,56 @@ test('asking for a shorter stretch than already exists is not a rewrite', async 
 
 test.after(async () => {
   await pool.end();
+});
+
+test('the database accepts exactly the kinds the generator produces', async () => {
+  // The constraint on world_events.kind is a list, and the sky is global — so a kind
+  // the column has not been told about does not fail for one camp, it fails for
+  // everybody on the next page load that generates that slot. The generator and the
+  // check have to be the same set, and neither is derived from the other.
+  const client = await pool.connect();
+  try {
+    const { rows } = await client.query(
+      `select pg_get_constraintdef(oid) as def from pg_constraint
+        where conname = 'world_events_kind_check'`,
+    );
+    assert.ok(rows[0], 'the constraint exists');
+
+    const allowed = new Set([...rows[0].def.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]));
+    const produced = new Set(Object.keys(WORLD_EVENTS));
+
+    assert.deepEqual(
+      [...produced].filter((k) => !allowed.has(k)),
+      [],
+      'a kind the generator makes that the column would refuse',
+    );
+    assert.deepEqual(
+      [...allowed].filter((k) => !produced.has(k)),
+      [],
+      'a kind the column allows that nothing makes any more',
+    );
+  } finally {
+    client.release();
+  }
+});
+
+test('every kind the generator can produce survives a round trip', async () => {
+  // The constraint check above compares two lists. This inserts one of each, which is
+  // the only thing that proves the column would actually take them.
+  const client = await pool.connect();
+  try {
+    await client.query('begin');
+    let slot = 900000;
+    for (const kind of Object.keys(WORLD_EVENTS)) {
+      await client.query(
+        `insert into world_events (slot, kind, starts_at, ends_at)
+         values ($1, $2, now(), now() + interval '1 hour')`,
+        [slot, kind],
+      );
+      slot += 1;
+    }
+  } finally {
+    await client.query('rollback');
+    client.release();
+  }
 });

@@ -148,3 +148,68 @@ test('an unknown kind says nothing rather than throwing', () => {
   assert.deepEqual(effectsOf('not_a_kind'), []);
   assert.deepEqual(effectsOf(undefined), []);
 });
+
+test('how long an event lasts does not decide how often you meet it', () => {
+  // The bug this was written for. Three kinds drawn uniformly per slot, durations
+  // spanning 2.5x, so the time a player actually spent under each was nothing like
+  // equal: blight in force 31% of hours, rad storm 9%. The game's dominant weather was
+  // the one with no decision attached and the one worth reading was the rarest.
+  const HOUR = 3600e3;
+  const seeds = [1, 7, 42, 1234, 99999, 777, 31337];
+  const hours = Object.fromEntries(Object.keys(WORLD_EVENTS).map((k) => [k, 0]));
+  let samples = 0;
+
+  for (const seed of seeds) {
+    const events = [];
+    for (let slot = 0; slot < 400; slot += 1) events.push(eventForSlot(seed, slot));
+
+    const from = events[10].startsAt;
+    for (let t = from; t < from + 180 * 24 * HOUR; t += HOUR) {
+      samples += 1;
+      for (const e of activeAt(events, t)) hours[e.kind] += 1;
+    }
+  }
+
+  // Time in force should track the declared share, not the duration.
+  const totalShare = Object.values(WORLD_EVENTS).reduce((a, s) => a + s.share, 0);
+  for (const [kind, spec] of Object.entries(WORLD_EVENTS)) {
+    const actual = hours[kind] / samples;
+    const wanted = (spec.share / totalShare) * (Object.values(hours).reduce((a, b) => a + b, 0) / samples);
+
+    assert.ok(
+      Math.abs(actual - wanted) < 0.012,
+      `${kind}: ${(actual * 100).toFixed(1)}% of hours against ${(wanted * 100).toFixed(1)}% asked for`,
+    );
+  }
+
+  // And the specific inversion that started this: the long boring one must not outweigh
+  // the short interesting ones put together.
+  assert.ok(hours.blight < hours.rad_storm + hours.dust, 'blight is not the weather again');
+});
+
+test('the sky is not only ever bad news', () => {
+  // It used to be: 40% of hours against the player, 19% for, and the only thing that
+  // ever helped helped expeditions rather than the camp. "Check the sky" was a matter
+  // of finding out how you were being taxed.
+  const helps = (spec) =>
+    (spec.loot ?? 1) > 1 || Object.values(spec.production ?? {}).some((f) => f > 1);
+
+  const good = Object.values(WORLD_EVENTS).filter(helps);
+  assert.ok(good.length >= 3, 'several kinds are worth looking up for');
+  assert.ok(
+    good.some((spec) => spec.production && Object.values(spec.production).some((f) => f > 1)),
+    'and at least one of them is good news for the camp rather than for a trip',
+  );
+});
+
+test('a short event is short because that is what makes it a decision', () => {
+  // The correct answer to dust is to wait it out, and an afternoon is a wait a player
+  // will actually take. The same penalty over four days would only be a worse week.
+  const mean = (spec) => (spec.hours[0] + spec.hours[1]) / 2;
+  assert.ok(mean(WORLD_EVENTS.dust) < 12, 'dust blows through');
+  assert.ok(mean(WORLD_EVENTS.blight) > 48, 'a blight settles in');
+  assert.ok(
+    Object.values(WORLD_EVENTS).some((spec) => mean(spec) < 20),
+    'the calendar holds something you can sit out',
+  );
+});
