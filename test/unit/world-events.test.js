@@ -5,6 +5,7 @@ import {
   WORLD_EPOCH,
   WORLD_EVENTS,
   activeAt,
+  effectsOf,
   eventForSlot,
   expeditionFactors,
   nextBoundaryAfter,
@@ -96,4 +97,54 @@ test('the next change in the weather is a boundary the tick can cut on', () => {
   assert.equal(nextBoundaryAfter([storm, blight], 3000), Infinity, 'and then clear skies');
   assert.equal(nextBoundaryAfter([], 0), Infinity);
   assert.equal(nextBoundaryAfter(undefined, 0), Infinity);
+});
+
+test('what the page prints about the sky comes from what the tick multiplies by', () => {
+  // The sky was two sentences and a countdown, so a blight slowing the garden to a
+  // third was something a player inferred over days from a drifting stores figure.
+  // These are derived from WORLD_EVENTS rather than written out beside the prose, so
+  // a balance pass moves the page and the simulation in one edit or neither.
+  for (const [kind, spec] of Object.entries(WORLD_EVENTS)) {
+    const effects = effectsOf(kind);
+    assert.ok(effects.length > 0, `${kind} does something, so it must say what`);
+
+    for (const effect of effects) {
+      const claimed =
+        effect.what === 'haul'
+          ? spec.loot
+          : effect.what === 'dose'
+            ? spec.radiation
+            : spec.production?.[effect.what];
+
+      assert.equal(effect.factor, claimed, `${kind}: ${effect.what} is not what it claims`);
+      assert.notEqual(effect.factor, 1, `${kind}: a factor of one is not an effect`);
+    }
+  }
+});
+
+test('an effect is filed under where it is felt', () => {
+  // The camp half and the road half answer different questions — one is what the
+  // stores will do while you wait, the other is whether to send anybody at all.
+  const storm = effectsOf('rad_storm');
+  assert.deepEqual(
+    storm.map((e) => [e.what, e.where]),
+    [['water', 'camp'], ['dose', 'road']],
+  );
+  assert.deepEqual(effectsOf('caravan').map((e) => e.where), ['road']);
+});
+
+test('effects and the factors the tick composes agree, stacked as well as alone', () => {
+  // "Two blights are worse than one" is a comment in productionFactors; this is the
+  // page's version of the same claim, checked against the function itself.
+  const two = [{ kind: 'blight' }, { kind: 'blight' }];
+  const composed = productionFactors(two);
+  const fromEffects = effectsOf('blight')[0].factor ** 2;
+
+  assert.equal(composed.food, fromEffects);
+});
+
+test('an unknown kind says nothing rather than throwing', () => {
+  // Rendered on every page load, for whatever is in the events table.
+  assert.deepEqual(effectsOf('not_a_kind'), []);
+  assert.deepEqual(effectsOf(undefined), []);
 });

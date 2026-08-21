@@ -2,6 +2,7 @@ import { advanceSettlement } from './advance-settlement.js';
 import {
   WORLD_EVENTS,
   activeAt,
+  effectsOf,
   expeditionFactors,
   productionFactors,
 } from '../game/world-events.js';
@@ -774,6 +775,9 @@ export async function viewCamp(client, settlementId, now = Date.now()) {
       name: WORLD_EVENTS[event.kind]?.name ?? event.kind,
       description: WORLD_EVENTS[event.kind]?.description ?? '',
       endsAt: new Date(event.endsAt),
+      // What it is actually doing, from the same table the tick multiplies by. The
+      // prose says what the sky looks like; this says what it costs.
+      effects: effectsOf(event.kind),
     })),
     structures: structures.map((s) => {
       const branch = upgradeFor(s.kind);

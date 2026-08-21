@@ -419,13 +419,62 @@ function renderWeather(weather) {
   if (!weather || weather.length === 0) return '';
 
   const items = weather
-    .map((event) => {
-      return `<li><strong>${escape(event.name)}</strong> (${countdown(event.endsAt, 'clearing')} left) &mdash;
-        ${escape(event.description)}</li>`;
-    })
+    .map(
+      (event) => `<li><strong>${escape(event.name)}</strong> (${countdown(event.endsAt, 'clearing')} left) &mdash;
+        ${escape(event.description)}${effectLine(event.effects)}</li>`,
+    )
     .join('');
 
-  return `<h2>The sky</h2><ul class="events">${items}</ul>`;
+  // Two blights are worse than one, and the page had no way to say so. Only shown when
+  // something is actually stacking, because for one event it would restate the line
+  // directly above it.
+  const together = weather.length > 1 ? `<p><small>Together: ${escape(stacked(weather))}.</small></p>` : '';
+
+  return `<h2>The sky</h2><ul class="events">${items}</ul>${together}`;
+}
+
+/**
+ * What an event costs, under the sentence about what it looks like.
+ *
+ * The sky used to be prose and a countdown, and prose is the wrong instrument for this:
+ * a blight is on for days and slows the garden to a third, and a player was left to
+ * infer that from a stores figure drifting. **The whole decision the weather offers is
+ * when to spend survivor-hours** — send them under Caravan Season, keep them home under
+ * a Rad Storm — and a multiplier nobody can see is not a decision.
+ *
+ * Multipliers rather than adjectives, because they are exact and because the page is
+ * already numeric one section down. `docs/LORE.md` bars numbers with authority from the
+ * *prose*, and this deliberately is not prose: it sits under the sentence, in small, in
+ * the same register as "danger 4" on the dispatch table.
+ */
+function effectLine(effects) {
+  if (!effects || effects.length === 0) return '';
+
+  const here = effects.filter((e) => e.where === 'camp').map(factor);
+  const there = effects.filter((e) => e.where === 'road').map(factor);
+
+  const parts = [];
+  if (here.length > 0) parts.push(`in camp ${here.join(', ')}`);
+  if (there.length > 0) parts.push(`out there ${there.join(', ')}`);
+
+  return `<br><small>${escape(parts.join(' &middot; '))}</small>`.replace('&amp;middot;', '&middot;');
+}
+
+const factor = (effect) => `${effect.what} ×${effect.factor}`;
+
+/** Everything in force, multiplied out — which is what the tick actually applies. */
+function stacked(weather) {
+  const totals = new Map();
+  for (const event of weather) {
+    for (const effect of event.effects ?? []) {
+      const seen = totals.get(effect.what) ?? { ...effect, factor: 1 };
+      totals.set(effect.what, { ...seen, factor: seen.factor * effect.factor });
+    }
+  }
+
+  return [...totals.values()]
+    .map((effect) => `${effect.what} ×${Math.round(effect.factor * 100) / 100}`)
+    .join(', ');
 }
 
 /**

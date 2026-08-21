@@ -111,6 +111,41 @@ export function expeditionFactors(active) {
   return { loot, radiation };
 }
 
+/**
+ * What an event does, as a list the page can print.
+ *
+ * Derived from the same `WORLD_EVENTS` entry the simulation multiplies by, rather than
+ * written out again next to the prose. The sky used to be two sentences and a
+ * countdown: you were told there was a blight and left to notice, over some days, that
+ * the garden had slowed down. A player who cannot see the number cannot plan around it,
+ * and the whole decision the weather offers is *when to spend survivor-hours* — which
+ * is not a decision at all if the multiplier is a secret.
+ *
+ * Order is fixed rather than object order: stores first because that is what the camp
+ * is doing to itself, then the two that only apply out there. `where` lets the page
+ * group them without knowing what any particular kind contains.
+ */
+export function effectsOf(kind) {
+  const spec = WORLD_EVENTS[kind] ?? {};
+  const effects = [];
+
+  for (const resource of ['food', 'water', 'scrap', 'fuel']) {
+    const factor = spec.production?.[resource];
+    if (factor !== undefined && factor !== 1) {
+      effects.push({ what: resource, factor, where: 'camp' });
+    }
+  }
+
+  if (spec.loot !== undefined && spec.loot !== 1) {
+    effects.push({ what: 'haul', factor: spec.loot, where: 'road' });
+  }
+  if (spec.radiation !== undefined && spec.radiation !== 1) {
+    effects.push({ what: 'dose', factor: spec.radiation, where: 'road' });
+  }
+
+  return effects;
+}
+
 /** The next moment the weather changes after `cursor`, or Infinity. */
 export function nextBoundaryAfter(events, cursor) {
   let next = Infinity;
