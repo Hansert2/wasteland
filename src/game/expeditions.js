@@ -88,38 +88,50 @@ export function resolveExpedition({ region, survivor, seed, weather, choices, st
  * The numbers on the options themselves are provisional; see `src/game/moments.js`.
  */
 function applyChoices(trip, { region, survivor, seed, choices, standings }) {
-  if (!choices || choices.length === 0) return trip;
-
   const moments = momentsFor(region, seed);
   if (moments.length === 0) return trip;
 
+  // Index order, not the order they were answered in: the trip happened in the order the
+  // hours did, and a replay must not depend on how quickly somebody clicked.
+  const answered = [...(choices ?? [])].sort((a, b) => a.index - b.index);
+
+  // Everything below this point used to sit behind an early return on an empty
+  // `choices`, and still does — the arithmetic, the generator and the rounding all
+  // stay untouched for a trip nobody attended. Only the account of it changed.
+  if (answered.length > 0 && !attend(trip, moments, answered, { region, survivor, seed, standings })) {
+    // They turned back. What was further along the road never happened, so there is
+    // nothing out there they settled without you and nothing to report.
+    return trip;
+  }
+
+  unattended(trip, moments, answered);
+  return trip;
+}
+
+/**
+ * Apply the answers. False if they turned back, which ends the trip where it stands.
+ *
+ * Split out of `applyChoices` when the unanswered half arrived, so that the two halves
+ * read as what they are: what the player did, and what happened while they did not.
+ */
+function attend(trip, moments, answered, { region, survivor, seed, standings }) {
   const travelHours = Number(region?.travelHours) || 0;
   const timeline = timelineOf({ outcome: trip, travelHours, seed });
   const random = makeRandom(mix(seed, EFFECTS_SALT));
   const equipment = equipmentOf(survivor);
 
-  // Index order, not the order they were answered in: the trip happened in the order the
-  // hours did, and a replay must not depend on how quickly somebody clicked.
-  const answered = [...choices].sort((a, b) => a.index - b.index);
-
   for (const answer of answered) {
-    const moment = moments[answer.index];
-    if (!moment) continue;
+    const honoured = answerTo(moments, answer);
+    if (!honoured) continue;
 
-    // An answer names the moment it answered. If the content has moved under a trip in
-    // flight, the position still resolves but the name does not, and the answer is
-    // dropped rather than applied to whatever took its place. Answers written before
-    // this carried no name and are trusted by position, which is what they were.
-    if (answer.key && moment.key !== answer.key) continue;
-
-    const option = moment.options.find((candidate) => candidate.key === answer.option);
-    if (!option || option.verb === 'default') continue;
+    const { moment, option } = honoured;
+    if (option.verb === 'default') continue;
 
     const at = stateAt(timeline, moment.atHour);
 
     if (option.turnBack) {
       turnBack(trip, at, moment);
-      return trip;
+      return false;
     }
 
     // Where this moment's account of itself starts, so it can be signed afterwards.
@@ -152,7 +164,83 @@ function applyChoices(trip, { region, survivor, seed, choices, standings }) {
   }
 
   trip.damage = Math.max(0, Math.round(trip.damage));
-  return trip;
+  return true;
+}
+
+/**
+ * What came up out there that nobody was on the page to answer.
+ *
+ * **The fault this fixes is that missing everything and there being nothing to miss
+ * produced the same trip log, byte for byte.** A window is open about a third of the
+ * hours of a trip, nothing announces one without a radio, and an unanswered moment left
+ * no trace anywhere: not on the page while the trip ran, and not in the account of it
+ * afterwards. A player checking in twice on a twelve-hour walk could conclude, entirely
+ * reasonably, that the feature did not exist. One did.
+ *
+ * A moment answered with its `default` is not in here. That player was present and
+ * chose to do nothing, which is a different fact and already the silent one — the phase
+ * guarantee is that answering with defaults adds no line, and it still does not.
+ *
+ * One line rather than one per moment. Four lines of "nobody was there" on every trip
+ * of an idle player is a scold, and the useful content is small: that it happened, and
+ * what it was, so the next trip is worth being around for. The names carry that; the
+ * hours would only pad it.
+ *
+ * Nothing here draws from a generator, so it cannot move a trip's outcome by a single
+ * unit. It is an account of the trip that was already rolled.
+ */
+function unattended(trip, moments, answered) {
+  // Answers that did nothing are not attendance. An option that does not exist, or a
+  // name that no longer matches the moment at that position, is dropped by `attend` —
+  // so out there, nobody answered, and this has to agree with that or the account and
+  // the arithmetic would describe different trips.
+  const taken = new Set(
+    answered.filter((answer) => answerTo(moments, answer)).map((answer) => Number(answer.index)),
+  );
+  const missed = moments.filter((moment) => !taken.has(moment.index));
+  if (missed.length === 0) return;
+
+  const names = list(missed.map((moment) => moment.title.toLowerCase()));
+  const count = COUNTS[missed.length] ?? String(missed.length);
+
+  trip.log.push(
+    missed.length === 1
+      ? `One came up out there that they settled on their own: ${names}.`
+      : `${count} came up out there that they settled on their own: ${names}.`,
+  );
+}
+
+/**
+ * The moment and option an answer actually names, or null if it names neither.
+ *
+ * Three rules, and they were written out in full in three places before this: here,
+ * in `viewCamp`'s account of what has been settled, and — once unanswered moments had
+ * to be counted — very nearly a third time. The one that is easy to get wrong is the
+ * middle one, so it is stated once: **an answer names the moment it answered.** If the
+ * content has moved under a trip in flight the position still resolves but the name
+ * does not, and the answer is dropped rather than applied to whatever took its place.
+ * Answers written before names existed carry none and are trusted by position, which
+ * is what they were.
+ *
+ * Null means the answer did nothing, and everything downstream should treat the moment
+ * as one nobody answered — because from the survivor's side, out there, nobody did.
+ */
+export function answerTo(moments, answer) {
+  const moment = moments[Number(answer?.index)];
+  if (!moment) return null;
+  if (answer.key && moment.key !== answer.key) return null;
+
+  const option = moment.options.find((candidate) => candidate.key === answer.option);
+  return option ? { moment, option } : null;
+}
+
+/** A trip offers at most four moments, so the words run out exactly where they should. */
+const COUNTS = { 1: 'One', 2: 'Two', 3: 'Three', 4: 'Four' };
+
+/** "a", "a and b", "a, b and c" — the way the rest of the prose would say it. */
+function list(parts) {
+  if (parts.length <= 1) return parts.join('');
+  return `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
 }
 
 /** Bank what the timeline says is in the pack, and leave the rest out there. */

@@ -1794,6 +1794,140 @@ first. Nothing is going to, in that shape — and the measurement said the speci
 of the thinness is *the same two or three verbs every visit*, which is what a destination
 answers directly: the verbs stop being the point when they are paying for something.
 
+## Dead time, and telling the player which loop they are in — 2026-08-21
+
+Played: founded a camp, spent the opening scrap, sent someone to Coastal Wreckage for
+twelve hours. Nothing on the page could change for twelve hours. The report read fine
+and no number on it was wrong.
+
+**The mechanics were not the fault.** The pacing section above already measured the good
+version of the first hour — *"one build without the short regions, four with them"* —
+and re-simulating it reproduces exactly that: workshop, then the Fence Line on repeat,
+four builds inside the hour. That opening is reachable from turn one and always was.
+What no part of the page said is that it exists.
+
+    the opening position, measured
+      starting stores                 10 scrap, 0 fuel, 40 food, 40 water
+      starting structures             shelter 2, garden 2, purifier 2, workshop 0
+      scrap income                    none — nothing in a new camp makes scrap
+      what 10 scrap buys              the workshop: 5 scrap, 36 seconds
+      the next cheapest door          garden level 3, 7 scrap — four hours at 0.5/h
+
+So the twelve-hour trip lands on a camp with one door, already used. And the region
+table sorts by danger, which puts the interesting names at the bottom.
+
+**There are two loops and the page never said so.** Building and crafting are the active
+one, minute-scale, the whole reason the two short regions exist. Anything past four hours
+is the idle one — *"what you set running before closing the tab"*, as this file already
+puts it. A new player walks into the idle loop on turn one and experiences it as a broken
+game, which is a fair reading: three moment windows cover about a third of a twelve-hour
+trip, nothing announces one without a radio, and a missed one left no trace anywhere.
+Missing everything and there being nothing to miss produced the same log, byte for byte.
+
+### What was rejected, and why it is worth writing down
+
+**An at-camp work action — the survivor spending hours in the camp for scrap.** The
+obvious fix, and it does not work, because it competes for the survivor. It cannot run
+*during* the trip; it is an alternative to creating the dead window, not something that
+fills one. It is also already dominated. Loot tables are flat totals rather than
+per-hour, so scrap per *survivor-hour* runs:
+
+    The Fence Line     0.17h    23.5      Underground Bunkers    9h     2.2
+    Old Service Road   0.75h    13.3      Coastal Wreckage      12h     2.1
+    The Ruined City       4h     2.3      The Deep Zone         18h     1.8
+
+Priced under the Fence Line an idle-work action is strictly worse than clicking it;
+priced over, it replaces the game. **The Fence Line already is the at-camp work action**
+— ten minutes and attention, which is exactly the trade.
+
+**Raising camp income instead.** The other lever, and the only one that acts without the
+survivor. Tripling the workshop from 0.5 to 1.5 per level moves a twelve-hour window from
+three actions to five, two of which are still inside the first minute. Income cannot fix
+it: costs climb at `COST_GROWTH ** level` while the builds themselves resolve in seconds,
+so what is being bought is clicks per hour, and 3x buys one every two and a half hours.
+**The dead window is not an income problem and cannot be paid off.**
+
+**Quest rewards.** The chain below is affordable on what the short walks pay — the
+simulation says so — and rewards are the only part of a quest system that needs
+*storage*. Completion is derivable; payment is not. Rewards would also be a balance
+change, and they can be added later far more easily than a table can be removed.
+
+### What was built
+
+Three pieces, and only the third is a bug fix.
+
+**`src/game/planning.js` — hours until affordable.** Every door is priced and the stores
+carry a rate, so the answer was always two numbers apart and the subtraction was the
+player's. Priced in the *net* rate, the same figure the stores line prints, because a
+forecast that disagrees with the number above it is worse than no forecast. Null means
+never, which is a different instruction from "wait" — nothing in a camp makes fuel, so a
+road link is an errand rather than a delay.
+
+**The plan spends the purse as it walks it**, and the version that did not is the
+cautionary tale. Pricing every door against the same stores told a camp holding ten scrap
+that it could do five things costing five to ten each; every region read *"5 things to do
+meanwhile"*, including the ten-minute one. It can do one of them, and then wait. What it
+still does not model is the crew — builds and fittings share one queue, so past the point
+where a level takes hours this reads optimistically. Right place to fix that when the
+deep game needs it.
+
+Surfaced twice: a column on the dispatch table counting what opens *during* each trip
+(doors already open are excluded, or every row carries the same number and the column
+compares nothing), and a block in the Away report naming the next four and when. A camp
+that can reach nothing gets a sentence rather than an empty table.
+
+**`src/game/direction.js` — five steps, derived, paying nothing.** Workshop, the short
+walk by name, the bench, a craft, then the far places and what their hours cost. No
+table, no migration, in the register the design brief describes: one heading, one
+sentence, no progress bar. A test asserts every line is a sentence and prices nothing, so
+it cannot decay into a checklist.
+
+**It switches off on history, not on state.** Two steps can only be asked of the camp as
+it stands — nothing records the highest level a workshop ever reached — and a successor
+takes two levels off everything, so state alone would sit a veteran down and teach it
+about the bench again. The off switch is three facts that cannot be undone: has run a
+short walk, has crafted, has taken a long trip. Falling into the trap on turn one does not
+trip it, because a first-ever dispatch to the Deep Zone sets one of the three and none of
+the understanding.
+
+**The moment box now arrives without a reload.** This was the only real bug, and it had
+an accidental exemption: the radio's line is rendered with `countdown()`, which emits the
+`data-until` the client script arms — so **a camp with a radio fitted has always had its
+box appear on its own**, and every other camp sat on a page that quietly declined to
+update. That is not the radio earning its fuel; it is the one upgrade-gated refresh on the
+page, gated by nobody's decision. Armed for everyone now, silently, via a hidden
+`countdown()` — so the contract below is satisfied rather than worked around.
+
+**The radio therefore sells knowing *when* rather than catching it at all**, and that is a
+deliberate narrowing. A player sitting on the page watching has attended either way;
+making them reload to prove it was never a design, it was static HTML. The radio still
+buys the only thing that lets you plan an evening around a window.
+
+**And a missed moment now says so in the trip log.** One line, naming them — *"Three came
+up out there that they settled on their own: the shaft, the warm fire and the ford."* One
+rather than one per moment, because four lines of "nobody was there" on every trip of an
+idle player is a scold. A moment answered with its default is not in it: that player was
+present and chose to do nothing, which is a different fact.
+
+### The guarantee this narrowed
+
+The promise that *a trip nobody attended is the trip that would have happened anyway* used
+to be tested with `deepStrictEqual` over every field including the log. That quietly made
+a second promise nobody wanted: **that a trip you missed entirely and a trip you sat
+through answering "walk on" would read identically afterwards.** They did, and that is
+precisely how a player concludes the encounters are not running.
+
+The simulation half is untouched and is now pinned field by field — `loot`, `finds`,
+`radiation`, `damage`, `healed`, `died`, `cause`. The log differs by exactly one sentence,
+checked rather than waved past. Nothing in the new path draws from a generator, so it
+cannot move a trip by a unit.
+
+One duplication went with it. The rule that **an answer names the moment it answered** had
+been written out by hand in two places and was about to be written a third time, for
+counting the unanswered. It is now `answerTo` in `expeditions.js`, used by the resolution
+and by the camp view. An answer that names nothing was not applied out there, so it counts
+as unattended here — which is what makes a garbage choice stop reading as attendance.
+
 ## The page contract, and what a redesign must not drop
 
 The look is scaffolding and will be overhauled. Most of `render.js` can be thrown away

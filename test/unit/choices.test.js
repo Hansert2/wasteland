@@ -40,19 +40,86 @@ function find(seed, field) {
   return null;
 }
 
+/** The one line a trip is allowed to gain by being unattended. See `unattended`. */
+const SETTLED_ALONE = /came up out there that they settled on their own/;
+const withoutAttendance = (outcome) => ({
+  ...outcome,
+  log: outcome.log.filter((line) => !SETTLED_ALONE.test(line)),
+});
+
 test('a trip nobody attended is the trip that would have happened anyway', () => {
   // The load-bearing guarantee of the whole phase, stated three ways: no choices at
   // all, an empty list, and every moment answered with its default must all be the
   // same trip — every field, not merely the totals.
+  //
+  // **Narrowed once, deliberately, and this is the record of it.** The guarantee used
+  // to include the log verbatim, which quietly made a second promise nobody wanted:
+  // that a trip you missed entirely and a trip you sat through answering "walk on"
+  // would read identically afterwards. They did, and that is how a player concluded
+  // the encounters were not running at all. The simulation is still identical down to
+  // the field — that is what "would have happened anyway" ever meant — and the log now
+  // differs by exactly one sentence, which is checked below rather than waved past.
   for (const seed of SEEDS) {
     const untouched = trip(seed);
+    const empty = trip(seed, { choices: [] });
+    const defaults = trip(seed, { choices: allDefaults(seed) });
 
-    assert.deepStrictEqual(trip(seed, { choices: [] }), untouched, `seed ${seed}: empty`);
+    assert.deepStrictEqual(empty, untouched, `seed ${seed}: empty`);
     assert.deepStrictEqual(
-      trip(seed, { choices: allDefaults(seed) }),
-      untouched,
+      withoutAttendance(defaults),
+      withoutAttendance(untouched),
       `seed ${seed}: defaults`,
     );
+
+    for (const field of ['loot', 'finds', 'radiation', 'damage', 'healed', 'died', 'cause']) {
+      assert.deepStrictEqual(
+        defaults[field],
+        untouched[field],
+        `seed ${seed}: answering with defaults moved ${field}`,
+      );
+    }
+  }
+});
+
+test('being there and not being there do not read the same afterwards', () => {
+  // The fault, stated as a test. Missing every window and answering every one of them
+  // with "walk on" produced the same log byte for byte, so the account of a trip could
+  // not distinguish "nothing happened" from "three things happened without you".
+  for (const seed of SEEDS) {
+    const missed = trip(seed).log.filter((line) => SETTLED_ALONE.test(line));
+    const attended = trip(seed, { choices: allDefaults(seed) }).log;
+
+    assert.equal(missed.length, 1, `seed ${seed}: one line, not one per moment`);
+    assert.ok(
+      !attended.some((line) => SETTLED_ALONE.test(line)),
+      `seed ${seed}: a default is a decision, not an absence`,
+    );
+
+    // The names are what make it worth reading — the count alone would say only that
+    // something happened, and the point is that it was worth being there for.
+    for (const moment of momentsFor(DEEP_ZONE, seed)) {
+      assert.ok(
+        missed[0].includes(moment.title.toLowerCase()),
+        `seed ${seed}: ${moment.title} is missing from ${missed[0]}`,
+      );
+    }
+  }
+});
+
+test('turning back reports no windows further up the road', () => {
+  // They never got there. A moment placed past the turn is not something they settled
+  // on their own; it is something that did not happen.
+  for (const seed of SEEDS) {
+    const moments = momentsFor(DEEP_ZONE, seed);
+    const log = trip(seed, {
+      choices: [{ index: moments[0].index, option: 'turn_back' }],
+    }).log;
+
+    assert.ok(
+      !log.some((line) => SETTLED_ALONE.test(line)),
+      `seed ${seed}: ${JSON.stringify(log)}`,
+    );
+    assert.ok(log.some((line) => /turned back/.test(line)), `seed ${seed}: and says why`);
   }
 });
 

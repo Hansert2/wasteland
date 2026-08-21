@@ -5,7 +5,7 @@ import {
   expeditionFactors,
   productionFactors,
 } from '../game/world-events.js';
-import { resolveExpedition } from '../game/expeditions.js';
+import { answerTo, resolveExpedition } from '../game/expeditions.js';
 import { isOpen, isWarned, momentCount, momentsFor } from '../game/moments.js';
 import { openWithin, planFor } from '../game/planning.js';
 import { directionFor } from '../game/direction.js';
@@ -128,13 +128,16 @@ function reportOn(row, state, now) {
     // the consequence is rolled at `returns_at`, and this is the only thing that says so.
     settled: choices
       .map((choice) => {
-        const moment = moments[Number(choice.index)];
-        // Same guard as `applyChoices`: an answer names the moment it answered, and one
-        // whose name no longer matches is not applied, so it must not be reported either.
-        if (!moment || (choice.key && moment.key !== choice.key)) return null;
-        const option = moment.options.find((candidate) => candidate.key === choice.option);
-        return option
-          ? { title: moment.title, label: option.label, atHour: moment.atHour }
+        // The same guard the resolution uses, and now literally the same function: an
+        // answer that names nothing was not applied out there, so it must not be
+        // reported here either. Three hand-written copies of this rule was two too many.
+        const honoured = answerTo(moments, choice);
+        return honoured
+          ? {
+              title: honoured.moment.title,
+              label: honoured.option.label,
+              atHour: honoured.moment.atHour,
+            }
           : null;
       })
       .filter(Boolean)
