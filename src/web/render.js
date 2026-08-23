@@ -66,7 +66,26 @@ const PANE_CSS = Object.entries(PANES)
 
 const STYLE = `
   :root {
+    /*
+     * The page behind the camp, and the reason the palette has nine values now.
+     *
+     * The ground was doing two jobs: the fill the camp is drawn on, and the fill of the
+     * browser window it floats in. On a laptop those are the same thing and nobody
+     * notices. On a wide screen they are not — the camp ran to the left edge and
+     * trailed off into an acre of identical dark, which is the one arrangement that
+     * makes a deliberately quiet page read as an unstyled one.
+     *
+     * The artboards never had the problem because they never had a window: every board
+     * is a fixed card at #171614 sitting on #0B0A08. That second value is what was
+     * missing here, and once the camp has an edge and a floor to sit on, every border
+     * inside it starts meaning something again.
+     */
+    --void: #0B0A08;
     --ground: #171614;
+    /* The rail sits between the two: darker than the camp it is attached to, lighter
+       than the floor the camp is standing on, so it reads as part of the card rather
+       than as a hole cut in it. */
+    --rail: #141311;
     --panel: #1E1D1A;
     --rule: #33312C;
     --edge: #4A463E;
@@ -86,7 +105,21 @@ const STYLE = `
      * fill as the panel it labels or the strip disappears.
      */
     --rule-in: #26241F;   /* between cells; always lighter than the panel's own edge */
-    --strip: #1A1917;     /* the label strip at the head of a block */
+    /*
+     * The label strip, and it is the "panel" fill rather than a value of its own.
+     *
+     * The artboards give it #1A1917, which is three steps off the ground and reads
+     * perfectly there — because on the artboards the whole camp sits on a card at
+     * #14120E and the page behind it is #0B0A08. Lifted onto the real page, where the
+     * ground *is* #171614, three steps is nothing and the strip vanishes: the label
+     * ends up looking like a heading floating above the box rather than a bar across
+     * the top of it, which is the one thing the strip exists to stop.
+     *
+     * So the strip takes the fill the handoff already named for "inside of a bordered
+     * panel", and the block body keeps the ground. Still two fills, still no shadow,
+     * still no third grey invented to paper over it.
+     */
+    --strip: #1E1D1A;
     --value: #DCD8CD;     /* a figure, one step down from a heading */
     --quiet: #7A766C;     /* a figure or a sentence that is present but not the point */
     --control: #55504E;   /* the border of a button, which must out-rank a panel edge */
@@ -114,7 +147,7 @@ const STYLE = `
 
   body {
     margin: 0;
-    background: var(--ground);
+    background: var(--void);
     color: var(--prose);
     font-family: var(--body);
     font-size: 16.5px;
@@ -124,19 +157,42 @@ const STYLE = `
 
   /* ---- the shell ---- */
 
-  .shell { display: flex; align-items: flex-start; gap: 0; min-height: 100vh; }
+  /*
+   * The camp, as a card on the floor rather than as the whole window.
+   *
+   * 1280px is the width the artboards are drawn at, and it is not arbitrary: the rail
+   * is 198 of it and the rest is a content column wide enough for a structures table
+   * with a description in it and no wider. Letting it grow with the window would make
+   * the one measure the design controls — how long a line of prose is — a property of
+   * the reader's monitor.
+   */
+  .shell {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    max-width: 1280px;
+    margin: 0 auto;
+    min-height: 100vh;
+    background: var(--ground);
+    border-left: 1px solid var(--rule);
+    border-right: 1px solid var(--rule);
+  }
 
+  /*
+   * The divider between rail and content is on "main", not on the rail.
+   *
+   * Whichever of the two is taller has to carry it, or the line stops partway down the
+   * card and reads as a rendering fault. "main" is the tall one on every view except an
+   * empty Road, and "align-items: stretch" makes it the tall one there too.
+   */
   .rail {
     flex: 0 0 198px;
     width: 198px;
-    position: sticky;
-    top: 0;
-    align-self: stretch;
-    border-right: 1px solid var(--rule);
-    padding: 24px 0 24px 22px;
+    background: var(--rail);
   }
 
-  .rail .who { padding-right: 22px; margin-bottom: 24px; }
+  .rail .who { padding: 20px 20px 18px; border-bottom: 1px solid var(--rule); }
+  .rail .who .tag { display: block; margin-bottom: 7px; letter-spacing: .2em; }
   .rail .who h1 {
     margin: 0;
     font-family: var(--label);
@@ -147,34 +203,40 @@ const STYLE = `
     color: var(--bone);
   }
   .rail .who p {
-    margin: 8px 0 0;
+    margin: 12px 0 0;
     font-family: var(--numer);
     font-size: 12.5px;
-    line-height: 1.5;
-    color: var(--faint);
+    line-height: 1.6;
+    color: var(--dim);
     font-variant-numeric: tabular-nums;
   }
 
   .rail nav { display: flex; flex-direction: column; }
   .rail nav a {
     display: block;
-    margin-left: -22px;
-    padding: 9px 22px;
+    padding: 13px 20px;
     font-family: var(--label);
     font-weight: 700;
-    font-size: 12.5px;
-    letter-spacing: .16em;
+    font-size: 11.5px;
+    line-height: 1;
+    letter-spacing: .14em;
     text-transform: uppercase;
     color: var(--dim);
     text-decoration: none;
-    border-left: 3px solid transparent;
+    border-bottom: 1px solid var(--rule-in);
   }
   .rail nav a:hover { color: var(--bone); }
   /* The one place oxide marks something that is not a clock, a price or a warning, and
-     it is still not decoration: it is the answer to "which of these am I looking at". */
-  .rail nav a[aria-current] { color: var(--bone); border-left-color: var(--oxide); }
+     it is still not decoration: it is the answer to "which of these am I looking at".
+     The lift in fill comes with it, so the marker is not carrying the state alone. */
+  .rail nav a[aria-current] {
+    color: var(--bone);
+    background: var(--panel);
+    box-shadow: inset 3px 0 0 var(--oxide);
+  }
+  .rail nav a:last-child { border-bottom-color: var(--rule); }
 
-  .rail form { margin: 24px 22px 0 0; }
+  .rail form { margin: 20px; }
 
   /*
    * A flex column with a gap, and the gap is the reason rather than the layout.
@@ -188,8 +250,8 @@ const STYLE = `
   main {
     flex: 1 1 auto;
     min-width: 0;
-    max-width: 1000px;
     padding: 20px 24px 72px;
+    border-left: 1px solid var(--rule);
     display: flex;
     flex-direction: column;
     gap: 18px;
@@ -200,8 +262,9 @@ const STYLE = `
   /* The head is the camp's identity and lives in the rail, so it is never in this
      stream. The error box is, and is on every view: a refusal that renders into a
      hidden section is a button that silently did nothing. */
-  main > section { display: none; margin: 0; }
-  main > #s-error { display: block; }
+  /* Descendant, not child: four of these sit inside a lane on the Survivor view. */
+  main section { display: none; margin: 0; }
+  main #s-error { display: block; }
   /*
    * The one place an empty block is hidden, and deliberately not the blanket
    * ':empty { display: none }' the handoff forbids — that rule would take the slot away
@@ -210,8 +273,39 @@ const STYLE = `
    * in the document, still found by id, and still swapped: the moment it has content it
    * stops matching ':empty' and comes back.
    */
-  main > #s-error:empty { display: none; }
+  main #s-error:empty { display: none; }
 ${PANE_CSS}
+
+  /*
+   * The lanes, which are nothing at all until the Survivor view needs them.
+   *
+   * "display: contents" removes the wrapper from layout entirely — its sections become
+   * flex items of the column, exactly as they were before the wrappers existed — so
+   * four views out of five are unaffected by a structure that only one of them uses.
+   */
+  .lane { display: contents; }
+
+  /* Left: the trip and the bench. Right: the person, gauges number-first, and what
+     they are carrying. Two flex columns rather than grid cells, because grid rows are
+     shared and a tall dispatch table would drag the pack down the page with it. */
+  body[data-pane="survivor"] main {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 300px;
+    gap: 18px 24px;
+    align-items: start;
+  }
+  body[data-pane="survivor"] .lane { display: flex; flex-direction: column; gap: 18px; }
+  body[data-pane="survivor"] .lane-main { grid-column: 1; }
+  body[data-pane="survivor"] .lane-side { grid-column: 2; }
+  body[data-pane="survivor"] #s-error { grid-column: 1 / -1; }
+  /* A 104px label gutter is a third of a 300px column, so in the sidebar a quiet row
+     stacks its label above its line instead of standing beside it. */
+  body[data-pane="survivor"] .lane-side .quiet { display: block; margin: 0; }
+  body[data-pane="survivor"] .lane-side .quiet .tag { display: block; margin-bottom: 7px; }
+  @media (max-width: 900px) {
+    body[data-pane="survivor"] main { display: flex; }
+    body[data-pane="survivor"] .lane { display: contents; }
+  }
 
   /* The caravan is on two views wearing two shapes: a pointer on Camp so the player
      never has to remember Trade exists, and the shopfront itself on Trade. Both are
@@ -219,7 +313,7 @@ ${PANE_CSS}
   body[data-pane="camp"] #s-caravan .as-block { display: none; }
   body[data-pane="trade"] #s-caravan .as-line { display: none; }
 
-  main > section:empty { margin-bottom: 0; }
+  main section:empty { margin-bottom: 0; }
 
   /* ---- type ---- */
 
@@ -326,7 +420,7 @@ ${PANE_CSS}
    * row beside a panel keeps nine — which is the right answer anyway, since the quiet
    * rows are meant to sit closer together than the blocks that have something to say.
    */
-  main > section:has(.quiet) { margin: -9px 0; }
+  main section:has(.quiet) { margin: -9px 0; }
 
   /* ---- contact ---- */
 
@@ -519,7 +613,7 @@ ${PANE_CSS}
   .gauge small { display: block; margin-top: 6px; font-size: 14px; line-height: 1.5; }
   .who-name { display: block; font-family: var(--label); font-weight: 700; font-size: 22px;
               line-height: 1.1; color: var(--bone); }
-  .block-body > .who-name + p { margin-top: 7px; }
+  .known { margin: 7px 0 0; font-size: 15.5px; line-height: 1.55; color: var(--dim); }
 
   /* ---- controls ---- */
 
@@ -553,9 +647,20 @@ ${PANE_CSS}
     outline-offset: 2px;
   }
 
+  /*
+   * A clock, and whether it is a deadline.
+   *
+   * The artboards draw these two differently and the difference is the accent rule
+   * doing its job. Contact's "to answer", the raid hour and the weather clearing are
+   * oxide: they are windows, and something is lost if you are not there. A trip due
+   * back, an order coming off the bench, a build finishing are the same digits in the
+   * same face in bone — they are telling you when, not asking you for anything, and
+   * colouring them would spend the one accent on news.
+   */
   .clock { font-family: var(--numer); font-size: 18px; line-height: 1;
-           color: var(--oxide-light); font-variant-numeric: tabular-nums;
+           color: var(--value); font-variant-numeric: tabular-nums;
            white-space: nowrap; }
+  .clock.deadline { color: var(--oxide-light); }
   .clock small { font-family: var(--label); font-weight: 700; font-size: 10px;
                  letter-spacing: .14em; text-transform: uppercase;
                  color: var(--dim); margin-left: 9px; }
@@ -639,33 +744,33 @@ ${PANE_CSS}
   }
 
   @media (max-width: 560px) {
-    .shell { display: block; }
+    /* Edge to edge on a phone: a card with a floor either side of it is a card nobody
+       can read, and there is no wide screen left to centre anything in. */
+    .shell { display: block; border-left: 0; border-right: 0; }
+    main { border-left: 0; }
     .rail {
-      position: static;
       width: auto;
-      padding: 18px 16px 0;
-      border-right: 0;
       border-bottom: 1px solid var(--rule);
     }
-    .rail .who { padding-right: 0; margin-bottom: 14px; }
+    .rail .who { padding: 18px 16px 14px; border-bottom: 0; }
     .rail nav {
       flex-direction: row;
-      gap: 4px;
       overflow-x: auto;
-      margin: 0 -16px;
-      padding: 0 16px;
       scrollbar-width: none;
+      border-top: 1px solid var(--rule-in);
     }
     .rail nav::-webkit-scrollbar { display: none; }
     .rail nav a {
-      margin: 0;
-      padding: 10px 12px;
-      border-left: 0;
+      padding: 13px 14px;
       border-bottom: 2px solid transparent;
       white-space: nowrap;
     }
-    .rail nav a[aria-current] { border-left: 0; border-bottom-color: var(--oxide); }
-    .rail form { margin: 12px 0; }
+    .rail nav a[aria-current] {
+      box-shadow: none;
+      border-bottom-color: var(--oxide);
+    }
+    .rail nav a:last-child { border-bottom-color: transparent; }
+    .rail form { margin: 12px 16px; }
     main { padding: 16px 16px 64px; }
     button { padding: 13px 16px; min-height: 44px; }
     .choice button { padding: 13px 0; }
@@ -1133,8 +1238,9 @@ const NOTHING = {
 export function campPage(view, { error, pane = 'camp' } = {}) {
   const identity = section('head', `
     <div class="who">
+      <span class="tag">Camp</span>
       <h1>${escape(view.name)}</h1>
-      <p>wealth ${view.wealth} &middot; defence ${view.defence}<br>
+      <p>wealth ${view.wealth}<br>defence ${view.defence}<br>
          founded ${escape(view.foundedAt.toISOString().slice(0, 10))}</p>
     </div>`);
 
@@ -1148,18 +1254,40 @@ export function campPage(view, { error, pane = 'camp' } = {}) {
     ${section('sky', renderWeather(view.weather))}
 
     ${section('events', renderEvents(view.events))}
-    ${section(
-      'survivor',
-      view.survivor
-        ? renderSurvivor(view.survivor, view.strain)
-        : renderNoSurvivor(view.fallenCount > 0, view.arriving),
-    )}
-    ${section('inventory', renderInventory(view.inventory))}
     ${section('direction', renderDirection(view.direction))}
-    ${section(
-      'expedition',
-      view.survivor ? renderExpeditions(view) : quiet('Away', NOTHING.expedition),
-    )}
+
+    ${/*
+      * The Survivor view is two columns — the trip and the bench on the left, the person
+      * and their pack in a 300px sidebar — and these lanes are what make that possible
+      * without the section stream growing a second arrangement.
+      *
+      * A grid cannot give two columns independent heights: rows are shared, so a tall
+      * dispatch table on the left would push the pack halfway down the page on the
+      * right. Two flex columns can, and the lanes are `display: contents` on every other
+      * view, which means their sections are laid out as direct children of `main` and
+      * the single-column views do not know the wrappers exist.
+      *
+      * The order changed to make them adjacent: `s-workshop` moved up beside
+      * `s-expedition`, and the pair now sits before the person rather than after.
+      * Filtered through `PANES` the Camp view is byte-for-byte what it was — none of
+      * these four is on it.
+      */ ''}
+    <div class="lane lane-main">
+      ${section(
+        'expedition',
+        view.survivor ? renderExpeditions(view) : quiet('Away', NOTHING.expedition),
+      )}
+      ${section('workshop', renderWorkshop(view))}
+    </div>
+    <div class="lane lane-side">
+      ${section(
+        'survivor',
+        view.survivor
+          ? renderSurvivor(view.survivor, view.strain)
+          : renderNoSurvivor(view.fallenCount > 0, view.arriving),
+      )}
+      ${section('inventory', renderInventory(view.inventory))}
+    </div>
 
     ${section('stores', renderResources(view.resources))}
     ${section(
@@ -1173,7 +1301,6 @@ export function campPage(view, { error, pane = 'camp' } = {}) {
       ),
     )}
     ${section('road', renderRoad(view.road))}
-    ${section('workshop', renderWorkshop(view))}
 
     ${section('caravan', renderCaravan(view.caravan, Boolean(view.survivor)))}
     ${section('post', renderPost(view.post, Boolean(view.survivor)))}
@@ -1226,7 +1353,7 @@ function renderWeather(weather) {
       `<div>
         <div class="sky-what">
           <span class="name">${escape(event.name)}</span>
-          <span class="clock">${countdown(event.endsAt, 'clearing')} left</span>
+          <span class="clock deadline">${countdown(event.endsAt, 'clearing')} left</span>
         </div>
         <p>${escape(event.description)}</p>
       </div>`,
@@ -1336,7 +1463,7 @@ function renderRaidWarning(expectedAt) {
   return `<div class="block wants contact">
       <div class="block-head">
         <span class="tag">Radio</span>
-        <span class="clock">${countdown(expectedAt, 'any moment')}<small>until raiders</small></span>
+        <span class="clock deadline">${countdown(expectedAt, 'any moment')}<small>until raiders</small></span>
       </div>
       <div class="block-body"><p>Anything still in the stores is theirs to take.</p></div>
     </div>`;
@@ -1424,8 +1551,10 @@ function renderSurvivor(survivor, strain) {
   // What this one is, under how they are doing. Without it the skills are two hidden
   // multipliers and the arrival prose was a thing the player read once and never saw
   // the consequences of — which is the failure the whole feature exists to avoid.
+  // Under the name and in prose, not in a "known for:" label. It is a sentence about a
+  // person, and prefixing it with a field name turns them into a record.
   const who = survivor.knownFor
-    ? `<p><small>${escape(survivor.knownFor)}.</small></p>`
+    ? `<p class="known">${escape(survivor.knownFor)}.</p>`
     : '';
 
   /*
@@ -1449,7 +1578,7 @@ function renderSurvivor(survivor, strain) {
     </div>`;
 
   return block(
-    'Who holds the camp',
+    'Survivor',
     `<div class="who-name">${escape(survivor.name ?? 'Survivor')}</div>
      ${who}
      <div class="gauges">
@@ -1574,7 +1703,7 @@ function renderMoment(expedition) {
   return `<div class="block contact${warned ? ' warned' : ''}">
       <div class="block-head">
         <span class="tag">Contact</span>
-        <span class="clock">${countdown(moment.closesAt, 'gone')}<small>to answer</small></span>
+        <span class="clock deadline">${countdown(moment.closesAt, 'gone')}<small>to answer</small></span>
       </div>
       <div class="block-body">
         <p class="state">${escape(condition(expedition))}</p>
@@ -2154,7 +2283,7 @@ function renderCaravan(caravan, someoneAlive) {
       <div class="block wants">
         <div class="block-head">
           <span class="tag">${escape(caravan.name)} &mdash; at the gate</span>
-          <span class="clock">${countdown(caravan.departsAt, 'now')}<small>until they move on</small></span>
+          <span class="clock deadline">${countdown(caravan.departsAt, 'now')}<small>until they move on</small></span>
         </div>
         <div class="block-body">
           <p><small>${escape(caravan.description)}</small></p>
@@ -2413,6 +2542,7 @@ export function graveyardPage(view) {
     : '<p class="standing-empty">Nobody holds the camp.</p>';
 
   const identity = `<div class="who">
+      <span class="tag">Camp</span>
       <h1>${escape(view.name)}</h1>
       <p>founded ${escape(view.foundedAt.toISOString().slice(0, 10))}</p>
     </div>`;

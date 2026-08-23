@@ -175,7 +175,7 @@ test('every block on the page belongs to a view that can show it', async () => {
 
     if (id === 's-error') {
       assert.ok(
-        camp.includes('main > #s-error { display: block; }'),
+        camp.includes('main #s-error { display: block; }'),
         'the error box must be on every view, not on one of them',
       );
       continue;
