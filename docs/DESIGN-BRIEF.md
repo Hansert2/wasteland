@@ -294,7 +294,7 @@ Every block is a `<section id="s-…">` and **is rendered even when it has nothi
 | Survivor | `survivor` | Name, what they are known for, health, hunger, radiation — or, when the camp is empty, **the wanderer standing at the gate** with their two sentences and one button. There is no name box and nothing to reroll |
 | Inventory | `inventory` | What the survivor is carrying. Beside the survivor because it dies with them |
 | **Next** | `direction` | One sentence. Teaches a new camp the game and then leaves for good; after that it reads the camp's own numbers and says the first thing that is objectively true and objectively bad. Frequently empty, and that is correct |
-| Away / Where to send them | `expedition` | A trip in flight with its report and countdown, or the dispatch table — name, danger, hours, contact count, and what the camp can do meanwhile |
+| Away / Where to send them | `expedition` | A trip in flight with its report and countdown, or the dispatch table — name, danger, hours, contact count |
 
 *Group 3 — what the camp is spending on. Structures and the road are adjacent on purpose: a fitting and a link are the same 60–70 fuel, and choosing between them is the whole decision the fuel track adds.*
 

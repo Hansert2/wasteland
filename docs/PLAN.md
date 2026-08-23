@@ -1876,6 +1876,19 @@ Surfaced twice: a column on the dispatch table counting what opens *during* each
 compares nothing), and a block in the Away report naming the next four and when. A camp
 that can reach nothing gets a sentence rather than an empty table.
 
+**Both are gone, 2026-08-23, and the planner is not.** The Away block's door list went
+first, in August, for three separate reasons already on record. The dispatch column
+followed it during the redesign, for a simpler one: on a table where every other cell is
+a fact about the *place* — how far, how dangerous, how much there is to answer out
+there — a count of what the camp could afford back home was the only cell about
+somewhere else, and it was carrying a whole extra column to say something the Next block
+says in words the moment the trip is actually out.
+
+`planFor` stays and is still read every render: `opensBeforeReturn` is what lets the
+Next block tell a camp its evening is empty *before* it finds out over twelve hours.
+The plan was always worth computing. It was the second place it got printed that was
+not worth the room.
+
 **`src/game/direction.js` — five steps, derived, paying nothing.** Workshop, the short
 walk by name, the bench, a craft, then the far places and what their hours cost. No
 table, no migration, in the register the design brief describes: one heading, one

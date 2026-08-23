@@ -1993,8 +1993,7 @@ function renderExpeditions(view) {
         <td><span class="name">${escape(region.name)}</span>
             <span class="lvl">danger ${region.danger} &middot; ${escape(duration(region.travel_hours))} out</span></td>
         <td class="lede"><small>${escape(region.description ?? '')}</small></td>
-        <td class="cost-col"><span class="cost">${escape(contact(region.moments))}</span>
-            <span class="needs">${escape(meanwhile(region.openWhileAway))}</span></td>
+        <td class="cost-col"><span class="cost">${escape(contact(region.moments))}</span></td>
         <td class="act">
           <form method="post" action="/expedition">
             <input type="hidden" name="region" value="${escape(region.slug)}">
@@ -2069,37 +2068,6 @@ function momentAlarm(trip) {
   if (!opensAt) return '';
 
   return `<span hidden>${countdown(opensAt, '')}</span>`;
-}
-
-/**
- * What the camp can do while they are gone, on the table where the trip is still a
- * choice.
- *
- * **A count, and it must stay a count.** There was a companion to this in the Away
- * report — the same plan rendered as a list of four doors and the hour each opened —
- * and it was removed on 2026-08-21 after being read beside the Next block, which
- * disagreed with it out loud. Three faults, and the third is the one that matters:
- *
- * - The plan's door list had no fittings in it, so the advice offered the Radio while
- *   the list beneath said the camp could pay for nothing. Fixed, and it was a real bug
- *   — this column was wrong too.
- * - An overdue trip has negative hours left, so every door filtered out and the block
- *   announced a dead evening to a camp whose survivor was already home.
- * - **`planFor` is greedy cheapest-first, which is honest for a count and misleading as
- *   a list.** Spending ten fuel on a Rad Scrubber puts the Radio out of reach, so the
- *   Radio is dropped — correct, since the camp cannot have both, and useless to read,
- *   since it silently picks one branch of a fork and never mentions the other.
- *
- * A count survives all three, because "will this evening have anything in it" does not
- * depend on which branch is taken. Anything above zero means yes; zero means the camp
- * goes quiet the moment you click Send, and that is worth knowing *before* the click
- * rather than four hours into finding out. The Next block says the same thing in words
- * once the trip is actually out.
- */
-function meanwhile(count) {
-  const n = Number(count) || 0;
-  if (n === 0) return 'nothing to do meanwhile';
-  return n === 1 ? '1 thing to do meanwhile' : `${n} things to do meanwhile`;
 }
 
 /**

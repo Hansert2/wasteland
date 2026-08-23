@@ -527,24 +527,6 @@ export async function viewCamp(client, settlementId, now = Date.now()) {
       .map((region) => ({
         ...region,
         moments: momentCount(Number(region.travel_hours)),
-        /**
-         * What the camp will be able to pay for while they are gone.
-         *
-         * The third fact this table needed and did not have: danger and hours describe
-         * the trip, and contact describes what happens on it, but none of them answer
-         * "and what am I doing meanwhile" — which for a new camp sending someone out
-         * for twelve hours is the whole evening. See `src/game/planning.js`.
-         *
-         * Doors already open are excluded, and that is what makes this a column rather
-         * than a repeated number. Whatever the stores can afford this second, they can
-         * afford whichever way the survivor walks — counting it puts the same figure in
-         * every row and tells the player nothing about the choice they are making. What
-         * differs between a ten-minute walk and a twelve-hour one is only ever what the
-         * *hours* buy.
-         */
-        openWhileAway: openWithin(plans, Number(region.travel_hours)).filter(
-          (plan) => plan.inHours > 0,
-        ).length,
       }));
 
   /**

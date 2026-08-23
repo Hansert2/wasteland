@@ -533,51 +533,6 @@ test('a first dispatch straight to the deep end does not switch the advice off',
   });
 });
 
-test('the dispatch table says what the camp can do while the survivor is gone', async () => {
-  await withRollback(async (client) => {
-    // Played on 2026-08-21: found a new camp, spend the opening scrap, send someone to
-    // Coastal Wreckage for twelve hours, and the page has nothing on it that can change
-    // for twelve hours. Every number needed to know that in advance was already
-    // rendered — a price here, a rate there — and the subtraction was the player's.
-    const { settlementId } = await seed(client, {
-      structures: [{ kind: 'shelter', level: 2 }, { kind: 'garden', level: 2 }],
-      amounts: { food: 50, water: 50, scrap: 0, fuel: 0 },
-    });
-
-    const broke = await viewCamp(client, settlementId, T0);
-    assert.ok(broke.regions.length > 1, 'there is somewhere to send them');
-    assert.ok(
-      broke.regions.every((region) => region.openWhileAway === 0),
-      'a camp with no workshop makes no scrap, so no wait of any length opens a door',
-    );
-
-    // The same camp with a workshop earning half a scrap an hour. Now the hours buy
-    // something, and how much depends entirely on how many of them there are.
-    await client.query(
-      `insert into camp_structures (settlement_id, kind, level) values ($1, 'workshop', 1)`,
-      [settlementId],
-    );
-    // Six, deliberately: enough that the hours buy something and not enough that the
-    // stores already cover everything on the page. A camp rich enough to buy every
-    // door outright has no waits to compare, so the column is flat for the opposite
-    // reason and the test would pass on a broken implementation.
-    await client.query(
-      `update resources set amount = 6 where settlement_id = $1 and kind = 'scrap'`,
-      [settlementId],
-    );
-
-    const earning = await viewCamp(client, settlementId, T0);
-    const by = (slug) => earning.regions.find((region) => region.slug.startsWith(slug));
-    const fence = by('the_fence_line');
-    const deep = by('the_deep_zone');
-
-    assert.ok(fence && deep, 'the shortest and the longest are both on the table');
-    assert.ok(
-      deep.openWhileAway > fence.openWhileAway,
-      `eighteen hours must buy more than ten minutes: ${deep.openWhileAway} vs ${fence.openWhileAway}`,
-    );
-  });
-});
 
 test('a plan spends the purse as it walks it', async () => {
   await withRollback(async (client) => {
