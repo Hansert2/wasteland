@@ -603,7 +603,56 @@ ${PANE_CSS}
      to; a two-column table has nothing to hold apart. */
   .block > table tr:has(.lede) > td:first-child { width: 200px; }
   .lede > .effect { display: block; }
-  .lede > .effect + small { margin-top: 5px; }
+  .step { display: block; margin-top: 4px; font-family: var(--numer); font-size: 13.5px;
+          line-height: 1.3; color: var(--quiet); font-variant-numeric: tabular-nums; }
+
+  /*
+   * The explanation, which is on the page and usually not on the screen.
+   *
+   * A structure's description is read once and then read fifty more times by accident,
+   * and it was the tallest thing in every row — so the table said "Grows food. One
+   * level already outpaces what a survivor eats." four lines above the number the
+   * player was actually deciding on. It moves to a note that follows the cursor, and
+   * the effect and the next level's effect stay where they were.
+   *
+   * Two things this must not do, and both are handled here rather than in the script:
+   *
+   * - **Lose the text on a device that cannot hover.** A phone has no cursor, so below
+   *   the query the note is simply the paragraph it always was, inline, in place.
+   * - **Lose it to a screen reader.** Clipped, never "display: none": it stays in the
+   *   accessibility tree and is read in document order, in the row it belongs to.
+   */
+  .note { display: block; margin-top: 5px; max-width: 70ch;
+          font-size: 15.5px; line-height: 1.55; color: var(--dim); text-wrap: pretty; }
+
+  @media (hover: hover) and (pointer: fine) {
+    .note {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      margin: 0;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+    .noted { cursor: help; }
+  }
+
+  /* Never under the pointer: a note that can be hovered flickers against the row it is
+     describing, and the whole thing reads as broken. */
+  .note-pop {
+    position: fixed;
+    z-index: 20;
+    max-width: 34ch;
+    padding: 10px 13px;
+    background: var(--panel);
+    border: 1px solid var(--edge);
+    color: var(--prose);
+    font-size: 15px;
+    line-height: 1.5;
+    text-wrap: pretty;
+    pointer-events: none;
+  }
   .road-note { padding: 12px 18px; border-bottom: 1px solid var(--rule-in); max-width: 74ch; }
   .page-title { font-family: var(--label); font-weight: 700; font-size: 25px;
                 line-height: 1.15; color: var(--bone); margin: 0 0 10px; }
@@ -1062,6 +1111,7 @@ export const TIMERS = `
       current.classList.add('changed');
     }
 
+    drop();
     scan();
     tick();
   };
@@ -1132,6 +1182,59 @@ export const TIMERS = `
       .catch(fail(() => form.submit()))
       .finally(() => { busy = false; if (button) button.disabled = false; });
   });
+
+  // The note that follows the cursor.
+  //
+  // It reads its text out of the row rather than out of an attribute, which is what
+  // keeps one copy of the sentence: the same element is the note on a phone, the
+  // clipped text a screen reader announces, and the source for this. Mouse only —
+  // a touch "hover" fires once and would leave a note stranded on the screen with
+  // nothing to dismiss it.
+  //
+  // It lives on <body>, outside every section, so a swap cannot delete it mid-hover.
+  // The swap does hide it, because the row it was describing may no longer exist.
+  const pop = document.createElement('div');
+  pop.className = 'note-pop';
+  pop.hidden = true;
+  document.body.appendChild(pop);
+
+  let noted = null;
+  const drop = () => { noted = null; pop.hidden = true; };
+
+  const follow = (x, y) => {
+    const gap = 14;
+    let left = x + gap;
+    let top = y + gap;
+    // Flip rather than clamp: a note pinned to the edge sits under the cursor, and
+    // pointer-events cannot save it from covering the thing it is describing.
+    if (left + pop.offsetWidth > window.innerWidth - 8) left = x - gap - pop.offsetWidth;
+    if (top + pop.offsetHeight > window.innerHeight - 8) top = y - gap - pop.offsetHeight;
+    pop.style.left = Math.max(8, left) + 'px';
+    pop.style.top = Math.max(8, top) + 'px';
+  };
+
+  document.addEventListener('pointermove', (event) => {
+    if (event.pointerType !== 'mouse') return;
+
+    const host = event.target.closest ? event.target.closest('.noted') : null;
+    if (!host) { if (noted) drop(); return; }
+
+    if (host !== noted) {
+      const source = host.querySelector('.note');
+      const text = source ? source.textContent.trim() : '';
+      if (!text) { drop(); return; }
+      noted = host;
+      pop.textContent = text;
+      pop.hidden = false;
+    }
+
+    follow(event.clientX, event.clientY);
+  });
+
+  // Fixed positioning is relative to the viewport, so a scroll moves the row out from
+  // under a note that would otherwise stay exactly where it was.
+  document.addEventListener('scroll', drop, true);
+  window.addEventListener('blur', drop);
 
   scan();
   tick();
@@ -2223,11 +2326,11 @@ function renderWorkshop(view) {
             : ''
           : `${recipe.output_qty} × ${escape(recipe.output_name)}`;
       const price = escape(`${priceOf(recipe)}, ${duration(recipe.craft_hours)}`);
-      return `<tr>
+      return `<tr class="noted">
         <td><span class="name">${escape(recipe.name)}${
           yields ? `<span class="qty">${yields}</span>` : ''
         }</span></td>
-        <td class="lede"><small>${escape(recipe.description ?? '')}</small></td>
+        <td class="lede"><span class="note">${escape(recipe.description ?? '')}</span></td>
         <td class="cost-col"><span class="cost">${price}</span>${craftPrice(recipe, view)}</td>
         <td class="act">${craftCell(recipe, view)}</td>
       </tr>`;
@@ -2474,11 +2577,13 @@ function renderStructures(structures, buildInFlight, someoneAlive, direction, qu
       const doing = s.effect
         ? `<span class="effect">${escape(s.effect)}</span>`
         : '<span class="effect nil">nothing yet</span>';
-      return `<tr>
+      const step = stepOf(s);
+      return `<tr class="noted">
         <td><span class="name">${name}</span><span class="lvl">level ${s.level}</span></td>
         <td class="lede">
           ${doing}
-          <small>${escape(purposeOf(s))}</small>
+          ${step ? `<span class="step">${step}</span>` : ''}
+          <span class="note">${escape(s.summary ?? '')}</span>
           ${fittingIn(s, buildInFlight, someoneAlive)}
         </td>
         ${status}
@@ -2512,9 +2617,10 @@ function fittingIn(structure, buildInFlight, someoneAlive) {
    * Its own price and button ride in the same inset rather than in the table's cost and
    * action columns, for the same reason — those columns belong to the level track.
    */
-  const inset = (tail) => `<span class="fitting">
+  const inset = (tail) => `<span class="fitting noted">
       <span class="tag">${escape(upgrade.name)}</span>
-      <span>${escape(upgrade.summary)} ${tail}</span>
+      <span class="note">${escape(upgrade.summary)}</span>
+      <span>${tail}</span>
     </span>`;
 
   if (upgrade.fitted) return inset('<em class="needs">fitted</em>');
@@ -2550,10 +2656,24 @@ function fittingIn(structure, buildInFlight, someoneAlive) {
 }
 
 /** What it is for, plus what the next level actually buys. */
-function purposeOf(structure) {
-  const summary = structure.summary ?? '';
-  if (!structure.nextEffect) return summary;
-  return `${summary} Level ${structure.level + 1} makes that ${structure.nextEffect}.`;
+/**
+ * What the next level buys, as a figure rather than as a sentence.
+ *
+ * This used to be glued onto the end of the structure's description — "Grows food. One
+ * level already outpaces what a survivor eats. Level 3 makes that +1.8 food/h." — which
+ * put a number the player is deciding on at the end of two lines of prose they have
+ * read fifty times. Split out, it sits directly under the current effect in the same
+ * face, so what a level costs and what it buys are one glance apart:
+ *
+ *     +1.2 food/h
+ *     level 3 → +1.8 food/h
+ *
+ * The prose it was attached to is the thing that moved into the note. It explains the
+ * world; this is the decision.
+ */
+function stepOf(structure) {
+  if (!structure.nextEffect) return '';
+  return `level ${structure.level + 1} &rarr; ${escape(structure.nextEffect)}`;
 }
 
 function statusCell(structure, buildInFlight, someoneAlive, advised) {
