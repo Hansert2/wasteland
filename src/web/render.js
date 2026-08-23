@@ -294,7 +294,11 @@ ${PANE_CSS}
     gap: 18px 24px;
     align-items: start;
   }
-  body[data-pane="survivor"] .lane { display: flex; flex-direction: column; gap: 18px; }
+  /* Scoped to the two lanes the Survivor view actually arranges. ".lane-pair" has both
+     its sections hidden here, and turning it into a flex box would leave an empty grid
+     item eating a row and a gap. */
+  body[data-pane="survivor"] .lane-main,
+  body[data-pane="survivor"] .lane-side { display: flex; flex-direction: column; gap: 18px; }
   body[data-pane="survivor"] .lane-main { grid-column: 1; }
   body[data-pane="survivor"] .lane-side { grid-column: 2; }
   body[data-pane="survivor"] #s-error { grid-column: 1 / -1; }
@@ -305,6 +309,27 @@ ${PANE_CSS}
   @media (max-width: 900px) {
     body[data-pane="survivor"] main { display: flex; }
     body[data-pane="survivor"] .lane { display: contents; }
+  }
+
+  /* The away log beside Next, on the one view that has both. Unpicked when the log has
+     a list in it rather than a line — half a column is not where you read the longest
+     block on the page. */
+  body[data-pane="camp"] .lane-pair {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+    align-items: start;
+  }
+  body[data-pane="camp"] .lane-pair:has(#s-events .block) {
+    display: flex;
+    flex-direction: column;
+  }
+  /* Paired, the log keeps its rule but gives up the negative margin that closes it into
+     the run above — it is standing beside something now, not stacked under it. */
+  body[data-pane="camp"] .lane-pair #s-inventory,
+  body[data-pane="camp"] .lane-pair:not(:has(#s-events .block)) #s-events { margin: 0; }
+  @media (max-width: 760px) {
+    body[data-pane="camp"] .lane-pair { display: contents; }
   }
 
   /* The caravan is on two views wearing two shapes: a pointer on Camp so the player
@@ -430,8 +455,7 @@ ${PANE_CSS}
      down, which is all "contact" means as a class here: contact itself, the raid hour,
      a trip that is due back, an order on the bench. Everything else sits on the
      ground. */
-  .contact { background: var(--panel); }
-  #s-moment .contact { border-color: var(--edge); }
+  .contact { background: var(--panel); border-color: var(--edge); }
   .block-head {
     display: flex;
     align-items: center;
@@ -664,6 +688,16 @@ ${PANE_CSS}
   .clock small { font-family: var(--label); font-weight: 700; font-size: 10px;
                  letter-spacing: .14em; text-transform: uppercase;
                  color: var(--dim); margin-left: 9px; }
+  /* A label written before the figure is finishing a sentence, so the space goes on
+     the other side of it. */
+  .clock small:first-child { margin-left: 0; margin-right: 9px; }
+
+  /* The sentence a block leads with, where the block's whole job is to say one thing.
+     Prose, near-bone, and wide — the opposite register to ".state", which is the same
+     kind of string doing small-print duty under a decision. */
+  .lede-line { margin: 0; font-size: 18px; line-height: 1.55; color: #EAE7DD;
+               max-width: 56ch; }
+  .under { margin: 10px 0 0; font-size: 15.5px; line-height: 1.55; color: var(--quiet); }
 
   /* A price the camp cannot pay. The only other things wearing oxide are a clock, a
      multiplier that is costing you, and a warning. */
@@ -1253,8 +1287,22 @@ export function campPage(view, { error, pane = 'camp' } = {}) {
     ${section('raid', renderRaidWarning(view.raidExpectedAt))}
     ${section('sky', renderWeather(view.weather))}
 
-    ${section('events', renderEvents(view.events))}
-    ${section('direction', renderDirection(view.direction))}
+    ${/*
+      * The away log and Next, side by side.
+      *
+      * Both are usually short — three visits in four nothing happened, and Next is one
+      * sentence — and stacked full-width across a thousand pixels they read as two
+      * mostly-empty bands. Paired, they fill a row and the check-in has a shape: what
+      * happened, and what to do about it.
+      *
+      * The pair unpicks itself when the log has something in it. A list of things that
+      * happened while you were gone is the longest block on the page some visits, and
+      * half a column is not where you read it.
+      */ ''}
+    <div class="lane lane-pair">
+      ${section('events', renderEvents(view.events))}
+      ${section('direction', renderDirection(view.direction))}
+    </div>
 
     ${/*
       * The Survivor view is two columns — the trip and the bench on the left, the person
@@ -1768,9 +1816,13 @@ function renderExpeditions(view) {
   if (view.expedition) {
     const trip = view.expedition;
     const hoursLeft = (new Date(trip.returnsAt).getTime() - Date.now()) / 3600000;
+    // Label first, then the figure: "due back in 18h 00m 00s" is a sentence the strip
+    // finishes, where "18h 00m 00s DUE BACK" is a readout with a caption. The Contact
+    // strip runs the other way round for the same reason — there the figure is the
+    // point and "to answer" is what it is a figure *of*.
     const due =
       hoursLeft > 0
-        ? `<span class="clock">${countdown(trip.returnsAt, 'now')}<small>due back</small></span>`
+        ? `<span class="clock"><small>due back in</small>${countdown(trip.returnsAt, 'now')}</span>`
         : '<span class="short">overdue &mdash; reload to see what came back</span>';
 
     // The report, which is what makes a check-in that catches no window worth making.
@@ -1802,14 +1854,32 @@ function renderExpeditions(view) {
       lines.push('What came of that comes home with them.');
     }
 
+    /*
+     * The state of the trip is the lede, not a readout.
+     *
+     * "Less than an hour in, carrying nothing yet, at 100 health" was set in 13px mono
+     * in the colour reserved for things that are present but not the point — which is
+     * right inside the Contact panel, where it is the small print under a decision, and
+     * wrong here, where it is the whole of what the block has to say. Same string, two
+     * jobs, and only one of them is a machine readout.
+     *
+     * Under it, what the place is. The dispatch table says that sentence before you
+     * send anybody and then the block that replaces it never said it again, so a trip
+     * in progress was eight hours of numbers about a name.
+     */
     return `<div class="block contact">
         <div class="block-head">
           <span class="tag">Away &mdash; ${escape(trip.regionName)}</span>
           ${due}
         </div>
         <div class="block-body">
-          <p class="state">${escape(condition(trip, { region: false }))}</p>
-          ${lines.length > 0 ? `<p>${lines.join('<br>')}</p>` : ''}
+          <p class="lede-line">${escape(condition(trip, { region: false }))}</p>
+          ${
+            trip.regionDescription
+              ? `<p class="under">${escape(trip.regionDescription)}</p>`
+              : ''
+          }
+          ${lines.length > 0 ? `<p class="under">${lines.join('<br>')}</p>` : ''}
         </div>
       </div>${momentAlarm(trip)}`;
   }

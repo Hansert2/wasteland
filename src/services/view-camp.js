@@ -95,6 +95,11 @@ function reportOn(row, state, now) {
 
   return {
     regionName: row.name,
+    // What the place is, beside the report of what is happening in it. The dispatch
+    // table says this before you send anybody; the Away block is where you read it
+    // again while they are out there, and it is the only sentence in that block about
+    // somewhere rather than about somebody.
+    regionDescription: row.description,
     returnsAt: row.returns_at,
     hoursOut: elapsed,
     carrying: carried.carrying,
@@ -275,6 +280,7 @@ export async function viewCamp(client, settlementId, now = Date.now()) {
   // an expedition, and what the page wants is whatever is in flight *now*.
   const { rows: away } = await client.query(
     `select r.name, r.slug, r.danger, r.travel_hours, r.loot, r.finds, r.radiation_per_trip,
+            r.description,
             e.returns_at, e.departed_at, e.seed, e.choices
        from expeditions e
        join regions r on r.id = e.region_id
