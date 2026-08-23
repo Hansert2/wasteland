@@ -147,3 +147,61 @@ test('nothing interpolated into the page escapes its quotes', async () => {
     }
   }
 });
+
+test('every block on the page belongs to a view that can show it', async () => {
+  /*
+   * The failure this closes is the one the split introduces, and it is silent in
+   * exactly the way the rest of this file is about.
+   *
+   * The five views are a CSS filter over one stream of sections: `main > section` is
+   * `display: none`, and each view turns its own blocks back on by id. A block added
+   * later and not listed in `PANES` therefore renders perfectly, validates perfectly,
+   * carries all its data attributes — and is on no view. Nothing throws, nothing logs,
+   * and the feature is simply invisible until somebody notices it missing.
+   *
+   * `s-head` is exempt because it is the camp's identity and lives in the rail rather
+   * than in the stream. `s-error` is exempt in the other direction: it is on every
+   * view, because a refused action that renders into a hidden section is a button that
+   * appears to have done nothing.
+   */
+  const camp = STATES.home;
+  const ids = [...new Set([...camp.matchAll(/<section id="(s-[a-z]+)">/g)].map((m) => m[1]))];
+  const revealed = new Set(
+    [...camp.matchAll(/body\[data-pane="[a-z]+"\] #(s-[a-z]+)/g)].map((m) => m[1]),
+  );
+
+  for (const id of ids) {
+    if (id === 's-head') continue;
+
+    if (id === 's-error') {
+      assert.ok(
+        camp.includes('main > #s-error { display: block; }'),
+        'the error box must be on every view, not on one of them',
+      );
+      continue;
+    }
+
+    assert.ok(revealed.has(id), `${id} is rendered but no view reveals it`);
+  }
+});
+
+test('each view has something on it, and Contact is only on the default one', async () => {
+  // Contact is the strongest placement claim in `docs/DESIGN-BRIEF.md` §7.3: a window
+  // measured in tens of minutes, gone if you do not answer it, arriving without
+  // warning. A player who has to click through to find it will find it closed.
+  const camp = STATES.home;
+  const shown = {};
+
+  for (const match of camp.matchAll(/body\[data-pane="([a-z]+)"\] #(s-[a-z]+)/g)) {
+    (shown[match[1]] ??= new Set()).add(match[2]);
+  }
+
+  for (const pane of ['camp', 'survivor', 'road', 'trade']) {
+    assert.ok(shown[pane]?.size > 0, `the ${pane} view shows nothing at all`);
+  }
+
+  const withContact = Object.entries(shown)
+    .filter(([, ids]) => ids.has('s-moment'))
+    .map(([pane]) => pane);
+  assert.deepEqual(withContact, ['camp'], 'Contact belongs to the default view and nowhere else');
+});

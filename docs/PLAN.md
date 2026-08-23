@@ -1978,6 +1978,25 @@ server-side watching each camp, which is the scheduler the whole design exists t
 store except the helper that emits those three attributes.** A redesign may change every
 tag, class and layout in the file and must keep routing through those two functions.
 
+**Exercised 2026-08-23, when the redesign landed.** Direction 2a — "cold instrument" —
+replaced every tag, class and layout in `render.js` and the contract held with one
+addition worth writing down. The long page is now five views, and they are a *CSS filter
+over the one stream of sections* rather than five pages: `campPage` still emits all
+eighteen in the same order, `<body data-pane="…">` says which view is up, and rules
+generated from `PANES` reveal that view's blocks.
+
+That shape was chosen over real per-view pages for a reason that is invisible until it
+bites. Splitting the sections would put the hidden alarm in `s-expedition` on the
+Survivor view and the Contact box it summons on Camp — so a player sitting on Camp would
+never see contact arrive, which is the exact failure `momentAlarm` exists to prevent.
+Keeping every section in every response costs a few kilobytes and buys back both of
+`docs/DESIGN-BRIEF.md` §7.3's hazards: the fetch of `location.pathname` returns the view
+the player is on, and every timer stays armed whichever view is showing.
+
+The new silent failure the split introduces is a block listed in no view — perfect
+markup, all attributes present, on no page. Two tests in
+`test/db/page-contract.test.js` close it, alongside the ones that were already there.
+
 ### Delete the duplication rather than documenting it
 
 `clock()` exists twice — once in `render.js` and once as `fmt` inside the `TIMERS`

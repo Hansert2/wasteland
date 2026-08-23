@@ -21,7 +21,7 @@ import { commitToRoad } from '../services/commit-to-road.js';
 import { tradeWithCaravan } from '../services/trade.js';
 import { viewCamp } from '../services/view-camp.js';
 import { viewGraveyard } from '../services/view-graveyard.js';
-import { campPage, graveyardPage, landingPage, layout, escape } from './render.js';
+import { campPage, graveyardPage, landingPage, layout, escape, PANE_NAMES } from './render.js';
 import { credentialKey, rateLimit } from './rate-limit.js';
 
 export function createApp() {
@@ -111,15 +111,38 @@ export function createApp() {
     res.redirect('/');
   });
 
-  app.get('/camp', requireAuth, async (req, res) => {
+  /**
+   * The camp, and the four views of it.
+   *
+   * One handler and one render: every view sends the same sections in the same order
+   * and differs only in which of them the CSS reveals. That is not a shortcut — it is
+   * what keeps `docs/DESIGN-BRIEF.md` §7.3's two constraints satisfied for free. The
+   * client script fetches `location.pathname`, so an expiring countdown comes back to
+   * the view the player is on rather than dumping them on Camp; and every timer on the
+   * page is armed whichever view is showing, so a build finishing while somebody reads
+   * Trade still fetches and still swaps.
+   *
+   * An unknown pane falls through to the 404 rather than being coerced to Camp, so a
+   * typo in a link is visible instead of silently landing somewhere plausible.
+   */
+  const showCamp = (pane) => async (req, res) => {
     const view = await withTransaction(async (client) => {
       const settlementId = await settlementIdForPlayer(client, req.playerId);
       if (!settlementId) throw new InputError('This account has no camp.');
       return viewCamp(client, settlementId, Date.now());
     });
 
-    res.send(campPage(view));
-  });
+    res.send(campPage(view, { pane }));
+  };
+
+  // One route per view rather than one route with a parameter, so an unknown view is a
+  // 404 by not matching rather than by being checked — and so `/camp/camp` is not a
+  // second address for the default. One view, one URL, or the rail's active marker has
+  // two things to be right about.
+  app.get('/camp', requireAuth, showCamp('camp'));
+  for (const pane of PANE_NAMES.filter((name) => name !== 'camp')) {
+    app.get(`/camp/${pane}`, requireAuth, showCamp(pane));
+  }
 
   app.get('/graveyard', requireAuth, async (req, res) => {
     const view = await withTransaction(async (client) => {
@@ -145,7 +168,7 @@ export function createApp() {
       await raiseSuccessor(client, settlementId, { now });
     });
 
-    res.redirect('/camp');
+    res.redirect(backToCamp(req));
   });
 
   app.post('/expedition', requireAuth, async (req, res) => {
@@ -160,7 +183,7 @@ export function createApp() {
       await dispatchExpedition(client, settlementId, req.body.region, now);
     });
 
-    res.redirect('/camp');
+    res.redirect(backToCamp(req));
   });
 
   app.post('/build', requireAuth, async (req, res) => {
@@ -175,7 +198,7 @@ export function createApp() {
       await startBuild(client, settlementId, req.body.kind, now);
     });
 
-    res.redirect('/camp');
+    res.redirect(backToCamp(req));
   });
 
   app.post('/upgrade', requireAuth, async (req, res) => {
@@ -190,7 +213,7 @@ export function createApp() {
       await startUpgrade(client, settlementId, req.body.upgrade, now);
     });
 
-    res.redirect('/camp');
+    res.redirect(backToCamp(req));
   });
 
   app.post('/trade', requireAuth, async (req, res) => {
@@ -210,7 +233,7 @@ export function createApp() {
       );
     });
 
-    res.redirect('/camp');
+    res.redirect(backToCamp(req));
   });
 
   app.post('/road', requireAuth, async (req, res) => {
@@ -225,7 +248,7 @@ export function createApp() {
       await commitToRoad(client, settlementId, req.body.fuel, now);
     });
 
-    res.redirect('/camp');
+    res.redirect(backToCamp(req));
   });
 
   app.post('/moment', requireAuth, async (req, res) => {
@@ -247,7 +270,7 @@ export function createApp() {
       );
     });
 
-    res.redirect('/camp');
+    res.redirect(backToCamp(req));
   });
 
   app.post('/craft', requireAuth, async (req, res) => {
@@ -263,7 +286,7 @@ export function createApp() {
       await startCraft(client, settlementId, req.body.recipe, now);
     });
 
-    res.redirect('/camp');
+    res.redirect(backToCamp(req));
   });
 
   app.use((req, res) => {
@@ -282,6 +305,44 @@ export function createApp() {
  * reason, not at a login form — showing someone a login form while they are already
  * logged in reads as being signed out, which is a worse bug than the one they hit.
  */
+/**
+ * Which view a camp action returns to.
+ *
+ * Only reached without JavaScript: a form inside a section posts by `fetch` and the
+ * response is applied in place, so the ordinary path never navigates and never sees
+ * this. The fallback path does, and dropping somebody on Camp because they bought
+ * something on Trade is the tab hazard `docs/DESIGN-BRIEF.md` §7.3 names.
+ *
+ * The referer is matched against the known paths and anything else becomes `/camp`,
+ * which is the whole of the safety argument: this only ever emits a string from a
+ * fixed list, so a crafted header cannot turn a redirect into somewhere else.
+ */
+function backToCamp(req) {
+  const paths = new Set(['/camp', ...PANE_NAMES.map((pane) => `/camp/${pane}`)]);
+
+  try {
+    const { pathname } = new URL(req.get('referer') ?? '', 'http://camp.invalid');
+    if (paths.has(pathname)) return pathname;
+  } catch {
+    // A referer that is not a URL is not a view; fall through to the default.
+  }
+
+  return '/camp';
+}
+
+/**
+ * The pane a request was made from, so an error renders onto the page the player is
+ * actually looking at rather than onto Camp.
+ */
+function paneOf(req) {
+  // A GET knows its own view from the path it was asked for. A POST does not — it goes
+  // to `/trade` or `/build` from wherever the player was — so it asks the referer the
+  // same way the redirect does.
+  const path = req.path?.startsWith('/camp') ? req.path : backToCamp(req);
+  const pane = path.replace(/^\/camp\/?/, '');
+  return PANE_NAMES.includes(pane) ? pane : 'camp';
+}
+
 async function renderErrorForPlayer(req, res, message, status = 400) {
   if (!req.playerId) {
     return res.status(status).send(landingPage({ error: message }));
@@ -294,7 +355,9 @@ async function renderErrorForPlayer(req, res, message, status = 400) {
       return viewCamp(client, settlementId, Date.now());
     });
 
-    if (view) return res.status(status).send(campPage(view, { error: message }));
+    if (view) {
+      return res.status(status).send(campPage(view, { error: message, pane: paneOf(req) }));
+    }
   } catch (error) {
     // The camp could not be rendered; fall through rather than masking the original
     // problem with a second one.

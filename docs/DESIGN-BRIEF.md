@@ -2,9 +2,20 @@
 
 **Read this before changing anything the player sees.**
 
-The current look is scaffolding. It was written to keep the page readable while the
-real question — whether checking in on a camp is *fun* — got answered, and it has never
-had a design pass. Replacing it is expected and welcome.
+**Answered, 2026-08-23.** The scaffolding is gone and the page now carries direction
+**2a, "cold instrument"** — eight colours, three system faces, depth from border weight
+rather than shade, and one accent that is only ever a clock, a price you cannot pay, or
+a warning. The rules it was built to are `HANDOFF.md` in the Claude Design project
+*Wasteland Visual Identity*; the reasoning that survived into code is in the comments at
+the top of `src/web/render.js`.
+
+This document is still the brief rather than a record of it. Everything below is what
+the *next* pass has to hold to, and §3 in particular is load-bearing whoever is doing
+the changing. The paragraph that follows is why.
+
+The look that preceded this was scaffolding. It was written to keep the page readable
+while the real question — whether checking in on a camp is *fun* — got answered, and it
+never had a design pass.
 
 The problem is that `src/web/render.js` is not only a view layer. A few things in it
 look like decoration and are actually load-bearing, and if they are dropped the game
@@ -350,6 +361,23 @@ so a build finishing while the player is on Trade will not reload anything until
 navigate. That is acceptable — the server recomputes everything on the next page load —
 but it means the Camp view must never assume it was reloaded the instant something
 completed.
+
+**Built 2026-08-23, and the split turned out to cost neither of the two things above.**
+The five views are a *filter*, not five pages: `campPage` emits every section in the
+order it always has, and CSS generated from `PANES` in `render.js` reveals the ones
+belonging to `<body data-pane="…">`. Each view is its own URL (`/camp`,
+`/camp/survivor`, `/camp/road`, `/camp/trade`, and `/graveyard` for Records), so the
+script's fetch of `location.pathname` returns the view the player is on and constraint
+two holds without a mechanism. The note above is simply no longer true: every timer on
+the page is armed whichever view is showing, because every timer is still *on* the page.
+
+Two things follow that are worth knowing before moving anything:
+
+- **A block that is not listed in `PANES` renders onto no view at all** — valid markup,
+  every attribute intact, invisible. `test/db/page-contract.test.js` closes it, in the
+  same shape as the rest of that file.
+- `s-error` is on every view and `s-head` is in the rail. A refusal that renders into a
+  hidden section is a button that appears to have done nothing.
 
 ---
 

@@ -1,30 +1,519 @@
 /**
- * Deliberately plain HTML. The interesting question in Phase 1 is whether checking in
- * is fun, and that is answered by the numbers on the page, not by how they look. The
- * styling here exists only to keep the page readable while playing it.
+ * Direction 2a, "cold instrument", applied from `HANDOFF.md` of the Claude Design
+ * project *Wasteland Visual Identity*.
+ *
+ * Nothing structural moved. Every `<section id="s-…">` is still emitted in the order
+ * `campPage` has always emitted it, still renders when empty, and still routes its
+ * deadlines through `countdown()` and its stores through `renderResources()`. The
+ * five views are a *grouping* of that one stream, done in CSS — see `PANES` — which is
+ * why a build finishing while the player is reading Trade still fetches and still
+ * swaps, and why the hidden alarm in `s-expedition` is armed on every view rather than
+ * only on the one that happens to show it.
+ *
+ * The look itself: eight colours, three system faces, depth from border weight rather
+ * than shade, and one accent that is only ever a clock, a price you cannot pay, or a
+ * warning. Everything else is `docs/DESIGN-BRIEF.md` §2.1 and the handoff.
  */
 
-const STYLE = `
-  body { font-family: ui-monospace, Consolas, monospace; max-width: 44rem;
-         margin: 2rem auto; padding: 0 1rem; line-height: 1.5; }
-  table { border-collapse: collapse; margin: 0.5rem 0 1.5rem; width: 100%; }
-  th, td { text-align: left; padding: 0.2rem 0.75rem 0.2rem 0; }
-  th { border-bottom: 1px solid currentColor; }
-  .events li { margin-bottom: 0.25rem; }
-  .error { padding: 0.5rem; border: 1px solid currentColor; }
-  form { margin: 1rem 0; }
-  label { display: block; margin: 0.5rem 0; }
+/**
+ * The five views, as the set of blocks each one shows.
+ *
+ * Read against `campPage`'s emission order this is a filter and nothing else: take the
+ * sections in the order the server writes them, keep the ones named here, and the
+ * result is the view. That is not a coincidence to be preserved by hand — the order was
+ * already grouped by subject before there were views, so the grouping fell out of it.
+ *
+ * `s-head` and `s-error` are on every view deliberately and are not listed. The head is
+ * the camp's identity and lives in the rail; the error box is a refusal of something the
+ * player just did, and a refusal that renders into a hidden section is a button that
+ * silently did nothing.
+ */
+const PANES = {
+  camp: ['moment', 'raid', 'sky', 'events', 'direction', 'stores', 'structures', 'caravan', 'roster'],
+  survivor: ['survivor', 'inventory', 'expedition', 'workshop'],
+  road: ['road'],
+  trade: ['caravan', 'post', 'standings'],
+};
 
-  /* A section that just changed under the player, because the page updates in place
-     rather than reloading. Without a cue, things change while you are reading a
-     different part of the page and you never notice — which is worse than the reload
-     it replaced. Neutral grey so it works on any ground the redesign chooses. */
+/** Rail order, and the label each view answers to. `records` is the graveyard page. */
+const RAIL = [
+  ['camp', 'Camp', '/camp'],
+  ['survivor', 'Survivor', '/camp/survivor'],
+  ['road', 'Road', '/camp/road'],
+  ['trade', 'Trade', '/camp/trade'],
+  ['records', 'Records', '/graveyard'],
+];
+
+/** Only these reach `campPage` as a pane; anything else is a 404 before it gets here. */
+export const PANE_NAMES = Object.keys(PANES);
+
+/**
+ * Which sections each view reveals, written as CSS rather than as an attribute on the
+ * section tag.
+ *
+ * The tag cannot carry it: `test/db/page-contract.test.js` matches `<section id="s-…">`
+ * literally, and it is right to — an id is the interface the swap runs on, and pinning
+ * the exact opening tag is what stops a redesign from decorating it into something the
+ * client script no longer finds. So the view grouping is expressed by id from out here,
+ * generated from `PANES` so there is one list rather than two.
+ */
+const PANE_CSS = Object.entries(PANES)
+  .map(([pane, ids]) => {
+    const selectors = ids.map((id) => `body[data-pane="${pane}"] #s-${id}`).join(',\n  ');
+    return `  ${selectors} { display: block; }`;
+  })
+  .join('\n');
+
+const STYLE = `
+  :root {
+    --ground: #171614;
+    --panel: #1E1D1A;
+    --rule: #33312C;
+    --edge: #4A463E;
+    --bone: #E4E1D8;
+    --prose: #CFCBC0;
+    --dim: #999588;
+    --faint: #6F6B62;
+    --fainter: #5C584F;
+    --oxide: #C2632C;
+    --oxide-light: #DD8F4A;
+
+    /* Prose and UI part on width and case, not on serifs. A string never crosses
+       families: a structure's name is condensed, its description is prose, its cost
+       is mono. 'Arial Narrow' is in the label stack because 'Roboto Condensed' is not
+       resident on Windows, and Arial alone loses the condensing that is half of what
+       makes a label read as a label. Still a system face; still nothing fetched. */
+    --label: 'Roboto Condensed', 'Arial Narrow', Arial, sans-serif;
+    --body: -apple-system, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+    --numer: ui-monospace, Menlo, Consolas, monospace;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+
+  /* Every corner in this design is square, and each of these defaults would put a
+     radius back. Said once here rather than per control. */
+  button, input, select, textarea { border-radius: 0; font: inherit; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--prose);
+    font-family: var(--body);
+    font-size: 16.5px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ---- the shell ---- */
+
+  .shell { display: flex; align-items: flex-start; gap: 0; min-height: 100vh; }
+
+  .rail {
+    flex: 0 0 198px;
+    width: 198px;
+    position: sticky;
+    top: 0;
+    align-self: stretch;
+    border-right: 1px solid var(--rule);
+    padding: 26px 0 26px 22px;
+  }
+
+  .rail .who { padding-right: 22px; margin-bottom: 26px; }
+  .rail .who h1 {
+    margin: 0;
+    font-family: var(--label);
+    font-weight: 700;
+    font-size: 24px;
+    line-height: 1.1;
+    letter-spacing: .01em;
+    color: var(--bone);
+  }
+  .rail .who p {
+    margin: 8px 0 0;
+    font-family: var(--numer);
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: var(--faint);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .rail nav { display: flex; flex-direction: column; }
+  .rail nav a {
+    display: block;
+    margin-left: -22px;
+    padding: 9px 22px;
+    font-family: var(--label);
+    font-weight: 700;
+    font-size: 12.5px;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--dim);
+    text-decoration: none;
+    border-left: 3px solid transparent;
+  }
+  .rail nav a:hover { color: var(--bone); }
+  /* The one place oxide marks something that is not a clock, a price or a warning, and
+     it is still not decoration: it is the answer to "which of these am I looking at". */
+  .rail nav a[aria-current] { color: var(--bone); border-left-color: var(--oxide); }
+
+  .rail form { margin: 26px 22px 0 0; }
+
+  main {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: 900px;
+    padding: 26px 28px 96px;
+  }
+
+  /* ---- views ---- */
+
+  /* The head is the camp's identity and lives in the rail, so it is never in this
+     stream. The error box is, and is on every view: a refusal that renders into a
+     hidden section is a button that silently did nothing. */
+  main > section { display: none; margin-bottom: 30px; }
+  main > #s-error { display: block; }
+${PANE_CSS}
+
+  /* The caravan is on two views wearing two shapes: a pointer on Camp so the player
+     never has to remember Trade exists, and the shopfront itself on Trade. Both are
+     rendered, one is shown, and the section still swaps as a single unit. */
+  body[data-pane="camp"] #s-caravan .as-block { display: none; }
+  body[data-pane="trade"] #s-caravan .as-line { display: none; }
+
+  main > section:empty { margin-bottom: 0; }
+
+  /* ---- type ---- */
+
+  h2 {
+    margin: 0 0 12px;
+    font-family: var(--label);
+    font-weight: 700;
+    font-size: 10px;
+    line-height: 1;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    color: var(--dim);
+  }
+
+  p { margin: 0 0 10px; max-width: 66ch; text-wrap: pretty; }
+  p:last-child { margin-bottom: 0; }
+  small { font-size: 15.5px; line-height: 1.55; color: var(--dim); }
+  strong { color: var(--bone); font-weight: 600; }
+  a { color: var(--bone); text-decoration: underline; text-underline-offset: 3px; }
+
+  .num, [data-until], [data-amount] {
+    font-family: var(--numer);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .tag {
+    font-family: var(--label);
+    font-weight: 700;
+    font-size: 10px;
+    line-height: 1.4;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--dim);
+  }
+
+  /* ---- the quiet rows ---- */
+
+  /* A block with nothing to say is one line, not a panel. It keeps its slot so a
+     caravan arriving has somewhere to appear, and it is quiet enough that three clear
+     visits in four read as calm rather than as a page full of holes. */
+  .quiet {
+    display: grid;
+    grid-template-columns: 104px 1fr;
+    gap: 0 12px;
+    align-items: baseline;
+    padding: 9px 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .quiet p { margin: 0; max-width: 62ch; color: var(--faint);
+             font-size: 15.5px; line-height: 1.5; }
+  .quiet a { color: var(--dim); }
+  /* Consecutive quiet blocks stack into one ruled group rather than reading as a run
+     of free-floating lines with gaps between them. */
+  main > section:has(.quiet) { margin-bottom: 0; }
+  main > section:has(.quiet) + section:not(:has(.quiet)) { margin-top: 30px; }
+
+  /* ---- panels ---- */
+
+  .panel { border: 1px solid var(--rule); background: var(--panel); }
+  /* Depth is border weight, not shade. A panel that wants an answer says so with its
+     edge; there is no third fill to reach for. */
+  .panel.wants { border-color: var(--edge); }
+  .panel-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 10px 16px;
+    background: #231F18;
+    border-bottom: 1px solid var(--rule);
+  }
+  .panel-head .tag { color: var(--bone); }
+  .panel-body { padding: 16px; }
+  .panel-foot {
+    padding: 10px 16px;
+    border-top: 1px solid var(--rule);
+    font-family: var(--numer);
+    font-size: 13.5px;
+    line-height: 1.3;
+    color: var(--dim);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .clock { font-family: var(--numer); font-size: 20px; line-height: 1;
+           color: var(--oxide-light); font-variant-numeric: tabular-nums;
+           white-space: nowrap; }
+  .clock small { font-size: 11.5px; letter-spacing: .12em; text-transform: uppercase;
+                 color: var(--faint); margin-left: 6px; }
+
+  /* ---- controls ---- */
+
+  button {
+    font-family: var(--label);
+    font-weight: 700;
+    font-size: 11.5px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    padding: 9px 16px;
+    background: transparent;
+    color: var(--bone);
+    border: 1px solid var(--edge);
+    cursor: pointer;
+  }
+  button:hover { border-color: var(--bone); }
+  button[disabled] { color: var(--faint); border-color: var(--rule); cursor: default; }
+  button.fill { background: var(--oxide); border-color: var(--oxide); color: #171614; }
+  button.fill:hover { background: var(--oxide-light); border-color: var(--oxide-light); }
+  form { margin: 0; }
+
+  input[type="email"], input[type="password"], input[type="text"], input[type="number"] {
+    background: #131211;
+    border: 1px solid var(--rule);
+    color: var(--bone);
+    padding: 8px 10px;
+    font-family: var(--numer);
+  }
+  input:focus-visible, button:focus-visible, a:focus-visible {
+    outline: 2px solid var(--oxide-light);
+    outline-offset: 2px;
+  }
+
+  /* A price the camp cannot pay. The only other things wearing oxide are a clock and a
+     warning, which is what keeps all three meaning something. */
+  .short { font-family: var(--numer); font-size: 13.5px; color: var(--oxide-light); }
+  /* A tier you have not reached yet is a goal, not a price — so it stays faint. Oxide
+     is for a shortfall you could go and fix this afternoon. */
+  .needs { font-family: var(--numer); font-size: 13.5px; color: var(--faint); }
+  .cost { font-family: var(--numer); font-size: 13.5px; color: var(--dim);
+          font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  .error {
+    border: 1px solid var(--oxide);
+    border-left-width: 4px;
+    background: #211A15;
+    color: #E0C9B4;
+    padding: 12px 16px;
+  }
+
+  /* ---- tables ---- */
+
+  table { border-collapse: collapse; width: 100%; }
+  th, td { text-align: left; vertical-align: top; padding: 11px 14px 11px 0; }
+  th { font-weight: 400; }
+  tr { border-bottom: 1px solid var(--rule); }
+  tr:last-child { border-bottom: 0; }
+
+  .name { font-family: var(--label); font-weight: 700; font-size: 15px;
+          letter-spacing: .04em; color: var(--bone); }
+  .name .lvl { color: var(--faint); font-family: var(--numer); font-size: 12.5px;
+               letter-spacing: 0; margin-left: 6px; }
+  .lede { color: var(--prose); }
+  .lede small { display: block; margin-top: 3px; max-width: 70ch; }
+  .effect { font-family: var(--numer); font-size: 13.5px; line-height: 1.3;
+            color: var(--dim); font-variant-numeric: tabular-nums; }
+  td.right, th.right { text-align: right; padding-right: 0; }
+  td.act { width: 1%; white-space: nowrap; padding-right: 0; }
+
+  ul.events { list-style: none; margin: 0; padding: 0; }
+  ul.events li { padding: 9px 0; border-bottom: 1px solid var(--rule); max-width: 72ch;
+                 text-wrap: pretty; }
+  ul.events li:last-child { border-bottom: 0; }
+
+  /* ---- contact ---- */
+
+  /* The brightest panel on the page, and that is all it is. Nothing here is red,
+     nothing pulses, nothing is centred. */
+  .contact .state { font-family: var(--numer); font-size: 13.5px; color: var(--faint);
+                    font-variant-numeric: tabular-nums; }
+  /* The turn: the widest measure on the page and the only thing set above prose size,
+     because it is the sentence the whole block exists to ask. */
+  .contact .turn { font-size: 20px; line-height: 1.5; max-width: 64ch; color: var(--bone);
+                   margin-bottom: 0; }
+
+  .choices {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    border-top: 1px solid var(--rule);
+  }
+  .choice { padding: 14px 16px; border-left: 1px solid var(--rule); }
+  .choice:first-child { border-left: 0; }
+  .choice p { margin: 0 0 8px; }
+  .choice .name { font-size: 14px; }
+  .choice small { color: var(--dim); }
+  @media (max-width: 720px) {
+    .choices { grid-template-columns: 1fr; }
+    .choice { border-left: 0; border-top: 1px solid var(--rule); }
+    .choice:first-child { border-top: 0; }
+  }
+
+  /* Marking the card would tell the player the encounter is dangerous, which they can
+     already see. Marking the option tells them which decision kills them, which is the
+     true thing — so the panel gains an edge and a rail, and exactly one choice inside
+     it is marked. The safe choices are untouched and one of them keeps the fill. */
+  .contact.warned { border-color: #7A4526; box-shadow: inset 4px 0 0 var(--oxide); }
+  .contact.warned .state { color: var(--oxide-light); }
+  .choice.warned { background: #211A15; }
+  .choice.warned .name { color: #E0C9B4; }
+  .choice.warned small { color: #C6AC98; }
+  .choice.warned button { border-color: var(--oxide); color: #E0C9B4; }
+
+  /* ---- stores ---- */
+
+  .stores {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    border: 1px solid var(--rule);
+    background: var(--panel);
+  }
+  .store { padding: 12px 14px 14px; border-left: 1px solid var(--rule); }
+  .store:first-child { border-left: 0; }
+  .store-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .rate { font-family: var(--numer); font-size: 12.5px; color: var(--dim);
+          font-variant-numeric: tabular-nums; }
+  /* The single most useful thing this table can say, so it is the one figure here that
+     gets the accent: a store quietly draining. */
+  .rate.down { color: var(--oxide-light); }
+  .rate.none { color: var(--faint); }
+  .store-fig { margin-top: 8px; display: flex; align-items: baseline; gap: 6px; }
+  .store .fig { font-family: var(--numer); font-size: 23px; line-height: 1;
+                color: var(--bone); font-variant-numeric: tabular-nums; }
+  .store .cap { font-family: var(--numer); font-size: 11.5px; color: var(--faint);
+                font-variant-numeric: tabular-nums; }
+  .track { margin-top: 10px; height: 2px; background: var(--rule); }
+  .track i { display: block; height: 2px; background: var(--dim); }
+  @media (max-width: 560px) {
+    .stores { grid-template-columns: repeat(2, 1fr); }
+    .store:nth-child(odd) { border-left: 0; }
+    .store:nth-child(n + 3) { border-top: 1px solid var(--rule); }
+  }
+
+  /* ---- tables, per block ---- */
+
+  table.sky td.lede .clock { float: right; margin-left: 16px; font-size: 18px; }
+  table.sky th.tag { padding-bottom: 4px; }
+  table.sky td.effect { text-align: right; white-space: nowrap; }
+  table.sky tr:first-child { border-bottom: 1px solid var(--rule); }
+
+  /* A fitting hangs off the structure above it: same table, inset, no rule of its own
+     between the two. It is a property of that structure, not a separate purchase. */
+  table.structures tr:not(.fitting) { border-bottom: 0; }
+  tr.fitting > td:first-child { padding-left: 20px; border-left: 2px solid var(--rule); }
+  tr.fitting .name { font-size: 13.5px; color: var(--dim); }
+  tr.fitting small { display: block; margin-top: 2px; font-size: 14px; }
+
+  .lede .effect { display: block; margin-top: 3px; }
+  .when { font-family: var(--numer); font-size: 12.5px; color: var(--faint);
+          font-variant-numeric: tabular-nums; margin-right: 8px; white-space: nowrap; }
+
+  .vitals { max-width: 22rem; }
+  .vitals th { width: 8rem; }
+  .vitals td { color: var(--bone); font-size: 15px; }
+  .vitals td small { display: block; margin-top: 2px; font-size: 13.5px;
+                     font-family: var(--body); color: var(--dim); }
+
+  /* The trip's own state line, and the camp's fuel line, and what the dead were
+     carrying: the same register in three places, which is what makes it read as a
+     register rather than as decoration. */
+  .state { font-family: var(--numer); font-size: 13.5px; color: var(--faint);
+           font-variant-numeric: tabular-nums; }
+
+  form.row { display: flex; gap: 10px; align-items: stretch; margin-top: 12px; }
+  form.row input { width: 8rem; }
+
+  /* ---- the fallen ---- */
+
+  .stones { border-top: 1px solid var(--rule); }
+  .stone { padding: 18px 0; border-bottom: 1px solid var(--rule); }
+  .stone-head { display: flex; align-items: baseline; justify-content: space-between;
+                gap: 16px; margin-bottom: 6px; }
+  .who-name { font-family: var(--label); font-weight: 700; font-size: 20px;
+              letter-spacing: .02em; color: var(--bone); }
+
+  /* ---- the gate ---- */
+
+  .gate { max-width: 30rem; margin: 0 auto; padding: 48px 20px 96px; }
+  .gate h1 { font-family: var(--label); font-weight: 700; font-size: 24px;
+             letter-spacing: .18em; text-transform: uppercase; color: var(--bone);
+             margin: 0 0 24px; }
+  .gate .panel { margin-bottom: 20px; }
+  .gate .error { margin-bottom: 20px; }
+  label { display: block; margin-bottom: 12px; font-family: var(--label);
+          font-weight: 700; font-size: 10px; letter-spacing: .16em;
+          text-transform: uppercase; color: var(--dim); }
+  label input { display: block; width: 100%; margin-top: 5px; }
+
+  /* ---- the change cue ---- */
+
+  /* A warm wash rather than a grey one, so the cue belongs to the palette instead of
+     sitting on top of it. Reduced motion keeps a static oxide edge: the information
+     survives when the motion does not. The only animation here that is not a clock. */
   @keyframes changed {
-    from { background-color: rgba(127, 127, 127, 0.28); }
-    to   { background-color: transparent; }
+    0%   { background-color: rgba(194, 99, 44, 0.16); }
+    100% { background-color: transparent; }
   }
   section.changed { animation: changed 1.2s ease-out; }
-  @media (prefers-reduced-motion: reduce) { section.changed { animation: none; } }
+  @media (prefers-reduced-motion: reduce) {
+    section.changed { animation: none; box-shadow: inset 3px 0 0 var(--oxide); }
+  }
+
+  /* ---- narrow ---- */
+
+  @media (max-width: 560px) {
+    .shell { display: block; }
+    .rail {
+      position: static;
+      width: auto;
+      padding: 20px 16px 0;
+      border-right: 0;
+      border-bottom: 1px solid var(--rule);
+    }
+    .rail .who { padding-right: 0; margin-bottom: 16px; }
+    .rail nav {
+      flex-direction: row;
+      gap: 4px;
+      overflow-x: auto;
+      margin: 0 -16px;
+      padding: 0 16px;
+      scrollbar-width: none;
+    }
+    .rail nav::-webkit-scrollbar { display: none; }
+    .rail nav a {
+      margin: 0;
+      padding: 10px 12px;
+      border-left: 0;
+      border-bottom: 2px solid transparent;
+      white-space: nowrap;
+    }
+    .rail nav a[aria-current] { border-left: 0; border-bottom-color: var(--oxide); }
+    .rail form { margin: 14px 0; }
+    main { padding: 20px 16px 72px; }
+    button { padding: 13px 16px; min-height: 44px; }
+    .quiet { grid-template-columns: 92px 1fr; }
+  }
 `;
 
 /** Every interpolation in this file goes through here. */
@@ -37,12 +526,50 @@ export function escape(value) {
     .replaceAll("'", '&#39;');
 }
 
-export function layout(title, body) {
+/**
+ * The document.
+ *
+ * `pane` is the only thing the shell needs to know about which view is up, and it is
+ * written on `<body>` rather than baked into what gets rendered. That is the whole
+ * mechanism: every section is always in the document, and the CSS generated from
+ * `PANES` decides which of them the player is looking at.
+ *
+ * Two things fall out of it that are worth stating, because `docs/DESIGN-BRIEF.md`
+ * §7.3 names both as hazards of splitting the page into tabs:
+ *
+ * - **The reload returns to the view you were on.** The client script fetches
+ *   `location.pathname`, so the response is the same view, and the `<body>` attribute
+ *   is not something the swap touches anyway.
+ * - **Timers do not stop existing on other views.** A build finishing while the player
+ *   is reading Trade still arms, still fires, still fetches. The brief was willing to
+ *   accept that they would not; it costs nothing here not to accept it.
+ */
+export function layout(title, body, { pane } = {}) {
   return `<!doctype html>
 <html lang="en">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${escape(title)}</title><style>${STYLE}</style></head>
-<body>${body}<script>${TIMERS}</script></body></html>`;
+<body${pane ? ` data-pane="${escape(pane)}"` : ''}>${body}<script>${TIMERS}</script></body></html>`;
+}
+
+/**
+ * The rail: who this camp is, the five views, and the way out.
+ *
+ * The log out form sits here and deliberately *outside* any section, which is what
+ * makes it navigate rather than post in place — the rule `section()` documents, used
+ * rather than restated.
+ */
+function rail(pane, identity) {
+  const links = RAIL.map(
+    ([name, label, href]) =>
+      `<a href="${href}"${name === pane ? ' aria-current="page"' : ''}>${label}</a>`,
+  ).join('');
+
+  return `<div class="rail">
+    ${identity}
+    <nav>${links}</nav>
+    <form method="post" action="/logout"><button type="submit">Log out</button></form>
+  </div>`;
 }
 
 const n = (value, places = 1) => Number(value).toFixed(places);
@@ -248,10 +775,19 @@ export const TIMERS = `
     const elapsedHours = (Date.now() - since) / 3600000;
 
     for (const el of stores) {
+      const cap = Number(el.dataset.cap);
       const projected =
         Number(el.dataset.amount) + Number(el.dataset.rate) * elapsedHours;
-      const clamped = Math.max(0, Math.min(Number(el.dataset.cap), projected));
+      const clamped = Math.max(0, Math.min(cap, projected));
       el.textContent = clamped.toFixed(${STORE_DECIMALS});
+
+      // The fill bar reads off the same figure rather than off a second attribute, so
+      // a track that disagrees with the number beside it is not a state this can be
+      // in. Optional and null-guarded: the bar is presentation, and a store that
+      // renders without one must still climb.
+      const fill = el.closest('.store');
+      const track = fill && fill.querySelector('[data-fill]');
+      if (track && cap > 0) track.style.width = (100 * clamped) / cap + '%';
     }
 
     for (const el of live) {
@@ -296,23 +832,33 @@ export const TIMERS = `
 
 export function landingPage({ error } = {}) {
   return layout('Wasteland', `
-    <h1>Wasteland</h1>
-    ${error ? `<p class="error">${escape(error)}</p>` : ''}
+    <div class="gate">
+      <h1>Wasteland</h1>
+      ${error ? `<p class="error">${escape(error)}</p>` : ''}
 
-    <h2>Return to your camp</h2>
-    <form method="post" action="/login">
-      <label>Email <input name="email" type="email" required autocomplete="username"></label>
-      <label>Password <input name="password" type="password" required autocomplete="current-password"></label>
-      <button type="submit">Enter</button>
-    </form>
+      <div class="panel wants">
+        <div class="panel-head"><span class="tag">Return to your camp</span></div>
+        <div class="panel-body">
+          <form method="post" action="/login">
+            <label>Email <input name="email" type="email" required autocomplete="username"></label>
+            <label>Password <input name="password" type="password" required autocomplete="current-password"></label>
+            <button type="submit" class="fill">Enter</button>
+          </form>
+        </div>
+      </div>
 
-    <h2>Found a new camp</h2>
-    <form method="post" action="/register">
-      <label>Email <input name="email" type="email" required autocomplete="username"></label>
-      <label>Password <input name="password" type="password" required autocomplete="new-password" minlength="8"></label>
-      <label>Camp name <input name="settlementName" placeholder="Camp"></label>
-      <button type="submit">Begin</button>
-    </form>
+      <div class="panel">
+        <div class="panel-head"><span class="tag">Found a new camp</span></div>
+        <div class="panel-body">
+          <form method="post" action="/register">
+            <label>Email <input name="email" type="email" required autocomplete="username"></label>
+            <label>Password <input name="password" type="password" required autocomplete="new-password" minlength="8"></label>
+            <label>Camp name <input name="settlementName" placeholder="Camp"></label>
+            <button type="submit">Begin</button>
+          </form>
+        </div>
+      </div>
+    </div>
   `);
 }
 
@@ -331,6 +877,40 @@ export function landingPage({ error } = {}) {
  *   That is how logging out still leaves the page, with no extra markup to remember.
  */
 const section = (id, html) => `<section id="s-${id}">${html ?? ''}</section>`;
+
+/**
+ * A block with nothing in it, as one line rather than a panel.
+ *
+ * Six of these blocks are absent far more often than they are present — the sky is
+ * clear three visits in four, contact is open for about a third of the hours of a trip
+ * and not at all otherwise — and a page that renders each of those as an empty panel is
+ * a page full of holes. A page that renders them as nothing at all is worse: the slot
+ * stops existing, and the player stops expecting anything to appear in it.
+ *
+ * So: a label in a fixed column, a sentence, a hairline. Quiet enough that a calm camp
+ * reads as calm, present enough that a caravan arriving has somewhere to arrive.
+ */
+const quiet = (label, line) =>
+  `<div class="quiet"><span class="tag">${label}</span><p>${line}</p></div>`;
+
+/**
+ * What each of those blocks says when it is empty, in one place.
+ *
+ * These are the only strings in the redesign that did not already exist somewhere in
+ * `page-states/*.html`, and they are written to `docs/LORE.md` §7 rather than invented:
+ * the observation, not the null state. Never "None", never an empty table. A camp with
+ * no radio is told what it is missing and what happens without it, because that is a
+ * fact about the world; it is not told that a field is unset.
+ */
+const NOTHING = {
+  moment: 'Nobody is on the wire.',
+  raid: 'No radio fitted. You will hear them when they arrive.',
+  sky: 'The sky is doing nothing worth naming.',
+  events: 'Nothing has happened since you were last here.',
+  inventory: 'The pack is empty.',
+  caravan: 'Nobody is on the road to here.',
+  roster: 'Nobody has died here.',
+};
 
 /**
  * The camp page, in the order a check-in actually reads.
@@ -357,12 +937,17 @@ const section = (id, html) => `<section id="s-${id}">${html ?? ''}</section>`;
  *
  * The graveyard stays at the bottom. It is the one thing on the page that is finished.
  */
-export function campPage(view, { error } = {}) {
-  return layout(view.name, `
-    ${section('head', `
+export function campPage(view, { error, pane = 'camp' } = {}) {
+  const identity = section('head', `
+    <div class="who">
       <h1>${escape(view.name)}</h1>
-      <p>Wealth ${view.wealth} &middot; defence ${view.defence} &middot; founded
-         ${escape(view.foundedAt.toISOString().slice(0, 10))}</p>`)}
+      <p>wealth ${view.wealth} &middot; defence ${view.defence}<br>
+         founded ${escape(view.foundedAt.toISOString().slice(0, 10))}</p>
+    </div>`);
+
+  return layout(view.name, `<div class="shell">
+    ${rail(pane, identity)}
+    <main>
     ${section('error', error ? `<p class="error">${escape(error)}</p>` : '')}
 
     ${section('moment', renderMoment(view.expedition))}
@@ -393,9 +978,8 @@ export function campPage(view, { error } = {}) {
     ${section('standings', renderStandings(view.standings))}
 
     ${section('roster', renderRoster(view.fallenCount))}
-
-    <form method="post" action="/logout"><button type="submit">Log out</button></form>
-  `);
+    </main>
+  </div>`, { pane });
 }
 
 /**
@@ -416,21 +1000,40 @@ const NARRATED_ELSEWHERE = new Set(['item_found']);
  * to wait, and one with three days left is a reason to change plan.
  */
 function renderWeather(weather) {
-  if (!weather || weather.length === 0) return '';
+  if (!weather || weather.length === 0) return quiet('Sky', NOTHING.sky);
 
-  const items = weather
+  const rows = weather
     .map(
-      (event) => `<li><strong>${escape(event.name)}</strong> (${countdown(event.endsAt, 'clearing')} left) &mdash;
-        ${escape(event.description)}${effectLine(event.effects)}</li>`,
+      (event) => `<tr>
+        <td class="lede">
+          <span class="name">${escape(event.name)}</span>
+          <span class="clock">${countdown(event.endsAt, 'clearing')}<small>left</small></span>
+          <small>${escape(event.description)}</small>
+        </td>
+        <td class="effect">${sideOf(event.effects, 'camp')}</td>
+        <td class="effect">${sideOf(event.effects, 'road')}</td>
+      </tr>`,
     )
     .join('');
 
   // Two blights are worse than one, and the page had no way to say so. Only shown when
-  // something is actually stacking, because for one event it would restate the line
-  // directly above it.
-  const together = weather.length > 1 ? `<p><small>Together: ${escape(stacked(weather))}.</small></p>` : '';
+  // something is actually stacking, because for one event it would restate the row
+  // directly above it — and it is the one place two events are allowed to meet.
+  const together =
+    weather.length > 1
+      ? `<div class="panel-foot">Together &mdash; ${escape(stacked(weather))}</div>`
+      : '';
 
-  return `<h2>The sky</h2><ul class="events">${items}</ul>${together}`;
+  return `<h2>The sky</h2>
+    <div class="panel wants">
+      <div class="panel-body">
+        <table class="sky">
+          <tr><td></td><th class="tag right">In camp</th><th class="tag right">Out there</th></tr>
+          ${rows}
+        </table>
+      </div>
+      ${together}
+    </div>`;
 }
 
 /**
@@ -447,20 +1050,15 @@ function renderWeather(weather) {
  * *prose*, and this deliberately is not prose: it sits under the sentence, in small, in
  * the same register as "danger 4" on the dispatch table.
  */
-function effectLine(effects) {
-  if (!effects || effects.length === 0) return '';
-
-  const here = effects.filter((e) => e.where === 'camp').map(factor);
-  const there = effects.filter((e) => e.where === 'road').map(factor);
-
-  const parts = [];
-  if (here.length > 0) parts.push(`in camp ${here.join(', ')}`);
-  if (there.length > 0) parts.push(`out there ${there.join(', ')}`);
-
-  return `<br><small>${escape(parts.join(' &middot; '))}</small>`.replace('&amp;middot;', '&middot;');
+function sideOf(effects, where) {
+  const parts = (effects ?? []).filter((e) => e.where === where).map(factor);
+  // An event with nothing to say on one side says so with a dash. A blank cell reads
+  // as a rendering fault, and in a grid where the column above it is full of numbers
+  // it reads as a *missing* number, which is the one thing it is not.
+  return parts.length > 0 ? parts.join('<br>') : '&mdash;';
 }
 
-const factor = (effect) => `${effect.what} ×${effect.factor}`;
+const factor = (effect) => escape(`${effect.what} ×${effect.factor}`);
 
 /** Everything in force, multiplied out — which is what the tick actually applies. */
 function stacked(weather) {
@@ -485,62 +1083,77 @@ function stacked(weather) {
  * spend them — which is the point: a warning turns a hoard into a decision.
  */
 function renderRaidWarning(expectedAt) {
-  if (!expectedAt) return '';
+  // No radio, so no hour — and that is a fact about the camp rather than a blank. The
+  // line says what is missing and what happens without it, which is the difference
+  // between an empty slot and a thing to go and build.
+  if (!expectedAt) return quiet('Raiders', NOTHING.raid);
 
   const hoursLeft = (new Date(expectedAt).getTime() - Date.now()) / 3600000;
   if (hoursLeft <= 0) {
     return '<p class="error">The radio has gone quiet. They are overdue &mdash; reload.</p>';
   }
 
-  return `<p class="error">Radio: raiders expected in ${countdown(expectedAt, 'any moment')}.
-    Anything still in the stores is theirs to take.</p>`;
+  return `<div class="panel wants">
+      <div class="panel-head">
+        <span class="tag">Radio</span>
+        <span class="clock">${countdown(expectedAt, 'any moment')}<small>until raiders</small></span>
+      </div>
+      <div class="panel-body"><p>Anything still in the stores is theirs to take.</p></div>
+    </div>`;
 }
 
 function renderEvents(events) {
-  const shown = events.filter((event) => !NARRATED_ELSEWHERE.has(event.type));
-  if (shown.length === 0) return '';
+  const shown = (events ?? []).filter((event) => !NARRATED_ELSEWHERE.has(event.type));
+  if (shown.length === 0) return quiet('While away', NOTHING.events);
   const items = shown
-    .map((event) => `<li>${escape(describe(event))}</li>`)
+    .map((event) => `<li><span class="when">${escape(stamp(event.at))}</span> ${escape(describe(event))}</li>`)
     .join('');
   // aria-live because this list now grows without the page navigating: a build that
   // finishes while the player is reading is announced rather than silently appearing.
   return `<h2>While you were away</h2><ul class="events" aria-live="polite">${items}</ul>`;
 }
 
+/**
+ * When it happened, as a figure rather than as the head of a sentence.
+ *
+ * It used to be glued to the front of every line `describe()` returns, which was fine
+ * while the whole page was one monospace face. It is not fine now: a string never
+ * crosses families, and a timestamp is a number sitting in front of prose. Split out so
+ * the stamp can be mono and tabular and the sentence can be prose.
+ */
+const stamp = (at) => new Date(at).toISOString().replace('T', ' ').slice(0, 16);
+
 function describe(event) {
-  const when = new Date(event.at).toISOString().replace('T', ' ').slice(0, 16);
   switch (event.type) {
     case 'survivor_died':
-      return `${when} — your survivor died of ${event.cause} after ${n(event.daysSurvived)} days.`;
+      return `your survivor died of ${event.cause} after ${n(event.daysSurvived)} days.`;
     case 'auto_consumed':
-      return `${when} — with nothing left in the stores, they used a ${event.item}.`;
+      return `with nothing left in the stores, they used a ${event.item}.`;
     case 'expedition_returned':
-      return `${when} — ${event.log.join(' ')}`;
+      return event.log.join(' ');
     case 'expedition_lost':
-      return event.log
-        ? `${when} — ${event.log.join(' ')}`
-        : `${when} — an expedition never came home.`;
+      return event.log ? event.log.join(' ') : 'an expedition never came home.';
     // Filtered out of the camp page by NARRATED_ELSEWHERE; kept so this stays a
     // total formatter, and so a find reported on its own still has words.
     case 'item_found':
-      return `${when} — brought back ${event.qty} × ${event.slug.replaceAll('_', ' ')}.`;
+      return `brought back ${event.qty} × ${event.slug.replaceAll('_', ' ')}.`;
     case 'build_completed':
-      return `${when} — the ${event.kind.replaceAll('_', ' ')} reached level ${event.level}.`;
+      return `the ${event.kind.replaceAll('_', ' ')} reached level ${event.level}.`;
     case 'raid':
     case 'raid_repelled':
-      return `${when} — ${event.log.join(' ')}`;
+      return event.log.join(' ');
     case 'caravan_arrived':
-      return `${when} — a caravan from ${event.name} pulled up at the gate.`;
+      return `a caravan from ${event.name} pulled up at the gate.`;
     case 'caravan_departed':
-      return `${when} — the ${event.name} caravan moved on.`;
+      return `the ${event.name} caravan moved on.`;
     case 'upgrade_fitted':
-      return `${when} — the crew finished fitting the ${event.name.toLowerCase()}.`;
+      return `the crew finished fitting the ${event.name.toLowerCase()}.`;
     case 'craft_delivered':
-      return `${when} — the workshop turned out ${event.qty} × ${event.name}.`;
+      return `the workshop turned out ${event.qty} × ${event.name}.`;
     case 'craft_lost':
-      return `${when} — the ${event.name} was finished with nobody left to take it off the bench.`;
+      return `the ${event.name} was finished with nobody left to take it off the bench.`;
     default:
-      return `${when} — ${event.type}`;
+      return event.type;
   }
 }
 
@@ -572,13 +1185,19 @@ function renderSurvivor(survivor, strain) {
     : '';
 
   return `
-    <h2>${escape(survivor.name ?? 'Survivor')}</h2>
-    ${who}
-    <table>
-      <tr><th>Health</th><td>${n(survivor.health)}</td></tr>
-      <tr><th>Hunger</th><td>${n(survivor.hunger)}</td></tr>
-      <tr><th>Radiation</th><td>${n(survivor.radiation)}${strainNote(strain)}</td></tr>
-    </table>`;
+    <h2>Who holds the camp</h2>
+    <div class="panel">
+      <div class="panel-head"><span class="tag">${escape(survivor.name ?? 'Survivor')}</span></div>
+      <div class="panel-body">
+        ${who}
+        <table class="vitals">
+          <tr><th class="tag">Health</th><td class="num">${n(survivor.health)}</td></tr>
+          <tr><th class="tag">Hunger</th><td class="num">${n(survivor.hunger)}</td></tr>
+          <tr><th class="tag">Radiation</th>
+              <td class="num">${n(survivor.radiation)}${strainNote(strain)}</td></tr>
+        </table>
+      </div>
+    </div>`;
 }
 
 /**
@@ -604,12 +1223,17 @@ function renderNoSurvivor(everHeld, arriving) {
     : '';
 
   return `
-    <h2>The camp stands empty</h2>
-    ${preamble}
-    ${atTheGate}
-    <form method="post" action="/successor">
-      <button type="submit">${everHeld ? 'Let them take it on' : 'Let them stay'}</button>
-    </form>`;
+    <h2>Who holds the camp</h2>
+    <div class="panel wants">
+      <div class="panel-head"><span class="tag">The camp stands empty</span></div>
+      <div class="panel-body">
+        ${preamble}
+        ${atTheGate}
+        <form method="post" action="/successor">
+          <button type="submit" class="fill">${everHeld ? 'Let them take it on' : 'Let them stay'}</button>
+        </form>
+      </div>
+    </div>`;
 }
 
 /**
@@ -635,34 +1259,59 @@ function renderNoSurvivor(everHeld, arriving) {
  * never do is look identical to an option you can take and refuse after the click,
  * which is what it did until 2026-08-19, on a window with eleven minutes left on it.
  */
-function momentAction(moment, option) {
-  if (option.missing) return `<small>needs ${escape(option.needs)}</small>`;
+function momentAction(moment, option, filled) {
+  if (option.missing) return `<span class="short">needs ${escape(option.needs)}</span>`;
 
-  return `<form method="post" action="/moment" style="margin:0">
+  return `<form method="post" action="/moment">
             <input type="hidden" name="index" value="${moment.index}">
             <input type="hidden" name="option" value="${escape(option.key)}">
-            <button type="submit">Choose</button>
+            <button type="submit"${filled ? ' class="fill"' : ''}>Choose</button>
           </form>`;
 }
 
 function renderMoment(expedition) {
   const moment = expedition?.moment;
-  if (!moment) return '';
+  if (!moment) return quiet('Contact', NOTHING.moment);
 
-  const rows = moment.options
+  /*
+   * Which choice wears the filled button, and it is not "the first one".
+   *
+   * The rule is that exactly one option is filled and it is never the dangerous one:
+   * marking the card would tell the player the encounter is dangerous, which they can
+   * see; marking the option tells them which decision kills them, which is the true
+   * thing and the only thing worth an accent. So the fill goes to the first option
+   * that is neither warned nor priced in something the survivor is not carrying — and
+   * if every option is one of those, nothing is filled and no choice is a default.
+   */
+  const filled = moment.options.find((option) => !option.warned && !option.missing);
+
+  const choices = moment.options
     .map(
-      (option) => `<tr>
-        <th>${escape(option.label)}</th>
-        <td>${option.warned ? '&#9888; ' : ''}${escape(option.detail)}</td>
-        <td>${momentAction(moment, option)}</td>
-      </tr>`,
+      (option) => `<div class="choice${option.warned ? ' warned' : ''}">
+        <p class="name">${option.warned ? '&#9888; ' : ''}${escape(option.label)}</p>
+        <p><small>${escape(option.detail)}</small></p>
+        ${momentAction(moment, option, option === filled)}
+      </div>`,
     )
     .join('');
 
-  return `<h2>Contact &mdash; ${countdown(moment.closesAt, 'gone')} to answer</h2>
-    <p>${escape(condition(expedition))}</p>
-    <p><strong>${escape(moment.prose)}</strong></p>
-    <table>${rows}</table>`;
+  const warned = moment.options.some((option) => option.warned);
+
+  // The state line is the facts the decision needs, beside the decision. It duplicates
+  // what the Away report says on the Survivor view, on purpose and now more than ever:
+  // the two are a click apart, and making somebody go and look up whether 34 health is
+  // bad would be the whole design failing at the last inch.
+  return `<div class="panel wants contact${warned ? ' warned' : ''}">
+      <div class="panel-head">
+        <span class="tag">Contact</span>
+        <span class="clock">${countdown(moment.closesAt, 'gone')}<small>to answer</small></span>
+      </div>
+      <div class="panel-body">
+        <p class="state">${escape(condition(expedition))}</p>
+        <p class="turn">${escape(moment.prose)}</p>
+      </div>
+      <div class="choices">${choices}</div>
+    </div>`;
 }
 
 /** "Six hours into the Deep Zone, carrying 22 scrap, at 61 health." */
@@ -722,17 +1371,14 @@ function renderExpeditions(view) {
     const hoursLeft = (new Date(trip.returnsAt).getTime() - Date.now()) / 3600000;
     const due =
       hoursLeft > 0
-        ? `due back in ${countdown(trip.returnsAt, 'now')}`
-        : 'overdue — reload to see what came back';
+        ? `<span class="clock">${countdown(trip.returnsAt, 'now')}<small>due back</small></span>`
+        : '<span class="short">overdue &mdash; reload to see what came back</span>';
 
     // The report, which is what makes a check-in that catches no window worth making.
     // Rendered once and not animated: the haul steps by a whole unit about once an
     // hour, so a live counter would buy nothing and would cost the client script a copy
     // of the progress curve.
-    const lines = [
-      `${escape(trip.regionName)} — ${due}`,
-      escape(condition(trip, { region: false })),
-    ];
+    const lines = [];
 
     if (trip.damage > 0) {
       lines.push(`Hurt out there${trip.cause ? ` — ${escape(trip.cause)}` : ''}.`);
@@ -757,25 +1403,35 @@ function renderExpeditions(view) {
       lines.push('What came of that comes home with them.');
     }
 
-    return `<h2>Away</h2><p>${lines.join('<br>')}</p>${momentAlarm(trip)}`;
+    return `<h2>Away</h2>
+      <div class="panel">
+        <div class="panel-head">
+          <span class="tag">${escape(trip.regionName)}</span>
+          ${due}
+        </div>
+        <div class="panel-body">
+          <p class="state">${escape(condition(trip, { region: false }))}</p>
+          ${lines.length > 0 ? `<p>${lines.join('<br>')}</p>` : ''}
+        </div>
+      </div>${momentAlarm(trip)}`;
   }
 
   const rows = view.regions
     .map(
       (region) => `<tr>
-        <th>${escape(region.name)}</th>
-        <td>danger ${region.danger}</td>
-        <td>${escape(duration(region.travel_hours))}</td>
-        <td>${escape(contact(region.moments))}</td>
-        <td>${escape(meanwhile(region.openWhileAway))}</td>
-        <td>
-          <form method="post" action="/expedition" style="margin:0">
+        <td class="lede">
+          <span class="name">${escape(region.name)}</span>
+          <small>${escape(region.description ?? '')}</small>
+        </td>
+        <td class="effect">danger ${region.danger}<br>${escape(duration(region.travel_hours))} out</td>
+        <td class="effect">${escape(contact(region.moments))}<br>${escape(meanwhile(region.openWhileAway))}</td>
+        <td class="act">
+          <form method="post" action="/expedition">
             <input type="hidden" name="region" value="${escape(region.slug)}">
             <button type="submit">Send</button>
           </form>
         </td>
-      </tr>
-      <tr><td colspan="6"><small>${escape(region.description ?? '')}</small></td></tr>`,
+      </tr>`,
     )
     .join('');
 
@@ -802,7 +1458,10 @@ function renderExpeditions(view) {
  */
 function renderDirection(direction) {
   if (!direction) return '';
-  return `<h2>Next</h2><p>${escape(direction.line)}</p>`;
+  return `<h2>Next</h2>
+    <div class="panel wants"><div class="panel-body">
+      <p>${escape(direction.line)}</p>
+    </div></div>`;
 }
 
 /**
@@ -914,14 +1573,14 @@ function renderPost(post, alive) {
   const rows = post.offers
     .map(
       (offer) => `<tr>
-        <th>${offer.qty} &times; ${escape(String(offer.what).replaceAll('_', ' '))}</th>
-        <td>${escape(
+        <th><span class="name">${offer.qty} &times; ${escape(String(offer.what).replaceAll('_', ' '))}</span></th>
+        <td class="cost right">${escape(
           Object.entries(offer.costs).map(([kind, amount]) => `${amount} ${kind}`).join(', '),
         )}</td>
-        <td>${offer.shortBy
-          ? `<small>${escape(offer.shortBy)}</small>`
+        <td class="act">${offer.shortBy
+          ? `<span class="short">${escape(offer.shortBy)}</span>`
           : alive
-          ? `<form method="post" action="/trade" style="margin:0">
+          ? `<form method="post" action="/trade">
               <input type="hidden" name="faction" value="${escape(post.faction)}">
               <input type="hidden" name="offer" value="${offer.index}">
               <button type="submit">Buy</button>
@@ -932,8 +1591,13 @@ function renderPost(post, alive) {
     .join('');
 
   return `<h2>The post on the road</h2>
-    <p>${escape(post.name)} keep it. Standing ${Math.round(post.standing)}.</p>
-    <table>${rows}</table>`;
+    <div class="panel">
+      <div class="panel-head">
+        <span class="tag">${escape(post.name)}</span>
+        <span class="cost">standing ${Math.round(post.standing)}</span>
+      </div>
+      <div class="panel-body"><table>${rows}</table></div>
+    </div>`;
 }
 
 /**
@@ -955,10 +1619,10 @@ function addFuel(road) {
     return `<p><small>No fuel in the stores. Only expeditions bring it back.</small></p>`;
   }
 
-  return `<form method="post" action="/road">
+  return `<form method="post" action="/road" class="row">
       <input type="number" name="fuel" min="1" max="${most}" step="1"
              value="${most}" required>
-      <button type="submit">Add fuel</button>
+      <button type="submit" class="fill">Add fuel</button>
     </form>`;
 }
 
@@ -999,11 +1663,13 @@ function renderRoad(road) {
   const reached = road.reached
     .map(
       (link) => `<tr>
-        <th>${escape(link.name)}</th>
-        <td>${link.stillThere ? `${link.size} people` : 'nobody left'}</td>
-        <td>${linkGot(link)}</td>
-      </tr>
-      <tr><td colspan="3"><small>${escape(link.news)}</small></td></tr>`,
+        <td class="lede">
+          <span class="name">${escape(link.name)}</span>
+          <small>${escape(link.news)}</small>
+        </td>
+        <td class="effect">${link.stillThere ? `${link.size} people` : 'nobody left'}</td>
+        <td class="lede"><small>${linkGot(link)}</small></td>
+      </tr>`,
     )
     .join('');
 
@@ -1031,18 +1697,35 @@ function renderRoad(road) {
   return `<h2>The road &mdash; ${road.reached.length} of ${road.links} reached</h2>
     ${rule}
     ${reached ? `<table>${reached}</table>` : ''}
-    <p>Working toward <strong>${escape(road.next.neighbour)}</strong> &mdash;
-       ${linkGot(road.next)}.<br>
-       Paid so far: ${n(road.next.fuel, 0)} of ${n(road.next.cost, 0)} fuel.
-       You have ${n(road.available, 0)}.</p>
-    ${addFuel(road)}
+    <div class="panel wants">
+      <div class="panel-head">
+        <span class="tag">Working toward ${escape(road.next.neighbour)}</span>
+        <span class="cost">${n(road.next.fuel, 0)} / ${n(road.next.cost, 0)} fuel</span>
+      </div>
+      <div class="panel-body">
+        <p><small>${linkGot(road.next)}</small></p>
+        ${
+          // Said once. With no fuel at all `addFuel` says so and says why, and a stores
+          // line above it would only be the same sentence with a zero in it.
+          road.available >= 1
+            ? `<p class="state">${n(road.available, 0)} fuel in the stores.</p>`
+            : ''
+        }
+        ${addFuel(road)}
+      </div>
+    </div>
     ${beyond}`;
 }
 
 function renderInventory(inventory) {
-  if (!inventory || inventory.length === 0) return '';
+  if (!inventory || inventory.length === 0) return quiet('Pack', NOTHING.inventory);
   const rows = inventory
-    .map((item) => `<tr><th>${escape(item.name)}</th><td>×${item.qty}</td></tr>`)
+    .map(
+      (item) => `<tr>
+        <th><span class="name">${escape(item.name)}</span></th>
+        <td class="right num">×${item.qty}</td>
+      </tr>`,
+    )
     .join('');
   return `<h2>Pack</h2><table>${rows}</table>`;
 }
@@ -1054,9 +1737,14 @@ function renderInventory(inventory) {
 function renderWorkshop(view) {
   if (view.craft) {
     const hoursLeft = (new Date(view.craft.completesAt).getTime() - Date.now()) / 3600000;
-    const due = hoursLeft > 0 ? `ready in ${countdown(view.craft.completesAt, 'now')}` : 'ready — reload to collect it';
+    const due =
+      hoursLeft > 0
+        ? `<span class="clock">${countdown(view.craft.completesAt, 'now')}<small>until ready</small></span>`
+        : '<span class="short">ready &mdash; reload to collect it</span>';
     return `<h2>On the bench</h2>
-      <p>${escape(view.craft.name)} — ${due}</p>`;
+      <div class="panel"><div class="panel-head">
+        <span class="tag">${escape(view.craft.name)}</span>${due}
+      </div></div>`;
   }
 
   if (!view.recipes || view.recipes.length === 0) return '';
@@ -1073,12 +1761,13 @@ function renderWorkshop(view) {
           : `${recipe.output_qty} × ${escape(recipe.output_name)}`;
       const price = escape(`${priceOf(recipe)}, ${duration(recipe.craft_hours)}`);
       return `<tr>
-        <th>${escape(recipe.name)}</th>
-        <td>${yields}</td>
-        <td>${price}</td>
-        <td>${craftCell(recipe, view)}</td>
-      </tr>
-      <tr><td colspan="4"><small>${escape(recipe.description ?? '')}</small></td></tr>`;
+        <td class="lede">
+          <span class="name">${escape(recipe.name)}${yields ? ` <span class="lvl">${yields}</span>` : ''}</span>
+          <small>${escape(recipe.description ?? '')}</small>
+        </td>
+        <td class="cost right">${price}</td>
+        <td class="act">${craftCell(recipe, view)}</td>
+      </tr>`;
     })
     .join('');
 
@@ -1096,15 +1785,15 @@ function priceOf(recipe) {
 
 function craftCell(recipe, view) {
   if (view.workshopLevel < recipe.requires_workshop) {
-    return `<small>needs workshop ${recipe.requires_workshop}</small>`;
+    return `<span class="needs">needs workshop ${recipe.requires_workshop}</span>`;
   }
   // Starting work needs living hands, the same rule builds follow.
   if (!view.survivor) return '';
   // And the same rule the workshop level already follows: keep the row, drop the
   // button, say what it wants. Hiding it would hide the goal.
-  if (recipe.shortBy) return `<small>${escape(recipe.shortBy)}</small>`;
+  if (recipe.shortBy) return `<span class="short">${escape(recipe.shortBy)}</span>`;
 
-  return `<form method="post" action="/craft" style="margin:0">
+  return `<form method="post" action="/craft">
       <input type="hidden" name="recipe" value="${escape(recipe.slug)}">
       <button type="submit">Make</button>
     </form>`;
@@ -1117,14 +1806,34 @@ function craftCell(recipe, view) {
  * because they want you at the gate with scrap in hand, and a visit that can be
  * planned for is a reason to come back. Missing one still costs you the window.
  */
+/**
+ * The caravan, on the two views it belongs to and in the two shapes they want.
+ *
+ * `s-caravan` is the one block the split puts in two places, and it is there for a
+ * reason worth keeping: a caravan is a *window*, so a player sitting on Camp has to
+ * find out one has arrived without going to look for it. **The player should never
+ * have to remember a view exists.** So Camp gets a line — who is at the gate and how
+ * long they will be — and Trade gets the shopfront.
+ *
+ * Both are rendered on every view and the CSS shows one, which is what keeps the
+ * section a single swappable unit: a caravan arriving replaces the whole of
+ * `s-caravan`, and the pointer and the shopfront cannot disagree about what is at the
+ * gate because they were built from the same object in the same render.
+ *
+ * The countdown is deliberately in the shopfront only. Two spans on one instant would
+ * arm two timers for one fetch, and the pointer's job is to say *that* somebody is
+ * here, not to run a second clock for them.
+ */
 function renderCaravan(caravan, someoneAlive) {
-  if (!caravan) return '';
+  if (!caravan) return quiet('Caravan', NOTHING.caravan);
 
   if (!caravan.visiting) {
     const hoursOut = (new Date(caravan.arrivesAt).getTime() - Date.now()) / 3600000;
     const when = hoursOut > 0 ? `expected in ${countdown(caravan.arrivesAt, 'now')}` : 'expected — reload';
-    return `<h2>On the road</h2>
-      <p>A caravan from ${escape(caravan.name)}, ${when}.</p>`;
+    // Nothing to buy yet, so both views say the same short thing and neither needs a
+    // table: this is a caravan that has not arrived, on a page about a camp that is
+    // waiting for it.
+    return quiet('Caravan', `A caravan from ${escape(caravan.name)}, ${when}.`);
   }
 
   const hoursLeft = (new Date(caravan.departsAt).getTime() - Date.now()) / 3600000;
@@ -1136,36 +1845,60 @@ function renderCaravan(caravan, someoneAlive) {
       // A caravan is at the gate for a few hours, so an offer the stores cannot
       // cover is worth naming rather than leaving to be discovered by clicking.
       const buy = offer.shortBy
-        ? `<small>${escape(offer.shortBy)}</small>`
+        ? `<span class="short">${escape(offer.shortBy)}</span>`
         : someoneAlive
-          ? `<form method="post" action="/trade" style="margin:0">
+          ? `<form method="post" action="/trade">
               <input type="hidden" name="faction" value="${escape(caravan.faction)}">
               <input type="hidden" name="offer" value="${offer.index}">
               <button type="submit">Buy</button>
             </form>`
           : '';
       return `<tr>
-        <th>${offer.qty} × ${escape(offer.what)}</th>
-        <td>${escape(price)}</td>
-        <td>${buy}</td>
+        <th><span class="name">${offer.qty} × ${escape(offer.what)}</span></th>
+        <td class="cost right">${escape(price)}</td>
+        <td class="act">${buy}</td>
       </tr>`;
     })
     .join('');
 
-  return `<h2>${escape(caravan.name)} — at the gate</h2>
-    <p><small>${escape(caravan.description)}</small><br>
-       Moving on in ${countdown(caravan.departsAt, 'now')}. Standing ${describeStanding(caravan.standing)}
-       ${caravan.standing < 0 ? '&mdash; their prices show it.' : caravan.standing > 0 ? '&mdash; the rates are friendly.' : '&mdash; strangers pay list price.'}</p>
-    <table>${rows}</table>`;
+  const rates =
+    caravan.standing < 0
+      ? 'their prices show it'
+      : caravan.standing > 0
+        ? 'the rates are friendly'
+        : 'strangers pay list price';
+
+  return `<div class="as-line">${quiet(
+    'Caravan',
+    `<strong>${escape(caravan.name)}</strong> are at the gate. <a href="/camp/trade">What they carry</a>.`,
+  )}</div>
+    <div class="as-block">
+      <h2>${escape(caravan.name)} &mdash; at the gate</h2>
+      <div class="panel wants">
+        <div class="panel-head">
+          <span class="tag">Standing ${describeStanding(caravan.standing)} &mdash; ${rates}</span>
+          <span class="clock">${countdown(caravan.departsAt, 'now')}<small>until they move on</small></span>
+        </div>
+        <div class="panel-body">
+          <p><small>${escape(caravan.description)}</small></p>
+          <table>${rows}</table>
+        </div>
+      </div>
+    </div>`;
 }
 
 /** Where the camp sits with each crew. One line each; the numbers earn no table. */
 function renderStandings(standings) {
   if (!standings || standings.every((s) => s.standing === 0)) return '';
-  const parts = standings
-    .map((s) => `${escape(s.name)}: ${describeStanding(s.standing)}`)
-    .join(' &middot; ');
-  return `<h2>Standing</h2><p>${parts}</p>`;
+  const rows = standings
+    .map(
+      (s) => `<tr>
+        <th><span class="name">${escape(s.name)}</span></th>
+        <td class="cost right">${describeStanding(s.standing)}</td>
+      </tr>`,
+    )
+    .join('');
+  return `<h2>Standing</h2><table>${rows}</table>`;
 }
 
 function describeStanding(standing) {
@@ -1189,23 +1922,49 @@ function describeStanding(standing) {
  * quietly draining is the single most useful thing this table can tell you.
  */
 function renderResources(resources) {
-  const rows = resources
+  const cells = resources
     .map((r) => {
+      // Oxide only when the store is draining, which is the one thing this table can
+      // tell you that you would otherwise find out by running out. A zero rate is a
+      // dash rather than "+0.0/h": nothing is happening, and a figure that says so in
+      // four characters of precision looks like something is.
       const rate =
         r.ratePerHour === 0
-          ? '&mdash;'
-          : `${r.ratePerHour > 0 ? '+' : ''}${n(r.ratePerHour)}/h`;
+          ? '<span class="rate none">&mdash;</span>'
+          : `<span class="rate${r.ratePerHour < 0 ? ' down' : ''}">${
+              r.ratePerHour > 0 ? '+' : ''
+            }${n(r.ratePerHour)}/h</span>`;
 
-      return `<tr><th>${escape(r.kind)}</th>
-        <td><span data-amount="${r.amount}" data-rate="${r.ratePerHour}"
-                  data-cap="${r.cap}">${n(r.amount, STORE_DECIMALS)}</span>
-            / ${n(r.cap, 0)}</td>
-        <td>${rate}</td></tr>`;
+      // A zero store shows an empty track rather than no track. The four cells are the
+      // same shape whatever is in them, or the eye has to re-find the layout each time.
+      const filled =
+        r.cap > 0
+          ? Math.round(Math.max(0, Math.min(100, (100 * r.amount) / r.cap)) * 100) / 100
+          : 0;
+
+      return `<div class="store">
+        <div class="store-top"><span class="tag">${escape(r.kind)}</span>${rate}</div>
+        <div class="store-fig">
+          <span class="fig" data-amount="${r.amount}" data-rate="${r.ratePerHour}"
+                data-cap="${r.cap}">${n(r.amount, STORE_DECIMALS)}</span><span
+                class="cap">/ ${n(r.cap, 0)}</span>
+        </div>
+        <div class="track"><i data-fill style="width:${filled}%"></i></div>
+      </div>`;
     })
     .join('');
-  return `<h2>Stores</h2><table>${rows}</table>`;
+  return `<h2>Stores</h2><div class="stores">${cells}</div>`;
 }
 
+/**
+ * The camp's own machinery, as one table with no header row — the columns say what
+ * they are without being told.
+ *
+ * Name and level together, then what it does over what it is for, then the price, then
+ * the button. The upgrade sentence lives inside the description rather than in a column
+ * of its own, because it is the same sentence one level later and a column would make
+ * it look like a separate purchase.
+ */
 function renderStructures(structures, buildInFlight, someoneAlive) {
   const rows = structures
     .map((s) => {
@@ -1213,18 +1972,19 @@ function renderStructures(structures, buildInFlight, someoneAlive) {
       const status = statusCell(s, buildInFlight, someoneAlive);
       // An unbuilt structure produces nothing, and saying so is more useful than
       // an empty cell the player has to interpret.
-      const doing = s.effect ? escape(s.effect) : '<small>nothing yet</small>';
+      const doing = s.effect ? escape(s.effect) : 'nothing yet';
       return `<tr>
-        <th>${name}</th>
-        <td>level ${s.level}</td>
-        <td>${doing}</td>
+        <td class="lede">
+          <span class="name">${name}<span class="lvl">level ${s.level}</span></span>
+          <span class="effect">${doing}</span>
+          <small>${escape(purposeOf(s))}</small>
+        </td>
         ${status}
       </tr>
-      <tr><td colspan="5"><small>${escape(purposeOf(s))}</small></td></tr>
       ${upgradeRow(s, buildInFlight, someoneAlive)}`;
     })
     .join('');
-  return `<h2>Structures</h2><table>${rows}</table>`;
+  return `<h2>Structures</h2><table class="structures">${rows}</table>`;
 }
 
 /**
@@ -1238,37 +1998,46 @@ function upgradeRow(structure, buildInFlight, someoneAlive) {
   const upgrade = structure.upgrade;
   if (!upgrade) return '';
 
-  const label = `${escape(upgrade.name)} &mdash; ${escape(upgrade.summary)}`;
+  // A fitting is a property of the structure above it, not a separate shopping list, so
+  // the row hangs off its parent with an inset rather than sitting in the run of the
+  // table as a sibling. Its requirement is a number and goes in mono.
+  const label = `<span class="name">${escape(upgrade.name)}</span>
+    <small>${escape(upgrade.summary)}</small>`;
+  const fitting = (note, cost = '', action = '') =>
+    `<tr class="fitting">
+      <td class="lede">${label}${note ? `<span class="effect">${note}</span>` : ''}</td>
+      <td class="cost right">${cost}</td>
+      <td class="act">${action}</td>
+    </tr>`;
 
-  if (upgrade.fitted) {
-    return `<tr><td colspan="5"><small>${label} <em>(fitted)</em></small></td></tr>`;
-  }
+  if (upgrade.fitted) return fitting('fitted');
 
   if (upgrade.fittingUntil) {
     const hoursLeft = (new Date(upgrade.fittingUntil).getTime() - Date.now()) / 3600000;
-    const when = hoursLeft > 0 ? `being fitted, ${countdown(upgrade.fittingUntil, 'now')} left` : 'fitted, reload';
-    return `<tr><td colspan="5"><small>${label} <em>(${when})</em></small></td></tr>`;
+    const when =
+      hoursLeft > 0
+        ? `being fitted, ${countdown(upgrade.fittingUntil, 'now')} left`
+        : 'fitted, reload';
+    return fitting(when);
   }
 
   if (structure.level < upgrade.requiresLevel) {
-    return `<tr><td colspan="5"><small>${label}
-      <em>(needs level ${upgrade.requiresLevel})</em></small></td></tr>`;
+    return fitting('', `<span class="needs">needs level ${upgrade.requiresLevel}</span>`);
   }
 
   // Fuel only comes home from expeditions, so the cost is worth spelling out.
   const cost = escape(`${upgrade.fuel} fuel, ${duration(upgrade.hours)}`);
   const button =
     upgrade.shortBy
-      ? `<small>${escape(upgrade.shortBy)}</small>`
+      ? `<span class="short">${escape(upgrade.shortBy)}</span>`
       : buildInFlight || !someoneAlive
       ? ''
-      : `<form method="post" action="/upgrade" style="margin:0">
+      : `<form method="post" action="/upgrade">
           <input type="hidden" name="upgrade" value="${escape(upgrade.slug)}">
           <button type="submit">Fit</button>
         </form>`;
 
-  return `<tr><td colspan="3"><small>${label}</small></td>
-    <td><small>${cost}</small></td><td>${button}</td></tr>`;
+  return fitting('', cost, button);
 }
 
 /** What it is for, plus what the next level actually buys. */
@@ -1281,24 +2050,31 @@ function purposeOf(structure) {
 function statusCell(structure, buildInFlight, someoneAlive) {
   if (structure.build_completes_at) {
     const hoursLeft = (new Date(structure.build_completes_at).getTime() - Date.now()) / 3600000;
-    const when = hoursLeft > 0 ? `done in ${countdown(structure.build_completes_at, 'now')}` : 'done — reload';
-    return `<td colspan="2">building level ${structure.level + 1}, ${when}</td>`;
+    const when =
+      hoursLeft > 0
+        ? `<span class="clock">${countdown(structure.build_completes_at, 'now')}</span>`
+        : '<span class="short">done &mdash; reload</span>';
+    return `<td class="cost right">building level ${structure.level + 1}</td>
+      <td class="act">${when}</td>`;
   }
 
   if (!structure.nextCost) return '<td></td><td></td>';
 
-  const cost = `${structure.nextCost.scrap} scrap, ${duration(structure.nextCost.hours)}`;
+  const cost = `<span class="cost">${escape(
+    `${structure.nextCost.scrap} scrap, ${duration(structure.nextCost.hours)}`,
+  )}</span>`;
   // The queue holds one build, and starting work needs living hands.
   if (buildInFlight || !someoneAlive) {
-    return `<td>${escape(cost)}</td><td></td>`;
+    return `<td class="right">${cost}</td><td class="act"></td>`;
   }
 
   if (structure.shortBy) {
-    return `<td>${escape(cost)}</td><td><small>${escape(structure.shortBy)}</small></td>`;
+    return `<td class="right">${cost}</td>
+      <td class="act"><span class="short">${escape(structure.shortBy)}</span></td>`;
   }
 
-  return `<td>${escape(cost)}</td>
-    <td><form method="post" action="/build" style="margin:0">
+  return `<td class="right">${cost}</td>
+    <td class="act"><form method="post" action="/build">
       <input type="hidden" name="kind" value="${escape(structure.kind)}">
       <button type="submit">Build</button>
     </form></td>`;
@@ -1310,33 +2086,47 @@ function statusCell(structure, buildInFlight, someoneAlive) {
  * enough already.
  */
 function renderRoster(fallenCount) {
-  if (fallenCount === 0) return '';
+  if (fallenCount === 0) return quiet('Graveyard', NOTHING.roster);
   const who = fallenCount === 1 ? 'One survivor has' : `${fallenCount} survivors have`;
-  return `<h2>Those who held this camp</h2>
-    <p>${who} held this camp before. <a href="/graveyard">The graveyard</a>.</p>`;
+  return quiet(
+    'Graveyard',
+    `${who} held this camp before. <a href="/graveyard">Who they were</a>.`,
+  );
 }
 
 /** The memorial. Deliberately not a table: these are people, not rows. */
 export function graveyardPage(view) {
   const stones = view.fallen.map(headstone).join('');
 
+  // A camp standing empty is the one thing on this page that is not history, so it is
+  // the one thing that gets an edge. Everything else here is finished and says so by
+  // being quiet.
   const holding = view.holding
-    ? `<p>${escape(view.holding.name)} holds the camp now, since
+    ? `<p class="state">${escape(view.holding.name)} holds the camp now, since
        ${escape(new Date(view.holding.bornAt).toISOString().slice(0, 10))}.</p>`
-    : '<p>Nobody holds the camp.</p>';
+    : `<div class="panel wants"><div class="panel-body">
+         <p>Nobody holds the camp.</p></div></div>`;
 
-  return layout(`${view.name} — the fallen`, `
-    <h1>The fallen of ${escape(view.name)}</h1>
-    <p>Founded ${escape(view.foundedAt.toISOString().slice(0, 10))}. The camp outlives
-       its people.</p>
-    ${holding}
+  const identity = `<div class="who">
+      <h1>${escape(view.name)}</h1>
+      <p>founded ${escape(view.foundedAt.toISOString().slice(0, 10))}</p>
+    </div>`;
 
-    ${view.fallen.length === 0 ? '<p>Nobody has died here yet.</p>' : stones}
-
-    <p><a href="/camp">Back to camp</a></p>
-  `);
+  return layout(`${view.name} — the fallen`, `<div class="shell">
+    ${rail('records', identity)}
+    <main>
+      <h2>The camp outlives its people</h2>
+      ${holding}
+      ${view.fallen.length === 0 ? '<p>Nobody has died here yet.</p>' : `<div class="stones">${stones}</div>`}
+    </main>
+  </div>`, { pane: 'records' });
 }
 
+/**
+ * One person, hairline-separated from the next. Deliberately not a table: these are
+ * people, not rows — and no condolence, no ornament, nothing that would make the page
+ * feel about itself rather than about them.
+ */
 function headstone(person) {
   const died = new Date(person.diedAt).toISOString().slice(0, 10);
 
@@ -1354,12 +2144,15 @@ function headstone(person) {
       ? 'Carrying nothing at all.'
       : `Carrying ${listOf(person.carrying.map((i) => `${i.qty} × ${escape(i.name)}`))}.`;
 
-  return `
-    <h2>${escape(person.name)}</h2>
-    <p>Held the camp ${n(person.daysSurvived)} days, and died of
-       ${escape(String(person.cause ?? 'unknown causes').replaceAll('_', ' '))} on ${escape(died)}.<br>
-       ${trips}<br>
-       ${carrying}</p>`;
+  return `<div class="stone">
+      <div class="stone-head">
+        <span class="who-name">${escape(person.name)}</span>
+        <span class="cost">${n(person.daysSurvived)} days held</span>
+      </div>
+      <p>Died of ${escape(String(person.cause ?? 'unknown causes').replaceAll('_', ' '))}
+         on <span class="num">${escape(died)}</span>. ${trips}</p>
+      <p class="state">${carrying}</p>
+    </div>`;
 }
 
 /** "a, b and c" — an inventory should read like someone describing it. */
