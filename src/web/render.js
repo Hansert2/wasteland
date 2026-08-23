@@ -658,6 +658,53 @@ ${PANE_CSS}
                 line-height: 1.15; color: var(--bone); margin: 0 0 10px; }
 
   /*
+   * The dispatch table is a grid, not four columns, and the arithmetic is why.
+   *
+   * It lives in the Survivor view's left lane — about 620px — and it was carrying a
+   * 200px name column, a 140px minimum cost column and a 96px button. What was left for
+   * the region's description was 176px: twenty-one characters, three words a line, four
+   * lines to say "As far as the wire and back. Ten minutes, and never nothing." Every
+   * other measure in this design is capped between 58 and 76ch.
+   *
+   * Four columns do not fit in 620px, so the row stops pretending they do. Name and its
+   * numbers, the contact count and the button share the first line; the description gets
+   * the second to itself and about 70ch to say it in. This is the same shape the narrow
+   * breakpoint was already imposing on every table — promoted to always, for the one
+   * table that never had the width for the other shape.
+   */
+  .dispatch, .dispatch tbody { display: block; }
+  .dispatch td { display: block; padding: 0; border-bottom: 0; }
+
+  /*
+   * Scoped above the narrow breakpoint, and that is not tidiness — it is a bug I put in
+   * and took out again. Below 560px every table becomes a two-column grid with its own
+   * row assignments, and those rules override "grid-column" while leaving the explicit
+   * "grid-row" below untouched. The name and the contact count both landed in row one,
+   * column one, printed on top of each other. Placement has to be all-or-nothing per
+   * breakpoint, so this half only exists where it is the only half.
+   */
+  @media (min-width: 561px) {
+    .dispatch tr {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto auto;
+      align-items: start;
+      gap: 6px 18px;
+      padding: 12px 18px;
+      border-bottom: 1px solid var(--rule-in);
+    }
+    .dispatch tr:last-child { border-bottom: 0; }
+    .dispatch td:first-child { grid-column: 1; grid-row: 1; width: auto; }
+    .dispatch .contact-col { grid-column: 2; grid-row: 1; text-align: right; }
+    .dispatch .act { grid-column: 3; grid-row: 1 / span 2; width: auto; }
+    .dispatch .lede { grid-column: 1 / 3; grid-row: 2; }
+    .dispatch .lede small { margin-top: 0; }
+  }
+  /* The contact count is four fixed phrases and never wraps. It was borrowing the cost
+     column, whose 140px minimum exists for the workshop's long prices — which is what
+     split "too short for contact" into two right-aligned fragments. */
+  .contact-col .cost { white-space: nowrap; }
+
+  /*
    * A fitting is a property of the structure above it, not a row of its own. It hangs
    * inside the description cell behind a 2px inset — which is the same claim the old
    * separate sub-row was trying to make and could not, because a sibling row in a table
@@ -868,8 +915,11 @@ ${PANE_CSS}
                         align-items: start; gap: 4px 12px; }
     .block > table tr > td:first-child { grid-column: 1; width: auto; }
     .block > table tr > td.lede { grid-column: 1 / -1; margin-top: 6px; }
-    .block > table td.cost-col, .block > table td.right { grid-column: 1;
-                                                          text-align: left; width: auto; }
+    /* Higher specificity than the .dispatch rules on purpose: below this width the
+       dispatch table wants exactly what every other table wants, and saying so once is
+       better than a second narrow layout that has to be kept in step with this one. */
+    .block > table td.cost-col, .block > table td.contact-col,
+    .block > table td.right { grid-column: 1; text-align: left; width: auto; }
     .block > table td.act { grid-column: 2; grid-row: 1 / span 2; width: auto; }
   }
 `;
@@ -1993,7 +2043,7 @@ function renderExpeditions(view) {
         <td><span class="name">${escape(region.name)}</span>
             <span class="lvl">danger ${region.danger} &middot; ${escape(duration(region.travel_hours))} out</span></td>
         <td class="lede"><small>${escape(region.description ?? '')}</small></td>
-        <td class="cost-col"><span class="cost">${escape(contact(region.moments))}</span></td>
+        <td class="contact-col"><span class="cost">${escape(contact(region.moments))}</span></td>
         <td class="act">
           <form method="post" action="/expedition">
             <input type="hidden" name="region" value="${escape(region.slug)}">
@@ -2004,7 +2054,7 @@ function renderExpeditions(view) {
     )
     .join('');
 
-  return block('Where to send them', `<table>${rows}</table>`, { flush: true });
+  return block('Where to send them', `<table class="dispatch">${rows}</table>`, { flush: true });
 }
 
 /**
