@@ -78,6 +78,24 @@ const STYLE = `
     --oxide: #C2632C;
     --oxide-light: #DD8F4A;
 
+    /*
+     * Six more, all read off the artboards rather than the handoff's table, and each
+     * of them is a *second* weight of something the eight already name. That is the
+     * system working as stated: depth comes from border weight, so an outer rule and
+     * an inner rule cannot be the same value, and a label strip cannot be the same
+     * fill as the panel it labels or the strip disappears.
+     */
+    --rule-in: #26241F;   /* between cells; always lighter than the panel's own edge */
+    --strip: #1A1917;     /* the label strip at the head of a block */
+    --value: #DCD8CD;     /* a figure, one step down from a heading */
+    --quiet: #7A766C;     /* a figure or a sentence that is present but not the point */
+    --control: #55504E;   /* the border of a button, which must out-rank a panel edge */
+
+    --warn-edge: #7A4526;
+    --warn-strip: #251C15;
+    --warn-rule: #4A3226;
+    --warn-prose: #E0C9B4;
+
     /* Prose and UI part on width and case, not on serifs. A string never crosses
        families: a structure's name is condensed, its description is prose, its cost
        is mono. 'Arial Narrow' is in the label stack because 'Roboto Condensed' is not
@@ -115,10 +133,10 @@ const STYLE = `
     top: 0;
     align-self: stretch;
     border-right: 1px solid var(--rule);
-    padding: 26px 0 26px 22px;
+    padding: 24px 0 24px 22px;
   }
 
-  .rail .who { padding-right: 22px; margin-bottom: 26px; }
+  .rail .who { padding-right: 22px; margin-bottom: 24px; }
   .rail .who h1 {
     margin: 0;
     font-family: var(--label);
@@ -156,13 +174,25 @@ const STYLE = `
      it is still not decoration: it is the answer to "which of these am I looking at". */
   .rail nav a[aria-current] { color: var(--bone); border-left-color: var(--oxide); }
 
-  .rail form { margin: 26px 22px 0 0; }
+  .rail form { margin: 24px 22px 0 0; }
 
+  /*
+   * A flex column with a gap, and the gap is the reason rather than the layout.
+   *
+   * Margins between sections cannot work here: sections are hidden per view but stay
+   * siblings in the DOM, so two blocks that are visibly adjacent can have three hidden
+   * ones between them, and every '+' selector spacing them is guessing. Flex 'gap'
+   * skips 'display: none' children entirely — they are not flex items — so the spacing
+   * is right on every view without anything having to know which view is up.
+   */
   main {
     flex: 1 1 auto;
     min-width: 0;
-    max-width: 900px;
-    padding: 26px 28px 96px;
+    max-width: 1000px;
+    padding: 20px 24px 72px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
   }
 
   /* ---- views ---- */
@@ -170,8 +200,17 @@ const STYLE = `
   /* The head is the camp's identity and lives in the rail, so it is never in this
      stream. The error box is, and is on every view: a refusal that renders into a
      hidden section is a button that silently did nothing. */
-  main > section { display: none; margin-bottom: 30px; }
+  main > section { display: none; margin: 0; }
   main > #s-error { display: block; }
+  /*
+   * The one place an empty block is hidden, and deliberately not the blanket
+   * ':empty { display: none }' the handoff forbids — that rule would take the slot away
+   * from a caravan that has not arrived yet. This is scoped to the error box, which is
+   * empty on every page that is working and must not spend a gap saying so. It is still
+   * in the document, still found by id, and still swapped: the moment it has content it
+   * stops matching ':empty' and comes back.
+   */
+  main > #s-error:empty { display: none; }
 ${PANE_CSS}
 
   /* The caravan is on two views wearing two shapes: a pointer on Camp so the player
@@ -183,17 +222,6 @@ ${PANE_CSS}
   main > section:empty { margin-bottom: 0; }
 
   /* ---- type ---- */
-
-  h2 {
-    margin: 0 0 12px;
-    font-family: var(--label);
-    font-weight: 700;
-    font-size: 10px;
-    line-height: 1;
-    letter-spacing: .18em;
-    text-transform: uppercase;
-    color: var(--dim);
-  }
 
   p { margin: 0 0 10px; max-width: 66ch; text-wrap: pretty; }
   p:last-child { margin-bottom: 0; }
@@ -213,75 +241,298 @@ ${PANE_CSS}
     line-height: 1.4;
     letter-spacing: .16em;
     text-transform: uppercase;
+    color: var(--faint);
+  }
+
+  /* ---- blocks ---- */
+
+  /*
+   * A block that has something to say is a bordered box with its label in a strip
+   * across the top — not a heading floating above loose content. The strip is what
+   * makes a run of blocks read as instruments on one panel rather than as a document
+   * with subheadings, and it is why the label can be 10px and still be found.
+   */
+  .block { border: 1px solid var(--rule); background: var(--ground); }
+  /* Depth is border weight, not shade: a block that wants an answer says so with its
+     edge. There is no third fill to reach for. */
+  .block.wants { border-color: var(--edge); }
+  .block > h2 {
+    margin: 0;
+    padding: 11px 18px;
+    background: var(--strip);
+    border-bottom: 1px solid var(--rule);
+    font-family: var(--label);
+    font-weight: 700;
+    font-size: 10px;
+    line-height: 1;
+    letter-spacing: .18em;
+    text-transform: uppercase;
     color: var(--dim);
   }
+  .block-body { padding: 15px 18px; }
+  .block-foot {
+    display: flex;
+    gap: 18px;
+    align-items: baseline;
+    padding: 13px 18px;
+    background: var(--strip);
+    border-top: 1px solid var(--rule);
+  }
+  .block-foot .val { font-family: var(--numer); font-size: 15px; line-height: 1.4;
+                     color: var(--prose); font-variant-numeric: tabular-nums; }
+  /* A table fills its block edge to edge; the cells carry the padding. */
+  .block > table { margin: 0; }
+
+  /* "Next" is the one block with no strip. It is one sentence and an edge, and a strip
+     over a single line would be a label longer than the thing it labels. */
+  .block.inline-label { padding: 14px 16px; }
+  .block.inline-label > h2 {
+    padding: 0;
+    margin-bottom: 8px;
+    background: none;
+    border-bottom: 0;
+  }
+  .block.inline-label p { font-size: 17px; line-height: 1.55; color: #EAE7DD; }
 
   /* ---- the quiet rows ---- */
 
-  /* A block with nothing to say is one line, not a panel. It keeps its slot so a
-     caravan arriving has somewhere to appear, and it is quiet enough that three clear
-     visits in four read as calm rather than as a page full of holes. */
+  /* A block with nothing to say is one line, not a box. It keeps its slot so a caravan
+     arriving has somewhere to appear, and it is quiet enough that three clear visits in
+     four read as calm rather than as a page full of holes. */
   .quiet {
-    display: grid;
-    grid-template-columns: 104px 1fr;
-    gap: 0 12px;
-    align-items: baseline;
-    padding: 9px 0;
-    border-bottom: 1px solid var(--rule);
-  }
-  .quiet p { margin: 0; max-width: 62ch; color: var(--faint);
-             font-size: 15.5px; line-height: 1.5; }
-  .quiet a { color: var(--dim); }
-  /* Consecutive quiet blocks stack into one ruled group rather than reading as a run
-     of free-floating lines with gaps between them. */
-  main > section:has(.quiet) { margin-bottom: 0; }
-  main > section:has(.quiet) + section:not(:has(.quiet)) { margin-top: 30px; }
-
-  /* ---- panels ---- */
-
-  .panel { border: 1px solid var(--rule); background: var(--panel); }
-  /* Depth is border weight, not shade. A panel that wants an answer says so with its
-     edge; there is no third fill to reach for. */
-  .panel.wants { border-color: var(--edge); }
-  .panel-head {
     display: flex;
+    gap: 16px;
     align-items: baseline;
+    padding: 11px 0;
+    border-bottom: 1px solid var(--rule-in);
+  }
+  .quiet .tag { min-width: 104px; flex: 0 0 104px; }
+  .quiet p { margin: 0; max-width: 62ch; color: var(--quiet);
+             font-size: 15px; line-height: 1.5; }
+  .quiet a { color: var(--dim); }
+  /*
+   * Consecutive quiet rows stack into one ruled group rather than reading as a run of
+   * free-floating lines: no gap between them, one hairline under each.
+   *
+   * A rule *under* each row rather than a rule above the first, and that is not a
+   * stylistic preference — it is the only version that survives the views. Sections are
+   * hidden per view but stay siblings in the DOM, so '+' between two visibly adjacent
+   * quiet rows can have three hidden sections in between it knows nothing about. Any
+   * "first of a run" selector would be guessing. A bottom rule on every row needs no
+   * adjacency to be right.
+   *
+   * The negative margin does the same job for the spacing: it eats half the column's
+   * 18px gap on each side, so two quiet rows meet with nothing between them and a quiet
+   * row beside a panel keeps nine — which is the right answer anyway, since the quiet
+   * rows are meant to sit closer together than the blocks that have something to say.
+   */
+  main > section:has(.quiet) { margin: -9px 0; }
+
+  /* ---- contact ---- */
+
+  /* The brightest panel on the page, and that is all it is. Nothing here is red,
+     nothing pulses, nothing is centred. */
+  /* The brightest fill on the page belongs to the blocks that are counting something
+     down, which is all "contact" means as a class here: contact itself, the raid hour,
+     a trip that is due back, an order on the bench. Everything else sits on the
+     ground. */
+  .contact { background: var(--panel); }
+  #s-moment .contact { border-color: var(--edge); }
+  .block-head {
+    display: flex;
+    align-items: center;
     justify-content: space-between;
     gap: 16px;
-    padding: 10px 16px;
+    padding: 12px 20px;
     background: #231F18;
     border-bottom: 1px solid var(--rule);
   }
-  .panel-head .tag { color: var(--bone); }
-  .panel-body { padding: 16px; }
-  .panel-foot {
-    padding: 10px 16px;
-    border-top: 1px solid var(--rule);
-    font-family: var(--numer);
-    font-size: 13.5px;
-    line-height: 1.3;
-    color: var(--dim);
-    font-variant-numeric: tabular-nums;
+  .block-head .tag { color: var(--bone); font-size: 11px; letter-spacing: .18em; }
+  .contact > .block-body { padding: 18px 20px 16px; }
+  .contact .state { margin: 0; font-family: var(--numer); font-size: 13px; line-height: 1;
+                    color: var(--quiet); font-variant-numeric: tabular-nums; }
+  /* The turn: the widest measure on the page and the only thing set above prose size,
+     because it is the sentence the whole block exists to ask. */
+  .contact .turn { margin: 11px 0 0; font-size: 20px; line-height: 1.5;
+                   max-width: 64ch; color: #EAE7DD; }
+
+  .choices { display: grid; grid-template-columns: repeat(3, 1fr);
+             border-top: 1px solid var(--rule); }
+  .choice { display: flex; flex-direction: column; gap: 11px;
+            padding: 15px 20px; border-right: 1px solid var(--rule-in); }
+  .choice:last-child { border-right: 0; }
+  .choice .title { font-family: var(--label); font-weight: 400; font-size: 17px;
+                   line-height: 1.3; color: var(--bone); }
+  /* flex:1 on the consequence is what lines the buttons up across three columns of
+     unequal prose. Three buttons at three heights would read as three kinds of thing. */
+  .choice .detail { flex: 1; display: flex; gap: 9px; align-items: baseline;
+                    font-size: 15.5px; line-height: 1.5; color: var(--dim); }
+  .choice form, .choice button { width: 100%; }
+  .choice button { padding: 10px 0; }
+  .choice .short { align-self: flex-start; }
+
+  /* Marking the card would tell the player the encounter is dangerous, which they can
+     already see. Marking the option tells them which decision kills them, which is the
+     true thing — so the panel gains an edge and a rail, and exactly one choice inside
+     it is marked. The safe choices are untouched and one of them keeps the fill. */
+  .contact.warned { border-color: var(--warn-edge); box-shadow: inset 4px 0 0 var(--oxide); }
+  .contact.warned .block-head { background: var(--warn-strip);
+                                  border-bottom-color: var(--warn-rule);
+                                  padding-left: 24px; }
+  .contact.warned > .block-body { padding-left: 24px; }
+  .contact.warned .choice:first-child { padding-left: 24px; }
+  /* The health figure is the point, so the state line is where the warning is felt. */
+  .contact.warned .state { color: var(--oxide-light); }
+  .choice.warned { background: #211A15; }
+  .choice.warned .detail { color: var(--warn-prose); }
+  .choice.warned .glyph { color: var(--oxide-light); font-family: var(--label);
+                          font-size: 15px; line-height: 1.4; }
+  .choice.warned button { border-color: var(--warn-edge); color: var(--warn-prose); }
+
+  @media (max-width: 760px) {
+    .choices { grid-template-columns: 1fr; }
+    .choice { border-right: 0; border-top: 1px solid var(--rule-in); }
+    .choice:first-child { border-top: 0; }
   }
 
-  .clock { font-family: var(--numer); font-size: 20px; line-height: 1;
-           color: var(--oxide-light); font-variant-numeric: tabular-nums;
-           white-space: nowrap; }
-  .clock small { font-size: 11.5px; letter-spacing: .12em; text-transform: uppercase;
-                 color: var(--faint); margin-left: 6px; }
+  /* ---- the sky ---- */
+
+  /* Two narrow columns beside the prose, and the labels repeat in every cell rather
+     than sitting in a header row. A header row would be read once; these are read per
+     event, which is the whole point of the grid — the player has to be able to see
+     which event owns which number. */
+  .sky-grid { display: grid; }
+  .sky-grid > div { padding: 15px 18px; border-right: 1px solid var(--rule-in);
+                    border-bottom: 1px solid var(--rule-in); }
+  .sky-grid.cols-1 { grid-template-columns: 1fr; }
+  .sky-grid.cols-2 { grid-template-columns: 1fr 250px; }
+  .sky-grid.cols-3 { grid-template-columns: 1fr 220px 220px; }
+  .sky-grid.cols-1 > div, .sky-grid.cols-2 > div:nth-child(2n),
+  .sky-grid.cols-3 > div:nth-child(3n) { border-right: 0; }
+  .sky-grid.cols-1 > div:nth-last-child(-n + 1),
+  .sky-grid.cols-2 > div:nth-last-child(-n + 2),
+  .sky-grid.cols-3 > div:nth-last-child(-n + 3) { border-bottom: 0; }
+
+  .sky-what { display: flex; align-items: baseline; gap: 14px; }
+  .sky-what .name { font-size: 15.5px; line-height: 1.2; }
+  .sky-what .clock { font-size: 13px; }
+  .sky-grid p { margin: 7px 0 0; max-width: 58ch; color: var(--prose); }
+  .sky-side .tag { display: block; }
+  .sky-side .val { display: block; margin-top: 6px; font-family: var(--numer);
+                   font-size: 15px; line-height: 1.4; color: var(--prose);
+                   font-variant-numeric: tabular-nums; }
+  /* The accent that makes the grid worth reading: a multiplier wears oxide when it is
+     costing the camp something and stays prose when it is paying. Nothing else in the
+     block is coloured, so the eye finds the bad news without being told where it is. */
+  .sky-side .val.costs { color: var(--oxide-light); }
+  .sky-side .val.none { color: var(--fainter); }
+
+  /* ---- stores ---- */
+
+  .stores { display: grid; grid-template-columns: repeat(4, 1fr); }
+  .store { padding: 14px 18px; border-right: 1px solid var(--rule-in); }
+  .store:last-child { border-right: 0; }
+  .store-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .store-top .tag { letter-spacing: .12em; color: var(--dim); }
+  .rate { font-family: var(--numer); font-size: 11.5px; line-height: 1;
+          color: var(--quiet); font-variant-numeric: tabular-nums; }
+  /* The single most useful thing this block can say, so it is the one figure here that
+     gets the accent: a store quietly draining. */
+  .rate.down { color: var(--oxide-light); }
+  .rate.none { color: var(--faint); }
+  .store-fig { margin-top: 8px; font-family: var(--numer); font-size: 23px; line-height: 1;
+               color: var(--value); font-variant-numeric: tabular-nums; }
+  .store-fig .cap { font-size: 11.5px; color: var(--faint); }
+  /* A zero store shows an empty track rather than no track: the four cells are the same
+     shape whatever is in them, or the eye has to re-find the layout each time. */
+  .track { margin-top: 8px; height: 2px; background: #2C2A25; }
+  .track i { display: block; height: 2px; background: var(--quiet); }
+
+  @media (max-width: 640px) {
+    .stores { grid-template-columns: repeat(2, 1fr); }
+    .store:nth-child(2n) { border-right: 0; }
+    .store:nth-child(n + 3) { border-top: 1px solid var(--rule-in); }
+  }
+
+  /* ---- tables ---- */
+
+  table { border-collapse: collapse; width: 100%; }
+  th, td { text-align: left; vertical-align: top; padding: 12px 18px;
+           border-bottom: 1px solid var(--rule-in); }
+  th { font-weight: 400; }
+  tr:last-child > th, tr:last-child > td { border-bottom: 0; }
+
+  /* A name is condensed and *not* bold. Weight is what the labels use, and a table of
+     bold names against tracked uppercase labels is two things shouting at each other. */
+  .name { font-family: var(--label); font-weight: 400; font-size: 16px; line-height: 1.2;
+          color: var(--bone); }
+  .name .qty { font-family: var(--numer); font-size: 13px; color: var(--quiet);
+               margin-left: 6px; }
+  /* The level sits under the name rather than beside it, so the first column is a name
+     and a figure in two registers instead of one crowded string. */
+  .lvl { display: block; margin-top: 6px; font-family: var(--numer); font-size: 12.5px;
+         line-height: 1; color: var(--quiet); }
+  .lede { color: var(--prose); }
+  .lede small { display: block; margin-top: 5px; max-width: 70ch; }
+  .effect { font-family: var(--numer); font-size: 15px; line-height: 1.3;
+            color: var(--value); font-variant-numeric: tabular-nums; }
+  .effect.nil { color: var(--faint); }
+  td.right, th.right { text-align: right; }
+  td.act { width: 96px; }
+  td.cost-col { min-width: 140px; max-width: 240px; text-align: right; }
+  td.cost-col .short, td.cost-col .needs { display: block; margin-top: 3px; }
+  /* The name column is fixed only where there is a description beside it to give way
+     to; a two-column table has nothing to hold apart. */
+  .block > table tr:has(.lede) > td:first-child { width: 200px; }
+  .lede > .effect { display: block; }
+  .lede > .effect + small { margin-top: 5px; }
+  .road-note { padding: 12px 18px; border-bottom: 1px solid var(--rule-in); max-width: 74ch; }
+  .page-title { font-family: var(--label); font-weight: 700; font-size: 25px;
+                line-height: 1.15; color: var(--bone); margin: 0 0 10px; }
+
+  /*
+   * A fitting is a property of the structure above it, not a row of its own. It hangs
+   * inside the description cell behind a 2px inset — which is the same claim the old
+   * separate sub-row was trying to make and could not, because a sibling row in a table
+   * is a sibling purchase however it is styled.
+   */
+  .fitting { display: flex; gap: 10px; align-items: baseline; margin-top: 9px;
+             padding-left: 12px; box-shadow: inset 2px 0 0 var(--rule); }
+  .fitting .tag { letter-spacing: .14em; color: var(--quiet); white-space: nowrap; }
+  .fitting span:last-child { font-size: 15px; line-height: 1.5; color: var(--dim); }
+
+  ul.events { list-style: none; margin: 0; padding: 0; }
+  ul.events li { padding: 11px 18px; border-bottom: 1px solid var(--rule-in);
+                 max-width: 76ch; text-wrap: pretty; }
+  ul.events li:last-child { border-bottom: 0; }
+  .when { font-family: var(--numer); font-size: 12.5px; color: var(--faint);
+          font-variant-numeric: tabular-nums; margin-right: 8px; white-space: nowrap; }
+
+  /* ---- gauges ---- */
+
+  .gauges { display: flex; flex-direction: column; gap: 13px; margin-top: 18px; }
+  .gauge-top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+  .gauge-top .tag { letter-spacing: .14em; color: var(--dim); }
+  .gauge-top .val { font-family: var(--numer); font-size: 16px; line-height: 1;
+                    color: var(--value); font-variant-numeric: tabular-nums; }
+  .gauge .track { margin-top: 7px; }
+  .gauge small { display: block; margin-top: 6px; font-size: 14px; line-height: 1.5; }
+  .who-name { display: block; font-family: var(--label); font-weight: 700; font-size: 22px;
+              line-height: 1.1; color: var(--bone); }
+  .block-body > .who-name + p { margin-top: 7px; }
 
   /* ---- controls ---- */
 
   button {
     font-family: var(--label);
     font-weight: 700;
-    font-size: 11.5px;
+    font-size: 10.5px;
     letter-spacing: .14em;
     text-transform: uppercase;
-    padding: 9px 16px;
+    padding: 9px 14px;
     background: transparent;
     color: var(--bone);
-    border: 1px solid var(--edge);
+    border: 1px solid var(--control);
     cursor: pointer;
   }
   button:hover { border-color: var(--bone); }
@@ -302,143 +553,38 @@ ${PANE_CSS}
     outline-offset: 2px;
   }
 
-  /* A price the camp cannot pay. The only other things wearing oxide are a clock and a
-     warning, which is what keeps all three meaning something. */
-  .short { font-family: var(--numer); font-size: 13.5px; color: var(--oxide-light); }
-  /* A tier you have not reached yet is a goal, not a price — so it stays faint. Oxide
-     is for a shortfall you could go and fix this afternoon. */
-  .needs { font-family: var(--numer); font-size: 13.5px; color: var(--faint); }
-  .cost { font-family: var(--numer); font-size: 13.5px; color: var(--dim);
-          font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .clock { font-family: var(--numer); font-size: 18px; line-height: 1;
+           color: var(--oxide-light); font-variant-numeric: tabular-nums;
+           white-space: nowrap; }
+  .clock small { font-family: var(--label); font-weight: 700; font-size: 10px;
+                 letter-spacing: .14em; text-transform: uppercase;
+                 color: var(--dim); margin-left: 9px; }
+
+  /* A price the camp cannot pay. The only other things wearing oxide are a clock, a
+     multiplier that is costing you, and a warning. */
+  .short { font-family: var(--numer); font-size: 13.5px; line-height: 1.4;
+           color: var(--oxide-light); }
+  /* A tier you have not reached yet is a goal, not a price — so it stays faint. */
+  /* Inline by default — it rides at the end of a fitting's sentence — and only a
+     block where it stacks under a price. */
+  .needs { font-family: var(--numer); font-size: 12.5px; line-height: 1.4;
+           color: var(--faint); }
+  .cost { font-family: var(--numer); font-size: 13.5px; line-height: 1.4;
+          color: var(--value); font-variant-numeric: tabular-nums; }
 
   .error {
     border: 1px solid var(--oxide);
     border-left-width: 4px;
     background: #211A15;
-    color: #E0C9B4;
+    color: var(--warn-prose);
     padding: 12px 16px;
   }
+  /* The camp standing empty is the one thing on the graveyard that is not history. */
+  .standing-empty { font-family: var(--numer); font-size: 15px; line-height: 1.5;
+                    color: var(--oxide-light); padding: 10px 12px;
+                    border: 1px solid var(--warn-rule); margin: 14px 0 0; }
 
-  /* ---- tables ---- */
-
-  table { border-collapse: collapse; width: 100%; }
-  th, td { text-align: left; vertical-align: top; padding: 11px 14px 11px 0; }
-  th { font-weight: 400; }
-  tr { border-bottom: 1px solid var(--rule); }
-  tr:last-child { border-bottom: 0; }
-
-  .name { font-family: var(--label); font-weight: 700; font-size: 15px;
-          letter-spacing: .04em; color: var(--bone); }
-  .name .lvl { color: var(--faint); font-family: var(--numer); font-size: 12.5px;
-               letter-spacing: 0; margin-left: 6px; }
-  .lede { color: var(--prose); }
-  .lede small { display: block; margin-top: 3px; max-width: 70ch; }
-  .effect { font-family: var(--numer); font-size: 13.5px; line-height: 1.3;
-            color: var(--dim); font-variant-numeric: tabular-nums; }
-  td.right, th.right { text-align: right; padding-right: 0; }
-  td.act { width: 1%; white-space: nowrap; padding-right: 0; }
-
-  ul.events { list-style: none; margin: 0; padding: 0; }
-  ul.events li { padding: 9px 0; border-bottom: 1px solid var(--rule); max-width: 72ch;
-                 text-wrap: pretty; }
-  ul.events li:last-child { border-bottom: 0; }
-
-  /* ---- contact ---- */
-
-  /* The brightest panel on the page, and that is all it is. Nothing here is red,
-     nothing pulses, nothing is centred. */
-  .contact .state { font-family: var(--numer); font-size: 13.5px; color: var(--faint);
-                    font-variant-numeric: tabular-nums; }
-  /* The turn: the widest measure on the page and the only thing set above prose size,
-     because it is the sentence the whole block exists to ask. */
-  .contact .turn { font-size: 20px; line-height: 1.5; max-width: 64ch; color: var(--bone);
-                   margin-bottom: 0; }
-
-  .choices {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    border-top: 1px solid var(--rule);
-  }
-  .choice { padding: 14px 16px; border-left: 1px solid var(--rule); }
-  .choice:first-child { border-left: 0; }
-  .choice p { margin: 0 0 8px; }
-  .choice .name { font-size: 14px; }
-  .choice small { color: var(--dim); }
-  @media (max-width: 720px) {
-    .choices { grid-template-columns: 1fr; }
-    .choice { border-left: 0; border-top: 1px solid var(--rule); }
-    .choice:first-child { border-top: 0; }
-  }
-
-  /* Marking the card would tell the player the encounter is dangerous, which they can
-     already see. Marking the option tells them which decision kills them, which is the
-     true thing — so the panel gains an edge and a rail, and exactly one choice inside
-     it is marked. The safe choices are untouched and one of them keeps the fill. */
-  .contact.warned { border-color: #7A4526; box-shadow: inset 4px 0 0 var(--oxide); }
-  .contact.warned .state { color: var(--oxide-light); }
-  .choice.warned { background: #211A15; }
-  .choice.warned .name { color: #E0C9B4; }
-  .choice.warned small { color: #C6AC98; }
-  .choice.warned button { border-color: var(--oxide); color: #E0C9B4; }
-
-  /* ---- stores ---- */
-
-  .stores {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    border: 1px solid var(--rule);
-    background: var(--panel);
-  }
-  .store { padding: 12px 14px 14px; border-left: 1px solid var(--rule); }
-  .store:first-child { border-left: 0; }
-  .store-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-  .rate { font-family: var(--numer); font-size: 12.5px; color: var(--dim);
-          font-variant-numeric: tabular-nums; }
-  /* The single most useful thing this table can say, so it is the one figure here that
-     gets the accent: a store quietly draining. */
-  .rate.down { color: var(--oxide-light); }
-  .rate.none { color: var(--faint); }
-  .store-fig { margin-top: 8px; display: flex; align-items: baseline; gap: 6px; }
-  .store .fig { font-family: var(--numer); font-size: 23px; line-height: 1;
-                color: var(--bone); font-variant-numeric: tabular-nums; }
-  .store .cap { font-family: var(--numer); font-size: 11.5px; color: var(--faint);
-                font-variant-numeric: tabular-nums; }
-  .track { margin-top: 10px; height: 2px; background: var(--rule); }
-  .track i { display: block; height: 2px; background: var(--dim); }
-  @media (max-width: 560px) {
-    .stores { grid-template-columns: repeat(2, 1fr); }
-    .store:nth-child(odd) { border-left: 0; }
-    .store:nth-child(n + 3) { border-top: 1px solid var(--rule); }
-  }
-
-  /* ---- tables, per block ---- */
-
-  table.sky td.lede .clock { float: right; margin-left: 16px; font-size: 18px; }
-  table.sky th.tag { padding-bottom: 4px; }
-  table.sky td.effect { text-align: right; white-space: nowrap; }
-  table.sky tr:first-child { border-bottom: 1px solid var(--rule); }
-
-  /* A fitting hangs off the structure above it: same table, inset, no rule of its own
-     between the two. It is a property of that structure, not a separate purchase. */
-  table.structures tr:not(.fitting) { border-bottom: 0; }
-  tr.fitting > td:first-child { padding-left: 20px; border-left: 2px solid var(--rule); }
-  tr.fitting .name { font-size: 13.5px; color: var(--dim); }
-  tr.fitting small { display: block; margin-top: 2px; font-size: 14px; }
-
-  .lede .effect { display: block; margin-top: 3px; }
-  .when { font-family: var(--numer); font-size: 12.5px; color: var(--faint);
-          font-variant-numeric: tabular-nums; margin-right: 8px; white-space: nowrap; }
-
-  .vitals { max-width: 22rem; }
-  .vitals th { width: 8rem; }
-  .vitals td { color: var(--bone); font-size: 15px; }
-  .vitals td small { display: block; margin-top: 2px; font-size: 13.5px;
-                     font-family: var(--body); color: var(--dim); }
-
-  /* The trip's own state line, and the camp's fuel line, and what the dead were
-     carrying: the same register in three places, which is what makes it read as a
-     register rather than as decoration. */
-  .state { font-family: var(--numer); font-size: 13.5px; color: var(--faint);
+  .state { font-family: var(--numer); font-size: 13.5px; color: var(--quiet);
            font-variant-numeric: tabular-nums; }
 
   form.row { display: flex; gap: 10px; align-items: stretch; margin-top: 12px; }
@@ -447,11 +593,12 @@ ${PANE_CSS}
   /* ---- the fallen ---- */
 
   .stones { border-top: 1px solid var(--rule); }
-  .stone { padding: 18px 0; border-bottom: 1px solid var(--rule); }
+  .stone { padding: 16px 0 18px; border-bottom: 1px solid var(--rule-in); }
   .stone-head { display: flex; align-items: baseline; justify-content: space-between;
-                gap: 16px; margin-bottom: 6px; }
-  .who-name { font-family: var(--label); font-weight: 700; font-size: 20px;
-              letter-spacing: .02em; color: var(--bone); }
+                gap: 16px; }
+  .stone-head .who-name { font-size: 20px; }
+  .stone p { margin: 10px 0 0; max-width: 60ch; }
+  .stone .state { margin-top: 9px; font-size: 14px; }
 
   /* ---- the gate ---- */
 
@@ -459,8 +606,8 @@ ${PANE_CSS}
   .gate h1 { font-family: var(--label); font-weight: 700; font-size: 24px;
              letter-spacing: .18em; text-transform: uppercase; color: var(--bone);
              margin: 0 0 24px; }
-  .gate .panel { margin-bottom: 20px; }
-  .gate .error { margin-bottom: 20px; }
+  .gate .block { margin-bottom: 18px; }
+  .gate .error { margin-bottom: 18px; }
   label { display: block; margin-bottom: 12px; font-family: var(--label);
           font-weight: 700; font-size: 10px; letter-spacing: .16em;
           text-transform: uppercase; color: var(--dim); }
@@ -482,16 +629,25 @@ ${PANE_CSS}
 
   /* ---- narrow ---- */
 
+  @media (max-width: 640px) {
+    .sky-grid, .sky-grid.one { grid-template-columns: 1fr; }
+    .sky-grid > div, .sky-grid.one > div { border-right: 0;
+                                           border-bottom: 1px solid var(--rule-in); }
+    .sky-side { display: flex; gap: 12px; align-items: baseline; }
+    .sky-side .tag { min-width: 76px; }
+    .sky-side .val { margin-top: 0; }
+  }
+
   @media (max-width: 560px) {
     .shell { display: block; }
     .rail {
       position: static;
       width: auto;
-      padding: 20px 16px 0;
+      padding: 18px 16px 0;
       border-right: 0;
       border-bottom: 1px solid var(--rule);
     }
-    .rail .who { padding-right: 0; margin-bottom: 16px; }
+    .rail .who { padding-right: 0; margin-bottom: 14px; }
     .rail nav {
       flex-direction: row;
       gap: 4px;
@@ -509,10 +665,24 @@ ${PANE_CSS}
       white-space: nowrap;
     }
     .rail nav a[aria-current] { border-left: 0; border-bottom-color: var(--oxide); }
-    .rail form { margin: 14px 0; }
-    main { padding: 20px 16px 72px; }
+    .rail form { margin: 12px 0; }
+    main { padding: 16px 16px 64px; }
     button { padding: 13px 16px; min-height: 44px; }
-    .quiet { grid-template-columns: 92px 1fr; }
+    .choice button { padding: 13px 0; }
+    .quiet .tag { min-width: 92px; flex-basis: 92px; }
+
+    /* The structures table stops being a table: name, level and cost on the left, the
+       button on the right, and nothing dropped. */
+    .block > table, .block > table tbody, .block > table tr { display: block; }
+    .block > table td { display: block; border-bottom: 0; padding: 0 16px; }
+    .block > table tr { padding: 14px 0; border-bottom: 1px solid var(--rule-in);
+                        display: grid; grid-template-columns: 1fr auto;
+                        align-items: start; gap: 4px 12px; }
+    .block > table tr > td:first-child { grid-column: 1; width: auto; }
+    .block > table tr > td.lede { grid-column: 1 / -1; margin-top: 6px; }
+    .block > table td.cost-col, .block > table td.right { grid-column: 1;
+                                                          text-align: left; width: auto; }
+    .block > table td.act { grid-column: 2; grid-row: 1 / span 2; width: auto; }
   }
 `;
 
@@ -836,9 +1006,9 @@ export function landingPage({ error } = {}) {
       <h1>Wasteland</h1>
       ${error ? `<p class="error">${escape(error)}</p>` : ''}
 
-      <div class="panel wants">
-        <div class="panel-head"><span class="tag">Return to your camp</span></div>
-        <div class="panel-body">
+      <div class="block wants">
+        <h2>Return to your camp</h2>
+        <div class="block-body">
           <form method="post" action="/login">
             <label>Email <input name="email" type="email" required autocomplete="username"></label>
             <label>Password <input name="password" type="password" required autocomplete="current-password"></label>
@@ -847,9 +1017,9 @@ export function landingPage({ error } = {}) {
         </div>
       </div>
 
-      <div class="panel">
-        <div class="panel-head"><span class="tag">Found a new camp</span></div>
-        <div class="panel-body">
+      <div class="block">
+        <h2>Found a new camp</h2>
+        <div class="block-body">
           <form method="post" action="/register">
             <label>Email <input name="email" type="email" required autocomplete="username"></label>
             <label>Password <input name="password" type="password" required autocomplete="new-password" minlength="8"></label>
@@ -894,6 +1064,25 @@ const quiet = (label, line) =>
   `<div class="quiet"><span class="tag">${label}</span><p>${line}</p></div>`;
 
 /**
+ * A block that has something to say: a bordered box with its label in a strip.
+ *
+ * The label used to be an `<h2>` floating above loose content, which is how a document
+ * is set and not how an instrument is. Put it in a strip across the top of the box and
+ * a run of blocks reads as panels on one machine — which is also what lets the label be
+ * ten pixels and still be findable, because there is a filled bar under it.
+ *
+ * Still an `<h2>`, because it is still the heading of that block and the page should
+ * say so to anything reading it without the stylesheet.
+ */
+const block = (label, body, { wants = false, flush = false, foot = '' } = {}) =>
+  `<div class="block${wants ? ' wants' : ''}"><h2>${label}</h2>${
+    flush ? body : `<div class="block-body">${body}</div>`
+  }${foot}</div>`;
+
+/** A pointer from a block on Camp to the view that holds the whole of it. */
+const onward = (href, label) => ` <a href="${href}">${label} &rarr;</a>`;
+
+/**
  * What each of those blocks says when it is empty, in one place.
  *
  * These are the only strings in the redesign that did not already exist somewhere in
@@ -906,10 +1095,14 @@ const NOTHING = {
   moment: 'Nobody is on the wire.',
   raid: 'No radio fitted. You will hear them when they arrive.',
   sky: 'The sky is doing nothing worth naming.',
-  events: 'Nothing has happened since you were last here.',
-  inventory: 'The pack is empty.',
-  caravan: 'Nobody is on the road to here.',
+  events: 'Nothing happened while you were gone.',
+  inventory: 'Nothing they did not leave with.',
+  caravan: 'Nobody at the gate, and nobody on the road here.',
   roster: 'Nobody has died here.',
+  direction: 'Nothing to advise until somebody is standing here.',
+  expedition: 'Nobody to send.',
+  post: 'No link on the road opens one yet.',
+  standings: 'Neither crew has met this camp.',
 };
 
 /**
@@ -963,12 +1156,21 @@ export function campPage(view, { error, pane = 'camp' } = {}) {
     )}
     ${section('inventory', renderInventory(view.inventory))}
     ${section('direction', renderDirection(view.direction))}
-    ${section('expedition', view.survivor ? renderExpeditions(view) : '')}
+    ${section(
+      'expedition',
+      view.survivor ? renderExpeditions(view) : quiet('Away', NOTHING.expedition),
+    )}
 
     ${section('stores', renderResources(view.resources))}
     ${section(
       'structures',
-      renderStructures(view.structures, view.buildInFlight, Boolean(view.survivor)),
+      renderStructures(
+        view.structures,
+        view.buildInFlight,
+        Boolean(view.survivor),
+        view.direction,
+        !view.expedition?.moment,
+      ),
     )}
     ${section('road', renderRoad(view.road))}
     ${section('workshop', renderWorkshop(view))}
@@ -1002,38 +1204,55 @@ const NARRATED_ELSEWHERE = new Set(['item_found']);
 function renderWeather(weather) {
   if (!weather || weather.length === 0) return quiet('Sky', NOTHING.sky);
 
-  const rows = weather
-    .map(
-      (event) => `<tr>
-        <td class="lede">
+  /*
+   * One event is a wide cell and one narrow one; several are a full grid.
+   *
+   * The difference is not decoration. With one event in force there is only ever one
+   * side that has anything on it, and printing an empty "In camp — " beside it spends
+   * a column saying nothing. With three, both sides have to appear on every row or the
+   * player cannot tell which of them a missing number belongs to — so the dash comes
+   * back, and the labels repeat per row rather than sitting in a header. A header row
+   * is read once; these are read per event, which is the whole point of the grid.
+   */
+  const sides =
+    weather.length === 1
+      ? ['camp', 'road'].filter((where) =>
+          weather[0].effects.some((effect) => effect.where === where),
+        )
+      : ['camp', 'road'];
+
+  const cells = weather
+    .flatMap((event) => [
+      `<div>
+        <div class="sky-what">
           <span class="name">${escape(event.name)}</span>
-          <span class="clock">${countdown(event.endsAt, 'clearing')}<small>left</small></span>
-          <small>${escape(event.description)}</small>
-        </td>
-        <td class="effect">${sideOf(event.effects, 'camp')}</td>
-        <td class="effect">${sideOf(event.effects, 'road')}</td>
-      </tr>`,
-    )
+          <span class="clock">${countdown(event.endsAt, 'clearing')} left</span>
+        </div>
+        <p>${escape(event.description)}</p>
+      </div>`,
+      ...sides.map(
+        (where) => `<div class="sky-side">
+          <span class="tag">${where === 'camp' ? 'In camp' : 'Out there'}</span>
+          ${sideOf(event.effects, where)}
+        </div>`,
+      ),
+    ])
     .join('');
 
   // Two blights are worse than one, and the page had no way to say so. Only shown when
   // something is actually stacking, because for one event it would restate the row
   // directly above it — and it is the one place two events are allowed to meet.
-  const together =
+  const foot =
     weather.length > 1
-      ? `<div class="panel-foot">Together &mdash; ${escape(stacked(weather))}</div>`
+      ? `<div class="block-foot"><span class="tag">Together</span>
+           <span class="val">${escape(stacked(weather))}</span></div>`
       : '';
 
-  return `<h2>The sky</h2>
-    <div class="panel wants">
-      <div class="panel-body">
-        <table class="sky">
-          <tr><td></td><th class="tag right">In camp</th><th class="tag right">Out there</th></tr>
-          ${rows}
-        </table>
-      </div>
-      ${together}
-    </div>`;
+  return block('The sky', `<div class="sky-grid cols-${sides.length + 1}">${cells}</div>`, {
+    wants: true,
+    flush: true,
+    foot,
+  });
 }
 
 /**
@@ -1053,12 +1272,33 @@ function renderWeather(weather) {
 function sideOf(effects, where) {
   const parts = (effects ?? []).filter((e) => e.where === where).map(factor);
   // An event with nothing to say on one side says so with a dash. A blank cell reads
-  // as a rendering fault, and in a grid where the column above it is full of numbers
-  // it reads as a *missing* number, which is the one thing it is not.
-  return parts.length > 0 ? parts.join('<br>') : '&mdash;';
+  // as a rendering fault, and in a grid where the cell above it is full of numbers it
+  // reads as a *missing* number, which is the one thing it is not.
+  return parts.length > 0
+    ? parts.join('')
+    : '<span class="val none">&mdash;</span>';
 }
 
-const factor = (effect) => escape(`${effect.what} ×${effect.factor}`);
+/**
+ * One multiplier, and whether it is costing the camp or paying it.
+ *
+ * The accent that makes the grid worth looking at rather than reading. Everything else
+ * in the block is one colour, so a figure in oxide is found before it is read — and
+ * "the sky is taking something off me" is exactly the fact a player is scanning for
+ * when they glance at the weather before deciding whether to send anybody out.
+ *
+ * Which direction is bad depends on what is being multiplied, and there is no way
+ * around knowing that: more haul is good and more dose is not. `dose` is the only
+ * figure the game states where the number going up is the bad news, so it is the only
+ * exception, and it is named here rather than being carried on the effect — the
+ * simulation has no opinion about which of its numbers a player would rather see.
+ */
+function factor(effect) {
+  const costs = effect.what === 'dose' ? effect.factor > 1 : effect.factor < 1;
+  return `<span class="val${costs ? ' costs' : ''}">${escape(
+    `${effect.what} ×${effect.factor}`,
+  )}</span>`;
+}
 
 /** Everything in force, multiplied out — which is what the tick actually applies. */
 function stacked(weather) {
@@ -1072,7 +1312,7 @@ function stacked(weather) {
 
   return [...totals.values()]
     .map((effect) => `${effect.what} ×${Math.round(effect.factor * 100) / 100}`)
-    .join(', ');
+    .join(' · ');
 }
 
 /**
@@ -1093,24 +1333,28 @@ function renderRaidWarning(expectedAt) {
     return '<p class="error">The radio has gone quiet. They are overdue &mdash; reload.</p>';
   }
 
-  return `<div class="panel wants">
-      <div class="panel-head">
+  return `<div class="block wants contact">
+      <div class="block-head">
         <span class="tag">Radio</span>
         <span class="clock">${countdown(expectedAt, 'any moment')}<small>until raiders</small></span>
       </div>
-      <div class="panel-body"><p>Anything still in the stores is theirs to take.</p></div>
+      <div class="block-body"><p>Anything still in the stores is theirs to take.</p></div>
     </div>`;
 }
 
 function renderEvents(events) {
   const shown = (events ?? []).filter((event) => !NARRATED_ELSEWHERE.has(event.type));
-  if (shown.length === 0) return quiet('While away', NOTHING.events);
+  if (shown.length === 0) return quiet('Away log', NOTHING.events);
   const items = shown
     .map((event) => `<li><span class="when">${escape(stamp(event.at))}</span> ${escape(describe(event))}</li>`)
     .join('');
   // aria-live because this list now grows without the page navigating: a build that
   // finishes while the player is reading is announced rather than silently appearing.
-  return `<h2>While you were away</h2><ul class="events" aria-live="polite">${items}</ul>`;
+  return block(
+    'While you were away',
+    `<ul class="events" aria-live="polite">${items}</ul>`,
+    { flush: true },
+  );
 }
 
 /**
@@ -1170,10 +1414,10 @@ function strainNote(strain) {
   const clear = `clear in ${duration(strain.hoursToMending)}`;
 
   if (strain.state === 'burning') {
-    return ` &mdash; <small>past ${strain.threshold}: losing ${n(strain.damagePerHour)} health an hour, under ${strain.threshold} in ${duration(strain.hoursToSafe)}, ${clear}</small>`;
+    return `<small>past ${strain.threshold}: losing ${n(strain.damagePerHour)} health an hour, under ${strain.threshold} in ${duration(strain.hoursToSafe)}, ${clear}</small>`;
   }
 
-  return ` &mdash; <small>not healing until this is down, ${clear}</small>`;
+  return `<small>not healing until this is down, ${clear}</small>`;
 }
 
 function renderSurvivor(survivor, strain) {
@@ -1184,20 +1428,42 @@ function renderSurvivor(survivor, strain) {
     ? `<p><small>${escape(survivor.knownFor)}.</small></p>`
     : '';
 
-  return `
-    <h2>Who holds the camp</h2>
-    <div class="panel">
-      <div class="panel-head"><span class="tag">${escape(survivor.name ?? 'Survivor')}</span></div>
-      <div class="panel-body">
-        ${who}
-        <table class="vitals">
-          <tr><th class="tag">Health</th><td class="num">${n(survivor.health)}</td></tr>
-          <tr><th class="tag">Hunger</th><td class="num">${n(survivor.hunger)}</td></tr>
-          <tr><th class="tag">Radiation</th>
-              <td class="num">${n(survivor.radiation)}${strainNote(strain)}</td></tr>
-        </table>
-      </div>
+  /*
+   * Number first, bar second — and the bar is the reason this is not a table.
+   *
+   * Three figures in a two-column table are three facts you have to compare by reading.
+   * The same three over 2px tracks are a shape: a player can see at a glance that
+   * health is nearly full and rads are creeping up without parsing a single digit, and
+   * only reads the number once the shape has told them there is something to read.
+   *
+   * Radiation is measured against the threshold it starts burning at rather than
+   * against a hundred, because that is the number the survivor's life depends on and
+   * the only one the track can honestly be full of.
+   */
+  const gauge = (label, value, of, note = '') => `<div class="gauge">
+      <div class="gauge-top"><span class="tag">${label}</span>
+        <span class="val">${n(value)}</span></div>
+      <div class="track">${
+        value > 0 ? `<i style="width:${bar(value, of)}%"></i>` : ''
+      }</div>${note}
     </div>`;
+
+  return block(
+    'Who holds the camp',
+    `<div class="who-name">${escape(survivor.name ?? 'Survivor')}</div>
+     ${who}
+     <div class="gauges">
+       ${gauge('Health', survivor.health, 100)}
+       ${gauge('Hunger', survivor.hunger, 100)}
+       ${gauge('Radiation', survivor.radiation, strain?.threshold ?? 100, strainNote(strain))}
+     </div>`,
+  );
+}
+
+/** A track's fill, clamped and rounded — a width is not worth fifteen decimals. */
+function bar(value, of) {
+  if (!(of > 0)) return 0;
+  return Math.round(Math.max(0, Math.min(100, (100 * value) / of)) * 100) / 100;
 }
 
 /**
@@ -1222,18 +1488,17 @@ function renderNoSurvivor(everHeld, arriving) {
        <p><small>Known for: ${escape(arriving.knownFor)}.</small></p>`
     : '';
 
-  return `
-    <h2>Who holds the camp</h2>
-    <div class="panel wants">
-      <div class="panel-head"><span class="tag">The camp stands empty</span></div>
-      <div class="panel-body">
-        ${preamble}
-        ${atTheGate}
-        <form method="post" action="/successor">
-          <button type="submit" class="fill">${everHeld ? 'Let them take it on' : 'Let them stay'}</button>
-        </form>
-      </div>
-    </div>`;
+  // The one lit control on the page, and the only thing there is to do. Nothing else on
+  // an empty camp is a decision, so nothing else takes the fill.
+  return block(
+    'The camp stands empty',
+    `${preamble}
+     ${atTheGate}
+     <form method="post" action="/successor">
+       <button type="submit" class="fill">${everHeld ? 'Let them take it on' : 'Let them stay'}</button>
+     </form>`,
+    { wants: true },
+  );
 }
 
 /**
@@ -1285,11 +1550,16 @@ function renderMoment(expedition) {
    */
   const filled = moment.options.find((option) => !option.warned && !option.missing);
 
+  // The glyph goes on the consequence, not on the title. A title says what you would be
+  // choosing; the consequence says what it would cost, and the warning is about the
+  // cost. Marking the title would read as "this option is disabled".
   const choices = moment.options
     .map(
       (option) => `<div class="choice${option.warned ? ' warned' : ''}">
-        <p class="name">${option.warned ? '&#9888; ' : ''}${escape(option.label)}</p>
-        <p><small>${escape(option.detail)}</small></p>
+        <span class="title">${escape(option.label)}</span>
+        <span class="detail">${
+          option.warned ? '<span class="glyph">&#9888;</span>' : ''
+        }<span>${escape(option.detail)}</span></span>
         ${momentAction(moment, option, option === filled)}
       </div>`,
     )
@@ -1301,12 +1571,12 @@ function renderMoment(expedition) {
   // what the Away report says on the Survivor view, on purpose and now more than ever:
   // the two are a click apart, and making somebody go and look up whether 34 health is
   // bad would be the whole design failing at the last inch.
-  return `<div class="panel wants contact${warned ? ' warned' : ''}">
-      <div class="panel-head">
+  return `<div class="block contact${warned ? ' warned' : ''}">
+      <div class="block-head">
         <span class="tag">Contact</span>
         <span class="clock">${countdown(moment.closesAt, 'gone')}<small>to answer</small></span>
       </div>
-      <div class="panel-body">
+      <div class="block-body">
         <p class="state">${escape(condition(expedition))}</p>
         <p class="turn">${escape(moment.prose)}</p>
       </div>
@@ -1403,13 +1673,12 @@ function renderExpeditions(view) {
       lines.push('What came of that comes home with them.');
     }
 
-    return `<h2>Away</h2>
-      <div class="panel">
-        <div class="panel-head">
-          <span class="tag">${escape(trip.regionName)}</span>
+    return `<div class="block contact">
+        <div class="block-head">
+          <span class="tag">Away &mdash; ${escape(trip.regionName)}</span>
           ${due}
         </div>
-        <div class="panel-body">
+        <div class="block-body">
           <p class="state">${escape(condition(trip, { region: false }))}</p>
           ${lines.length > 0 ? `<p>${lines.join('<br>')}</p>` : ''}
         </div>
@@ -1419,12 +1688,11 @@ function renderExpeditions(view) {
   const rows = view.regions
     .map(
       (region) => `<tr>
-        <td class="lede">
-          <span class="name">${escape(region.name)}</span>
-          <small>${escape(region.description ?? '')}</small>
-        </td>
-        <td class="effect">danger ${region.danger}<br>${escape(duration(region.travel_hours))} out</td>
-        <td class="effect">${escape(contact(region.moments))}<br>${escape(meanwhile(region.openWhileAway))}</td>
+        <td><span class="name">${escape(region.name)}</span>
+            <span class="lvl">danger ${region.danger} &middot; ${escape(duration(region.travel_hours))} out</span></td>
+        <td class="lede"><small>${escape(region.description ?? '')}</small></td>
+        <td class="cost-col"><span class="cost">${escape(contact(region.moments))}</span>
+            <span class="needs">${escape(meanwhile(region.openWhileAway))}</span></td>
         <td class="act">
           <form method="post" action="/expedition">
             <input type="hidden" name="region" value="${escape(region.slug)}">
@@ -1435,7 +1703,7 @@ function renderExpeditions(view) {
     )
     .join('');
 
-  return `<h2>Where to send them</h2><table>${rows}</table>`;
+  return block('Where to send them', `<table>${rows}</table>`, { flush: true });
 }
 
 /**
@@ -1457,11 +1725,11 @@ function renderExpeditions(view) {
  * quest log: a quest log is proud of itself and this leaves without saying goodbye.
  */
 function renderDirection(direction) {
-  if (!direction) return '';
-  return `<h2>Next</h2>
-    <div class="panel wants"><div class="panel-body">
-      <p>${escape(direction.line)}</p>
-    </div></div>`;
+  if (!direction) return quiet('Next', NOTHING.direction);
+  // The one block with an edge and no strip. It is a single sentence, and a filled bar
+  // labelling one line would be a label longer than the thing it labels.
+  return `<div class="block wants inline-label"><h2>Next</h2>
+    <p>${escape(direction.line)}</p></div>`;
 }
 
 /**
@@ -1568,18 +1836,18 @@ function contact(count) {
  * one would be inventing urgency the road exists to remove.
  */
 function renderPost(post, alive) {
-  if (!post) return '';
+  if (!post) return quiet('Trade post', NOTHING.post);
 
   const rows = post.offers
     .map(
       (offer) => `<tr>
-        <th><span class="name">${offer.qty} &times; ${escape(String(offer.what).replaceAll('_', ' '))}</span></th>
-        <td class="cost right">${escape(
+        <td><span class="name">${offer.qty} &times; ${escape(String(offer.what).replaceAll('_', ' '))}</span></td>
+        <td class="cost-col"><span class="cost">${escape(
           Object.entries(offer.costs).map(([kind, amount]) => `${amount} ${kind}`).join(', '),
-        )}</td>
-        <td class="act">${offer.shortBy
-          ? `<span class="short">${escape(offer.shortBy)}</span>`
-          : alive
+        )}</span>${
+          offer.shortBy ? `<span class="short">${escape(offer.shortBy)}</span>` : ''
+        }</td>
+        <td class="act">${!offer.shortBy && alive
           ? `<form method="post" action="/trade">
               <input type="hidden" name="faction" value="${escape(post.faction)}">
               <input type="hidden" name="offer" value="${offer.index}">
@@ -1590,14 +1858,11 @@ function renderPost(post, alive) {
     )
     .join('');
 
-  return `<h2>The post on the road</h2>
-    <div class="panel">
-      <div class="panel-head">
-        <span class="tag">${escape(post.name)}</span>
-        <span class="cost">standing ${Math.round(post.standing)}</span>
-      </div>
-      <div class="panel-body"><table>${rows}</table></div>
-    </div>`;
+  return block(
+    `The post on the road &mdash; ${escape(post.name)}, standing ${Math.round(post.standing)}`,
+    `<table>${rows}</table>`,
+    { flush: true },
+  );
 }
 
 /**
@@ -1663,12 +1928,10 @@ function renderRoad(road) {
   const reached = road.reached
     .map(
       (link) => `<tr>
-        <td class="lede">
-          <span class="name">${escape(link.name)}</span>
-          <small>${escape(link.news)}</small>
-        </td>
-        <td class="effect">${link.stillThere ? `${link.size} people` : 'nobody left'}</td>
-        <td class="lede"><small>${linkGot(link)}</small></td>
+        <td><span class="name">${escape(link.name)}</span>
+            <span class="lvl">${link.stillThere ? `${link.size} people` : 'nobody left'}</span></td>
+        <td class="lede"><small>${escape(link.news)}</small>
+            <small>${linkGot(link)}</small></td>
       </tr>`,
     )
     .join('');
@@ -1676,58 +1939,60 @@ function renderRoad(road) {
   // The end of the road is a standing fact about the camp, not a win: nothing resets
   // and nothing is taken away, so it says so plainly and stops asking for fuel.
   if (!road.next) {
-    return `<h2>The road &mdash; all ${road.links} reached</h2>
-      <p>The region is as reconnected as this camp can make it.</p>
-      <table>${reached}</table>`;
+    return block(
+      `The road &mdash; all ${road.links} reached`,
+      `<p class="road-note">The region is as reconnected as this camp can make it.</p>
+       <table>${reached}</table>`,
+      { flush: true },
+    );
   }
 
   // Said once, while it is still news. After a link or two the rule is obvious from
   // having done it, and a page that keeps explaining itself is a page nobody reads.
   const rule =
     road.reached.length === 0
-      ? `<p>Fuel you put toward a place is spent — you cannot take it back. It counts
-           toward reaching that place, and once the cost is covered it stays reached.</p>`
+      ? `<p class="road-note">Fuel you put toward a place is spent — you cannot take it
+           back. It counts toward reaching that place, and once the cost is covered it
+           stays reached.</p>`
       : '';
 
   const beyond =
     road.beyond > 0
-      ? `<p><small>${road.beyond} more after that.</small></p>`
-      : '<p><small>The last one.</small></p>';
+      ? `${road.beyond} more after that.`
+      : 'The last one.';
 
-  return `<h2>The road &mdash; ${road.reached.length} of ${road.links} reached</h2>
-    ${rule}
-    ${reached ? `<table>${reached}</table>` : ''}
-    <div class="panel wants">
-      <div class="panel-head">
-        <span class="tag">Working toward ${escape(road.next.neighbour)}</span>
-        <span class="cost">${n(road.next.fuel, 0)} / ${n(road.next.cost, 0)} fuel</span>
-      </div>
-      <div class="panel-body">
-        <p><small>${linkGot(road.next)}</small></p>
-        ${
+  return `${block(
+    `The road &mdash; ${road.reached.length} of ${road.links} reached`,
+    `${rule}${reached ? `<table>${reached}</table>` : ''}`,
+    { flush: true },
+  )}
+    <div class="block wants next-link">
+      <h2>Working toward ${escape(road.next.neighbour)}</h2>
+      <div class="block-body">
+        <p>${linkGot(road.next)}</p>
+        <p class="state">Paid so far ${n(road.next.fuel, 0)} of ${n(road.next.cost, 0)} fuel.${
           // Said once. With no fuel at all `addFuel` says so and says why, and a stores
-          // line above it would only be the same sentence with a zero in it.
-          road.available >= 1
-            ? `<p class="state">${n(road.available, 0)} fuel in the stores.</p>`
-            : ''
-        }
+          // line beside it would only be the same sentence with a zero in it.
+          road.available >= 1 ? ` ${n(road.available, 0)} in the stores.` : ''
+        }</p>
         ${addFuel(road)}
       </div>
-    </div>
-    ${beyond}`;
+      <div class="block-foot"><span class="tag">Beyond</span>
+        <span class="val">${beyond}</span></div>
+    </div>`;
 }
 
 function renderInventory(inventory) {
-  if (!inventory || inventory.length === 0) return quiet('Pack', NOTHING.inventory);
+  if (!inventory || inventory.length === 0) return quiet('Carrying', NOTHING.inventory);
   const rows = inventory
     .map(
       (item) => `<tr>
-        <th><span class="name">${escape(item.name)}</span></th>
-        <td class="right num">×${item.qty}</td>
+        <td><span class="name">${escape(item.name)}</span></td>
+        <td class="right"><span class="cost">×${item.qty}</span></td>
       </tr>`,
     )
     .join('');
-  return `<h2>Pack</h2><table>${rows}</table>`;
+  return block('Carrying', `<table>${rows}</table>`, { flush: true });
 }
 
 /**
@@ -1741,9 +2006,8 @@ function renderWorkshop(view) {
       hoursLeft > 0
         ? `<span class="clock">${countdown(view.craft.completesAt, 'now')}<small>until ready</small></span>`
         : '<span class="short">ready &mdash; reload to collect it</span>';
-    return `<h2>On the bench</h2>
-      <div class="panel"><div class="panel-head">
-        <span class="tag">${escape(view.craft.name)}</span>${due}
+    return `<div class="block contact"><div class="block-head">
+        <span class="tag">On the bench &mdash; ${escape(view.craft.name)}</span>${due}
       </div></div>`;
   }
 
@@ -1761,17 +2025,17 @@ function renderWorkshop(view) {
           : `${recipe.output_qty} × ${escape(recipe.output_name)}`;
       const price = escape(`${priceOf(recipe)}, ${duration(recipe.craft_hours)}`);
       return `<tr>
-        <td class="lede">
-          <span class="name">${escape(recipe.name)}${yields ? ` <span class="lvl">${yields}</span>` : ''}</span>
-          <small>${escape(recipe.description ?? '')}</small>
-        </td>
-        <td class="cost right">${price}</td>
+        <td><span class="name">${escape(recipe.name)}${
+          yields ? `<span class="qty">${yields}</span>` : ''
+        }</span></td>
+        <td class="lede"><small>${escape(recipe.description ?? '')}</small></td>
+        <td class="cost-col"><span class="cost">${price}</span>${craftPrice(recipe, view)}</td>
         <td class="act">${craftCell(recipe, view)}</td>
       </tr>`;
     })
     .join('');
 
-  return `<h2>Workshop</h2><table>${rows}</table>`;
+  return block('Workshop', `<table>${rows}</table>`, { flush: true });
 }
 
 /** Stores and carried materials read as one price, because that is how they are paid. */
@@ -1784,19 +2048,33 @@ function priceOf(recipe) {
 }
 
 function craftCell(recipe, view) {
-  if (view.workshopLevel < recipe.requires_workshop) {
-    return `<span class="needs">needs workshop ${recipe.requires_workshop}</span>`;
-  }
-  // Starting work needs living hands, the same rule builds follow.
-  if (!view.survivor) return '';
-  // And the same rule the workshop level already follows: keep the row, drop the
-  // button, say what it wants. Hiding it would hide the goal.
-  if (recipe.shortBy) return `<span class="short">${escape(recipe.shortBy)}</span>`;
+  // A recipe you cannot afford keeps its row and says why, in the cost column where the
+  // rest of the price is. Hiding it would hide the goal.
+  if (view.workshopLevel < recipe.requires_workshop) return '';
+  if (!view.survivor) return ''; // Starting work needs living hands, as builds do.
+  if (recipe.shortBy) return '';
 
   return `<form method="post" action="/craft">
       <input type="hidden" name="recipe" value="${escape(recipe.slug)}">
       <button type="submit">Make</button>
     </form>`;
+}
+
+/**
+ * The second line of a price: the reason there is no button.
+ *
+ * Under the cost rather than where the button would be, because both are answers to
+ * "what would this take" — and a tier you have not reached reads as part of the price
+ * rather than as a refusal when it sits with the rest of it.
+ */
+function craftPrice(recipe, view) {
+  if (view.workshopLevel < recipe.requires_workshop) {
+    return `<span class="needs">needs workshop ${recipe.requires_workshop}</span>`;
+  }
+  if (view.survivor && recipe.shortBy) {
+    return `<span class="short">${escape(recipe.shortBy)}</span>`;
+  }
+  return '';
 }
 
 /**
@@ -1836,17 +2114,15 @@ function renderCaravan(caravan, someoneAlive) {
     return quiet('Caravan', `A caravan from ${escape(caravan.name)}, ${when}.`);
   }
 
-  const hoursLeft = (new Date(caravan.departsAt).getTime() - Date.now()) / 3600000;
+  const price = (offer) =>
+    Object.entries(offer.costs).map(([kind, amount]) => `${amount} ${kind}`).join(', ');
+
   const rows = caravan.offers
     .map((offer) => {
-      const price = Object.entries(offer.costs)
-        .map(([kind, amount]) => `${amount} ${kind}`)
-        .join(', ');
       // A caravan is at the gate for a few hours, so an offer the stores cannot
       // cover is worth naming rather than leaving to be discovered by clicking.
-      const buy = offer.shortBy
-        ? `<span class="short">${escape(offer.shortBy)}</span>`
-        : someoneAlive
+      const buy =
+        !offer.shortBy && someoneAlive
           ? `<form method="post" action="/trade">
               <input type="hidden" name="faction" value="${escape(caravan.faction)}">
               <input type="hidden" name="offer" value="${offer.index}">
@@ -1854,8 +2130,10 @@ function renderCaravan(caravan, someoneAlive) {
             </form>`
           : '';
       return `<tr>
-        <th><span class="name">${offer.qty} × ${escape(offer.what)}</span></th>
-        <td class="cost right">${escape(price)}</td>
+        <td><span class="name">${offer.qty} × ${escape(offer.what)}</span></td>
+        <td class="cost-col"><span class="cost">${escape(price(offer))}</span>${
+          offer.shortBy ? `<span class="short">${escape(offer.shortBy)}</span>` : ''
+        }</td>
         <td class="act">${buy}</td>
       </tr>`;
     })
@@ -1870,35 +2148,38 @@ function renderCaravan(caravan, someoneAlive) {
 
   return `<div class="as-line">${quiet(
     'Caravan',
-    `<strong>${escape(caravan.name)}</strong> are at the gate. <a href="/camp/trade">What they carry</a>.`,
+    `<strong>${escape(caravan.name)}</strong> are at the gate.${onward('/camp/trade', 'Trade')}`,
   )}</div>
     <div class="as-block">
-      <h2>${escape(caravan.name)} &mdash; at the gate</h2>
-      <div class="panel wants">
-        <div class="panel-head">
-          <span class="tag">Standing ${describeStanding(caravan.standing)} &mdash; ${rates}</span>
+      <div class="block wants">
+        <div class="block-head">
+          <span class="tag">${escape(caravan.name)} &mdash; at the gate</span>
           <span class="clock">${countdown(caravan.departsAt, 'now')}<small>until they move on</small></span>
         </div>
-        <div class="panel-body">
+        <div class="block-body">
           <p><small>${escape(caravan.description)}</small></p>
-          <table>${rows}</table>
         </div>
+        <table>${rows}</table>
+        <div class="block-foot"><span class="tag">Standing</span>
+          <span class="val">${describeStanding(caravan.standing)} &mdash; ${rates}</span></div>
       </div>
     </div>`;
 }
 
 /** Where the camp sits with each crew. One line each; the numbers earn no table. */
 function renderStandings(standings) {
-  if (!standings || standings.every((s) => s.standing === 0)) return '';
+  if (!standings || standings.every((s) => s.standing === 0)) {
+    return quiet('Standings', NOTHING.standings);
+  }
   const rows = standings
     .map(
       (s) => `<tr>
-        <th><span class="name">${escape(s.name)}</span></th>
-        <td class="cost right">${describeStanding(s.standing)}</td>
+        <td><span class="name">${escape(s.name)}</span></td>
+        <td class="right"><span class="cost">${describeStanding(s.standing)}</span></td>
       </tr>`,
     )
     .join('');
-  return `<h2>Standing</h2><table>${rows}</table>`;
+  return block('Standing', `<table>${rows}</table>`, { flush: true });
 }
 
 function describeStanding(standing) {
@@ -1937,23 +2218,16 @@ function renderResources(resources) {
 
       // A zero store shows an empty track rather than no track. The four cells are the
       // same shape whatever is in them, or the eye has to re-find the layout each time.
-      const filled =
-        r.cap > 0
-          ? Math.round(Math.max(0, Math.min(100, (100 * r.amount) / r.cap)) * 100) / 100
-          : 0;
-
       return `<div class="store">
         <div class="store-top"><span class="tag">${escape(r.kind)}</span>${rate}</div>
-        <div class="store-fig">
-          <span class="fig" data-amount="${r.amount}" data-rate="${r.ratePerHour}"
+        <div class="store-fig"><span data-amount="${r.amount}" data-rate="${r.ratePerHour}"
                 data-cap="${r.cap}">${n(r.amount, STORE_DECIMALS)}</span><span
-                class="cap">/ ${n(r.cap, 0)}</span>
-        </div>
-        <div class="track"><i data-fill style="width:${filled}%"></i></div>
+                class="cap"> / ${n(r.cap, 0)}</span></div>
+        <div class="track"><i data-fill style="width:${bar(r.amount, r.cap)}%"></i></div>
       </div>`;
     })
     .join('');
-  return `<h2>Stores</h2><div class="stores">${cells}</div>`;
+  return block('Stores', `<div class="stores">${cells}</div>`, { flush: true });
 }
 
 /**
@@ -1965,26 +2239,54 @@ function renderResources(resources) {
  * of its own, because it is the same sentence one level later and a column would make
  * it look like a separate purchase.
  */
-function renderStructures(structures, buildInFlight, someoneAlive) {
+/**
+ * Which structure's Build button is filled, and why exactly one of them is.
+ *
+ * `Next` sits three blocks up and names a structure in prose — "the workshop is the one
+ * structure that changes that" — and then the table below offered five identical
+ * buttons and left the player to match the sentence to the row. Filling the one it
+ * named closes that gap with the accent the design already has, and it costs no new
+ * colour: this is the same "one filled control per decision" rule the Contact panel and
+ * the empty camp already follow.
+ *
+ * Keys that do not name a structure fill nothing, which is correct — most of what the
+ * direction says is about sending somebody out, not about building.
+ */
+const ADVISED = {
+  workshop: 'workshop',
+  bench: 'workshop',
+  overflowing: 'shelter',
+  undefended: 'watchtower',
+};
+
+function renderStructures(structures, buildInFlight, someoneAlive, direction, quiet = true) {
+  // One filled control per view. A window that closes in eleven minutes outranks
+  // standing advice about what to build next, so while contact is open the table stops
+  // pointing — otherwise the page has two things marked as *the* thing to do and the
+  // accent stops meaning either of them.
+  const advised = quiet ? ADVISED[direction?.key] : undefined;
+
   const rows = structures
     .map((s) => {
       const name = escape(s.kind.replaceAll('_', ' '));
-      const status = statusCell(s, buildInFlight, someoneAlive);
+      const status = statusCell(s, buildInFlight, someoneAlive, s.kind === advised);
       // An unbuilt structure produces nothing, and saying so is more useful than
       // an empty cell the player has to interpret.
-      const doing = s.effect ? escape(s.effect) : 'nothing yet';
+      const doing = s.effect
+        ? `<span class="effect">${escape(s.effect)}</span>`
+        : '<span class="effect nil">nothing yet</span>';
       return `<tr>
+        <td><span class="name">${name}</span><span class="lvl">level ${s.level}</span></td>
         <td class="lede">
-          <span class="name">${name}<span class="lvl">level ${s.level}</span></span>
-          <span class="effect">${doing}</span>
+          ${doing}
           <small>${escape(purposeOf(s))}</small>
+          ${fittingIn(s, buildInFlight, someoneAlive)}
         </td>
         ${status}
-      </tr>
-      ${upgradeRow(s, buildInFlight, someoneAlive)}`;
+      </tr>`;
     })
     .join('');
-  return `<h2>Structures</h2><table class="structures">${rows}</table>`;
+  return block('Structures', `<table>${rows}</table>`, { flush: true });
 }
 
 /**
@@ -1994,50 +2296,58 @@ function renderStructures(structures, buildInFlight, someoneAlive) {
  * point: scrap makes the thing bigger and fuel makes it do something new, and the
  * page should not make those look like the same purchase.
  */
-function upgradeRow(structure, buildInFlight, someoneAlive) {
+function fittingIn(structure, buildInFlight, someoneAlive) {
   const upgrade = structure.upgrade;
   if (!upgrade) return '';
 
-  // A fitting is a property of the structure above it, not a separate shopping list, so
-  // the row hangs off its parent with an inset rather than sitting in the run of the
-  // table as a sibling. Its requirement is a number and goes in mono.
-  const label = `<span class="name">${escape(upgrade.name)}</span>
-    <small>${escape(upgrade.summary)}</small>`;
-  const fitting = (note, cost = '', action = '') =>
-    `<tr class="fitting">
-      <td class="lede">${label}${note ? `<span class="effect">${note}</span>` : ''}</td>
-      <td class="cost right">${cost}</td>
-      <td class="act">${action}</td>
-    </tr>`;
+  /*
+   * The fitting lives *inside* its structure's description, behind a 2px inset.
+   *
+   * It used to be a sibling `<tr>`, which is the shape the handoff's prose asks for and
+   * the wrong one: a row in a table is a sibling purchase however it is indented, and
+   * the whole claim being made is that a fitting is not a separate thing to buy but a
+   * property of the structure above it. Scrap makes the thing bigger and fuel makes it
+   * do something new, and the page should not make those look like two entries in one
+   * shopping list. Inside the cell, it cannot.
+   *
+   * Its own price and button ride in the same inset rather than in the table's cost and
+   * action columns, for the same reason — those columns belong to the level track.
+   */
+  const inset = (tail) => `<span class="fitting">
+      <span class="tag">${escape(upgrade.name)}</span>
+      <span>${escape(upgrade.summary)} ${tail}</span>
+    </span>`;
 
-  if (upgrade.fitted) return fitting('fitted');
+  if (upgrade.fitted) return inset('<em class="needs">fitted</em>');
 
   if (upgrade.fittingUntil) {
     const hoursLeft = (new Date(upgrade.fittingUntil).getTime() - Date.now()) / 3600000;
     const when =
       hoursLeft > 0
-        ? `being fitted, ${countdown(upgrade.fittingUntil, 'now')} left`
-        : 'fitted, reload';
-    return fitting(when);
+        ? `<span class="cost">being fitted, ${countdown(upgrade.fittingUntil, 'now')} left</span>`
+        : '<span class="short">fitted &mdash; reload</span>';
+    return inset(when);
   }
 
   if (structure.level < upgrade.requiresLevel) {
-    return fitting('', `<span class="needs">needs level ${upgrade.requiresLevel}</span>`);
+    return inset(`<span class="needs">needs level ${upgrade.requiresLevel}</span>`);
   }
 
   // Fuel only comes home from expeditions, so the cost is worth spelling out.
-  const cost = escape(`${upgrade.fuel} fuel, ${duration(upgrade.hours)}`);
-  const button =
-    upgrade.shortBy
-      ? `<span class="short">${escape(upgrade.shortBy)}</span>`
-      : buildInFlight || !someoneAlive
-      ? ''
-      : `<form method="post" action="/upgrade">
-          <input type="hidden" name="upgrade" value="${escape(upgrade.slug)}">
-          <button type="submit">Fit</button>
-        </form>`;
+  const cost = `<span class="cost">${escape(
+    `${upgrade.fuel} fuel, ${duration(upgrade.hours)}`,
+  )}</span>`;
 
-  return fitting('', cost, button);
+  if (upgrade.shortBy) {
+    return inset(`${cost} <span class="short">${escape(upgrade.shortBy)}</span>`);
+  }
+  if (buildInFlight || !someoneAlive) return inset(cost);
+
+  return inset(`${cost}
+    <form method="post" action="/upgrade">
+      <input type="hidden" name="upgrade" value="${escape(upgrade.slug)}">
+      <button type="submit">Fit</button>
+    </form>`);
 }
 
 /** What it is for, plus what the next level actually buys. */
@@ -2047,36 +2357,35 @@ function purposeOf(structure) {
   return `${summary} Level ${structure.level + 1} makes that ${structure.nextEffect}.`;
 }
 
-function statusCell(structure, buildInFlight, someoneAlive) {
+function statusCell(structure, buildInFlight, someoneAlive, advised) {
   if (structure.build_completes_at) {
     const hoursLeft = (new Date(structure.build_completes_at).getTime() - Date.now()) / 3600000;
     const when =
       hoursLeft > 0
         ? `<span class="clock">${countdown(structure.build_completes_at, 'now')}</span>`
         : '<span class="short">done &mdash; reload</span>';
-    return `<td class="cost right">building level ${structure.level + 1}</td>
+    return `<td class="cost-col"><span class="needs">building level ${structure.level + 1}</span></td>
       <td class="act">${when}</td>`;
   }
 
-  if (!structure.nextCost) return '<td></td><td></td>';
+  if (!structure.nextCost) return '<td class="cost-col"></td><td class="act"></td>';
 
-  const cost = `<span class="cost">${escape(
+  const cost = `<td class="cost-col"><span class="cost">${escape(
     `${structure.nextCost.scrap} scrap, ${duration(structure.nextCost.hours)}`,
-  )}</span>`;
-  // The queue holds one build, and starting work needs living hands.
-  if (buildInFlight || !someoneAlive) {
-    return `<td class="right">${cost}</td><td class="act"></td>`;
+  )}</span>${
+    structure.shortBy ? `<span class="short">${escape(structure.shortBy)}</span>` : ''
+  }</td>`;
+
+  // The queue holds one build, starting work needs living hands, and an unaffordable
+  // level keeps its row and its price without a button to press.
+  if (buildInFlight || !someoneAlive || structure.shortBy) {
+    return `${cost}<td class="act"></td>`;
   }
 
-  if (structure.shortBy) {
-    return `<td class="right">${cost}</td>
-      <td class="act"><span class="short">${escape(structure.shortBy)}</span></td>`;
-  }
-
-  return `<td class="right">${cost}</td>
+  return `${cost}
     <td class="act"><form method="post" action="/build">
       <input type="hidden" name="kind" value="${escape(structure.kind)}">
-      <button type="submit">Build</button>
+      <button type="submit"${advised ? ' class="fill"' : ''}>Build</button>
     </form></td>`;
 }
 
@@ -2086,12 +2395,9 @@ function statusCell(structure, buildInFlight, someoneAlive) {
  * enough already.
  */
 function renderRoster(fallenCount) {
-  if (fallenCount === 0) return quiet('Graveyard', NOTHING.roster);
-  const who = fallenCount === 1 ? 'One survivor has' : `${fallenCount} survivors have`;
-  return quiet(
-    'Graveyard',
-    `${who} held this camp before. <a href="/graveyard">Who they were</a>.`,
-  );
+  if (fallenCount === 0) return quiet('Roster', NOTHING.roster);
+  const who = fallenCount === 1 ? 'One person has' : `${fallenCount} people have`;
+  return quiet('Roster', `${who} held this camp before.${onward('/graveyard', 'Records')}`);
 }
 
 /** The memorial. Deliberately not a table: these are people, not rows. */
@@ -2104,8 +2410,7 @@ export function graveyardPage(view) {
   const holding = view.holding
     ? `<p class="state">${escape(view.holding.name)} holds the camp now, since
        ${escape(new Date(view.holding.bornAt).toISOString().slice(0, 10))}.</p>`
-    : `<div class="panel wants"><div class="panel-body">
-         <p>Nobody holds the camp.</p></div></div>`;
+    : '<p class="standing-empty">Nobody holds the camp.</p>';
 
   const identity = `<div class="who">
       <h1>${escape(view.name)}</h1>
@@ -2115,7 +2420,8 @@ export function graveyardPage(view) {
   return layout(`${view.name} — the fallen`, `<div class="shell">
     ${rail('records', identity)}
     <main>
-      <h2>The camp outlives its people</h2>
+      <p class="page-title">The fallen of ${escape(view.name)}</p>
+      <p>The camp outlives its people.</p>
       ${holding}
       ${view.fallen.length === 0 ? '<p>Nobody has died here yet.</p>' : `<div class="stones">${stones}</div>`}
     </main>
