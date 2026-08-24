@@ -277,6 +277,42 @@ test('a malformed cookie is not a 500, and does not need a session to send', asy
   }
 });
 
+test('a state-changing post from somewhere else is refused', async () => {
+  /*
+   * `SameSite=Strict` is scoped to the registrable site rather than the origin, so a
+   * page on an untrusted sibling subdomain is same-site and its forged post carries the
+   * session cookie. Raised in review on 2026-08-24, where the comment on the cookie
+   * claimed the stronger guarantee.
+   *
+   * The three cases below are the whole of the rule, and the third is the one worth
+   * pinning: a missing Origin is allowed on purpose. Every browser sends it on a POST,
+   * so a cross-site attack cannot arrive without one — and requiring it would refuse
+   * curl, scripts and this suite to defend against a case that cannot happen.
+   */
+  const { cookie } = await registerAndMoveIn();
+  const post = (origin) =>
+    fetch(`${base}/logout`, {
+      method: 'POST',
+      redirect: 'manual',
+      headers: {
+        cookie,
+        ...(origin ? { origin } : {}),
+        'content-type': 'application/x-www-form-urlencoded',
+      },
+    });
+
+  const forged = await post('https://evil.example.test');
+  assert.equal(forged.status, 403, 'a post claiming another origin is refused');
+  assert.match(await forged.text(), /did not come from this camp/i);
+
+  // Same site, different origin — the case SameSite alone lets through.
+  const sibling = await post(`http://evil.localhost:${server.address().port}`);
+  assert.equal(sibling.status, 403, 'and so is a sibling host on the same site');
+
+  const own = await post(base);
+  assert.ok(own.status < 400, `the page's own form still posts (${own.status})`);
+});
+
 test('a forged session token is not accepted', async () => {
   const camp = await fetch(`${base}/camp`, {
     headers: { cookie: 'wasteland_session=totally-made-up' },

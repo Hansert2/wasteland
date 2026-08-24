@@ -53,6 +53,9 @@ export function createApp() {
   });
 
   // Bodies here are short forms; a small cap keeps a stray large POST cheap to reject.
+  // Ahead of the body parser: a request that is refused for where it came from should
+  // not have its body read first, and this check needs nothing out of it.
+  app.use(sameOrigin);
   app.use(express.urlencoded({ extended: false, limit: '10kb' }));
   app.use(readCookies);
   app.use(loadSession);
@@ -326,6 +329,47 @@ async function renderErrorForPlayer(req, res, message, status = 400) {
       <p><a href="/camp">Back to camp</a></p>`));
 }
 
+/**
+ * Refuse a state-changing request that says it came from somewhere else.
+ *
+ * `SameSite=Strict` was carrying this on its own, and it is scoped to the registrable
+ * site rather than to the origin — so a page on an untrusted sibling subdomain is
+ * same-site, and its forged post arrives with the session cookie attached. Raised in
+ * review on 2026-08-24, where the comment on the cookie claimed a stronger guarantee
+ * than the setting gives.
+ *
+ * The rule is deliberately "refuse a mismatch" rather than "require a match":
+ *
+ * - **A browser doing CSRF always sends `Origin` on a POST**, and it names the attacking
+ *   page rather than this site, so a mismatch is the whole of the attack and refusing it
+ *   is the whole of the defence.
+ * - **A missing `Origin` is not evidence of anything.** `fetch` from a script, curl, and
+ *   the test suite all omit it, and none of them are riding a session they did not earn
+ *   — a cross-site attack needs the browser to attach the cookie, and a browser attaches
+ *   the header at the same time. Requiring it would refuse every non-browser caller to
+ *   defend against a case that cannot arise, so those fall back to SameSite as before.
+ *
+ * `ORIGIN` pins the expected value where the deployment knows it. Without it the check
+ * compares against the request's own host, which is what the browser resolved to get
+ * here — enough to tell this site from another one, and the reason `trust proxy` has to
+ * be set correctly for `req.protocol` to be true behind the tunnel.
+ */
+function sameOrigin(req, res, next) {
+  if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return next();
+
+  const origin = req.get('origin');
+  if (!origin) return next();
+
+  const expected = process.env.ORIGIN ?? `${req.protocol}://${req.get('host')}`;
+  if (origin === expected) return next();
+
+  // The same shape as every other refusal: an error the app's handler renders, rather
+  // than a bare status nobody has written a page for.
+  const error = new Error('That request did not come from this camp.');
+  error.status = 403;
+  return next(error);
+}
+
 /** Minimal cookie parsing — one small function is cheaper than a dependency. */
 function readCookies(req, _res, next) {
   const cookies = {};
@@ -375,8 +419,17 @@ async function startSession(res, playerId) {
   const { token, maxAgeMs } = await createSession(pool, playerId);
   res.cookie(SESSION_COOKIE, token, {
     httpOnly: true,
-    // Strict is what stands in for CSRF tokens here: a cross-site form post arrives
-    // without the cookie, so every state-changing POST is same-origin by construction.
+    /*
+     * Strict, and it is most of the CSRF story rather than all of it. A cross-site form
+     * post arrives without this cookie, so it arrives as a stranger and is refused.
+     *
+     * What it is not, and the comment here used to claim it was: a guarantee that every
+     * state-changing POST is same-*origin*. SameSite is scoped to the registrable site,
+     * so a page on any sibling subdomain is same-site and its posts carry this cookie.
+     * That is a real hole on a shared domain and no hole at all on a dedicated one, and
+     * the deployment is currently the second — but the guard should not depend on which,
+     * so `sameOrigin` above checks the header rather than trusting the shape of the DNS.
+     */
     sameSite: 'strict',
     secure: process.env.NODE_ENV === 'production',
     maxAge: maxAgeMs,
