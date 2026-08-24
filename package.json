@@ -13,6 +13,7 @@
     "test": "node --test \"test/unit/**/*.test.js\"",
     "test:db": "node scripts/with-db.mjs node --env-file=.env --test \"test/db/**/*.test.js\"",
     "test:all": "npm test && npm run test:db",
+    "test:db:ci": "node --test \"test/db/**/*.test.js\"",
     "migrate": "node scripts/with-db.mjs node --env-file=.env src/db/migrate.js",
     "seed": "node scripts/with-db.mjs node --env-file=.env src/db/seed.js",
     "db:up": "wsl -d Debian --cd \"%CD%\" -- docker compose up -d --wait",
