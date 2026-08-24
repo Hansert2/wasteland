@@ -21,6 +21,22 @@ makes almost any host workable; what follows is what it needs, not where to put 
 | `NODE_ENV` | yes, in production | Anything but `production` leaves session cookies without the `Secure` flag |
 | `PORT` | no | Defaults to 3000 |
 | `TRUST_PROXY` | behind a proxy | Number of proxies in front of the app — `1` for a single reverse proxy. **Leave unset when the process is reachable directly** |
+| `ORIGIN` | no | The one address the game is reached at, e.g. `https://camp.example`. Checked against the `Origin` header of every state-changing POST. **No trailing slash.** Leave unset if the app answers to more than one hostname |
+
+`ORIGIN` is optional and worth understanding before setting it. Unset, the app compares
+the `Origin` header against the host the request arrived on, which is correct however
+many names the app answers to. Setting it replaces that inference with a stated fact,
+which is the better answer when there is exactly one hostname — and the wrong one when
+there are several, because it pins one and refuses posts from the rest.
+
+Two ways to get it wrong, both of which refuse *every* POST including login:
+
+- **A trailing slash.** A browser sends `Origin: https://camp.example` and never
+  `https://camp.example/`.
+- **A `TRUST_PROXY` that is not the truth**, if you leave `ORIGIN` unset. The inferred
+  value uses `req.protocol`, which reads `https` only when the proxy's
+  `X-Forwarded-Proto` is trusted. Behind TLS with `TRUST_PROXY` unset the app infers
+  `http://…` and disagrees with every browser that reaches it.
 
 `TRUST_PROXY` deserves the emphasis. Express takes the caller's address from
 `X-Forwarded-For` when it is set, and that header is caller-supplied: trusting it

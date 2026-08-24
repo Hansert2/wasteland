@@ -313,6 +313,31 @@ test('a state-changing post from somewhere else is refused', async () => {
   assert.ok(own.status < 400, `the page's own form still posts (${own.status})`);
 });
 
+test('an ORIGIN that is set to nothing falls back rather than refusing everything', async () => {
+  /*
+   * `docker-compose.prod.yml` passes `ORIGIN: ${ORIGIN:-}`, so a stack brought up
+   * without one in `.env.prod` hands the app an empty string rather than nothing at
+   * all. Under `??` that was an expected origin of '' — matching nothing, refusing
+   * every POST including login, on a deployment that had simply not set the variable.
+   */
+  const had = process.env.ORIGIN;
+  process.env.ORIGIN = '';
+
+  try {
+    const { cookie } = await registerAndMoveIn();
+    const response = await fetch(`${base}/logout`, {
+      method: 'POST',
+      redirect: 'manual',
+      headers: { cookie, origin: base, 'content-type': 'application/x-www-form-urlencoded' },
+    });
+
+    assert.ok(response.status < 400, `an empty ORIGIN must not refuse (${response.status})`);
+  } finally {
+    if (had === undefined) delete process.env.ORIGIN;
+    else process.env.ORIGIN = had;
+  }
+});
+
 test('a forged session token is not accepted', async () => {
   const camp = await fetch(`${base}/camp`, {
     headers: { cookie: 'wasteland_session=totally-made-up' },

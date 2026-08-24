@@ -360,7 +360,12 @@ function sameOrigin(req, res, next) {
   const origin = req.get('origin');
   if (!origin) return next();
 
-  const expected = process.env.ORIGIN ?? `${req.protocol}://${req.get('host')}`;
+  // `||`, not `??`, and the difference is a deployment away rather than academic.
+  // `docker-compose.prod.yml` passes `ORIGIN: ${ORIGIN:-}`, so a stack brought up
+  // without one in `.env.prod` hands this an empty string rather than nothing at all —
+  // and `??` only falls back on null. The expected origin would have been '', which
+  // matches nothing, and every POST including login would have been refused.
+  const expected = process.env.ORIGIN || `${req.protocol}://${req.get('host')}`;
   if (origin === expected) return next();
 
   // The same shape as every other refusal: an error the app's handler renders, rather
