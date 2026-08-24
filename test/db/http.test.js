@@ -19,7 +19,24 @@ let server;
 let base;
 const createdEmails = [];
 
+/**
+ * A different caller each time somebody signs up.
+ *
+ * Registration is limited by address alone — it has to be, because the caller chooses
+ * the email and any key including it hands out a fresh bucket per request. A suite that
+ * founds a dozen camps down one socket is one caller by that measure, and would spend
+ * the whole allowance on itself.
+ *
+ * So the helper below says who it is, using the app's own mechanism for that: the
+ * TRUST_PROXY switch and an X-Forwarded-For header. Deliberately not by loosening the
+ * limit — a security control tuned until the tests pass is a control set by the tests.
+ * TEST-NET-3, which exists for exactly this and is routable nowhere.
+ */
+let caller = 0;
+const nextCaller = () => `203.0.113.${(caller++ % 250) + 1}`;
+
 test.before(async () => {
+  process.env.TRUST_PROXY = '1';
   server = createApp().listen(0);
   await new Promise((resolve) => server.once('listening', resolve));
   base = `http://localhost:${server.address().port}`;
@@ -41,6 +58,7 @@ async function register(overrides = {}) {
   const response = await fetch(`${base}/register`, {
     method: 'POST',
     redirect: 'manual',
+    headers: { 'x-forwarded-for': nextCaller() },
     body: new URLSearchParams({
       email,
       password: 'correct horse battery staple',
@@ -149,6 +167,11 @@ test('another account cannot be founded on the same email', async () => {
 });
 
 test('logging in with the wrong password gives nothing away', async () => {
+  // The response half of "nothing away". The timing half was missing until 2026-08-24 —
+  // a missing account skipped scrypt entirely and answered in a thousandth of the time,
+  // so the two were trivially distinguishable however identical the page was. That half
+  // is pinned in `test/unit/passwords.test.js`, where the cost can be asserted without
+  // a wall clock; this one stays about what the caller is told.
   const { email } = await register();
 
   const wrongPassword = await fetch(`${base}/login`, {
@@ -208,6 +231,111 @@ test('grinding a password list is refused, and the account still works from else
     body: new URLSearchParams({ email: 'someone-else@example.test', password: 'whatever' }),
   });
   assert.equal(other.status, 401, 'a different door is still answered');
+});
+
+test('founding camps in a row is refused, whatever address is typed into the form', async () => {
+  /*
+   * Both credential routes shared one limiter until 2026-08-24, and its key is the
+   * caller's address *and* the account. That is right for logging in and useless for
+   * signing up, where the caller invents the account: a new email is a new bucket, and
+   * every accepted request pays a full scrypt and writes a player, a settlement, its
+   * structures and its stores — not a survivor, who arrives later through the same door
+   * every successor uses. The unit tests pin the key; this pins the route using it.
+   */
+  const from = '203.0.113.251'; // outside the range `nextCaller` hands out
+  const founded = async () => {
+    const email = `${uniq()}@example.test`;
+    createdEmails.push(email);
+    return fetch(`${base}/register`, {
+      method: 'POST',
+      redirect: 'manual',
+      headers: { 'x-forwarded-for': from },
+      body: new URLSearchParams({
+        email,
+        password: 'correct horse battery staple',
+        settlementName: 'Testcamp',
+      }),
+    });
+  };
+
+  // Five in the window are allowed, each with an address nobody has used before.
+  let last;
+  for (let i = 0; i < 6; i += 1) last = await founded();
+
+  assert.equal(last.status, 429, 'the sixth camp from one caller is refused');
+  assert.ok(Number(last.headers.get('retry-after')) > 0, 'and told when to come back');
+  assert.match(await last.text(), /Too many camps/i);
+});
+
+test('a malformed cookie is not a 500, and does not need a session to send', async () => {
+  // `decodeURIComponent` throws on invalid percent-encoding, and cookie parsing runs in
+  // middleware ahead of authentication — so one byte of nonsense in the header was an
+  // unauthenticated 500 on any route. Found in review on 2026-08-24.
+  for (const cookie of ['wl_session=%', 'wl_session=%zz', 'a=%E0%A4%A', 'x=%; y=fine']) {
+    const response = await fetch(`${base}/`, { headers: { cookie }, redirect: 'manual' });
+    assert.ok(response.status < 500, `${cookie} answered ${response.status}`);
+  }
+});
+
+test('a state-changing post from somewhere else is refused', async () => {
+  /*
+   * `SameSite=Strict` is scoped to the registrable site rather than the origin, so a
+   * page on an untrusted sibling subdomain is same-site and its forged post carries the
+   * session cookie. Raised in review on 2026-08-24, where the comment on the cookie
+   * claimed the stronger guarantee.
+   *
+   * The three cases below are the whole of the rule, and the third is the one worth
+   * pinning: a missing Origin is allowed on purpose. Every browser sends it on a POST,
+   * so a cross-site attack cannot arrive without one — and requiring it would refuse
+   * curl, scripts and this suite to defend against a case that cannot happen.
+   */
+  const { cookie } = await registerAndMoveIn();
+  const post = (origin) =>
+    fetch(`${base}/logout`, {
+      method: 'POST',
+      redirect: 'manual',
+      headers: {
+        cookie,
+        ...(origin ? { origin } : {}),
+        'content-type': 'application/x-www-form-urlencoded',
+      },
+    });
+
+  const forged = await post('https://evil.example.test');
+  assert.equal(forged.status, 403, 'a post claiming another origin is refused');
+  assert.match(await forged.text(), /did not come from this camp/i);
+
+  // Same site, different origin — the case SameSite alone lets through.
+  const sibling = await post(`http://evil.localhost:${server.address().port}`);
+  assert.equal(sibling.status, 403, 'and so is a sibling host on the same site');
+
+  const own = await post(base);
+  assert.ok(own.status < 400, `the page's own form still posts (${own.status})`);
+});
+
+test('an ORIGIN that is set to nothing falls back rather than refusing everything', async () => {
+  /*
+   * `docker-compose.prod.yml` passes `ORIGIN: ${ORIGIN:-}`, so a stack brought up
+   * without one in `.env.prod` hands the app an empty string rather than nothing at
+   * all. Under `??` that was an expected origin of '' — matching nothing, refusing
+   * every POST including login, on a deployment that had simply not set the variable.
+   */
+  const had = process.env.ORIGIN;
+  process.env.ORIGIN = '';
+
+  try {
+    const { cookie } = await registerAndMoveIn();
+    const response = await fetch(`${base}/logout`, {
+      method: 'POST',
+      redirect: 'manual',
+      headers: { cookie, origin: base, 'content-type': 'application/x-www-form-urlencoded' },
+    });
+
+    assert.ok(response.status < 400, `an empty ORIGIN must not refuse (${response.status})`);
+  } finally {
+    if (had === undefined) delete process.env.ORIGIN;
+    else process.env.ORIGIN = had;
+  }
 });
 
 test('a forged session token is not accepted', async () => {

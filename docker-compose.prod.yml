@@ -69,6 +69,14 @@ services:
       # claim any address and walk through the rate limiter. One tunnel or one reverse
       # proxy is 1. Nothing in front at all is unset.
       TRUST_PROXY: ${TRUST_PROXY:-1}
+      # The address this game is reached at, checked against the Origin header of every
+      # state-changing POST. Optional: left unset, the app compares against the host the
+      # request arrived on, which is right and is why this has an empty default rather
+      # than a required one. Set it when there is exactly one hostname — it turns an
+      # inference into a stated fact. Leave it unset if the app answers to several,
+      # because this pins one and refuses the rest. No trailing slash: the browser does
+      # not send one, so `https://camp.example/` matches nothing.
+      ORIGIN: ${ORIGIN:-}
     depends_on:
       db:
         condition: service_healthy

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { credentialKey, rateLimit } from '../../src/web/rate-limit.js';
+import { addressKey, credentialKey, rateLimit } from '../../src/web/rate-limit.js';
 
 /** A request/response pair thin enough to drive the middleware directly. */
 function call(limit, { ip = '1.2.3.4', body } = {}) {
@@ -84,4 +84,46 @@ test('the key normalises the address of an email, so case is not a way around it
     credentialKey({ ip: '1.1.1.1', body: { email: 'vera@example.test' } }),
   );
   assert.equal(credentialKey({ body: {} }), 'unknown|', 'and a bodyless request is still a key');
+});
+
+/*
+ * Signing up, which is counted differently from signing in and has to be.
+ *
+ * Found in review on 2026-08-24: both routes shared the login limiter, whose key is the
+ * address *and* the account. At a login that is right. At a registration the caller
+ * chooses the account, so a fresh address in the form is a fresh bucket and the limiter
+ * never fills — while every accepted request pays a full scrypt and writes a camp.
+ */
+
+test('the registration key is the address alone, because the caller picks the account', () => {
+  assert.equal(
+    addressKey({ ip: '10.0.0.1', body: { email: 'one@example.test' } }),
+    addressKey({ ip: '10.0.0.1', body: { email: 'two@example.test' } }),
+  );
+  assert.equal(addressKey({}), 'unknown', 'a request with no address is still a key');
+});
+
+test('a new email in the form does not buy a new registration allowance', () => {
+  const limit = rateLimit({ windowMs: 60_000, max: 3, key: addressKey });
+  const from = (email) => call(limit, { ip: '10.0.0.1', body: { email } });
+
+  assert.equal(from('one@example.test').refusal, null);
+  assert.equal(from('two@example.test').refusal, null);
+  assert.equal(from('three@example.test').refusal, null);
+
+  const { refusal } = from('four@example.test');
+  assert.ok(refusal, 'the fourth address from the same caller is refused');
+  assert.equal(refusal.status, 429);
+});
+
+test('and a different address is unaffected, so one signup does not close the door', () => {
+  const limit = rateLimit({ windowMs: 60_000, max: 1, key: addressKey });
+
+  call(limit, { ip: '10.0.0.1', body: { email: 'one@example.test' } });
+  assert.ok(call(limit, { ip: '10.0.0.1', body: { email: 'two@example.test' } }).refusal);
+  assert.equal(
+    call(limit, { ip: '10.0.0.2', body: { email: 'three@example.test' } }).refusal,
+    null,
+    'somebody else signing up is somebody else',
+  );
 });

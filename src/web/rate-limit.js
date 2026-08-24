@@ -81,3 +81,29 @@ export function credentialKey(req) {
   const email = String(req.body?.email ?? '').trim().toLowerCase();
   return `${req.ip ?? 'unknown'}|${email}`;
 }
+
+/**
+ * The key for signing up: the caller's address and nothing else.
+ *
+ * `credentialKey` is the right shape for login and the wrong one for registration, and
+ * the difference is who chooses the account. At a login the account is a fact about the
+ * world — either that camp exists or it does not — so counting the pair limits the
+ * attack without letting one caller lock a stranger out. At a registration the caller
+ * *invents* the account, so the same key hands them a fresh, empty bucket on every
+ * request simply by typing a new address.
+ *
+ * Found in review on 2026-08-24, where both routes shared one limiter. It is not only
+ * account spam: every accepted registration pays a full scrypt — sixteen megabytes and
+ * tens of milliseconds — and then writes a player, a settlement, its structures and its
+ * stores. (Not a survivor. Founding leaves the camp empty and the first person moves in
+ * through `raiseSuccessor`, the same door every successor uses.) An unbounded loop of
+ * them is a way to spend this server's memory from outside it.
+ *
+ * The cost of address-only is real and is the one to watch: a household or an office
+ * behind one address shares the allowance. That is why the allowance at the call site is
+ * per hour rather than per fifteen minutes, and generous enough for a family to sign up
+ * on the same evening.
+ */
+export function addressKey(req) {
+  return String(req.ip ?? 'unknown');
+}
