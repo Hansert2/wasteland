@@ -328,17 +328,42 @@ the two constraints below as requirements:
 
 | View | Blocks |
 |---|---|
-| **Camp** (default) | Contact, raid warning, the sky, while you were away, Next, stores, structures and builds |
+| **Camp** (default) | Raid warning, the sky, while you were away, Next, structures and builds |
 | **Survivor** | Health/hunger/radiation, away or where to send them, inventory, workshop |
 | **Road** | The seven links, who is at the end of them, and the trade post they open |
 | **Trade** | Caravan and its offers, faction standings |
 | **Records** | Graveyard, camp history |
+| *(every view)* | Contact, the error box, the camp's identity, the stores |
 
-**Contact goes on the default view and nowhere else**, which is the strongest single
-placement claim in this document. It has a countdown measured in tens of minutes, it is
-the only block in the game that is gone if you do not answer it, and it appears without
-warning while a trip is out. A player who has to click through to find it will find it
-closed. It belongs beside the raid warning because they are the same kind of thing.
+Two of those are on every view by not being in the stream at all: the identity and the
+stores live in the rail, which the per-view filter does not reach. The stores are there
+rather than listed five times because a view is a subject — the camp, the person, the
+road, the market — and how much food is left is not one of those. It is the number every
+one of those subjects is decided against.
+
+**Contact goes on every view**, and this is the strongest single placement claim in this
+document. It has a countdown measured in tens of minutes, it is the only block in the
+game that is gone if you do not answer it, and it appears without warning while a trip is
+out. A player who has to click through to find it will find it closed.
+
+> **Amended after the split shipped.** This originally read *"the default view and
+> nowhere else"*, and the second half was wrong. The claim it was making — a player must
+> not have to go looking — argues for being on the view they land on; it never argued for
+> being absent from the others. And "nowhere else" cost exactly what the claim was
+> written to prevent. The hidden alarm that fetches an arriving moment is armed on every
+> view, so a player watching the trip from **Survivor** — the view holding the countdown,
+> the health, and the radio's *next contact in…* line — was sent the box and shown a
+> hidden section. The page went and got the thing, then hid it from the person most
+> likely to be waiting for it.
+>
+> It is now revealed by a blanket rule rather than listed per view, so a sixth view
+> cannot be defined without it. The empty state is a separate question and stayed where
+> it was: *"Nobody is on the wire"* is information on the check-in view, which is a view
+> about what is and is not happening, and on Trade it is a line about the absence of
+> something nobody asked about. The box goes everywhere; the placeholder does not.
+
+On the default view it belongs beside the raid warning, because they are the same kind of
+thing.
 
 *Next* goes on the default view for a weaker but real reason: it exists to tell a new
 player what this game is, and a new player does not know there are other views.

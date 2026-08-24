@@ -159,10 +159,12 @@ test('every block on the page belongs to a view that can show it', async () => {
    * carries all its data attributes — and is on no view. Nothing throws, nothing logs,
    * and the feature is simply invisible until somebody notices it missing.
    *
-   * `s-head` is exempt because it is the camp's identity and lives in the rail rather
-   * than in the stream. `s-error` is exempt in the other direction: it is on every
-   * view, because a refused action that renders into a hidden section is a button that
-   * appears to have done nothing.
+   * `s-head` and `s-stores` are exempt because they live in the rail rather than in the
+   * stream — outside `main`, and so outside the filter entirely. That is the mechanism
+   * for "on every view" and it is a stronger one than listing an id five times: a sixth
+   * view cannot be added without them. `s-error` is exempt in the other direction: it
+   * is in the stream and turned on for every view by hand, because a refused action
+   * that renders into a hidden section is a button that appears to have done nothing.
    */
   const camp = STATES.home;
   const ids = [...new Set([...camp.matchAll(/<section id="(s-[a-z]+)">/g)].map((m) => m[1]))];
@@ -171,7 +173,7 @@ test('every block on the page belongs to a view that can show it', async () => {
   );
 
   for (const id of ids) {
-    if (id === 's-head') continue;
+    if (id === 's-head' || id === 's-stores') continue;
 
     if (id === 's-error') {
       assert.ok(
@@ -181,14 +183,31 @@ test('every block on the page belongs to a view that can show it', async () => {
       continue;
     }
 
+    if (id === 's-moment') {
+      assert.ok(
+        camp.includes('main #s-moment { display: block; }'),
+        'Contact must be on every view, not on one of them',
+      );
+      continue;
+    }
+
     assert.ok(revealed.has(id), `${id} is rendered but no view reveals it`);
   }
 });
 
-test('each view has something on it, and Contact is only on the default one', async () => {
-  // Contact is the strongest placement claim in `docs/DESIGN-BRIEF.md` §7.3: a window
-  // measured in tens of minutes, gone if you do not answer it, arriving without
-  // warning. A player who has to click through to find it will find it closed.
+test('each view has something on it, and Contact is on all of them', async () => {
+  /*
+   * Contact is the strongest placement claim in `docs/DESIGN-BRIEF.md` §7.3: a window
+   * measured in tens of minutes, gone if you do not answer it, arriving without warning.
+   * A player who has to click through to find it will find it closed.
+   *
+   * That used to be asserted here as "the default view and nowhere else", which is a
+   * stronger claim than the brief makes and was wrong in a way the brief could not have
+   * foreseen: the alarm that fetches an arriving moment is armed on every view, so a
+   * player watching the trip from the Survivor view was sent the box and shown a hidden
+   * section. It is now revealed by a blanket rule instead, so what this pins is that no
+   * view can be defined that leaves Contact out.
+   */
   const camp = STATES.home;
   const shown = {};
 
@@ -200,8 +219,55 @@ test('each view has something on it, and Contact is only on the default one', as
     assert.ok(shown[pane]?.size > 0, `the ${pane} view shows nothing at all`);
   }
 
-  const withContact = Object.entries(shown)
-    .filter(([, ids]) => ids.has('s-moment'))
-    .map(([pane]) => pane);
-  assert.deepEqual(withContact, ['camp'], 'Contact belongs to the default view and nowhere else');
+  assert.ok(
+    camp.includes('main #s-moment { display: block; }'),
+    'Contact is revealed for every view, not listed per view',
+  );
+
+  // And the other half of it, which is the half that can regress quietly. The box is
+  // everywhere; the "Nobody is on the wire" placeholder is not, because on Trade that
+  // is a line about the absence of something nobody asked about. Lose this rule and
+  // every view grows a permanent line saying nothing is happening; write it wrong and
+  // the arriving box is hidden on four views out of five, which is what this whole
+  // change was about.
+  assert.ok(
+    camp.includes('body:not([data-pane="camp"]) main #s-moment:not(:has(.contact)) { display: none; }'),
+    'the empty Contact line belongs to the check-in view alone',
+  );
+});
+
+test('every gauge says what its number counts, in a place the note script can find', async () => {
+  /*
+   * Played on 2026-08-24: the Survivor block read `HUNGER 0.0` and `RADIATION 0.7` and
+   * left the player to guess the scale, the direction and what moves either figure —
+   * and 0.0 hunger, which is a survivor who has just eaten, reads most naturally as a
+   * survivor with nothing to eat.
+   *
+   * Two silent failures here, and this file exists for exactly that class. The prose
+   * only reaches a mouse if its gauge carries `noted`, because that is what the
+   * pointer handler queries for; and it only reaches a screen reader or a phone if it
+   * is a `note` in the document rather than a `title` attribute. Either half alone
+   * renders a page that looks perfectly correct and explains nothing.
+   */
+  for (const [name, html] of Object.entries(STATES)) {
+    // Cut on the opening tag rather than matching a balanced one: a gauge holds nested
+    // divs, and a regex that walks them is a second parser to get wrong.
+    const gauges = html.split('<div class="gauge ').slice(1);
+    if (gauges.length === 0) continue;
+
+    assert.equal(gauges.length, 3, `${name}: ${gauges.length} gauges, expected health, hunger, rads`);
+
+    for (const gauge of gauges) {
+      assert.match(gauge.slice(0, 20), /^noted"/, `${name}: a gauge no pointer will ever ask about`);
+      assert.ok(
+        gauge.includes('<span class="note">'),
+        `${name}: a gauge with a number and no account of what it counts`,
+      );
+      // A scale and at least two rates. A note that is only a heading explains the
+      // units and nothing about what moves them, which is half the question.
+      assert.ok(gauge.includes('class="stat-head"'), `${name}: a note with no scale on it`);
+      const rows = [...gauge.matchAll(/class="stat-row"/g)].length;
+      assert.ok(rows >= 3, `${name}: ${rows} rates under the scale, expected at least three`);
+    }
+  }
 });

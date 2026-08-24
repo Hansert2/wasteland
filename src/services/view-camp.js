@@ -216,6 +216,37 @@ function strainOf(survivor, decayPerHour) {
 }
 
 /**
+ * The rates behind the three gauges, so the page can say what a figure is made of.
+ *
+ * Played on 2026-08-24: the Survivor block read `HUNGER 0.0` and `RADIATION 0.7`, and a
+ * player who had not read `constants.js` had no way to know what either number counts,
+ * which direction is bad, or what moves them. "0.0" hunger is a survivor who is fed; a
+ * reasonable person reads it as a survivor with nothing to eat.
+ *
+ * These are the tuning constants, passed rather than described, because a sentence in
+ * `render.js` saying "hunger climbs 4.2 an hour" is a second copy of a number that a
+ * balance pass edits in one place. `radDecayPerHour` is the camp's real figure — the
+ * one filtration changes — and `radDecayBasePerHour` is what a survivor out on the road
+ * gets, since the filter is bolted to the purifier and does not follow anyone into the
+ * Deep Zone.
+ */
+function vitalsOf(radDecayPerHour) {
+  return {
+    eats: { food: CONFIG.foodPerHour, water: CONFIG.waterPerHour },
+    hungerRisePerHour: CONFIG.hungerRisePerHour,
+    hungerFallPerHour: CONFIG.hungerFallPerHour,
+    starvationThreshold: CONFIG.starvationThreshold,
+    starvationDamagePerHour: CONFIG.starvationDamagePerHour,
+    radDecayPerHour,
+    radDecayBasePerHour: CONFIG.radDecayPerHour,
+    radDamagePerHour: CONFIG.radDamagePerHour,
+    regenPerHour: CONFIG.regenPerHour,
+    regenHungerCeiling: CONFIG.regenHungerCeiling,
+    regenRadCeiling: CONFIG.regenRadCeiling,
+  };
+}
+
+/**
  * What a price is short by, in the words the player would use.
  *
  * Every priced thing on the camp page rendered its button whether or not the camp
@@ -570,6 +601,12 @@ export async function viewCamp(client, settlementId, now = Date.now()) {
 
   const rates = productionRates(structures);
 
+  // How fast radiation leaves somebody standing in this camp. Read by both the strain
+  // and the gauge's note, which must not disagree about what filtration is worth.
+  const radDecayPerHour =
+    CONFIG.radDecayPerHour *
+    (fitted.has('filtration') ? UPGRADES.filtration.radDecayMultiplier : 1);
+
   // What the sky is doing to production, and what the survivor takes back out. Both
   // are part of "the rate" as a player experiences it; neither used to be counted.
   const weatherFactors = productionFactors(activeAt(state.worldEvents, now));
@@ -850,12 +887,10 @@ export async function viewCamp(client, settlementId, now = Date.now()) {
       : wandererFor(settlements[0].caravan_seed, Number(fallen[0].n)),
     // What those numbers are doing to them. Null with nobody in the camp, because a
     // camp with no survivor has no strain, only an empty chair.
-    strain: state.survivor
-      ? strainOf(
-          state.survivor,
-          CONFIG.radDecayPerHour * (fitted.has('filtration') ? UPGRADES.filtration.radDecayMultiplier : 1),
-        )
-      : null,
+    strain: state.survivor ? strainOf(state.survivor, radDecayPerHour) : null,
+    // What the three gauges are counting and what moves them. Null with nobody in the
+    // camp, for the same reason as the strain: there are no gauges to explain.
+    vitals: state.survivor ? vitalsOf(radDecayPerHour) : null,
     /**
      * The rate a player can act on: what the stores will actually do next hour.
      *

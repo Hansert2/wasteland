@@ -23,13 +23,29 @@
  * result is the view. That is not a coincidence to be preserved by hand — the order was
  * already grouped by subject before there were views, so the grouping fell out of it.
  *
- * `s-head` and `s-error` are on every view deliberately and are not listed. The head is
- * the camp's identity and lives in the rail; the error box is a refusal of something the
- * player just did, and a refusal that renders into a hidden section is a button that
- * silently did nothing.
+ * `s-head`, `s-stores`, `s-error` and `s-moment` are on every view deliberately and are
+ * not listed. Two mechanisms, for two different reasons:
+ *
+ * - **Outside `main`.** The head is the camp's identity and the stores are its state;
+ *   both live in the rail, which the filter does not reach. The stores moved out of
+ *   this list rather than into every entry of it, because a view is a subject — the
+ *   camp, the person, the road, the market — and how much food is left is not one of
+ *   those; it is the number every one of those subjects is decided against. It also
+ *   means a sixth view cannot be added without them.
+ * - **In the stream, turned on by hand.** The error box, because a refusal that renders
+ *   into a hidden section is a button that silently did nothing. And Contact, for the
+ *   same reason with a worse ending: an error can be retried and a contact just closes.
+ *
+ * Contact was on the default view and nowhere else, on the argument in
+ * `docs/DESIGN-BRIEF.md` §7.3 — tens of minutes to answer, gone if you do not, and a
+ * player who has to click through to find it will find it closed. That argument says it
+ * must be on the view a player lands on. It never said only there, and only there had a
+ * cost the brief did not foresee: the alarm that fetches a moment is armed on every view
+ * (see `momentAlarm`), so a player watching the trip on the Survivor view got the swap,
+ * got the box, and could not see it. The page went and got the thing, then hid it.
  */
 const PANES = {
-  camp: ['moment', 'raid', 'sky', 'events', 'direction', 'stores', 'structures', 'caravan', 'roster'],
+  camp: ['raid', 'sky', 'events', 'direction', 'structures', 'caravan', 'roster'],
   survivor: ['survivor', 'inventory', 'expedition', 'workshop'],
   road: ['road'],
   trade: ['caravan', 'post', 'standings'],
@@ -266,6 +282,22 @@ const STYLE = `
   main section { display: none; margin: 0; }
   main #s-error { display: block; }
   /*
+   * Contact, on every view, for the reason the error box is on every view.
+   *
+   * It has tens of minutes on it and it is gone if nobody answers, and the alarm that
+   * goes and fetches it is armed everywhere — so camp-only meant a player watching the
+   * trip from the Survivor view received the box and was shown a hidden section.
+   *
+   * The quiet line is a different question and stays where it was. "Nobody is on the
+   * wire" is information on the check-in view, which is a view about what is and is not
+   * happening; on Trade it is a line about the absence of something nobody asked about.
+   * So: the box on every view, the placeholder only on the one it belongs to. ":has" is
+   * the test rather than a class on the section, because the section's opening tag is
+   * pinned by the page contract and must stay exactly "<section id=...>".
+   */
+  main #s-moment { display: block; }
+  body:not([data-pane="camp"]) main #s-moment:not(:has(.contact)) { display: none; }
+  /*
    * The one place an empty block is hidden, and deliberately not the blanket
    * ':empty { display: none }' the handoff forbids — that rule would take the slot away
    * from a caravan that has not arrived yet. This is scoped to the error box, which is
@@ -301,7 +333,15 @@ ${PANE_CSS}
   body[data-pane="survivor"] .lane-side { display: flex; flex-direction: column; gap: 18px; }
   body[data-pane="survivor"] .lane-main { grid-column: 1; }
   body[data-pane="survivor"] .lane-side { grid-column: 2; }
-  body[data-pane="survivor"] #s-error { grid-column: 1 / -1; }
+  body[data-pane="survivor"] #s-error,
+  body[data-pane="survivor"] #s-moment { grid-column: 1 / -1; }
+  /*
+   * The Contact box repeats the trip's state on purpose — the decision needs those facts
+   * beside it rather than a click away. On this view they are not a click away: the Away
+   * block is directly underneath saying the same sentence about the same trip. So the
+   * line goes here and only here, and the box keeps it everywhere else.
+   */
+  body[data-pane="survivor"] #s-moment .state { display: none; }
   /* A 104px label gutter is a third of a 300px column, so in the sidebar a quiet row
      stacks its label above its line instead of standing beside it. */
   body[data-pane="survivor"] .lane-side .quiet { display: block; margin: 0; }
@@ -547,9 +587,18 @@ ${PANE_CSS}
 
   /* ---- stores ---- */
 
-  .stores { display: grid; grid-template-columns: repeat(4, 1fr); }
-  .store { padding: 14px 18px; border-right: 1px solid var(--rule-in); }
-  .store:last-child { border-right: 0; }
+  /*
+   * The stores live in the rail, so they are a column of four rather than a row of
+   * four. Same cells, same attributes, one arrangement narrower.
+   *
+   * Divided by a rule between each rather than boxed: the rail is already a column of
+   * things separated that way — the identity, the five views, the way out — and a
+   * bordered panel dropped into it would read as a widget somebody bolted on.
+   */
+  .stores { display: flex; flex-direction: column;
+            border-bottom: 1px solid var(--rule); }
+  .store { padding: 11px 20px; }
+  .store + .store { border-top: 1px solid var(--rule-in); }
   .store-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
   .store-top .tag { letter-spacing: .12em; color: var(--dim); }
   .rate { font-family: var(--numer); font-size: 11.5px; line-height: 1;
@@ -558,19 +607,17 @@ ${PANE_CSS}
      gets the accent: a store quietly draining. */
   .rate.down { color: var(--oxide-light); }
   .rate.none { color: var(--faint); }
-  .store-fig { margin-top: 8px; font-family: var(--numer); font-size: 23px; line-height: 1;
+  /* 19px, not the 23 this was across four wide cells: in a 200px column the figure is
+     read against the camp's name rather than against the page, and it is the state of
+     a store rather than the headline of a block. */
+  .store-fig { margin-top: 6px; font-family: var(--numer); font-size: 19px; line-height: 1;
                color: var(--value); font-variant-numeric: tabular-nums; }
   .store-fig .cap { font-size: 11.5px; color: var(--faint); }
   /* A zero store shows an empty track rather than no track: the four cells are the same
      shape whatever is in them, or the eye has to re-find the layout each time. */
   .track { margin-top: 8px; height: 2px; background: #2C2A25; }
   .track i { display: block; height: 2px; background: var(--quiet); }
-
-  @media (max-width: 640px) {
-    .stores { grid-template-columns: repeat(2, 1fr); }
-    .store:nth-child(2n) { border-right: 0; }
-    .store:nth-child(n + 3) { border-top: 1px solid var(--rule-in); }
-  }
+  .stores .track { margin-top: 7px; }
 
   /* ---- tables ---- */
 
@@ -653,6 +700,9 @@ ${PANE_CSS}
     text-wrap: pretty;
     pointer-events: none;
   }
+  /* The clone the script drops in. Block, so a note made of rows sizes the pop to its
+     widest row instead of laying blocks out inside an inline box. */
+  .note-pop > .note-body { display: block; }
   .road-note { padding: 12px 18px; border-bottom: 1px solid var(--rule-in); max-width: 74ch; }
   .page-title { font-family: var(--label); font-weight: 700; font-size: 25px;
                 line-height: 1.15; color: var(--bone); margin: 0 0 10px; }
@@ -731,6 +781,25 @@ ${PANE_CSS}
                     color: var(--value); font-variant-numeric: tabular-nums; }
   .gauge .track { margin-top: 7px; }
   .gauge small { display: block; margin-top: 6px; font-size: 14px; line-height: 1.5; }
+  /*
+   * What the figure counts, and what moves it — see ".note", which is where this is
+   * usually rendered rather than on the page.
+   *
+   * A stat block and not a paragraph, because every one of these facts is a label and
+   * a figure: prose made a player read a sentence to find "-12/h" inside it. Same
+   * arrangement as the gauge above it — name left, number right, in the numeric face
+   * — so the note reads as more of the instrument rather than as a footnote about it.
+   */
+  .gauge .note { margin-top: 8px; }
+  .stat-head { display: block; margin-bottom: 7px; padding-bottom: 6px;
+               border-bottom: 1px solid var(--rule-in); font-family: var(--numer);
+               font-size: 12.5px; line-height: 1.3; color: var(--faint); }
+  .stat-row { display: flex; align-items: baseline; justify-content: space-between;
+              gap: 20px; margin-top: 5px; }
+  .stat-row .k { font-size: 13px; line-height: 1.3; color: var(--dim); }
+  .stat-row .v { font-family: var(--numer); font-size: 13px; line-height: 1.3;
+                 color: var(--value); font-variant-numeric: tabular-nums;
+                 white-space: nowrap; }
   .who-name { display: block; font-family: var(--label); font-weight: 700; font-size: 22px;
               line-height: 1.1; color: var(--bone); }
   .known { margin: 7px 0 0; font-size: 15.5px; line-height: 1.55; color: var(--dim); }
@@ -883,6 +952,16 @@ ${PANE_CSS}
       border-bottom: 1px solid var(--rule);
     }
     .rail .who { padding: 18px 16px 14px; border-bottom: 0; }
+    /* The rail is a header here rather than a column, so the four stores lie down and
+       share its width. The cap goes: "40.0 / 350" in a quarter of a phone is two
+       figures where the first is the one being watched. */
+    .stores { flex-direction: row; border-bottom: 0;
+              border-top: 1px solid var(--rule-in); }
+    .store { flex: 1; min-width: 0; padding: 10px 12px 12px; }
+    .store + .store { border-top: 0; border-left: 1px solid var(--rule-in); }
+    .store-top .tag { letter-spacing: .1em; }
+    .store-fig { font-size: 16px; }
+    .store-fig .cap { display: none; }
     .rail nav {
       flex-direction: row;
       overflow-x: auto;
@@ -967,7 +1046,7 @@ export function layout(title, body, { pane } = {}) {
  * makes it navigate rather than post in place — the rule `section()` documents, used
  * rather than restated.
  */
-function rail(pane, identity) {
+function rail(pane, identity, state = '') {
   const links = RAIL.map(
     ([name, label, href]) =>
       `<a href="${href}"${name === pane ? ' aria-current="page"' : ''}>${label}</a>`,
@@ -975,6 +1054,7 @@ function rail(pane, identity) {
 
   return `<div class="rail">
     ${identity}
+    ${state}
     <nav>${links}</nav>
     <form method="post" action="/logout"><button type="submit">Log out</button></form>
   </div>`;
@@ -1274,7 +1354,12 @@ export const TIMERS = `
       const text = source ? source.textContent.trim() : '';
       if (!text) { drop(); return; }
       noted = host;
-      pop.textContent = text;
+      // Cloned rather than read as text, because a note is a paragraph in one place and
+      // a block of rates in another, and the pop should be whichever one the row wrote.
+      // The clone drops "note" itself: that class is what clips the original off screen.
+      const copy = source.cloneNode(true);
+      copy.className = 'note-body';
+      pop.replaceChildren(copy);
       pop.hidden = false;
     }
 
@@ -1432,7 +1517,7 @@ export function campPage(view, { error, pane = 'camp' } = {}) {
     </div>`);
 
   return layout(view.name, `<div class="shell">
-    ${rail(pane, identity)}
+    ${rail(pane, identity, section('stores', renderResources(view.resources)))}
     <main>
     ${section('error', error ? `<p class="error">${escape(error)}</p>` : '')}
 
@@ -1484,13 +1569,12 @@ export function campPage(view, { error, pane = 'camp' } = {}) {
       ${section(
         'survivor',
         view.survivor
-          ? renderSurvivor(view.survivor, view.strain)
+          ? renderSurvivor(view.survivor, view.strain, view.vitals)
           : renderNoSurvivor(view.fallenCount > 0, view.arriving),
       )}
       ${section('inventory', renderInventory(view.inventory))}
     </div>
 
-    ${section('stores', renderResources(view.resources))}
     ${section(
       'structures',
       renderStructures(
@@ -1748,7 +1832,7 @@ function strainNote(strain) {
   return `<small>not healing until this is down, ${clear}</small>`;
 }
 
-function renderSurvivor(survivor, strain) {
+function renderSurvivor(survivor, strain, vitals) {
   // What this one is, under how they are doing. Without it the skills are two hidden
   // multipliers and the arrival prose was a thing the player read once and never saw
   // the consequences of — which is the failure the whole feature exists to avoid.
@@ -1770,24 +1854,118 @@ function renderSurvivor(survivor, strain) {
    * against a hundred, because that is the number the survivor's life depends on and
    * the only one the track can honestly be full of.
    */
-  const gauge = (label, value, of, note = '') => `<div class="gauge">
+  const gauge = (label, value, of, note, tail = '') => `<div class="gauge noted">
       <div class="gauge-top"><span class="tag">${label}</span>
         <span class="val">${n(value)}</span></div>
       <div class="track">${
         value > 0 ? `<i style="width:${bar(value, of)}%"></i>` : ''
-      }</div>${note}
+      }</div>${tail}${note}
     </div>`;
+
+  const said = gaugeNotes(strain, vitals);
 
   return block(
     'Survivor',
     `<div class="who-name">${escape(survivor.name ?? 'Survivor')}</div>
      ${who}
      <div class="gauges">
-       ${gauge('Health', survivor.health, 100)}
-       ${gauge('Hunger', survivor.hunger, 100)}
-       ${gauge('Radiation', survivor.radiation, strain?.threshold ?? 100, strainNote(strain))}
+       ${gauge('Health', survivor.health, 100, said.health)}
+       ${gauge('Hunger', survivor.hunger, 100, said.hunger)}
+       ${gauge(
+         'Radiation',
+         survivor.radiation,
+         strain?.threshold ?? 100,
+         said.radiation,
+         strainNote(strain),
+       )}
      </div>`,
   );
+}
+
+/**
+ * What each gauge counts, which way is bad, and what moves it — as a stat block.
+ *
+ * Played on 2026-08-24: the block read `HUNGER 0.0` and `RADIATION 0.7` and said nothing
+ * else. Both numbers were fine and both were unreadable — 0.0 hunger is a survivor who
+ * has just eaten, and the obvious reading of it is a survivor with nothing to eat. The
+ * scale is not guessable either: health and hunger run to 100, radiation is drawn
+ * against the dose it starts burning at, and each of the three is moved by something
+ * different.
+ *
+ * The first cut of this was three paragraphs, and prose was the wrong instrument: a
+ * player checking what hunger costs does not want to read a sentence to find `-12/h`
+ * inside it. Every one of these facts is a label and a figure, so it is written as a
+ * label and a figure — a scale on top, rates under it, in the numeric face the rest of
+ * the panel already counts in.
+ *
+ * It rides in the note that follows the cursor, the same idiom the structures and the
+ * bench use, so the panel keeps the three numbers a player came to read and the rates
+ * behind them are one hover away.
+ *
+ * Every figure comes from `vitals`, which is `CONFIG` — a balance pass that halves the
+ * regen rate changes this block with it, and cannot leave the page quoting the old
+ * number. Written to survive a missing `vitals` too, because a note is an explanation
+ * and a page that throws rather than render one is a bad trade.
+ */
+function gaugeNotes(strain, vitals) {
+  if (!vitals) return { health: '', hunger: '', radiation: '' };
+
+  const burnsAt = rate(strain?.threshold ?? 100);
+  // Filtration is bolted to the purifier and does not follow anyone into the Deep Zone,
+  // so the camp's figure and the road's figure are two different numbers whenever it is
+  // fitted — and the difference is the whole of what the upgrade sells.
+  const scrubs =
+    vitals.radDecayPerHour > vitals.radDecayBasePerHour
+      ? [
+          ['scrubbed in camp', `-${rate(vitals.radDecayPerHour)}/h`],
+          ['out on the road', `-${rate(vitals.radDecayBasePerHour)}/h`],
+        ]
+      : [['decays', `-${rate(vitals.radDecayBasePerHour)}/h`]];
+
+  return {
+    health: stats('0 – 100 · 0 is a grave', [
+      ['heals', `+${rate(vitals.regenPerHour)}/h`],
+      ['only while', `hunger < ${rate(vitals.regenHungerCeiling)} · rads < ${rate(vitals.regenRadCeiling)}`],
+      ['starving', `to -${rate(vitals.starvationDamagePerHour)}/h`],
+      ['irradiated', `to -${rate(vitals.radDamagePerHour)}/h`],
+    ]),
+    hunger: stats('0 fed – 100 starving', [
+      ['eating', `-${rate(vitals.hungerFallPerHour)}/h`],
+      ['food drawn', `${rate(vitals.eats.food)}/h`],
+      ['water drawn', `${rate(vitals.eats.water)}/h`],
+      ['nothing to eat', `+${rate(vitals.hungerRisePerHour)}/h`],
+      ['starves at', `${rate(vitals.starvationThreshold)}+`],
+    ]),
+    radiation: stats('0 – 100 · carried in from the road', [
+      ...scrubs,
+      ['burns at', `${burnsAt}+`],
+      ['no healing above', rate(vitals.regenRadCeiling)],
+    ]),
+  };
+}
+
+/**
+ * A scale and a column of rates, which is what all three of these are.
+ *
+ * One element, whether it is read inline on a phone, announced by a screen reader in
+ * document order, or lifted into the note that follows the cursor — the script clones
+ * this rather than copying its text, so there is still exactly one copy of every figure.
+ */
+function stats(scale, rows) {
+  const line = ([key, value]) =>
+    `<span class="stat-row"><span class="k">${escape(key)}</span><span class="v">${escape(value)}</span></span>`;
+
+  return `<span class="note">
+      <span class="stat-head">${escape(scale)}</span>
+      ${rows.map(line).join('\n      ')}
+    </span>`;
+}
+
+/** A per-hour figure, where "12.0/h" is a machine talking and "12/h" is a number. */
+function rate(value) {
+  const figure = Number(value);
+  if (!Number.isFinite(figure)) return '?';
+  return figure.toFixed(2).replace(/\.?0+$/, '');
 }
 
 /** A track's fill, clamped and rounded — a width is not worth fifteen decimals. */
@@ -2547,7 +2725,17 @@ function renderResources(resources) {
       </div>`;
     })
     .join('');
-  return block('Stores', `<div class="stores">${cells}</div>`, { flush: true });
+
+  /*
+   * No block, no heading. In the rail this is not a panel about the stores — it is the
+   * camp's state, sitting under the camp's name in the same column, and a bordered box
+   * with "Stores" written across the top of it would be a second identity card.
+   *
+   * The four cells are unchanged apart from their arrangement, which is the point: the
+   * figures, the rates and the tracks are the same markup the wide block used, so the
+   * client script finds them exactly as it always did.
+   */
+  return `<div class="stores">${cells}</div>`;
 }
 
 /**
