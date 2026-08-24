@@ -765,6 +765,55 @@ ${PANE_CSS}
   .fitting .tag { letter-spacing: .14em; color: var(--quiet); white-space: nowrap; }
   .fitting span:last-child { font-size: 15px; line-height: 1.5; color: var(--dim); }
 
+  /*
+   * ---- region plates ----
+   *
+   * Held down on purpose. §2.1 of the brief bans illustration because the atmosphere is
+   * meant to live in the prose, and these earn their place only by staying a strip on
+   * the edge of a row: sized in pixels rather than in columns, one step darker than the
+   * page so the eye reaches the name first, and never the thing a row opens with.
+   */
+  /*
+   * A dispatch row standing on the place it sends you to.
+   *
+   * The veil is the page's own ground colour, and its opacity is a number the text
+   * decides rather than the picture: ".lvl" and ".cost" are set in the quiet greys, and
+   * a photograph with a white sky in it lifts the floor those are read against.
+   *
+   * Two figures do that work together, and both were found on screen rather than
+   * reasoned out. .82 is where the ships in Coastal Wreckage and the stair at the
+   * bunkers become things you can recognise while the eleven-point line under the name
+   * stays as easy as it was on a plain fill. And the crop sits at 72% rather than
+   * centred, because the sky is the bright part of every one of these and the ground is
+   * the half worth showing — it is a texture under the words, never a background image
+   * with text laid on top of it.
+   *
+   * Hover thins it to .68. That is the whole interaction: the row a player is
+   * considering shows them where they would be sending somebody, and nothing else moves.
+   */
+  .dispatch tr.plated {
+    background-image: linear-gradient(rgba(23, 22, 20, .82), rgba(23, 22, 20, .82)),
+                      var(--plate);
+    background-size: cover;
+    background-position: center 72%;
+    background-repeat: no-repeat;
+  }
+  .dispatch tr.plated:hover {
+    background-image: linear-gradient(rgba(23, 22, 20, .68), rgba(23, 22, 20, .68)),
+                      var(--plate);
+  }
+
+  img.plate { display: block; object-fit: cover; border: 1px solid var(--rule);
+              opacity: .78; }
+  /* No transition: the brief allows no animation beyond the timers. This is a state
+     change, and it happens at once. */
+  .contact:hover img.plate { opacity: 1; }
+  /* The one place a plate is allowed any size: eighteen hours of a page whose subject
+     is a single place. Still a band rather than a picture — cropped to 5:1, flush to
+     the block's edges, under the heading rather than above it. */
+  img.plate.band { width: 100%; height: 124px; border: 0;
+                   border-bottom: 1px solid var(--rule-in); opacity: .68; }
+
   ul.events { list-style: none; margin: 0; padding: 0; }
   ul.events li { padding: 11px 18px; border-bottom: 1px solid var(--rule-in);
                  max-width: 76ch; text-wrap: pretty; }
@@ -1000,6 +1049,10 @@ ${PANE_CSS}
     .block > table td.cost-col, .block > table td.contact-col,
     .block > table td.right { grid-column: 1; text-align: left; width: auto; }
     .block > table td.act { grid-column: 2; grid-row: 1 / span 2; width: auto; }
+    /* No plates on a phone. Under this width the row is a stack a full screen tall,
+       and a photograph behind that much text is a photograph nobody can see and every
+       line is read against. Dropping the image also means it is never fetched. */
+    .dispatch tr.plated { background-image: none; }
   }
 `;
 
@@ -1365,6 +1418,14 @@ export const TIMERS = `
 
     follow(event.clientX, event.clientY);
   });
+
+  // A plate whose file is not there hides itself, so a region added to seed.js before
+  // anybody has drawn it degrades to the page as it was rather than to a broken-image
+  // icon. Capture phase: an <img> error does not bubble.
+  document.addEventListener('error', (event) => {
+    const img = event.target;
+    if (img && img.tagName === 'IMG' && img.classList.contains('plate')) img.remove();
+  }, true);
 
   // Fixed positioning is relative to the viewport, so a scroll moves the row out from
   // under a note that would otherwise stay exactly where it was.
@@ -1968,6 +2029,55 @@ function rate(value) {
   return figure.toFixed(2).replace(/\.?0+$/, '');
 }
 
+/**
+ * A region's plate, or nothing.
+ *
+ * Eleven photographs of eleven places, one per slug in `REGIONS`, in `public/img`.
+ * `docs/DESIGN-BRIEF.md` §2.1 puts illustration on the restraint list because the
+ * atmosphere is supposed to live in the prose, and a picture that competes with "Things
+ * still grow here. That is the problem." has taken something the writing was holding.
+ *
+ * Two placements, and only one of them is a picture:
+ *
+ * - **The dispatch row** gets it as ground rather than as content — see `.dispatch
+ *   tr.plated`. Nothing is added to the row; the photograph is underneath the words it
+ *   belongs to, most of the way to the page's own grey. It was a 168px thumbnail in a
+ *   fifth column first, which was a picture beside a row rather than a row with a place
+ *   behind it, and it cost the description a chunk of the only measure it had.
+ * - **The Away block** keeps an <img>, because there the place is the subject: one
+ *   region, for eighteen hours, with the countdown on it.
+ *
+ * `alt=""` on purpose rather than by omission. The region's name and description are in
+ * the same block, so a caption would be a third copy of the same fact.
+ *
+ * A slug with no file: the row simply has no ground, because a background that 404s
+ * paints nothing. The <img> in the Away block cannot do that, so the client script
+ * removes one that fails to load — see the error handler in `TIMERS`.
+ */
+function plate(slug, kind = 'band') {
+  if (!slug) return '';
+  return `<img class="plate ${kind}" src="/img/${escape(slug)}.webp" alt=""
+     width="1200" height="400" loading="lazy" decoding="async">`;
+}
+
+/**
+ * The same plate as a custom property for the row to use as its background.
+ *
+ * A style attribute, which nothing else in this file uses, and the reason is that this
+ * is the one value the stylesheet cannot know: there is one row per region and the file
+ * is named after the slug. What the attribute carries is a URL and nothing else — every
+ * decision about how it looks stays in `PANE_CSS` with the rest of the design.
+ *
+ * The slug is checked rather than escaped. Escaping is the wrong tool inside a CSS
+ * url(), where the delimiters are different and a quote is not the only thing that can
+ * break out; a slug is `[a-z0-9_]` by construction in `seed.js`, so anything else is a
+ * bug upstream and gets no background rather than a guess at what it meant.
+ */
+function plateGround(slug) {
+  if (!/^[a-z0-9_]+$/.test(String(slug ?? ''))) return '';
+  return ` style="--plate:url(/img/${slug}.webp)"`;
+}
+
 /** A track's fill, clamped and rounded — a width is not worth fifteen decimals. */
 function bar(value, of) {
   if (!(of > 0)) return 0;
@@ -2203,6 +2313,7 @@ function renderExpeditions(view) {
           <span class="tag">Away &mdash; ${escape(trip.regionName)}</span>
           ${due}
         </div>
+        ${plate(trip.regionSlug, 'band')}
         <div class="block-body">
           <p class="lede-line">${escape(condition(trip, { region: false }))}</p>
           ${
@@ -2217,7 +2328,7 @@ function renderExpeditions(view) {
 
   const rows = view.regions
     .map(
-      (region) => `<tr>
+      (region) => `<tr class="plated"${plateGround(region.slug)}>
         <td><span class="name">${escape(region.name)}</span>
             <span class="lvl">danger ${region.danger} &middot; ${escape(duration(region.travel_hours))} out</span></td>
         <td class="lede"><small>${escape(region.description ?? '')}</small></td>

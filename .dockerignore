@@ -9,3 +9,6 @@ tools
 scripts
 *.md
 docker-compose.yml
+# The full-size plate masters — 25 MB of PNG that only exists to be resized. What ships
+# is public/img, which is built from it.
+img

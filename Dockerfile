@@ -14,6 +14,9 @@ RUN npm ci --omit=dev
 
 COPY src ./src
 COPY migrations ./migrations
+# The region plates. Under a megabyte for all eleven, and the only static files the app
+# serves — see the /img mount in src/web/app.js.
+COPY public ./public
 
 # Never root. The app writes nothing to disk — every piece of state is in Postgres —
 # so it does not even need a writable working directory.

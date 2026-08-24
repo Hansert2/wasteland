@@ -1,3 +1,5 @@
+import { fileURLToPath } from 'node:url';
+
 import express from 'express';
 
 import { pool, withTransaction } from '../db/pool.js';
@@ -51,6 +53,29 @@ export function createApp() {
       res.status(503).json({ status: 'no database', error: error.code ?? 'unknown' });
     }
   });
+
+  /*
+   * The region plates, and the only static files this app has.
+   *
+   * Ahead of the session middleware deliberately: a picture of a place is not a secret,
+   * and making every one of them cost a cookie read and a session lookup would be a
+   * database round trip per image. `fallthrough: false` so a slug with no plate is a
+   * plain 404 rather than dropping through to the page router and answering an image
+   * request with a login page.
+   *
+   * An hour of cache with etags, not a year: the filenames are slugs rather than
+   * content hashes, so a replaced plate has to be able to reach people who have already
+   * seen the old one.
+   */
+  app.use(
+    '/img',
+    express.static(fileURLToPath(new URL('../../public/img', import.meta.url)), {
+      maxAge: '1h',
+      fallthrough: false,
+      index: false,
+      redirect: false,
+    }),
+  );
 
   // Bodies here are short forms; a small cap keeps a stray large POST cheap to reject.
   app.use(express.urlencoded({ extended: false, limit: '10kb' }));

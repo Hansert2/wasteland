@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readdir } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
 
 import { pool } from '../../src/db/pool.js';
 import { buildStates } from '../../tools/page-states.mjs';
@@ -270,4 +272,37 @@ test('every gauge says what its number counts, in a place the note script can fi
       assert.ok(rows >= 3, `${name}: ${rows} rates under the scale, expected at least three`);
     }
   }
+});
+
+test('every plate the page asks for is a file that exists', async () => {
+  /*
+   * The failure this closes is the one that already happened once, before any of this
+   * was on the page: the generator names its output however it was prompted, and five
+   * of the first eleven files differed from the region's slug only by whether the
+   * article was on the front. A page that asks for `/img/the_ruined_city.webp` when the
+   * file is `ruined_city.webp` renders perfectly, logs nothing, and quietly 404s
+   * eleven times per visit.
+   *
+   * The client script hides a plate whose file is missing, which is the right runtime
+   * behaviour and exactly why this has to be a test — the page looks correct in the
+   * browser either way, and a region simply stops having a picture with nobody told.
+   */
+  const dir = fileURLToPath(new URL('../../public/img', import.meta.url));
+  const have = new Set(await readdir(dir));
+
+  // Both forms it can take: the <img> in the Away block, and the url() a dispatch row
+  // carries to stand on. A background that 404s paints nothing at all, so that half is
+  // the more silent of the two and the more worth pinning.
+  const wanted = /(?:src="\/img\/([^"]+)"|url\(\/img\/([^)]+)\))/g;
+
+  let asked = 0;
+  for (const [name, html] of Object.entries(STATES)) {
+    for (const match of html.matchAll(wanted)) {
+      const file = match[1] ?? match[2];
+      asked += 1;
+      assert.ok(have.has(file), `${name}: asks for /img/${file}, which is not in public/img`);
+    }
+  }
+
+  assert.ok(asked > 0, 'no page asks for a plate at all, which cannot be right');
 });

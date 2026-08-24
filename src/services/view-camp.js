@@ -95,6 +95,9 @@ function reportOn(row, state, now) {
 
   return {
     regionName: row.name,
+    // Which plate to show beside the report. The name would not do: it is prose and the
+    // files are named for the slug the game already keys everything else on.
+    regionSlug: row.slug,
     // What the place is, beside the report of what is happening in it. The dispatch
     // table says this before you send anybody; the Away block is where you read it
     // again while they are out there, and it is the only sentence in that block about
