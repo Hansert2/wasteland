@@ -3,7 +3,7 @@ import express from 'express';
 import { pool, withTransaction } from '../db/pool.js';
 import { isDatabaseUnreachable } from '../db/errors.js';
 import { settlementIdForPlayer } from '../db/world.js';
-import { verifyPassword } from '../auth/passwords.js';
+import { verifyLogin } from '../auth/passwords.js';
 import {
   SESSION_COOKIE,
   createSession,
@@ -94,9 +94,11 @@ export function createApp() {
     );
     const player = rows[0];
 
-    // Verify against a dummy hash when the account does not exist, so a missing
-    // account and a wrong password take the same time and give the same answer.
-    const ok = await verifyPassword(String(req.body.password ?? ''), player?.password_hash ?? '');
+    // A missing account and a wrong password take the same time and give the same
+    // answer, which `verifyLogin` is responsible for rather than this line: passing a
+    // placeholder from here is what went wrong before, because '' is not a hash and
+    // verification returned without doing any work.
+    const ok = await verifyLogin(String(req.body.password ?? ''), player?.password_hash);
     if (!player || !ok) {
       return res.status(401).send(landingPage({ error: 'Those details do not match a camp.' }));
     }

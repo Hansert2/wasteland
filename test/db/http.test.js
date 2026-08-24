@@ -149,6 +149,11 @@ test('another account cannot be founded on the same email', async () => {
 });
 
 test('logging in with the wrong password gives nothing away', async () => {
+  // The response half of "nothing away". The timing half was missing until 2026-08-24 —
+  // a missing account skipped scrypt entirely and answered in a thousandth of the time,
+  // so the two were trivially distinguishable however identical the page was. That half
+  // is pinned in `test/unit/passwords.test.js`, where the cost can be asserted without
+  // a wall clock; this one stays about what the caller is told.
   const { email } = await register();
 
   const wrongPassword = await fetch(`${base}/login`, {
