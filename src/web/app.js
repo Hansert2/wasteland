@@ -22,7 +22,7 @@ import { tradeWithCaravan } from '../services/trade.js';
 import { viewCamp } from '../services/view-camp.js';
 import { viewGraveyard } from '../services/view-graveyard.js';
 import { campPage, graveyardPage, landingPage, layout, escape } from './render.js';
-import { credentialKey, rateLimit } from './rate-limit.js';
+import { addressKey, credentialKey, rateLimit } from './rate-limit.js';
 
 export function createApp() {
   const app = express();
@@ -59,6 +59,12 @@ export function createApp() {
 
   // Credential endpoints only. Everything else is behind a session cookie, and a
   // logged-in player hammering their own camp page costs a tick they already own.
+  //
+  // Two of them, because logging in and signing up are attacked differently. At a login
+  // the account already exists, so counting the address *and* the account limits the
+  // guessing without letting one caller lock a stranger out of their own camp. At a
+  // registration the caller invents the account, so that same key is no limit at all —
+  // a new address in the form is a new bucket. See `addressKey`.
   const credentialLimit = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 10,
@@ -66,12 +72,23 @@ export function createApp() {
     message: 'Too many attempts for that account. Wait a few minutes and try again.',
   });
 
+  // An hour rather than fifteen minutes, and five rather than ten, because this one
+  // counts a whole address: a household or an office behind one of them shares the
+  // allowance, and five camps in an hour from one address is already more than this
+  // game has ever needed.
+  const registerLimit = rateLimit({
+    windowMs: 60 * 60 * 1000,
+    max: 5,
+    key: addressKey,
+    message: 'Too many camps founded from here. Wait an hour and try again.',
+  });
+
   app.get('/', (req, res) => {
     if (req.playerId) return res.redirect('/camp');
     res.send(landingPage());
   });
 
-  app.post('/register', credentialLimit, async (req, res) => {
+  app.post('/register', registerLimit, async (req, res) => {
     const { playerId } = await withTransaction((client) =>
       foundSettlement(client, {
         email: req.body.email,
