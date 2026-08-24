@@ -1,0 +1,77 @@
+# Both suites, on a database that exists for the length of one run.
+#
+# The database tests are the ones worth the trouble. They are not slow-and-redundant
+# copies of the unit tests: the constraints, the partial unique indexes and the row lock
+# in `advanceSettlement` are the final authority on the game's rules, and none of them
+# can be exercised without a real Postgres. `docs/DEPLOYING.md` and the plan both treat
+# the schema as load-bearing, so a green run here is what makes that claim checkable.
+#
+# Deliberately not using `npm run test:db`. That wraps `scripts/with-db.mjs`, which
+# starts a container inside WSL and holds a session open so Windows does not tear it
+# down — a development concern that means nothing on a runner where Postgres is already
+# up and `DATABASE_URL` is already set. The `:ci` scripts are the same commands without
+# the wrapper.
+name: tests
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        # The same image the compose files use, so a schema that applies here applies
+        # there. Pinned to the major only, matching the deployment's stated policy of
+        # taking patch updates automatically.
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: wasteland
+          POSTGRES_PASSWORD: wasteland
+          POSTGRES_DB: wasteland
+        ports:
+          - 5432:5432
+        # Without this the first migration races a Postgres that is still starting, and
+        # the failure reads like a broken migration rather than a broken wait.
+        options: >-
+          --health-cmd "pg_isready -U wasteland -d wasteland"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      DATABASE_URL: postgres://wasteland:wasteland@localhost:5432/wasteland
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # package.json asks for >=22 and the Dockerfile ships node:22-alpine. Testing
+          # on anything else would be testing a different program.
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Cheap, and it catches the class of mistake that reaches every other check as a
+      # confusing failure somewhere else: a file that does not parse. 84 of them today.
+      - name: Parse every JavaScript file
+        run: >-
+          find src test tools scripts \( -name '*.js' -o -name '*.mjs' \)
+          -print0 | xargs -0 -n1 node --check
+
+      # The suite that needs nothing. Run first, so a broken simulation fails in seconds
+      # rather than after the schema has been built.
+      - name: Unit tests
+        run: npm test
+
+      # The seed runs with the migrations because content — regions, recipes, items — is
+      # data the database tests read. This is the same pair `fly.toml` runs on release.
+      - name: Migrate and seed
+        run: |
+          node src/db/migrate.js
+          node src/db/seed.js
+
+      - name: Database tests
+        run: npm run test:db:ci
