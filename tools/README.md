@@ -46,6 +46,18 @@ they have found something that reasoning and a green test suite both missed:
   out: the camp that spent 190 fuel on fittings put *more* into the road than the camp
   that spent none, wasted half as many trips too irradiated to travel, and buried nobody
   where the other buried three.
+- **Danger 5 pays less than danger 4, in the currency danger exists to buy.** Asked
+  because a design question came up — should a caravan ever sell fuel? — and the answer
+  only holds if fuel is reachable by the route it does have. It is: the road measures
+  115 days at the best sustained rate, which is what `docs/PLAN.md` predicted when it
+  priced the links, and the first one is 3.6 days. But the same run found that Coastal
+  Wreckage sustains 19.4 fuel a day against the Deep Zone's 13.1. Per *trip* the Deep
+  Zone pays 76% more; per *day* it pays 32% less, because 25 rads a visit leaves the
+  survivor idle at home 43% of the time. That survives a sweep of every appetite for
+  radiation from "leave at 10" to "leave at 55", so it is a fact about the game rather
+  than about the policy the instrument chose. And the one region that beats them both,
+  Harrow End at 21 a day, is behind link seven — locked behind the thing fuel buys.
+
 The pattern worth keeping: the simulation is a pure function of `(state, now)`, so
 sixty days of play runs in milliseconds and a balance question can be answered rather
 than argued about. Before trusting a number, measure it.
@@ -71,15 +83,25 @@ every verb is attempted inside a savepoint and rolled back, so the answer comes 
 real service guards and the refusals are the ones the player would have read. That is why
 it can be trusted against the plan's prose, and it has already contradicted it once.
 
-`region-balance.mjs` and `moment-balance.mjs` read the regions from the database, so
-they need the wrapper that brings Postgres up:
+`region-balance.mjs`, `moment-balance.mjs` and `fuel-balance.mjs` read the regions from
+the database, so they need the wrapper that brings Postgres up:
 
 ```
 node scripts/with-db.mjs node --env-file=.env tools/region-balance.mjs
 node scripts/with-db.mjs node --env-file=.env tools/moment-balance.mjs
 node scripts/with-db.mjs node --env-file=.env tools/check-in-density.mjs
 node scripts/with-db.mjs node --env-file=.env tools/skill-sensitivity.mjs
+node scripts/with-db.mjs node --env-file=.env tools/fuel-balance.mjs
 ```
+
+**`fuel-balance.mjs` measures three things and only the third is the answer.** What a
+region pays per trip is the number the dispatch table implies and the easiest to mistake
+for the rate; what it pays per *day* is that number after the survivor has finished
+waiting for radiation to fall, and it reorders the map. The third pass turns the rate
+into days of play against `linkCost()`. The policy — how much radiation a player will
+leave the camp carrying — is the constant this file chooses on the game's behalf, so it
+is swept rather than asserted, for the reason the entry above about the automaton
+exists.
 
 **`moment-balance.mjs` carries a value function, and it is the arguable part.** Options
 trade in different currencies — hours for a dose, a risk for a find — so comparing them
