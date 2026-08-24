@@ -6,6 +6,7 @@ import { loadWorld } from '../../src/db/world.js';
 import { advanceSettlement } from '../../src/services/advance-settlement.js';
 import { dispatchExpedition } from '../../src/services/dispatch-expedition.js';
 import { foundSettlement, raiseSuccessor } from '../../src/services/settlement-lifecycle.js';
+import { ORDINARY } from '../../src/game/wanderers.js';
 import { InputError } from '../../src/errors.js';
 
 const hours = (h) => h * 60 * 60 * 1000;
@@ -22,7 +23,25 @@ async function withRollback(fn) {
   }
 }
 
-/** A camp plus a region tuned so its outcome is not left to chance. */
+/**
+ * A camp, a survivor and a region, all three tuned so the outcome is not left to chance.
+ *
+ * The region always was. The survivor was not, and that is what made
+ * `test/db/expeditions.test.js` fail roughly two runs in five for months.
+ *
+ * Whoever answers the gate is drawn from the camp's seed, and they are not the same
+ * person twice: scavenging runs 1 to 7 across `WANDERERS`, and `rollLoot` multiplies the
+ * haul by a tenth per level either side of `ORDINARY`. So a region declaring
+ * `loot: { scrap: [10, 10] }` came home with 7, 8, 9, 10, 11, 12 or 13 scrap depending
+ * on who took the trip — and three of the seven fail an assertion of "at least ten".
+ *
+ * Pinned to `ORDINARY` rather than to a number, so a rebalance of the skill curve moves
+ * this with it. Medicine too: it sets the dose a survivor burns at, which is the same
+ * kind of hidden variable one radiation test away from mattering.
+ *
+ * The alternative — pinning the expedition's seed — would have fixed nothing. Every seed
+ * returns the same haul here; the region's loot range is a single value on purpose.
+ */
 async function setup(client, region = {}) {
   const { settlementId } = await foundSettlement(client, {
     email: `${uniq()}@example.test`,
@@ -30,6 +49,12 @@ async function setup(client, region = {}) {
     settlementName: 'Testcamp',
   });
   await raiseSuccessor(client, settlementId, { name: 'Vera' });
+
+  await client.query(
+    `update characters set skill_scavenging = $2, skill_medicine = $2
+       where settlement_id = $1 and died_at is null`,
+    [settlementId, ORDINARY],
+  );
 
   const slug = `probe_region_${uniq()}`;
   await client.query(
