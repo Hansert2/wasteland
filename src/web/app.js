@@ -426,9 +426,11 @@ async function startSession(res, playerId) {
      * What it is not, and the comment here used to claim it was: a guarantee that every
      * state-changing POST is same-*origin*. SameSite is scoped to the registrable site,
      * so a page on any sibling subdomain is same-site and its posts carry this cookie.
-     * That is a real hole on a shared domain and no hole at all on a dedicated one, and
-     * the deployment is currently the second — but the guard should not depend on which,
-     * so `sameOrigin` above checks the header rather than trusting the shape of the DNS.
+     * That is not hypothetical here. This deploys to a subdomain, so the registrable
+     * site is shared with every other host under it, and SameSite will call all of them
+     * same-site — one of them with an XSS in it, or one nobody is watching, is a post to
+     * this game carrying this cookie. `sameOrigin` above is what actually closes that,
+     * by checking the header rather than trusting the shape of the DNS.
      */
     sameSite: 'strict',
     secure: process.env.NODE_ENV === 'production',
