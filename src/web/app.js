@@ -332,10 +332,32 @@ function readCookies(req, _res, next) {
   for (const part of String(req.headers.cookie ?? '').split(';')) {
     const eq = part.indexOf('=');
     if (eq < 0) continue;
-    cookies[part.slice(0, eq).trim()] = decodeURIComponent(part.slice(eq + 1).trim());
+    cookies[part.slice(0, eq).trim()] = decodeCookie(part.slice(eq + 1).trim());
   }
   req.cookies = cookies;
   next();
+}
+
+/**
+ * A cookie value, decoded where it can be and left alone where it cannot.
+ *
+ * `decodeURIComponent` throws on invalid percent-encoding, and this runs in middleware
+ * ahead of authentication — so before this, one byte of nonsense in a `Cookie` header
+ * was a 500 on any route, from anybody, without a session. Found in review on
+ * 2026-08-24.
+ *
+ * Undecoded rather than dropped, because the two answers differ for a value that was
+ * never encoded in the first place and dropping one would be inventing an absence. It
+ * costs nothing here either way: a session token is `base64url`, which has no percent
+ * in it, so a value this branch returns is one no session will ever match — and an
+ * unmatched token is already handled as no session at all.
+ */
+function decodeCookie(value) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
 }
 
 async function loadSession(req, _res, next) {

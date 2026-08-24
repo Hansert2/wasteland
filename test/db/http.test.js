@@ -267,6 +267,16 @@ test('founding camps in a row is refused, whatever address is typed into the for
   assert.match(await last.text(), /Too many camps/i);
 });
 
+test('a malformed cookie is not a 500, and does not need a session to send', async () => {
+  // `decodeURIComponent` throws on invalid percent-encoding, and cookie parsing runs in
+  // middleware ahead of authentication — so one byte of nonsense in the header was an
+  // unauthenticated 500 on any route. Found in review on 2026-08-24.
+  for (const cookie of ['wl_session=%', 'wl_session=%zz', 'a=%E0%A4%A', 'x=%; y=fine']) {
+    const response = await fetch(`${base}/`, { headers: { cookie }, redirect: 'manual' });
+    assert.ok(response.status < 500, `${cookie} answered ${response.status}`);
+  }
+});
+
 test('a forged session token is not accepted', async () => {
   const camp = await fetch(`${base}/camp`, {
     headers: { cookie: 'wasteland_session=totally-made-up' },
