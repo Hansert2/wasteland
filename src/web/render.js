@@ -590,10 +590,22 @@ ${PANE_CSS}
   .read .tag { display: block; letter-spacing: .12em; color: var(--dim); }
   .read .fig { display: block; margin-top: 6px; font-family: var(--numer);
                font-size: 19px; line-height: 1; color: var(--value);
-               font-variant-numeric: tabular-nums; }
+               font-variant-numeric: tabular-nums; white-space: nowrap; }
   /* The same accent a draining store gets, for the same reason: it is the figure you
      would otherwise only discover by reading the sentence underneath. */
   .read.hurt .fig { color: var(--oxide-light); }
+  /* A running clock, at the size the other clocks on the page are set rather than at
+     the size of a figure. "1h 09m 01s" is eleven characters against a two-digit health,
+     and matching them would make the one cell that changes every second the widest and
+     loudest thing in the row — which is the opposite of what it is: a thing to notice,
+     not a thing to watch. */
+  .read.due .fig { font-size: 14px; margin-top: 8px; color: var(--oxide-light); }
+  /* Same caption a clock carries, at the same weight and tracking, so the two read as
+     one idiom rather than as a label that happens to be small. It stays --dim while the
+     figure takes the accent: the deadline is the warm thing, not the words beside it. */
+  .read .fig small { font-family: var(--label); font-weight: 700; font-size: 10px;
+                     letter-spacing: .14em; text-transform: uppercase;
+                     color: var(--dim); margin-left: 8px; }
 
   /* ---- what was answered out there ---- */
 
@@ -2573,13 +2585,18 @@ function condition(expedition) {
  *
  * Tone is for the one cell worth noticing, and the accent rule is the same one a
  * draining store follows: oxide marks the fact you would otherwise have to work out.
+ *
+ * `html` is for a figure that is already markup — which today means a live countdown,
+ * whose span the client script finds by `data-until` and cannot be handed as text.
+ * **It is never for anything a player typed.** Every caller passes `value` and gets it
+ * escaped; the one that passes `html` builds it here in this file.
  */
 function readout(cells) {
   return `<div class="readout">${cells
     .map(
-      ({ tag, value, tone }) => `<div class="read${tone ? ` ${tone}` : ''}">
+      ({ tag, value, html, tone }) => `<div class="read${tone ? ` ${tone}` : ''}">
         <span class="tag">${escape(tag)}</span>
-        <span class="fig">${escape(value)}</span>
+        <span class="fig">${html ?? escape(value)}</span>
       </div>`,
     )
     .join('')}</div>`;
@@ -2608,9 +2625,6 @@ function renderExpeditions(view) {
     // figure cannot carry: what did it. "Hurt out there." beside an accented health
     // number is the same fact told twice.
     if (trip.damage > 0 && trip.cause) lines.push(`Hurt out there — ${escape(trip.cause)}.`);
-    if (trip.nextMomentAt) {
-      lines.push(`Radio: next contact in ${countdown(trip.nextMomentAt, 'any moment')}.`);
-    }
 
     // What has already been answered, and — the part that was missing — the fact that
     // it has not happened yet. Answering records a choice and nothing more; the trip is
@@ -2673,6 +2687,31 @@ function renderExpeditions(view) {
     // Unlike health and rads, a find is an event rather than a scale being watched, so
     // "finds 0" on every trip would be a cell that is only ever noise.
     if (trip.findCount > 0) cells.push({ tag: 'finds', value: String(trip.findCount) });
+
+    // The radio's figure, last and accented.
+    //
+    // It was a line of prose under the report — "Radio: next contact in 1h 09m 01s." —
+    // which is a countdown wearing a sentence. It is a labelled figure like every other
+    // number in this block, and the design's own rail sketch already puts it exactly
+    // here: the only warm thing in a column of quiet ones, because a deadline is what
+    // the accent is for.
+    //
+    // Only present when a radio is fitted, which is the whole of what the fitting buys
+    // and is decided upstream — `nextMomentAt` is null without one.
+    //
+    // **The label names the radio and the caption names the subject**, because a cell
+    // reading only "next contact" is a figure that arrived from nowhere: it is the one
+    // number in this block that a *fitting* pays for, and a player who cannot see which
+    // fitting cannot see what 55 fuel bought. Figure first and caption after is the
+    // Contact strip's arrangement, for the reason stated there — here the countdown is
+    // the point and the words are what it is a countdown of.
+    if (trip.nextMomentAt) {
+      cells.push({
+        tag: 'radio',
+        html: `${countdown(trip.nextMomentAt, 'any moment')}<small>to contact</small>`,
+        tone: 'due',
+      });
+    }
 
     return `<div class="block contact">
         <div class="block-head">

@@ -29,6 +29,7 @@ import { pool } from '../src/db/pool.js';
 import { foundSettlement, raiseSuccessor } from '../src/services/settlement-lifecycle.js';
 import { dispatchExpedition } from '../src/services/dispatch-expedition.js';
 import { MOMENTS, momentsFor, optionEffects } from '../src/game/moments.js';
+import { UPGRADES } from '../src/game/structures.js';
 
 const PASSWORD = 'correct horse battery staple';
 
@@ -166,6 +167,28 @@ try {
       [settlementId],
     );
   }
+
+  /*
+   * A fitted radio, because half of what the Away report can say is invisible without
+   * one. `nextMomentAt` is null unless a radio is installed — that is the entire thing
+   * the fitting buys — so a demo camp without one renders a report with a hole in it
+   * and nothing on the page explains why.
+   *
+   * Written straight in rather than built: fitting costs 55 fuel and an hour, and this
+   * is a fixture, not a playthrough. The watchtower goes to the level the upgrade
+   * requires so the Camp page agrees with the rail about what this camp has.
+   */
+  await client.query(
+    `update camp_structures set level = greatest(level, $2)
+      where settlement_id = $1 and kind = 'watchtower'`,
+    [settlementId, UPGRADES.radio.requiresLevel],
+  );
+  await client.query(
+    `insert into structure_upgrades
+       (settlement_id, kind, upgrade, started_at, completes_at, installed_at)
+     values ($1, $2, 'radio', $3, $3, $3)`,
+    [settlementId, UPGRADES.radio.kind, new Date(now - 60 * 60 * 1000)],
+  );
 
   const { expeditionId } = await dispatchExpedition(client, settlementId, chosen.place.slug, now);
   await client.query('update expeditions set seed = $2 where id = $1', [expeditionId, chosen.seed]);
