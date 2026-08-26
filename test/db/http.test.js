@@ -62,6 +62,10 @@ async function register(overrides = {}) {
     body: new URLSearchParams({
       email,
       password: 'correct horse battery staple',
+      // The gate asks twice, so the helper answers twice — it is meant to be the same
+      // POST the page offers, and a helper that skips a required field stops being
+      // evidence about the page.
+      passwordAgain: 'correct horse battery staple',
       settlementName: 'Testcamp',
       ...overrides,
     }),
@@ -113,6 +117,38 @@ test('registering founds a camp and logs you straight into it', async () => {
   assert.doesNotMatch(html, /spoiled or been taken/, 'nothing has gone to ruin yet');
 });
 
+test('a mistyped password is refused, with the panel it was typed into still open', async () => {
+  // The whole point of the second field. A camp founded on a password its owner cannot
+  // reproduce is gone for good, because nothing here can reset one — so this refusal is
+  // the only moment the mistake is recoverable.
+  const email = `${uniq()}@example.test`;
+  createdEmails.push(email);
+
+  const response = await fetch(`${base}/register`, {
+    method: 'POST',
+    redirect: 'manual',
+    headers: { 'x-forwarded-for': nextCaller() },
+    body: new URLSearchParams({
+      email,
+      password: 'correct horse battery staple',
+      passwordAgain: 'correct horse battery stapler',
+      settlementName: 'Testcamp',
+    }),
+  });
+
+  assert.equal(response.status, 400);
+  assert.equal(sessionCookie(response), '', 'and nobody is logged in by it');
+
+  const html = await response.text();
+  assert.match(html, /Those passwords do not match/);
+  // The message is about the registration form, so the registration form has to be on
+  // screen underneath it — the gate keeps that panel shut until something says open.
+  assert.match(html, /<details class="enlist" open>/);
+
+  const { rows } = await pool.query('select id from players where lower(email) = $1', [email]);
+  assert.deepEqual(rows, [], 'and no player row survives the refusal');
+});
+
 test('the first survivor moves in through the same door as every successor', async () => {
   const { cookie } = await registerAndMoveIn();
 
@@ -159,7 +195,11 @@ test('another account cannot be founded on the same email', async () => {
   const duplicate = await fetch(`${base}/register`, {
     method: 'POST',
     redirect: 'manual',
-    body: new URLSearchParams({ email, password: 'correct horse battery staple' }),
+    body: new URLSearchParams({
+      email,
+      password: 'correct horse battery staple',
+      passwordAgain: 'correct horse battery staple',
+    }),
   });
 
   assert.equal(duplicate.status, 400);
