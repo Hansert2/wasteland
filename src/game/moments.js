@@ -82,6 +82,15 @@ const PLAYS_LIKE = {
  * more eligible moments than it has slots, which is what stops a trip offering the same
  * set every time.
  *
+ * Each one is written in two parts, and the split is the whole reason it reads as a
+ * scene rather than a riddle. The `scene` is what the survivor is standing in: where
+ * they are, what is in front of them, how they got here. The `prose` is the **turn** —
+ * the last line, the one the choices answer. For a long time there was only the turn,
+ * which meant every moment opened on its own final sentence with nothing underneath it;
+ * "a door someone welded shut from the outside" is a good closing line and a terrible
+ * opening one, because the player has to reconstruct the corridor, the bay and the weld
+ * from a clause. The scene does that work, and the turn keeps the weight it had.
+ *
  * Every moment has exactly one `default` option, and it must be a no-op — *what the
  * expedition would have done before any of this existed*. Attending may add upside and
  * a risk the player took knowingly; it may never restore a baseline that absence took
@@ -97,6 +106,8 @@ export const MOMENTS = {
     axis: 'time',
     title: 'The welded door',
     regions: ['underground_bunkers', 'coastal_wreckage'],
+    scene:
+      'The corridor gives out into a service bay, and the bay ends in steel. Someone ran a bead of weld all the way round the frame and then walked away from it, and the weld is on this side.',
     prose: 'A door someone welded shut from the outside. That was a decision, once.',
     options: [
       { key: 'leave', verb: 'default', label: 'Leave it', detail: 'they walk on' },
@@ -115,6 +126,8 @@ export const MOMENTS = {
     axis: 'radiation',
     title: 'The turning wind',
     regions: ['irradiated_farmland', 'the_deep_zone'],
+    scene:
+      'They have had the wind on their left cheek since first light, coming clean off the high ground and over fields that stopped being fields a long time ago. Around noon it swings round to the north.',
     prose: 'The wind turns and the counter starts clicking. There is a culvert half a mile back.',
     options: [
       { key: 'push', verb: 'default', label: 'Push through', detail: 'take the dose' },
@@ -143,6 +156,8 @@ export const MOMENTS = {
     axis: 'health',
     title: 'Whatever was following',
     regions: ['the_deep_zone'],
+    scene:
+      'It started somewhere behind the shoulder of the road, and it has never once been in the same place twice. Every time the survivor stops walking, it stops walking.',
     prose: 'Something has kept pace with them for an hour. It has not closed.',
     options: [
       { key: 'keep', verb: 'default', label: 'Keep moving', detail: 'they walk on' },
@@ -178,6 +193,8 @@ export const MOMENTS = {
     axis: 'haul',
     title: 'The split container',
     regions: ['coastal_wreckage'],
+    scene:
+      'The tide has stacked them three deep along the shingle and the salt has done the rest, so that half of them are opening like fruit. One has come apart down the welded seam, and the inside of it is dry.',
     prose: 'A container split along its seam, and more inside than one person moves.',
     options: [
       { key: 'fits', verb: 'default', label: 'Take what fits', detail: 'they walk on' },
@@ -200,8 +217,9 @@ export const MOMENTS = {
     axis: 'supplies',
     title: 'The last tin',
     regions: LONG_REGIONS,
-    prose:
-      'They have walked on nothing since dawn, and there is a long way still to go.',
+    scene:
+      'The pack has been lighter than it ought to be since the second hour, and the survivor has known exactly what is left in it the whole time. Somewhere past midday the walking starts costing more than it did in the morning.',
+    prose: 'They have walked on nothing since dawn, and there is a long way still to go.',
     options: [
       { key: 'save', verb: 'default', label: 'Save it', detail: 'they walk on' },
       {
@@ -224,8 +242,9 @@ export const MOMENTS = {
     axis: 'standing',
     title: 'The warm fire',
     regions: LONG_REGIONS,
-    prose:
-      'A fire an hour old, still warm, and three sets of boot prints leaving it. The prints are not running.',
+    scene:
+      'A ring of stones in the lee of a wall, and grey ash banked up in the middle of it. The survivor puts a flat hand over the ash and holds it there a moment before saying anything.',
+    prose: 'A fire an hour old, still warm, and three sets of boot prints leaving it. The prints are not running.',
     options: [
       { key: 'off', verb: 'default', label: 'Keep off the skyline', detail: 'they walk on' },
       {
@@ -242,6 +261,8 @@ export const MOMENTS = {
     axis: 'health',
     title: 'The shaft',
     regions: ['ruined_city', 'underground_bunkers', 'coastal_wreckage'],
+    scene:
+      'Everything worth having is two floors down, and the building has already had its say about how anybody gets there: what is left of the stairwell is a slope of concrete and bent bar going nowhere.',
     prose: 'The stair is gone. The shaft beside it is not, and it goes the right way.',
     options: [
       { key: 'around', verb: 'default', label: 'Go around', detail: 'they walk on' },
@@ -260,6 +281,8 @@ export const MOMENTS = {
     axis: 'health',
     title: 'The still cistern',
     regions: ['the_service_road', 'ruined_city', 'irradiated_farmland'],
+    scene:
+      'The sun has been on them all afternoon and there is no shade in any direction worth the walk to reach it. Behind a fallen outbuilding sits a concrete cistern with a foot of water in it, under a skin of dust that has not been broken in years.',
     prose: 'The canteen has been empty since the pylons. There is a cistern here, and it is not moving.',
     options: [
       { key: 'thirst', verb: 'default', label: 'Stay thirsty', detail: 'they walk on' },
@@ -287,6 +310,8 @@ export const MOMENTS = {
     axis: 'radiation',
     title: 'The hot room',
     regions: ['underground_bunkers', 'coastal_wreckage', 'the_deep_zone'],
+    scene:
+      'Shelving from floor to ceiling, and none of it stripped: cable, tooling, sealed cases still stacked the way somebody left them on the last ordinary day. Between the doorway and the first shelf the dosimeter goes from ticking to a flat tone.',
     prose: 'A room worth stripping, and the counter will not settle while they stand in it.',
     options: [
       { key: 'skip', verb: 'default', label: 'Leave it', detail: 'they walk on' },
@@ -313,6 +338,8 @@ export const MOMENTS = {
     axis: 'radiation',
     title: 'The quiet dosimeter',
     regions: ['irradiated_farmland', 'the_deep_zone'],
+    scene:
+      'Hot ground reads high, and then higher, and that is what makes it hot ground. The survivor has walked two miles of it and the needle has not come off the same mark since the fence.',
     prose: 'The dosimeter has read the same number for two hours. It is either broken or they are lucky.',
     options: [
       { key: 'trust', verb: 'default', label: 'Trust it', detail: 'they walk on' },
@@ -340,6 +367,8 @@ export const MOMENTS = {
     axis: 'time',
     title: 'The bend in the road',
     regions: ['the_service_road', 'ruined_city', 'irradiated_farmland'],
+    scene:
+      'From the top of the rise they can watch the road do the entire thing — out, around, and back to a point about a mile from where they are standing. The field it goes around is flat, dry and empty.',
     prose: 'The road bends a long way around a field nobody has crossed in years. There is a reason for the bend.',
     options: [
       { key: 'road', verb: 'default', label: 'Keep to the road', detail: 'they walk on' },
@@ -359,6 +388,8 @@ export const MOMENTS = {
     axis: 'time',
     title: 'The failing light',
     regions: ['ruined_city', 'underground_bunkers', 'coastal_wreckage', 'the_deep_zone'],
+    scene:
+      'They have been working the same run of rooms since mid-afternoon and are still turning things up in it. The shadows have crossed the floor and started up the far wall while they worked.',
     prose: 'The light is going and there is more here than they have hands for.',
     options: [
       { key: 'pack', verb: 'default', label: 'Pack up', detail: 'they walk on' },
@@ -379,6 +410,8 @@ export const MOMENTS = {
     axis: 'haul',
     title: 'More than one back can take',
     regions: ['ruined_city', 'underground_bunkers', 'the_deep_zone'],
+    scene:
+      'It is all lying where it came down and nobody has been through it since. The survivor stands in the middle of it doing the arithmetic that everybody out here ends up doing sooner or later.',
     prose: 'More than one back can take. Some of it will be here next time. Some of it will not.',
     options: [
       { key: 'best', verb: 'default', label: 'Take the best of it', detail: 'they walk on' },
@@ -397,6 +430,8 @@ export const MOMENTS = {
     axis: 'haul',
     title: 'The ford',
     regions: ['the_service_road', 'irradiated_farmland', 'coastal_wreckage'],
+    scene:
+      'Upstream of the crossing the channel widens out over gravel and the bottom of it is visible the whole way across. Downstream it is a long walk of bank before the road comes back to the water.',
     prose: 'The water is moving faster than it looks, and the bridge went before they were born. The long way round is a long way.',
     options: [
       // Built wrong the first time: wading was the free default and both alternatives
@@ -418,6 +453,8 @@ export const MOMENTS = {
     axis: 'supplies',
     title: 'The hot ground',
     regions: ['irradiated_farmland', 'the_deep_zone'],
+    scene:
+      'There is a line on the ground where the grass gives up — not a fence and not a wall, only the place where things stopped. The dosimeter finds it a few paces before the survivor does.',
     prose: 'The hot ground starts here, and a long way across it.',
     options: [
       { key: 'later', verb: 'default', label: 'Save it for later', detail: 'they walk on' },
@@ -437,6 +474,8 @@ export const MOMENTS = {
     axis: 'supplies',
     title: 'The man who wants the spear',
     regions: ['the_service_road', 'ruined_city', 'underground_bunkers'],
+    scene:
+      'He has a hand cart heaped with copper and cut plate, and he has been sitting beside it long enough to have thought it through, because there is nowhere he can push it that is safe to push it to. He looks at the spear on the survivor’s back before he looks at the survivor.',
     prose: 'A man with nothing wants a weapon, and has more scrap than he can carry.',
     options: [
       { key: 'keep', verb: 'default', label: 'Keep it', detail: 'they walk on' },
@@ -455,7 +494,9 @@ export const MOMENTS = {
     axis: 'standing',
     title: 'The roadblock',
     regions: ['the_service_road', 'ruined_city', 'irradiated_farmland'],
-    prose: 'Two vehicles across the road and somebody sitting on the bonnet, waiting to be talked to.',
+    scene:
+      'Two vehicles nose to nose across both lanes, there long enough for the weeds to come up through the wheel arches. Somebody is sitting on the bonnet of the nearer one, and has been watching them come for a while now.',
+    prose: 'They have been seen. Whoever it is has not stood up, and has not reached for anything either.',
     options: [
       { key: 'around', verb: 'default', label: 'Go around', detail: 'the long way, quietly' },
       {
@@ -477,7 +518,9 @@ export const MOMENTS = {
     axis: 'standing',
     title: 'Their wounded',
     regions: ['underground_bunkers', 'coastal_wreckage', 'the_deep_zone'],
-    prose: 'One of theirs, sat against a wall with a leg that will not take weight. They have seen the survivor.',
+    scene:
+      'The wall is the only thing standing for fifty yards in any direction, and there is somebody propped against the foot of it with one leg straight out in front of them, wrapped in what used to be a jacket.',
+    prose: 'One of theirs, and they have seen the survivor. The leg will not take weight, and nobody else is coming.',
     options: [
       { key: 'pass', verb: 'default', label: 'Keep walking', detail: 'they walk on' },
       {
@@ -641,6 +684,7 @@ export function momentsFor(region, seed) {
       // eventually produces. The prose is the situation; the title is what to call it
       // afterwards, and without one an outcome comes home attached to nothing.
       title: MOMENTS[key].title,
+      scene: MOMENTS[key].scene,
       prose: MOMENTS[key].prose,
       // Turning back is assembled in here rather than written into every moment: the
       // content declares what is particular to it, and the trip adds what is always
@@ -677,6 +721,113 @@ export function worstCase(option) {
 
 export function isWarned(option, healthAtMoment) {
   return worstCase(option) >= Number(healthAtMoment);
+}
+
+/**
+ * What an option does, as figures rather than as a clause.
+ *
+ * Every option already carries a `detail` — "half again, an hour slower, and clumsy
+ * where clumsy costs" — and that line is doing two jobs badly. It is the flavour *and*
+ * the price list, so the flavour has to stay vague enough to be true at every scale and
+ * the price ends up as "half again" of something the sentence never names. A player
+ * reading three of those side by side is not choosing between consequences; they are
+ * translating.
+ *
+ * So the numbers come out and stand on their own, and they are **derived from the same
+ * fields the resolution reads** rather than written beside them. That is the point: a
+ * chip cannot drift from what the option does, because there is nowhere for it to drift
+ * to. The `detail` keeps the flavour and loses the arithmetic.
+ *
+ * Four tones, and the palette is the argument for them: this page has exactly one
+ * colour, so brightness carries benefit — a gain is bone, a cost is dim, the incidental
+ * is fainter still — and oxide is kept for what can actually hurt the survivor. A green
+ * "good" chip would be the first green pixel in the game.
+ *
+ * `walkHome` is the hours turning back would cost from where they stand, which is a
+ * property of the trip and not of the option, so the caller that knows measures it and
+ * passes it in — and the chip is simply absent when nobody has.
+ *
+ * Named for the option rather than as `effectsOf`, which is the same idea for weather
+ * and is already imported into the one view that needs both.
+ */
+export function optionEffects(option, { walkHome = null } = {}) {
+  const chips = [];
+  const add = (tone, label) => chips.push({ tone, label });
+
+  const hours = Number(option.hours) || 0;
+  if (hours > 0) add('cost', `+${clock(hours)} out`);
+  if (hours < 0) add('gain', `−${clock(-hours)} out`);
+
+  // Loot and dose both scale what is *left* of the trip rather than the total, which is
+  // why these read "from here" and why the block says so once underneath. A "+55% haul"
+  // that lands as +20% on the return is the kind of number that teaches a player to
+  // stop believing the page.
+  if (option.lootFactor > 1) add('gain', `+${percent(option.lootFactor)} haul from here`);
+  if (option.lootFactor < 1) add('cost', `−${percent(option.lootFactor)} haul from here`);
+  if (option.dropsCarried) add('cost', `−${pct(option.dropsCarried)} of the pack`);
+
+  if (option.radiationFactor < 1) add('gain', `−${percent(option.radiationFactor)} rads from here`);
+  if (option.radiationFactor > 1) add('risk', `+${percent(option.radiationFactor)} rads from here`);
+
+  if (option.heals) add('gain', `+${option.heals} health`);
+  if (option.findChance) add('gain', `${pct(option.findChance)} chance of a find`);
+  if (option.clearsHazard) add('gain', 'Shakes off what is ahead');
+
+  // The one thing on the page that can kill somebody, so it says the whole spread and
+  // not an average. Same arithmetic as `worstCase` and as `confront`'s roll, before
+  // armour — armour only ever makes it smaller, so the range is a promise the game can
+  // keep.
+  if (option.hazard) {
+    const danger = Number(option.hazard.danger);
+    add('risk', `${danger * 3}–${danger * 9} damage`);
+  }
+
+  if (option.parley) add('plain', 'Standing decides it');
+
+  // The price out of the pack, which this module cannot name: a moment is drawn from a
+  // region and a seed, and what a Rad Scrubber is called lives in a table. So the chip
+  // is **marked** rather than merely worded, and the caller that resolves the pack
+  // rewrites it in place. Marking it is the point — the first version of this had the
+  // caller derive the whole list again with the name in hand, which silently dropped
+  // every other chip on the option, because by then it was holding a view object with
+  // `consumes` on it and nothing else. Rewriting one marked chip cannot do that.
+  if (option.consumes) chips.push({ tone: 'cost', label: '−1 from the pack', needs: true });
+
+  if (option.turnBack) {
+    add('gain', 'Banks the haul');
+    add('cost', 'Ends the trip');
+    if (walkHome !== null) add('plain', `${clock(walkHome)} walk home`);
+  }
+
+  // The default option, and anything else that turns out to do nothing. Saying so is
+  // the point: "they walk on" is the baseline every other chip is measured against, and
+  // an empty row beside three full ones reads as missing data rather than as no change.
+  return chips.length > 0 ? chips : [{ tone: 'plain', label: 'No change' }];
+}
+
+/** A factor as the change it makes: 1.55 -> "55%", 0.3 -> "70%". */
+function percent(factor) {
+  return `${Math.round(Math.abs(Number(factor) - 1) * 100)}%`;
+}
+
+/** A share as itself: 0.22 -> "22%". */
+function pct(share) {
+  return `${Math.round(Number(share) * 100)}%`;
+}
+
+/**
+ * Hours as a clock, to the nearest five minutes.
+ *
+ * The rounding is not cosmetic. Boiling the cistern is 0.7 hours, which is "42m" exact
+ * and "forty minutes" in the prose beside it, and a chip that disagrees with the
+ * sentence it sits under is worse than no chip at all.
+ */
+function clock(hours) {
+  const minutes = Math.round((Number(hours) || 0) * 12) * 5;
+  const whole = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  if (whole === 0) return `${rest}m`;
+  return rest === 0 ? `${whole}h` : `${whole}h ${rest}m`;
 }
 
 /**

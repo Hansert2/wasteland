@@ -162,6 +162,17 @@ test('an option the pack cannot pay for says so instead of offering a button', a
     const stocked = await viewCamp(client, settlementId, inside);
     const paid = stocked.expedition.moment.options.find((o) => o.consumes);
     assert.equal(paid.missing, false, 'the second-choice item pays for it too');
+
+    // Naming the price must not cost the option everything else it does. The dose is
+    // the whole reason that option exists, and the first version of this rebuilt the
+    // figures here from a view object that no longer had a `radiationFactor` on it —
+    // so the page offered a dose priced at one Rad Scrubber and promising nothing.
+    const labels = paid.effects.map((effect) => effect.label);
+    assert.ok(labels.includes('−1 Rad Scrubber or Rad-X'), labels.join(' / '));
+    assert.ok(
+      labels.some((label) => label.includes('rads')),
+      `the dose still says what it does: ${labels.join(' / ')}`,
+    );
   });
 });
 

@@ -7,7 +7,14 @@ import {
   productionFactors,
 } from '../game/world-events.js';
 import { answerTo, resolveExpedition } from '../game/expeditions.js';
-import { isOpen, isWarned, momentCount, momentsFor } from '../game/moments.js';
+import {
+  isOpen,
+  isWarned,
+  momentCount,
+  momentsFor,
+  optionEffects,
+  walkHomeHours,
+} from '../game/moments.js';
 import { openWithin, planFor } from '../game/planning.js';
 import { directionFor } from '../game/direction.js';
 import { WANDERERS, wandererFor } from '../game/wanderers.js';
@@ -117,12 +124,22 @@ function reportOn(row, state, now) {
     moment: open
       ? {
           index: open.index,
+          // The situation, then the turn. Two fields because they are two registers on
+          // the page — the scene is read, the turn is answered — and joining them here
+          // would leave the renderer splitting a paragraph back apart on a full stop.
+          title: open.title,
+          scene: open.scene,
           prose: open.prose,
           closesAt: new Date(row.departed_at.getTime() + open.closesAt * HOUR_MS),
           options: open.options.map((option) => ({
             key: option.key,
             label: option.label,
             detail: option.detail,
+            // What it does, in figures, derived here because this is the last place the
+            // option still has all its fields. Turning back is the only one whose cost
+            // depends on where the survivor is standing rather than on the option, so
+            // the walk home is measured here and handed over.
+            effects: optionEffects(option, { walkHome: walkHomeHours(elapsed, travelHours) }),
             warned: isWarned(option, health),
             // What it costs out of the pack, if anything. Resolved against what the
             // survivor is actually carrying by the caller, which is the first place
@@ -453,6 +470,12 @@ export async function viewCamp(client, settlementId, now = Date.now()) {
         // Any one of them pays: the list is a preference order, not a shopping list.
         option.missing = !option.consumes.some((slug) => held.has(slug));
         option.needs = option.consumes.map((slug) => names.get(slug) ?? slug).join(' or ');
+        // And now the price chip can say what the price is. Only that chip is touched:
+        // everything else the option does was derived where the option still had all
+        // its fields, and this is a view object with `consumes` and nothing else on it.
+        option.effects = option.effects.map((effect) =>
+          effect.needs ? { ...effect, label: `−1 ${option.needs}` } : effect,
+        );
       }
     }
   }

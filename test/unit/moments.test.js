@@ -6,6 +6,7 @@ import {
   LONG_REGIONS,
   MOMENTS,
   TURN_BACK,
+  optionEffects,
   isOpen,
   isWarned,
   momentCount,
@@ -314,4 +315,114 @@ test('window length is proportional to the trip and never punishingly short', ()
   // deliberately so — catching one there means being on the page.
   assert.ok(windowHours(0.75, 1) >= 0.2, 'the floor holds');
   assert.ok(windowHours(0.75, 1) < 0.4, 'and a short trip gets a short window');
+});
+
+test('every moment is a scene and then a turn, and they are not the same sentence', () => {
+  // The turn used to be the whole moment, which meant a player met each one at its
+  // closing line and had to build the rest backwards out of a clause. Both halves are
+  // required content now: without the scene the block opens on its own punchline, and
+  // without the turn there is nothing for three buttons to be answers to.
+  for (const [key, moment] of Object.entries(MOMENTS)) {
+    assert.ok(moment.scene?.length > 0, `${key} sets its scene`);
+    assert.notEqual(moment.scene, moment.prose, `${key}: the scene is not the turn again`);
+    assert.ok(moment.scene.length > moment.prose.length / 2, `${key}: the scene is a scene`);
+  }
+});
+
+test('a placed moment carries its scene with it', () => {
+  // Same fault as the title, which this file already pins: momentsFor rebuilds the
+  // moment rather than passing the content row through, so a field added to MOMENTS and
+  // not to the mapping is silently absent on the page and nowhere else.
+  for (const moment of momentsFor(region('the_deep_zone'), 42)) {
+    assert.equal(moment.scene, MOMENTS[moment.key].scene);
+  }
+});
+
+test('every option says what it does, and a default says it does nothing', () => {
+  // The phase rule, now visible on the page rather than only true in the arithmetic:
+  // the unattended outcome is the game as it stands, so the option that stands in for
+  // absence has to be the one chip that promises nothing.
+  for (const [key, moment] of Object.entries(MOMENTS)) {
+    for (const option of [...moment.options, TURN_BACK]) {
+      const chips = optionEffects(option);
+      assert.ok(chips.length > 0, `${key}/${option.key} says something`);
+
+      for (const chip of chips) {
+        assert.ok(
+          ['gain', 'cost', 'risk', 'plain'].includes(chip.tone),
+          `${key}/${option.key}: ${chip.tone} is a tone the stylesheet knows`,
+        );
+        assert.ok(chip.label.length <= 28, `${key}/${option.key}: "${chip.label}" fits a chip`);
+      }
+
+      if (option.verb === 'default') {
+        assert.deepStrictEqual(
+          chips,
+          [{ tone: 'plain', label: 'No change' }],
+          `${key}/${option.key} is the baseline and reads as one`,
+        );
+      }
+    }
+  }
+});
+
+test('a damage chip promises exactly the spread the roll can produce', () => {
+  // The one figure on the page that can kill somebody. It is derived from the same
+  // danger the hazard rolls and the same arithmetic `worstCase` warns on, so the three
+  // cannot drift apart — armour only ever makes the real number smaller.
+  for (const moment of Object.values(MOMENTS)) {
+    for (const option of moment.options) {
+      const chip = optionEffects(option).find((effect) => effect.label.endsWith('damage'));
+      if (!option.hazard) {
+        assert.equal(chip, undefined, 'nothing without a hazard claims damage');
+        continue;
+      }
+
+      const [low, high] = chip.label.replace(' damage', '').split('–').map(Number);
+      assert.equal(low, option.hazard.danger * 3);
+      assert.equal(high, worstCase(option));
+      assert.equal(chip.tone, 'risk', 'the only tone kept for what costs health');
+    }
+  }
+});
+
+test('a price out of the pack is marked, so the caller can name it without rederiving', () => {
+  // What a Rad Scrubber is called lives in a table this module cannot read. The chip
+  // carries a flag rather than only placeholder wording, because the caller that has
+  // the name is holding a view object by then and must rewrite this one chip in place
+  // — deriving the list again there drops every other chip on the option.
+  const eat = MOMENTS.the_tin.options.find((option) => option.key === 'eat');
+  const chips = optionEffects(eat);
+
+  const priced = chips.filter((effect) => effect.needs);
+  assert.equal(priced.length, 1, 'exactly one chip is the caller’s to rewrite');
+  assert.deepStrictEqual(priced[0], { tone: 'cost', label: '−1 from the pack', needs: true });
+
+  // And it is not the only thing the option does. Eating the tin heals, and that chip
+  // has to survive whatever the caller does to the price beside it.
+  assert.ok(
+    chips.some((effect) => effect.label === '+32 health'),
+    chips.map((effect) => effect.label).join(' / '),
+  );
+});
+
+test('turning back prices the walk home, when there is somewhere to walk from', () => {
+  // The cost that belongs to the trip rather than to the option: the same hours
+  // `answerMoment` will actually move the return by, said before the click.
+  const priced = optionEffects(TURN_BACK, { walkHome: 1.5 }).map((effect) => effect.label);
+  assert.deepStrictEqual(priced, ['Banks the haul', 'Ends the trip', '1h 30m walk home']);
+
+  const bare = optionEffects(TURN_BACK).map((effect) => effect.label);
+  assert.ok(!bare.some((label) => label.includes('walk home')), 'no hours it does not have');
+});
+
+test('an hours chip agrees with the sentence sitting above it', () => {
+  // Boiling the cistern is 0.7 hours, which is "42m" exact and "forty minutes" in the
+  // prose beside it. A chip that argues with its own detail line is worse than none.
+  const boil = MOMENTS.bad_water.options.find((option) => option.key === 'boil');
+  assert.ok(boil.detail.includes('forty minutes'));
+  assert.ok(optionEffects(boil).some((effect) => effect.label === '+40m out'));
+
+  const cut = MOMENTS.the_long_way.options.find((option) => option.key === 'cut');
+  assert.ok(optionEffects(cut).some((effect) => effect.label === '−30m out'));
 });

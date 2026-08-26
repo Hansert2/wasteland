@@ -509,6 +509,16 @@ ${PANE_CSS}
   .contact > .block-body { padding: 18px 20px 16px; }
   .contact .state { margin: 0; font-family: var(--numer); font-size: 13px; line-height: 1;
                     color: var(--quiet); font-variant-numeric: tabular-nums; }
+  /* The name of the thing, in the one colour this page has. It is a chapter heading
+     more than a title — the block already says "Contact", so this says which contact,
+     and it is the same name the answer is filed under once the window has gone. */
+  .contact .subject { margin: 13px 0 0; font-family: var(--label); font-size: 12px;
+                      letter-spacing: .18em; text-transform: uppercase;
+                      color: var(--oxide-light); }
+  /* The scene: ordinary prose at ordinary size, because it is the part that is read
+     rather than answered. Same measure as the turn so the two sit as one column. */
+  .contact .scene { margin: 8px 0 0; font-size: 16px; line-height: 1.65;
+                    max-width: 64ch; color: var(--prose); }
   /* The turn: the widest measure on the page and the only thing set above prose size,
      because it is the sentence the whole block exists to ask. */
   .contact .turn { margin: 11px 0 0; font-size: 20px; line-height: 1.5;
@@ -528,6 +538,34 @@ ${PANE_CSS}
   .choice form, .choice button { width: 100%; }
   .choice button { padding: 10px 0; }
   .choice .short { align-self: flex-start; }
+
+  /* The figures. Monospaced and tabular because they are read as numbers and compared
+     down a row, not along a sentence — and boxed, because a chip has to survive sitting
+     next to two other chips that say the opposite thing.
+
+     There is no green in this game and there is not about to be one, so brightness is
+     the ranking: a gain is bone, a cost is dim, the incidental is fainter still. Oxide
+     is not a third tone on that scale — it is reserved for what can take health off the
+     survivor, which is the same rule the warned option already follows. */
+  .contact .effects { display: flex; flex-wrap: wrap; gap: 5px;
+                      margin: 0; padding: 0; list-style: none; }
+  .eff { font-family: var(--numer); font-size: 11.5px; line-height: 1.2;
+         letter-spacing: .01em; padding: 4px 6px; white-space: nowrap;
+         font-variant-numeric: tabular-nums;
+         border: 1px solid var(--rule-in); background: #1A1917; color: var(--dim); }
+  .eff.gain { color: var(--bone); border-color: var(--edge); }
+  .eff.cost { color: var(--dim); }
+  .eff.plain { color: var(--faint); }
+  .eff.risk { color: var(--oxide-light); border-color: var(--warn-rule);
+              background: var(--warn-strip); }
+
+  /* The one thing the chips cannot fit inside themselves. Set below every other size on
+     the block, because a reader who has understood "+55% haul" never needs to read it
+     twice and a reader who has not needs it exactly once. */
+  .contact .footnote { margin: 0; padding: 11px 20px 13px; font-size: 12.5px;
+                       line-height: 1.4; color: var(--faint);
+                       border-top: 1px solid var(--rule-in); }
+  .contact.warned .footnote { padding-left: 24px; }
 
   /* Marking the card would tell the player the encounter is dangerous, which they can
      already see. Marking the option tells them which decision kills them, which is the
@@ -2178,12 +2216,21 @@ function renderMoment(expedition) {
         <span class="detail">${
           option.warned ? '<span class="glyph">&#9888;</span>' : ''
         }<span>${escape(option.detail)}</span></span>
+        ${effects(option)}
         ${momentAction(moment, option, option === filled)}
       </div>`,
     )
     .join('');
 
   const warned = moment.options.some((option) => option.warned);
+
+  // Said once, under the choices, and only where a chip actually needs it. Pressing on
+  // and sheltering scale the hours that are left rather than the trip, so "+55% haul"
+  // is true of the rest of the walk and not of what comes home — which is a footnote,
+  // not something every chip should have to carry in its own eleven characters.
+  const scaled = moment.options.some((option) =>
+    (option.effects ?? []).some((effect) => effect.label.includes('from here')),
+  );
 
   // The state line is the facts the decision needs, beside the decision. It duplicates
   // what the Away report says on the Survivor view, on purpose and now more than ever:
@@ -2196,10 +2243,33 @@ function renderMoment(expedition) {
       </div>
       <div class="block-body">
         <p class="state">${escape(condition(expedition))}</p>
+        ${moment.title ? `<p class="subject">${escape(moment.title)}</p>` : ''}
+        ${moment.scene ? `<p class="scene">${escape(moment.scene)}</p>` : ''}
         <p class="turn">${escape(moment.prose)}</p>
       </div>
       <div class="choices">${choices}</div>
+      ${scaled ? '<p class="footnote">Haul and rads change only for what is left of the trip.</p>' : ''}
     </div>`;
+}
+
+/**
+ * What an option does, in figures, under the sentence that says how it feels.
+ *
+ * The list is derived in `optionEffects` and only laid out here — this function knows
+ * nothing about hours or hazards and must not learn, or there would be two accounts of
+ * what an option costs and one of them would go stale.
+ *
+ * A real list rather than a row of spans: three of these sit side by side and a screen
+ * reader should say how many there are before reading them out, the same way the eye
+ * counts them.
+ */
+function effects(option) {
+  const chips = option.effects ?? [];
+  if (chips.length === 0) return '';
+
+  return `<ul class="effects">${chips
+    .map((effect) => `<li class="eff ${effect.tone}">${escape(effect.label)}</li>`)
+    .join('')}</ul>`;
 }
 
 /** "Six hours into the Deep Zone, carrying 22 scrap, at 61 health." */
