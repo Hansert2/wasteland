@@ -252,7 +252,9 @@ const STYLE = `
    * is a bad-looking mark; spilling over the content beside it is a broken page. */
   .rail .crest { padding: 18px 20px 16px; border-bottom: 1px solid var(--rule);
                  overflow: hidden; }
-  .rail .mark { font-size: 24px; --knockout: var(--rail); }
+  /* Centred in the column, by the same auto margins the gate uses — the box is already
+     shrunk to the wordmark, so there is something for them to centre. */
+  .rail .mark { font-size: 24px; --knockout: var(--rail); margin-inline: auto; }
 
   .rail .who { padding: 20px 20px 18px; border-bottom: 1px solid var(--rule); }
   .rail .who .tag { display: block; margin-bottom: 7px; letter-spacing: .2em; }
@@ -570,6 +572,45 @@ ${PANE_CSS}
      because it is the sentence the whole block exists to ask. */
   .contact .turn { margin: 11px 0 0; font-size: 20px; line-height: 1.5;
                    max-width: 64ch; color: #EAE7DD; }
+
+  /* ---- the readout ---- */
+
+  /* Cells across, hairline between, wrapping when the row runs out of width. Each one
+     is its own column of label-over-figure, which is what makes a figure findable by
+     its label rather than by counting commas.
+
+     "flex: 1 1 auto" with a floor rather than equal columns: a trip carries three kinds
+     on one visit and one on the next, and a grid of fixed columns would leave a hole
+     where the missing kinds were. */
+  .readout { display: flex; flex-wrap: wrap;
+             border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
+  .read { flex: 1 1 auto; min-width: 88px; padding: 11px 16px;
+          border-right: 1px solid var(--rule-in); }
+  .read:last-child { border-right: 0; }
+  .read .tag { display: block; letter-spacing: .12em; color: var(--dim); }
+  .read .fig { display: block; margin-top: 6px; font-family: var(--numer);
+               font-size: 19px; line-height: 1; color: var(--value);
+               font-variant-numeric: tabular-nums; }
+  /* The same accent a draining store gets, for the same reason: it is the figure you
+     would otherwise only discover by reading the sentence underneath. */
+  .read.hurt .fig { color: var(--oxide-light); }
+
+  /* ---- what was answered out there ---- */
+
+  /* Three columns rather than a sentence with a comma and a dash in it: which moment,
+     when, and what was chosen. The choice is pushed to the far side because it is the
+     column being scanned — the titles are already distinct, and the hours are context
+     for them rather than the point. */
+  .settled { border-top: 1px solid var(--rule); padding: 13px 20px 4px; }
+  .settled > .tag { display: block; color: var(--dim); }
+  .answered { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px;
+              padding: 9px 0; border-bottom: 1px solid var(--rule-in); }
+  .answered .what { font-family: var(--label); font-size: 14.5px; color: var(--bone); }
+  .answered .when { font-family: var(--numer); font-size: 11.5px; color: var(--quiet);
+                    font-variant-numeric: tabular-nums; }
+  .answered .took { margin-left: auto; font-size: 14.5px; color: var(--dim); }
+  .settled .footnote { margin: 0; padding: 9px 0 9px; font-size: 12.5px;
+                       line-height: 1.4; color: var(--faint); }
 
   .choices { display: grid; grid-template-columns: repeat(3, 1fr);
              border-top: 1px solid var(--rule); }
@@ -1002,11 +1043,6 @@ ${PANE_CSS}
      the other side of it. */
   .clock small:first-child { margin-left: 0; margin-right: 9px; }
 
-  /* The sentence a block leads with, where the block's whole job is to say one thing.
-     Prose, near-bone, and wide — the opposite register to ".state", which is the same
-     kind of string doing small-print duty under a decision. */
-  .lede-line { margin: 0; font-size: 18px; line-height: 1.55; color: #EAE7DD;
-               max-width: 56ch; }
   .under { margin: 10px 0 0; font-size: 15.5px; line-height: 1.55; color: var(--quiet); }
 
   /* A price the camp cannot pay. The only other things wearing oxide are a clock, a
@@ -1164,7 +1200,11 @@ ${PANE_CSS}
     /* The crest loses its rule for the same reason .who does: the rail is one band
        across the top of a phone here, not a stack of panels, and every hairline inside
        it is a seam in something that should read as one thing. */
+    /* Back to the left edge here. There is no column to centre in on a phone — the rail
+       is the full width of the screen — so a centred mark would float in the middle of
+       a band with the camp's name left-aligned underneath it. */
     .rail .crest { padding: 16px 16px 12px; border-bottom: 0; }
+    .rail .mark { margin-inline: 0; }
     .rail .who { padding: 0 16px 14px; border-bottom: 0; }
     /* The rail is a header here rather than a column, so the four stores lie down and
        share its width. The cap goes: "40.0 / 350" in a quarter of a phone is two
@@ -2499,23 +2539,50 @@ function elapsed(hoursOut, region) {
 }
 
 /**
- * The one-line state of a trip.
+ * The one-line state of a trip, for the moment box.
  *
- * The region is named only where the surrounding block has not already said it. In the
- * moment box it has not — that heading is "Contact", and a decision needs to know where
- * they are. In the Away report the heading *is* the region, so naming it here put the
- * same words twice in two consecutive lines.
+ * The Away report used to share this and no longer does — six facts in one breath is
+ * the wrong container for a set of independent figures, and that block reads them off
+ * a `readout()` now. Here the sentence is still right: it is small print under a
+ * decision, read once to answer "can they afford this", and a row of instrument cells
+ * above three choices would out-shout the choices.
+ *
+ * The region is named because the heading over it is "Contact" rather than the place,
+ * and a decision needs to know where they are standing.
  */
-function condition(expedition, { region = true } = {}) {
+function condition(expedition) {
   const carried = Object.entries(expedition.carrying)
     .map(([kind, amount]) => `${amount} ${kind}`)
     .join(', ');
 
   return [
-    elapsed(expedition.hoursOut, region ? expedition.regionName : null),
+    elapsed(expedition.hoursOut, expedition.regionName),
     carried ? `carrying ${carried}` : 'carrying nothing yet',
     `at ${n(expedition.health, 0)} health`,
   ].join(', ') + '.';
+}
+
+/**
+ * A row of labelled figures: a set of independent numbers, as an instrument.
+ *
+ * Same two-part cell the stores in the rail are built from — a tracked label with a
+ * mono figure under it — because this is the same kind of thing being read, and a
+ * second idiom for it would be a second thing to learn. It differs only in running
+ * across rather than down, and in having no cap and no track: a trip's health is a
+ * figure out of a hundred, and its haul is not out of anything.
+ *
+ * Tone is for the one cell worth noticing, and the accent rule is the same one a
+ * draining store follows: oxide marks the fact you would otherwise have to work out.
+ */
+function readout(cells) {
+  return `<div class="readout">${cells
+    .map(
+      ({ tag, value, tone }) => `<div class="read${tone ? ` ${tone}` : ''}">
+        <span class="tag">${escape(tag)}</span>
+        <span class="fig">${escape(value)}</span>
+      </div>`,
+    )
+    .join('')}</div>`;
 }
 
 function renderExpeditions(view) {
@@ -2537,13 +2604,10 @@ function renderExpeditions(view) {
     // of the progress curve.
     const lines = [];
 
-    if (trip.damage > 0) {
-      lines.push(`Hurt out there${trip.cause ? ` — ${escape(trip.cause)}` : ''}.`);
-    }
-    if (trip.radiation > 0) lines.push(`${n(trip.radiation)} rads so far.`);
-    if (trip.findCount > 0) {
-      lines.push(`${trip.findCount} thing${trip.findCount === 1 ? '' : 's'} worth keeping.`);
-    }
+    // Damage is in the readout as a figure, so this line exists only for the part a
+    // figure cannot carry: what did it. "Hurt out there." beside an accented health
+    // number is the same fact told twice.
+    if (trip.damage > 0 && trip.cause) lines.push(`Hurt out there — ${escape(trip.cause)}.`);
     if (trip.nextMomentAt) {
       lines.push(`Radio: next contact in ${countdown(trip.nextMomentAt, 'any moment')}.`);
     }
@@ -2553,34 +2617,71 @@ function renderExpeditions(view) {
     // still rolled at the return, with the answers as an input. Without this the moment
     // box simply vanished on submit and the page said nothing at all until the survivor
     // walked back through the gate, which reads exactly like a button that did nothing.
-    for (const answer of trip.settled ?? []) {
-      lines.push(`${escape(answer.title)}, ${duration(answer.atHour)} in — ${escape(answer.label)}.`);
-    }
-    if ((trip.settled ?? []).length > 0) {
-      lines.push('What came of that comes home with them.');
-    }
+    //
+    // Three facts per answer — which moment, when, and what was chosen — set as three
+    // columns rather than as a sentence with a comma and a dash in it. They are a log,
+    // and a log is read down one column at a time.
+    const settled = (trip.settled ?? [])
+      .map(
+        (answer) => `<div class="answered">
+          <span class="what">${escape(answer.title)}</span>
+          <span class="when">${escape(duration(answer.atHour))} in</span>
+          <span class="took">${escape(answer.label)}</span>
+        </div>`,
+      )
+      .join('');
 
     /*
-     * The state of the trip is the lede, not a readout.
+     * The state of the trip is a readout, and this is the second time that sentence has
+     * been rewritten in the opposite direction.
      *
-     * "Less than an hour in, carrying nothing yet, at 100 health" was set in 13px mono
-     * in the colour reserved for things that are present but not the point — which is
-     * right inside the Contact panel, where it is the small print under a decision, and
-     * wrong here, where it is the whole of what the block has to say. Same string, two
-     * jobs, and only one of them is a machine readout.
+     * It was 13px mono in the colour for things that are present but not the point —
+     * right inside the Contact panel, where it is small print under a decision, and
+     * wrong here, where it is the whole of what the block has to say. So it became a
+     * lede: one prose sentence at prose size.
+     *
+     * Which made it *legible* and left it unreadable in the way that actually mattered.
+     * "4 hours in, carrying 5 fuel, 9 scrap, 5 water, at 51 health" is six facts in one
+     * breath, and a player checking in wants one of them — usually health, sometimes
+     * fuel — and has to parse past five to reach it. Prose is the wrong container for
+     * a set of independent figures however well it is set.
+     *
+     * So: labelled cells, in the language the stores in the rail already speak. Every
+     * figure is findable by its label without reading its neighbours, which is the
+     * whole difference between a sentence and an instrument.
      *
      * Under it, what the place is. The dispatch table says that sentence before you
      * send anybody and then the block that replaces it never said it again, so a trip
      * in progress was eight hours of numbers about a name.
      */
+    // No elapsed figure here. The strip above already carries a clock, and two spans of
+    // the same trip measured from opposite ends is one reading too many — the one worth
+    // having is the one you can act on, which is when they are back. Health leads
+    // instead, which is the figure a check-in is actually looking for.
+    const cells = [
+      { tag: 'health', value: n(trip.health, 0), tone: trip.damage > 0 ? 'hurt' : '' },
+      { tag: 'rads', value: n(trip.radiation) },
+    ];
+
+    // One cell per kind carried, and a single dash when the pack is still empty. The
+    // stores make the same argument for an empty track: the block keeps its shape
+    // whatever is in it, or the eye has to re-find the layout on every visit.
+    const carried = Object.entries(trip.carrying);
+    if (carried.length === 0) cells.push({ tag: 'haul', value: '—' });
+    for (const [kind, amount] of carried) cells.push({ tag: kind, value: String(amount) });
+
+    // Unlike health and rads, a find is an event rather than a scale being watched, so
+    // "finds 0" on every trip would be a cell that is only ever noise.
+    if (trip.findCount > 0) cells.push({ tag: 'finds', value: String(trip.findCount) });
+
     return `<div class="block contact">
         <div class="block-head">
           <span class="tag">Away &mdash; ${escape(trip.regionName)}</span>
           ${due}
         </div>
         ${plate(trip.regionSlug, 'band')}
+        ${readout(cells)}
         <div class="block-body">
-          <p class="lede-line">${escape(condition(trip, { region: false }))}</p>
           ${
             trip.regionDescription
               ? `<p class="under">${escape(trip.regionDescription)}</p>`
@@ -2588,6 +2689,12 @@ function renderExpeditions(view) {
           }
           ${lines.length > 0 ? `<p class="under">${lines.join('<br>')}</p>` : ''}
         </div>
+        ${
+          settled
+            ? `<div class="settled"><span class="tag">Settled out there</span>${settled}
+               <p class="footnote">What came of that comes home with them.</p></div>`
+            : ''
+        }
       </div>${momentAlarm(trip)}`;
   }
 
