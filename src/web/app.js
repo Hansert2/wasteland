@@ -117,6 +117,26 @@ export function createApp() {
   });
 
   app.post('/register', registerLimit, async (req, res) => {
+    /*
+     * The second copy of the password, and why a form this small has one.
+     *
+     * Nothing in this game can reset a password. A typo at the gate does not cost a
+     * second attempt at logging in — it permanently destroys a camp that has not been
+     * founded yet and will accumulate weeks of history nobody can get back. That is a
+     * bad enough failure to be worth a field that modern advice is against.
+     *
+     * It catches a typo in one box and not a typo made identically in both, which is
+     * the honest limit of the technique. **The real fix is password recovery, and this
+     * comes out the day that lands.**
+     *
+     * Checked here rather than in `foundSettlement` because a repeated password is a
+     * property of this form and not of founding a camp: the service takes one password,
+     * and the tools and tests that call it directly have no business supplying two.
+     */
+    if (String(req.body.password ?? '') !== String(req.body.passwordAgain ?? '')) {
+      throw new InputError('Those passwords do not match.');
+    }
+
     const { playerId } = await withTransaction((client) =>
       foundSettlement(client, {
         email: req.body.email,
@@ -392,7 +412,12 @@ function paneOf(req) {
 
 async function renderErrorForPlayer(req, res, message, status = 400) {
   if (!req.playerId) {
-    return res.status(status).send(landingPage({ error: message }));
+    // Which of the gate's two doors complained. Without this a refused registration
+    // renders the reason above a collapsed panel — the message would be about a form
+    // the player can no longer see.
+    return res.status(status).send(
+      landingPage({ error: message, signUp: req.path === '/register' }),
+    );
   }
 
   try {

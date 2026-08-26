@@ -151,6 +151,12 @@ const STYLE = `
        resident on Windows, and Arial alone loses the condensing that is half of what
        makes a label read as a label. Still a system face; still nothing fetched. */
     --label: 'Roboto Condensed', 'Arial Narrow', Arial, sans-serif;
+    /* The mark's own stack, and deliberately not "--label". The lockup is drawn in the
+       narrowest face the machine has and falls back to the next narrowest; the label
+       stack leads with Roboto Condensed, which is a different width and would relax
+       the wordmark's tracking into something that is not the mark. */
+    --mark: 'Arial Narrow', 'Helvetica Neue Condensed', 'Liberation Sans Narrow',
+            'Roboto Condensed', sans-serif;
     --body: -apple-system, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
     --numer: ui-monospace, Menlo, Consolas, monospace;
   }
@@ -182,10 +188,18 @@ const STYLE = `
    * the one measure the design controls — how long a line of prose is — a property of
    * the reader's monitor.
    */
+  /*
+   * Two columns, and the left one has a floor.
+   *
+   * A grid rather than a flex row because the way out has to sit at the bottom of the
+   * left column while living outside the rail in the document — see EXIT. Row one
+   * takes the slack ("1fr") and row two is the height of the button, so the rail fills
+   * whatever is left and the way out is pinned under it however short the page is.
+   */
   .shell {
-    display: flex;
-    align-items: stretch;
-    gap: 0;
+    display: grid;
+    grid-template-columns: 198px minmax(0, 1fr);
+    grid-template-rows: 1fr auto;
     max-width: 1280px;
     margin: 0 auto;
     min-height: 100vh;
@@ -194,18 +208,51 @@ const STYLE = `
     border-right: 1px solid var(--rule);
   }
 
+  /* The foot of the left column, wearing the rail's own ground so the two read as one
+     surface with a button resting on the bottom of it. */
+  .exit { grid-column: 1; grid-row: 2; background: var(--rail); padding: 20px; }
+
   /*
    * The divider between rail and content is on "main", not on the rail.
    *
    * Whichever of the two is taller has to carry it, or the line stops partway down the
    * card and reads as a rendering fault. "main" is the tall one on every view except an
-   * empty Road, and "align-items: stretch" makes it the tall one there too.
+   * empty Road — and it spans both grid rows, so the line now runs past the way out as
+   * well and reaches the floor on every view, which is what it was always trying to do.
    */
   .rail {
-    flex: 0 0 198px;
+    grid-column: 1;
+    grid-row: 1;
     width: 198px;
     background: var(--rail);
   }
+
+  /* The mark at rail size, above the camp's own name.
+   *
+   * The design's short-form sheet sketches exactly this column — the small stacked
+   * lockup over a set of stores with one warm countdown in it — so the rail is where
+   * the mark was always going to live. Its ground is the rail's, not the page's, which
+   * is what the knockout variable exists for.
+   *
+   * Not a link, deliberately. The nav three rows below already has Camp in it, and a
+   * second control going to the same place is a second thing to tab through that
+   * teaches the reader nothing.
+   *
+   * Sized to span the column's measure rather than to the design's 17px rail sample.
+   * That sample was drawn against a rail with nothing else in it; ours opens with the
+   * camp's own name at 24px directly underneath, and a wordmark smaller than the name
+   * below it reads as a caption on the camp rather than as the masthead over it. At
+   * 24px the wordmark comes to about 138px of the 158px available, which is a masthead
+   * that spans its column without touching either edge.
+   *
+   * "overflow: hidden" is a guard and not a layout tool. Every width here comes from
+   * whatever narrow face the machine resolved, and a client with none of the four —
+   * falling all the way through to sans-serif, which may not condense at all — would
+   * set the wordmark wide enough to reach across into main. Clipped at the rail's edge
+   * is a bad-looking mark; spilling over the content beside it is a broken page. */
+  .rail .crest { padding: 18px 20px 16px; border-bottom: 1px solid var(--rule);
+                 overflow: hidden; }
+  .rail .mark { font-size: 24px; --knockout: var(--rail); }
 
   .rail .who { padding: 20px 20px 18px; border-bottom: 1px solid var(--rule); }
   .rail .who .tag { display: block; margin-bottom: 7px; letter-spacing: .2em; }
@@ -252,7 +299,6 @@ const STYLE = `
   }
   .rail nav a:last-child { border-bottom-color: var(--rule); }
 
-  .rail form { margin: 20px; }
 
   /*
    * A flex column with a gap, and the gap is the reason rather than the layout.
@@ -264,7 +310,8 @@ const STYLE = `
    * is right on every view without anything having to know which view is up.
    */
   main {
-    flex: 1 1 auto;
+    grid-column: 2;
+    grid-row: 1 / 3;
     min-width: 0;
     padding: 20px 24px 72px;
     border-left: 1px solid var(--rule);
@@ -911,7 +958,18 @@ ${PANE_CSS}
   button.fill:hover { background: var(--oxide-light); border-color: var(--oxide-light); }
   form { margin: 0; }
 
-  input[type="email"], input[type="password"], input[type="text"], input[type="number"] {
+  /* Everything the player can type into, named by what it is not.
+   *
+   * This used to enumerate the four types it expected, which meant an input was styled
+   * only if somebody had remembered to write its type down — and "text" is the one type
+   * you never have to write, because it is what an input already is. The camp name
+   * field carried no type for that reason and rendered as a white browser default in
+   * the middle of a dark form, on the first page anybody sees.
+   *
+   * Excluding hidden is the whole of the exception list: there are no checkboxes,
+   * radios or submit inputs anywhere in the game, and if one ever arrives it should be
+   * styled deliberately rather than have inherited a text field's border by default. */
+  input:not([type="hidden"]) {
     background: #131211;
     border: 1px solid var(--rule);
     color: var(--bone);
@@ -994,11 +1052,76 @@ ${PANE_CSS}
   /* ---- the gate ---- */
 
   .gate { max-width: 30rem; margin: 0 auto; padding: 48px 20px 96px; }
-  .gate h1 { font-family: var(--label); font-weight: 700; font-size: 24px;
-             letter-spacing: .18em; text-transform: uppercase; color: var(--bone);
-             margin: 0 0 24px; }
+
+  /* ---- the mark ---- */
+
+  /* "Barred block": CAMP knocked out of a solid bar, sitting on WASTELANDIA. One ink,
+     system faces, nothing drawn and nothing to load — which is why it can be the first
+     thing on the first page without the page waiting on anything.
+
+     The lockup is one "font-size" and two ratios of it, so every proportion the design
+     specifies survives being resized. That is the whole reason it is not three fixed
+     pixel values: a mark whose kicker is 24px is correct at one size and wrong at every
+     other, and this page is read on a phone as often as not.
+
+     "align-items: stretch" in a column is what makes the bar span the wordmark's exact
+     measure — the bar has no width of its own and takes the widest child's. Nothing
+     measures anything, and it stays true if the camp is ever called something else.
+
+     Centring it over the column is the reason for "fit-content" rather than a
+     "text-align" anywhere: the box has to shrink to the wordmark before auto margins
+     have anything to centre, and it has to stay a stretch container while it does, or
+     the bar collapses to the width of the word CAMP and the lockup comes apart.
+
+     **Every measurement below is in em, including the paddings, and that is what lets
+     the same three rules draw the mark at 56px on the gate and 24px in the rail.** The
+     paddings were pixels first, which is fine at one size and wrong at the other: 5px
+     of bar padding is a fifth of the kicker's height at display size and two thirds of
+     it at rail size, so the rail mark came out as a word in a thick slab. The values
+     are the design's own, divided by the size they were drawn at. */
+  .mark { display: flex; flex-direction: column; align-items: stretch;
+          width: fit-content; margin: 0;
+          /* The hole in the bar is whatever ground the mark is standing on, so each
+             placement states its own. A grey here instead of the real ground turns the
+             knockout into a label printed on a bar, which is a different mark. */
+          --knockout: var(--void);
+          font-family: var(--mark); font-stretch: condensed; font-weight: 700;
+          text-transform: uppercase; }
+  /* On a dark ground the bar inverts and the wordmark takes the ground's light tone.
+     Bar paddings are in the kicker's own em, so they are the design's 5px and 4px
+     divided by the 24px kicker they were drawn against, not by the mark's size. */
+  .mark .bar { background: var(--bone); color: var(--knockout);
+               font-size: .43em; line-height: .9; padding: .208em 0 .167em;
+               letter-spacing: .18em; text-indent: .18em; text-align: center; }
+  .mark .word { color: var(--bone); font-size: 1em; line-height: .94;
+                letter-spacing: -.012em; padding-top: .071em; }
+
+  /* Clear space is the bar's own height on all four sides: the kicker's line box plus
+     its two paddings, which comes to .55em of the mark at any size. */
+  .gate .mark { font-size: clamp(38px, 11vw, 56px); margin: 0 auto .55em; }
+
   .gate .block { margin-bottom: 18px; }
   .gate .error { margin-bottom: 18px; }
+
+  /* ---- the second door ---- */
+
+  /* A summary styled as the button it is. The marker goes because the row is already a
+     button by every other signal, and two affordances saying the same thing read as a
+     button with a bullet in it. "list-style" covers Firefox, the pseudo-element covers
+     WebKit; both are needed and neither is redundant. */
+  .enlist { margin-bottom: 18px; }
+  .enlist > summary { display: block; text-align: center; cursor: pointer;
+                      font-family: var(--label); font-weight: 700; font-size: 10.5px;
+                      letter-spacing: .14em; text-transform: uppercase;
+                      padding: 12px 14px; color: var(--bone);
+                      border: 1px solid var(--control); list-style: none; }
+  .enlist > summary::-webkit-details-marker { display: none; }
+  .enlist > summary:hover { border-color: var(--bone); }
+  /* Open, the summary is the block's own head rather than a button floating above it:
+     one object with a lid, not a control and a panel that happen to be adjacent. */
+  .enlist[open] > summary { border-bottom-color: var(--rule); background: #231F18; }
+  .enlist[open] > summary:hover { border-color: var(--control); border-bottom-color: var(--rule); }
+  .enlist[open] .block { border-top: 0; margin-bottom: 0; }
   label { display: block; margin-bottom: 12px; font-family: var(--label);
           font-weight: 700; font-size: 10px; letter-spacing: .16em;
           text-transform: uppercase; color: var(--dim); }
@@ -1038,7 +1161,11 @@ ${PANE_CSS}
       width: auto;
       border-bottom: 1px solid var(--rule);
     }
-    .rail .who { padding: 18px 16px 14px; border-bottom: 0; }
+    /* The crest loses its rule for the same reason .who does: the rail is one band
+       across the top of a phone here, not a stack of panels, and every hairline inside
+       it is a seam in something that should read as one thing. */
+    .rail .crest { padding: 16px 16px 12px; border-bottom: 0; }
+    .rail .who { padding: 0 16px 14px; border-bottom: 0; }
     /* The rail is a header here rather than a column, so the four stores lie down and
        share its width. The cap goes: "40.0 / 350" in a quarter of a phone is two
        figures where the first is the one being watched. */
@@ -1066,7 +1193,10 @@ ${PANE_CSS}
       border-bottom-color: var(--oxide);
     }
     .rail nav a:last-child { border-bottom-color: transparent; }
-    .rail form { margin: 12px 16px; }
+    /* Block flow here, so this is the last thing on the page rather than the
+       bottom of a column. It keeps the rail's ground and gains a rule, because
+       on a phone it follows main instead of sitting beneath a nav. */
+    .exit { padding: 14px 16px 18px; border-top: 1px solid var(--rule); }
     main { padding: 16px 16px 64px; }
     button { padding: 13px 16px; min-height: 44px; }
     .choice button { padding: 13px 0; }
@@ -1122,20 +1252,54 @@ export function escape(value) {
  *   is reading Trade still arms, still fires, still fetches. The brief was willing to
  *   accept that they would not; it costs nothing here not to accept it.
  */
+/**
+ * The mark's short form: the bar cropped to two letters.
+ *
+ * An inline SVG rather than a file, for the same reason the lockup is type rather than
+ * artwork — nothing to serve, nothing to cache-bust, and no second copy of the brand to
+ * keep in step with the first. It is the design's own favicon square: dark ground, two
+ * condensed caps knocked out of it.
+ *
+ * `textLength` is the load-bearing attribute. A tab icon is drawn with whatever face
+ * the machine resolves, and a browser that has never heard of Arial Narrow would set
+ * "CW" in something wider and push it out of a 36px box. Pinning the measure makes the
+ * two letters fit whatever they are drawn in, which is the whole job at 16 pixels.
+ */
+const FAVICON =
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 36 36'%3E" +
+  "%3Crect width='36' height='36' fill='%23201F1D'/%3E" +
+  "%3Ctext x='18' y='25' text-anchor='middle' textLength='26' lengthAdjust='spacingAndGlyphs'" +
+  " font-family='Arial Narrow,Helvetica Neue,sans-serif' font-weight='700' font-size='19'" +
+  " fill='%23F3F2F2'%3ECW%3C/text%3E%3C/svg%3E";
+
 export function layout(title, body, { pane } = {}) {
   return `<!doctype html>
 <html lang="en">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${escape(title)}</title><style>${STYLE}</style></head>
+<title>${escape(title)}</title><link rel="icon" href="${FAVICON}"><style>${STYLE}</style></head>
 <body${pane ? ` data-pane="${escape(pane)}"` : ''}>${body}<script>${TIMERS}</script></body></html>`;
 }
 
 /**
- * The rail: who this camp is, the five views, and the way out.
+ * The way out, and the only thing on the page that belongs to no column.
  *
- * The log out form sits here and deliberately *outside* any section, which is what
- * makes it navigate rather than post in place — the rule `section()` documents, used
- * rather than restated.
+ * It reads as the foot of the rail and is not inside it, because those are two
+ * different requirements and only one of them is about the DOM. On a wide screen the
+ * shell is a grid and this is parked in the left column's bottom row; on a phone the
+ * shell is ordinary block flow and this is simply the last thing on the page. Keeping
+ * it inside the rail would satisfy the first and make the second impossible — the rail
+ * is a band across the top there, so the way out would sit above everything it is
+ * meant to come after.
+ *
+ * Still outside any `section()`, which is what makes it navigate rather than post in
+ * place — the rule `section()` documents, used rather than restated.
+ */
+const EXIT = `<form class="exit" method="post" action="/logout">
+  <button type="submit">Log out</button>
+</form>`;
+
+/**
+ * The rail: the mark, who this camp is, and the five views.
  */
 function rail(pane, identity, state = '') {
   const links = RAIL.map(
@@ -1144,10 +1308,17 @@ function rail(pane, identity, state = '') {
   ).join('');
 
   return `<div class="rail">
+    ${/*
+      * Outside every section, like the log out form beneath it and for the same reason:
+      * a section is a thing the page re-fetches and swaps when its contents differ, and
+      * the mark never differs. It is the one part of this column that is not state.
+      */ ''}
+    <div class="crest">
+      <span class="mark"><span class="bar">Camp</span><span class="word">Wastelandia</span></span>
+    </div>
     ${identity}
     ${state}
     <nav>${links}</nav>
-    <form method="post" action="/logout"><button type="submit">Log out</button></form>
   </div>`;
 }
 
@@ -1476,10 +1647,30 @@ export const TIMERS = `
 })();
 `;
 
-export function landingPage({ error } = {}) {
-  return layout('Wasteland', `
+/**
+ * The gate: the mark, one way in, and a door to the other one.
+ *
+ * Both blocks used to stand open side by side, which asked a returning player to read
+ * two forms and work out which was theirs — and there is only ever one of them that is.
+ * Signing in is the overwhelmingly common errand, so it is the only thing with fields
+ * showing; founding a camp is a thing you do once, so it is a button that opens.
+ *
+ * `<details>` rather than a script, because this is the one page in the game that has
+ * to work before anything else does. A toggle that needs JavaScript to reveal the
+ * registration form is a page that cannot be registered on when the script fails, and
+ * the summary is keyboard-operable and announced as expandable without any help.
+ *
+ * `signUp` forces it open, and the reason is the whole point of not doing this in the
+ * client: a registration that fails comes back through here as a fresh render, and
+ * without it the player would be shown "That email already has a camp" above a
+ * collapsed form with their typing gone and no clue which half complained.
+ */
+export function landingPage({ error, signUp = false } = {}) {
+  return layout('Camp Wastelandia', `
     <div class="gate">
-      <h1>Wasteland</h1>
+      <h1 class="mark">
+        <span class="bar">Camp</span><span class="word">Wastelandia</span>
+      </h1>
       ${error ? `<p class="error">${escape(error)}</p>` : ''}
 
       <div class="block wants">
@@ -1493,17 +1684,20 @@ export function landingPage({ error } = {}) {
         </div>
       </div>
 
-      <div class="block">
-        <h2>Found a new camp</h2>
-        <div class="block-body">
-          <form method="post" action="/register">
-            <label>Email <input name="email" type="email" required autocomplete="username"></label>
-            <label>Password <input name="password" type="password" required autocomplete="new-password" minlength="8"></label>
-            <label>Camp name <input name="settlementName" placeholder="Camp"></label>
-            <button type="submit">Begin</button>
-          </form>
+      <details class="enlist"${signUp ? ' open' : ''}>
+        <summary>Found a new camp</summary>
+        <div class="block">
+          <div class="block-body">
+            <form method="post" action="/register">
+              <label>Email <input name="email" type="email" required autocomplete="username"></label>
+              <label>Password <input name="password" type="password" required autocomplete="new-password" minlength="8"></label>
+              <label>Password again <input name="passwordAgain" type="password" required autocomplete="new-password" minlength="8"></label>
+              <label>Camp name <input name="settlementName" placeholder="Camp"></label>
+              <button type="submit">Begin</button>
+            </form>
+          </div>
         </div>
-      </div>
+      </details>
     </div>
   `);
 }
@@ -1692,6 +1886,7 @@ export function campPage(view, { error, pane = 'camp' } = {}) {
 
     ${section('roster', renderRoster(view.fallenCount))}
     </main>
+    ${EXIT}
   </div>`, { pane });
 }
 
@@ -3132,6 +3327,7 @@ export function graveyardPage(view) {
       ${holding}
       ${view.fallen.length === 0 ? '<p>Nobody has died here yet.</p>' : `<div class="stones">${stones}</div>`}
     </main>
+    ${EXIT}
   </div>`, { pane: 'records' });
 }
 
