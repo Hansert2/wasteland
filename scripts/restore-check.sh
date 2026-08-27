@@ -21,12 +21,37 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.prod.yml}"
+ENV_FILE="${ENV_FILE:-.env.prod}"
 DB_SERVICE="${DB_SERVICE:-db}"
-DB_USER="${POSTGRES_USER:-wasteland}"
-DB_NAME="${POSTGRES_DB:-wasteland}"
 SCRATCH="${SCRATCH_DB:-wl_restore_check}"
 
-compose() { docker compose -f "$COMPOSE_FILE" "$@"; }
+# The production compose refuses to interpolate without its env file, so the same
+# `--env-file` the deploy command uses has to be passed here. Only when it exists: the
+# dev stack has a plain `.env`, which compose picks up on its own.
+#
+# Written as an `if` rather than `[ -f x ] && ...`, because under `set -e` a test that
+# comes out false is the last command in the list and takes the script down with it.
+COMPOSE_ARGS=(-f "$COMPOSE_FILE")
+if [ -f "$ENV_FILE" ]; then
+  COMPOSE_ARGS+=(--env-file "$ENV_FILE")
+fi
+
+compose() { docker compose "${COMPOSE_ARGS[@]}" "$@"; }
+
+# Read the credentials from the same file compose reads, rather than guessing at
+# defaults: the scratch database is reached with a real connection string in the play
+# step, and a password compose knows and this script does not would fail there and
+# nowhere else.
+from_env() {
+  [ -f "$ENV_FILE" ] || return 0
+  grep -E "^$1=" "$ENV_FILE" | tail -1 | cut -d= -f2- | tr -d '"'
+}
+
+DB_USER="${POSTGRES_USER:-$(from_env POSTGRES_USER)}"
+DB_NAME="${POSTGRES_DB:-$(from_env POSTGRES_DB)}"
+DB_PASS="${POSTGRES_PASSWORD:-$(from_env POSTGRES_PASSWORD)}"
+DB_USER="${DB_USER:-wasteland}"
+DB_NAME="${DB_NAME:-wasteland}"
 psql_at() { compose exec -T "$DB_SERVICE" psql -q -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$1" "${@:2}"; }
 
 DUMP="${1:-}"
@@ -85,7 +110,8 @@ echo "==> playing the restored copy"
 # already live: the production box runs the game in Docker and need not have node installed
 # on the host at all. Falls back to the host for a dev stack that is only a database.
 if compose config --services 2>/dev/null | grep -qx app; then
-  PLAY=(compose exec -T -e DATABASE_URL="postgresql://${DB_USER}@${DB_SERVICE}:5432/${SCRATCH}" app node --input-type=module)
+  AUTH="${DB_USER}${DB_PASS:+:${DB_PASS}}"
+  PLAY=(compose exec -T -e DATABASE_URL="postgresql://${AUTH}@${DB_SERVICE}:5432/${SCRATCH}" app node --input-type=module)
 elif command -v node > /dev/null; then
   PLAY=(env DATABASE_URL="${RESTORE_URL:?no app service, so set RESTORE_URL to reach the scratch database}" node --input-type=module)
 else

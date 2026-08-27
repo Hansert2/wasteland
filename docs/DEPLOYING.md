@@ -188,6 +188,10 @@ No `sudo`: it needs your docker group membership, not root, and running it as ro
 have the app container write its scratch database as a different user for no reason. It
 can be run from anywhere — it finds the repo root itself.
 
+It reads `.env.prod` for the same reason the deploy command does: the production compose
+refuses to interpolate without it, and the connection string the last step uses needs the
+password compose already has. Point `ENV_FILE` elsewhere if yours is named differently.
+
 It restores into a scratch database called `wl_restore_check`, compares every table
 against the live one, loads every camp through the real service layer, and drops the
 scratch database again. **It never writes to the live database and never drops it**, so it
