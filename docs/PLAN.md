@@ -1807,7 +1807,9 @@ answers directly: the verbs stop being the point when they are paying for someth
 
 *Against: every trip is the same trip.*
 
-Designed 2026-08-27, from `wasteland-overhaul.md` at the repo root — a feature document
+Designed 2026-08-27, from `wasteland-overhaul.md` — an **untracked** working document at
+the repo root, named here so a reader who cannot find it knows why rather than assuming a
+broken link. It is a feature document
 written without this file open, whose Expansion 1 §§6–11 is Phase 7 re-derived and whose
 §§4–5 propose the two columns `tools/skill-sensitivity.mjs` measured as scenery. Its
 §§1–3 are the part that is genuinely new, and this is that part designed properly. The
@@ -2141,6 +2143,22 @@ because whether an event happens to open and close inside one particular ten-hou
 is a fact about the day the suite runs. That is the shape the database suite already
 flaked in once. A guard that cannot be shown to go red is not a guard; this one was run
 against the unfixed code and observed to fail.
+
+**And a check that could not fail, recorded because it was believed for most of a day.**
+The claim made while building this was that all seven page snapshots came out
+byte-identical, which sounded like strong evidence that neither commit moved the page. It
+was worth nothing. `page-states/` is in `.gitignore` — it is a design aid, rebuilt on
+demand — so `git diff page-states/` returns empty whatever the code does. The tool is not
+deterministic either: two runs of *identical* code differ, because the survivor who
+answers the gate is drawn per camp and the countdowns tick in wall-clock seconds.
+
+**`tools/page-states.mjs` is a design aid, not a regression check, and the difference is
+not visible from the diff it produces.** What actually guards the page is
+`test/db/page-contract.test.js`, which builds the same seven states and asserts twelve
+structural properties of them — every block renders, every deadline is a live countdown
+the client script can still find, every gauge carries its attributes, every plate is a
+file that exists. That is the assertion to cite. It is also, exactly, the thing this file
+already has a lesson about: a claim that sounded stronger than the check behind it.
 
 **The sun follows the same rule, and needed it first.** `d` is computed across
 `[departedAt, returnsAt]` for the reason the sky now is, plus one of its own: the dispatch
