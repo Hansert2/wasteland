@@ -24,6 +24,7 @@
  * cannot be sent into it, and in high summer the night is six hours.
  */
 
+import { makeRandom } from './random.js';
 import {
   activeAt,
   integrateFactors,
@@ -184,6 +185,37 @@ export function nextBandChange(at) {
   return at + DAY_MS;
 }
 
+/**
+ * The next instant the temperature the page is *showing* stops being true.
+ *
+ * The strip prints a whole number of degrees, and the air moves about two degrees an hour
+ * at the steep part of the day — so the figure is stale roughly eight minutes after it is
+ * rendered, and three hours later it is out by three. On its own that is a small lie; next
+ * to a chart whose marker is walking correctly along the line it is a page disagreeing
+ * with itself, which this file already has a rule about.
+ *
+ * Walked minute by minute and rounded the same way the page rounds, so the answer is the
+ * instant the *displayed* value changes rather than the instant the underlying one does.
+ * There is no closed form worth having: the curve is a seasonal cosine, a diurnal cosine
+ * and a smoothstepped drift, and the rounding boundary is what matters.
+ *
+ * Capped, because a plateau at the turn of the day can sit inside one degree for hours and
+ * an alarm that never fires is the thing this is fixing.
+ */
+export function nextDegreeChange(events, at, capHours = 3) {
+  requireInstant(at, 'nextDegreeChange');
+
+  const minute = 60_000;
+  const shown = Math.round(temperatureAt(at, activeAt(events, at)));
+
+  for (let step = 1; step <= capHours * 60; step += 1) {
+    const when = at + step * minute;
+    if (Math.round(temperatureAt(when, activeAt(events, when))) !== shown) return when;
+  }
+
+  return at + capHours * 60 * minute;
+}
+
 /** Whether the sun is up at `at`. */
 export function isLit(at) {
   const hour = hourAt(at);
@@ -266,6 +298,27 @@ const DIURNAL_SWING_C = 7;
 const HOTTEST_HOUR = 15;
 
 /**
+ * How far the weather wanders off the curve, and how long it takes to wander.
+ *
+ * Without this the temperature is a cosine on a cosine — a perfect wave, identical every
+ * day, which reads as a diagram of weather rather than as weather. Real air does not
+ * repeat itself.
+ *
+ * **Smooth noise, not jitter.** A fresh random number each hour would make a sawtooth,
+ * which is a different kind of wrong and a worse-looking one. Values are drawn at anchors
+ * eight hours apart and interpolated with a smoothstep between them, so the line wanders
+ * over half a day the way a warm spell does.
+ *
+ * Seeded from the anchor index alone, so it is a fact about the world rather than about
+ * the camp reading it: two settlements asking about the same hour get the same answer,
+ * for ever, with nothing stored. The same property `eventForSlot` has and for the same
+ * reason.
+ */
+const DRIFT_C = 2.6;
+const DRIFT_ANCHOR_HOURS = 8;
+const DRIFT_SEED = 8675309;
+
+/**
  * The climate band `Kr` and `Kf` are read against, and the bounds they are held inside.
  *
  * The clamp is not decoration. A year-long term means a suite that passes in August can
@@ -289,7 +342,7 @@ export const KF_RANGE = [0.35, 0.65];
  */
 export function climateAt(at, active) {
   requireInstant(at, 'climateAt');
-  return seasonalMean(at) + warmthOf(active);
+  return seasonalMean(at) + warmthOf(active) + driftAt(at);
 }
 
 /**
@@ -307,6 +360,24 @@ export function temperatureAt(at, active) {
 
 function seasonalMean(at) {
   return ANNUAL_MEAN_C - ANNUAL_SWING_C * Math.cos(2 * Math.PI * yearPhase(at));
+}
+
+/** One anchor's value, in [-1, 1], from the anchor's index and nothing else. */
+function driftAnchor(index) {
+  return makeRandom(DRIFT_SEED + index * 7919)() * 2 - 1;
+}
+
+/** How far off the curve the air is at `at`, in degrees. */
+function driftAt(at) {
+  const anchors = at / (DRIFT_ANCHOR_HOURS * HOUR_MS);
+  const index = Math.floor(anchors);
+  const t = anchors - index;
+
+  // Smoothstep rather than a straight line: a linear blend between anchors leaves a
+  // visible corner at every one of them, which on a chart reads as a data glitch.
+  const eased = t * t * (3 - 2 * t);
+
+  return DRIFT_C * (driftAnchor(index) * (1 - eased) + driftAnchor(index + 1) * eased);
 }
 
 /** Where a climate sits in its band, 0 at the floor and 1 at the ceiling. */
@@ -402,4 +473,97 @@ export function travelFactors(events, from, to) {
     radiation: sky.radiation * sun.radiation,
     finds: sun.finds,
   };
+}
+
+// ---------------------------------------------------------------------------
+// The forecast: what the glass is actually for.
+// ---------------------------------------------------------------------------
+
+/**
+ * The window the glass draws: the world day `at` falls in, midnight to midnight.
+ *
+ * **A fixed window rather than a rolling one, and that is the whole reason the marker
+ * moves.** Plotting "now to now plus a day" would pin the present to the left edge for
+ * ever; against a day that stands still, the line for the current hour walks across it and
+ * rolls over at midnight, which is what a clock face does and what a chart of a day should.
+ *
+ * **The horizon is a design decision, not a limit of the arithmetic.** World events derive
+ * from the world seed, so the temperature a year from Tuesday is as computable as this
+ * afternoon's — an instrument that printed it would end planning rather than serve it.
+ *
+ * Sampled every fifteen minutes: a day at hourly resolution is twenty-five points, and the
+ * corners show.
+ */
+export function dayWindow(at, offset = 0) {
+  requireInstant(at, 'dayWindow');
+  const from = (Math.floor(at / DAY_MS) + offset) * DAY_MS;
+  return { from, to: from + DAY_MS };
+}
+
+/**
+ * How far either side of today the glass will look.
+ *
+ * A week of forecast, which is the horizon a real glass has and the one already argued
+ * for above, and a week of record behind it so "was yesterday hotter" is answerable. The
+ * limit forward is the design; the limit back is only tidiness — the seed would answer
+ * for any day the world has ever had.
+ */
+export const DAY_REACH = 6;
+
+export const FORECAST_STEP_MS = 15 * 60 * 1000;
+
+/**
+ * The temperature across a window, hour by hour, with the light and the sky beside it.
+ *
+ * Pure like the rest of this file: hand it the events covering the window and it will not
+ * reach for anything. `lit` rides along because the chart's night shading and its line are
+ * the same reading — a forecast that drew the dark from one source and the temperature
+ * from another could disagree with itself.
+ */
+export function forecastSeries(events, from, to, step = FORECAST_STEP_MS) {
+  requireInstant(from, 'forecastSeries');
+  requireInstant(to, 'forecastSeries');
+
+  const series = [];
+  for (let at = from; at <= to; at += step) {
+    series.push({
+      at,
+      degrees: temperatureAt(at, activeAt(events, at)),
+      lit: isLit(at),
+    });
+  }
+
+  return series;
+}
+
+/**
+ * The stretches of darkness inside a window, as spans rather than as flags.
+ *
+ * Derived from the sun rather than from the sampled series, so a band lands on the true
+ * minute the light turns instead of on whichever sample happened to straddle it. A chart
+ * whose shading is a step function of its own resolution looks like a rendering fault.
+ */
+export function darkSpansBetween(from, to) {
+  requireInstant(from, 'darkSpansBetween');
+  requireInstant(to, 'darkSpansBetween');
+
+  const spans = [];
+  const firstDay = Math.floor(from / DAY_MS);
+  const lastDay = Math.floor(to / DAY_MS);
+
+  for (let day = firstDay - 1; day <= lastDay + 1; day += 1) {
+    const midnight = day * DAY_MS;
+    const { sunrise, sunset } = sunAt(midnight);
+
+    // Dark runs from this day's sunset to the next day's sunrise. Taking it as one span
+    // rather than two half-nights is what stops a band being cut at midnight.
+    const darkFrom = midnight + sunset * HOUR_MS;
+    const darkTo = midnight + DAY_MS + sunAt(midnight + DAY_MS).sunrise * HOUR_MS;
+
+    const start = Math.max(from, darkFrom);
+    const end = Math.min(to, darkTo);
+    if (end > start) spans.push({ from: start, to: end });
+  }
+
+  return spans;
 }

@@ -9,9 +9,14 @@ import {
 } from '../game/world-events.js';
 import {
   climateAt,
+  DAY_REACH,
+  darkSpansBetween,
+  dayWindow,
+  forecastSeries,
   coefficientsAt,
   isLit,
   nextBandChange,
+  nextDegreeChange,
   sunAt,
   temperatureAt,
   travelFactors,
@@ -32,7 +37,7 @@ import { WANDERERS, wandererFor } from '../game/wanderers.js';
 import { stateAt, timelineOf } from '../game/timeline.js';
 import { CONFIG } from '../game/constants.js';
 import { LINKS, TRADE_POST_LINKS, linkCost, linkGives, neighbourFor } from '../game/road.js';
-import { WORLD_SEED } from '../db/world-events.js';
+import { WORLD_SEED, loadWorldEvents } from '../db/world-events.js';
 import { FACTIONS, caravanVisit, postKeeper, priceAt, standingOf } from '../game/factions.js';
 import {
   STRUCTURES,
@@ -117,11 +122,23 @@ function hourStrip(state, now, fitted) {
     clock: hasClock,
     hour: hasClock ? time.hour : null,
     minute: hasClock ? time.minute : null,
-    // Three things, and all for different jobs: the reading is what the strip prints, and
-    // `refreshAt` is what arms the timer that makes the strip rewrite itself. The two are
-    // not the same instant — `evening` begins well before sunset and `night` an hour
-    // after it — so a strip armed only for the light turn would sit on a stale word.
-    refreshAt: new Date(Math.min(nextBandChange(now), nextTurnOfLight(now))),
+    /*
+     * When the strip has to be redrawn, which is the soonest of three different things
+     * going out of date: the band's word, the turn of the light, and — only when there is
+     * a glass to show it — the degree on the thermometer.
+     *
+     * The last one is the frequent one. The air moves about two degrees an hour, so a
+     * rendered figure is wrong within ten minutes; beside a chart whose marker walks along
+     * the line correctly, a strip stuck three degrees out is the page contradicting
+     * itself. Armed rather than polled, so it fires exactly when the number changes.
+     */
+    refreshAt: new Date(
+      Math.min(
+        nextBandChange(now),
+        nextTurnOfLight(now),
+        hasGlass ? nextDegreeChange(state.worldEvents ?? [], now) : Infinity,
+      ),
+    ),
     turnsHour: hasClock ? worldTimeAt(nextTurnOfLight(now)).hour : null,
     turnsMinute: hasClock ? worldTimeAt(nextTurnOfLight(now)).minute : null,
     turning: lit ? 'sunset' : 'sunrise',
@@ -150,6 +167,103 @@ function hourStrip(state, now, fitted) {
           loot: expeditionFactors(active).loot,
         }
       : null,
+  };
+}
+
+/** A day offset the glass will actually answer for. */
+function clampDay(day) {
+  const n = Math.trunc(Number(day) || 0);
+  return Math.max(-DAY_REACH, Math.min(DAY_REACH, n));
+}
+
+/**
+ * The day the glass is showing: temperature quarter-hour by quarter-hour, the nights it runs through, and the weather
+ * that arrives during it.
+ *
+ * **The past is what the table says; the future is what the seed says.** Stored rows cover
+ * the hours already lived and derived ones start at or after now, exactly as the report on
+ * a trip in flight does — and for the same reason nothing here is written. Pre-inserting a
+ * week of weather would freeze it against the next balance pass for no gain at all.
+ *
+ * The horizon is a design decision rather than a limit of the arithmetic; see
+ * `FORECAST_HOURS`.
+ */
+async function forecastOf(client, now, offset) {
+  const { from, to: until } = dayWindow(now, offset);
+
+  /*
+   * The past is what the table says; the future is what the seed says.
+   *
+   * The tick's own window only covers the stretch it simulated, which is nothing like the
+   * day being drawn once the player steps a week either way — so the stored rows are
+   * loaded for this window specifically, and only the part that has not happened yet is
+   * derived. Deriving the past instead would be subtly wrong: migration `014` lets a
+   * retune change what unwritten slots become, and a chart of Tuesday must show the
+   * Tuesday that was lived rather than the one today's content would have produced.
+   */
+  const stored = await loadWorldEvents(client, from, Math.min(until, now));
+  const ahead =
+    until > now
+      ? deriveEventsBetween(WORLD_SEED, Math.max(from, now), until).filter(
+          (event) => event.startsAt >= Math.max(from, now),
+        )
+      : [];
+  const events = [...stored, ...ahead];
+
+  const series = forecastSeries(events, from, until);
+  const degrees = series.map((point) => point.degrees);
+
+  return {
+    from: new Date(from),
+    until: new Date(until),
+    // Null on any day but the one being lived: a marker for "now" on Thursday's chart
+    // while it is Tuesday would be a line pointing at nothing.
+    now: now >= from && now < until ? new Date(now) : null,
+    offset,
+    canGoBack: offset > -DAY_REACH,
+    canGoOn: offset < DAY_REACH,
+    series: series.map((point) => ({
+      at: point.at,
+      degrees: Math.round(point.degrees * 10) / 10,
+      lit: point.lit,
+    })),
+    dark: darkSpansBetween(from, until),
+    /*
+     * Sunrise and sunset for this day, as instants and as readings.
+     *
+     * Exactly two, and always inside the day: the lit window never crosses midnight,
+     * which is a property `daylight.js` holds to on purpose and a test pins at every day
+     * of the year. Formatted here rather than in the renderer, for the reason the strip's
+     * clock is — these are world hours, and a `Date` formatted in the browser's locale
+     * would print the viewer's own afternoon beside a world one.
+     */
+    turns: (() => {
+      const { sunrise, sunset } = sunAt(from);
+      return [
+        { kind: 'sunrise', at: from + sunrise * HOUR_MS },
+        { kind: 'sunset', at: from + sunset * HOUR_MS },
+      ].map((turn) => ({
+        ...turn,
+        hour: worldTimeAt(turn.at).hour,
+        minute: worldTimeAt(turn.at).minute,
+      }));
+    })(),
+    // Only what is in force during the window, and only the kinds that do something —
+    // a band on the chart for an event with no effect out there is a mark that means
+    // nothing, which on a chart is worse than on a list.
+    weather: events
+      .filter((event) => event.endsAt > from && event.startsAt < until)
+      .map((event) => ({
+        kind: event.kind,
+        name: WORLD_EVENTS[event.kind]?.name ?? event.kind,
+        from: Math.max(from, event.startsAt),
+        to: Math.min(until, event.endsAt),
+        warmth: WORLD_EVENTS[event.kind]?.warmth ?? 0,
+        effects: effectsOf(event.kind),
+      }))
+      .sort((a, b) => a.from - b.from),
+    low: Math.round(Math.min(...degrees) * 10) / 10,
+    high: Math.round(Math.max(...degrees) * 10) / 10,
   };
 }
 
@@ -420,7 +534,7 @@ function shortfall(resources, pack, costs = {}, inputs = []) {
 
   return missing.length > 0 ? `needs ${missing.join(', ')}` : null;
 }
-export async function viewCamp(client, settlementId, now = Date.now()) {
+export async function viewCamp(client, settlementId, now = Date.now(), { day = 0 } = {}) {
   const { state, events } = await advanceSettlement(client, settlementId, now);
 
   const { rows: settlements } = await client.query(
@@ -502,6 +616,12 @@ export async function viewCamp(client, settlementId, now = Date.now()) {
     upgradeRows.filter((row) => row.installed_at !== null).map((row) => row.upgrade),
   );
   const beingFitted = upgradeRows.find((row) => row.installed_at === null) ?? null;
+
+  // Only when there is a glass to read it with: the query is cheap and the derivation is
+  // cheaper, but a camp that cannot see the week should not be paying for a week's rows.
+  const forecast = fitted.has('glass')
+    ? await forecastOf(client, now, clampDay(day))
+    : null;
 
   // What the camp can actually pay with: stores, and what is on the survivor.
   const pack = new Map(inventory.map((item) => [item.slug, Number(item.qty)]));
@@ -959,6 +1079,13 @@ export async function viewCamp(client, settlementId, now = Date.now()) {
      * and the exact turn of the light, the glass sells the temperature and the numbers.
      */
     hour: hourStrip(state, now, fitted),
+    /**
+     * The week ahead, and the whole of what the glass is worth its fuel for.
+     *
+     * Null without it, which the page turns into a line about a thing to go and build
+     * rather than into a silence — the radio's rule.
+     */
+    forecast: fitted.has('glass') ? forecast : null,
     // Weather is visible to everyone: it is the sky, not a secret.
     weather: activeAt(state.worldEvents, now).map((event) => ({
       kind: event.kind,

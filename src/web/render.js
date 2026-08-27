@@ -45,8 +45,8 @@
  * got the box, and could not see it. The page went and got the thing, then hid it.
  */
 const PANES = {
-  camp: ['raid', 'sky', 'events', 'direction', 'structures', 'caravan', 'roster'],
-  survivor: ['survivor', 'inventory', 'expedition', 'workshop'],
+  camp: ['raid', 'sky', 'forecast', 'events', 'direction', 'structures', 'caravan', 'roster'],
+  survivor: ['survivor', 'inventory', 'expedition', 'workshop', 'forecast'],
   road: ['road'],
   trade: ['caravan', 'post', 'standings'],
 };
@@ -601,6 +601,16 @@ ${PANE_CSS}
     text-transform: uppercase;
     color: var(--dim);
   }
+  /* Only a strip that has an aside becomes a row, so every other block's label keeps the
+     exact box it has always had. */
+  .block > h2:has(.f-nav) {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding-block: 8px;
+  }
+
   .block-body { padding: 15px 18px; }
   .block-foot {
     display: flex;
@@ -1049,6 +1059,101 @@ ${PANE_CSS}
    * only one of those is the row's headline.
    */
   .fitting button { padding: 5px 11px; font-size: 9.5px; }
+
+  /* ---- the glass ---- */
+
+  .forecast svg { display: block; width: 100%; height: auto; }
+
+  /* Two grounds, a step either side of the block's own fill, so the pair reads before any
+     line on top of it does. Night is a fill rather than an outline because it is a
+     condition rather than an event. */
+  .forecast .f-daylight { fill: var(--panel); }
+  .forecast .f-night { fill: var(--void); }
+  .forecast .f-turn { stroke: var(--edge); stroke-width: 1; }
+  .forecast .f-grid { stroke: var(--rule-in); stroke-width: 1; }
+  .forecast .f-day { stroke: var(--rule); stroke-width: 1; }
+
+  /*
+   * The wash under the line, warm at the top of the scale and cool at the bottom, so the
+   * height of the line carries its own reading before any number is looked at.
+   *
+   * Kept to a wash rather than the saturated block the reference uses: this page states
+   * figures and does not colour them in, and a poster-bright fill under a chart nobody is
+   * meant to stare at would out-shout the stores beside it.
+   */
+  .forecast .f-hot { stop-color: var(--oxide); stop-opacity: .34; }
+  .forecast .f-cold { stop-color: var(--dim); stop-opacity: .06; }
+  .forecast .f-area { fill: url(#f-wash); }
+  .forecast .f-line { fill: none; stroke: var(--oxide-light); stroke-width: 1.75;
+                      stroke-linejoin: round; stroke-linecap: round; }
+
+  .forecast .f-axis { fill: var(--faint); font-family: var(--numer); font-size: 10px; }
+  /* The two hours the chart is read for, so a step up from the divisions around them. */
+  .forecast .f-sun { fill: var(--value); font-family: var(--numer); font-size: 10px; }
+  .forecast .f-mark { fill: var(--bone); }
+  .forecast .f-extreme { fill: var(--value); font-family: var(--label);
+                         font-size: 10px; letter-spacing: .1em; text-transform: uppercase; }
+  .forecast .f-weather { fill: var(--oxide); }
+  /* The present, and the only thing on this chart that is not a forecast. Bone rather
+     than oxide: the accent already means weather here, and the current hour is not. */
+  .forecast .f-now { stroke: var(--bone); stroke-width: 1; opacity: .65; }
+  .forecast .f-now-dot { fill: var(--bone); }
+  /*
+   * Centred, not baselined.
+   *
+   * An inline-flex box takes its baseline from its first item, and the first item here is
+   * a swatch — so with four swatches of four different heights, every label sat at a
+   * different height too. Aligning the row by centre takes the swatches out of the
+   * question entirely.
+   */
+  .forecast-foot {
+    display: flex;
+    gap: 8px 18px;
+    align-items: center;
+    flex-wrap: wrap;
+    padding: 8px 16px 12px;
+    font-size: 13px;
+  }
+  .forecast-foot .tag { color: var(--quiet); }
+  /* In the label strip, so it inherits the strip's own case and tracking rather than
+     bringing a second voice into a bar that has one. */
+  .f-nav { display: inline-flex; align-items: center; gap: 4px; }
+  .f-nav .tag { min-width: 9ch; text-align: center; color: var(--dim);
+                font-size: 10px; letter-spacing: .18em; }
+  .f-step { color: var(--faint); text-decoration: none; padding: 0 6px; font-size: 13px;
+            letter-spacing: 0; line-height: 1; }
+  .f-step:hover { color: var(--bone); }
+  /* The end of the reach is a mark, not a control: a link that refuses is worse than a
+     glyph that never claimed to be one. */
+  .f-step.off { color: var(--rule); }
+
+  /*
+   * One box for every swatch, whatever shape the mark inside it is.
+   *
+   * A square, a bar and a hairline have nothing in common as boxes, so laying them out as
+   * themselves gave four items of four heights and a row that would not line up however it
+   * was aligned. They are all a 14px square now, and the mark is drawn inside it — which
+   * is also why the bar and the line are centred rather than sitting on a baseline they
+   * do not have.
+   *
+   * Each is drawn from the same custom property as the mark it stands for, so a retune of
+   * the chart carries the key with it and the two cannot drift apart.
+   */
+  .f-key { display: inline-flex; align-items: center; gap: 7px; color: var(--faint); }
+  .f-key i {
+    width: 14px;
+    height: 14px;
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .f-key .k-day { background: var(--panel); border: 1px solid var(--edge); }
+  .f-key .k-night { background: var(--void); border: 1px solid var(--edge); }
+  .f-key .k-weather::before { content: ''; display: block; width: 14px; height: 5px;
+                              background: var(--oxide); }
+  .f-key .k-now::before { content: ''; display: block; width: 2px; height: 14px;
+                          background: var(--bone); }
 
   /*
    * ---- region plates ----
@@ -1832,6 +1937,7 @@ export const TIMERS = `
   let live = [];
   let stores = [];
   let clocks = [];
+  let nowlines = [];
   let since = Date.now();
   let busy = false;
 
@@ -1848,6 +1954,10 @@ export const TIMERS = `
     // The world clock. World time is UTC by construction, so the browser reads it off
     // its own Date with no offset to carry and no way to disagree with the server.
     clocks = [...document.querySelectorAll('[data-worldclock]')];
+    // The marker on the glass. The day it is drawn against stands still, so the present
+    // walks across it — and it has to walk on the client, because nothing fetches the page
+    // between one minute and the next.
+    nowlines = [...document.querySelectorAll('[data-nowline]')];
     since = Date.now();
   };
 
@@ -1879,7 +1989,10 @@ export const TIMERS = `
   const pull = () => {
     if (busy) return;
     busy = true;
-    fetch(location.pathname, { credentials: 'same-origin' })
+    // Path *and* query: the glass carries the day it is showing in the search string, and
+    // a refresh that dropped it would walk the chart back to today every time a timer
+    // expired — which is most minutes.
+    fetch(location.pathname + location.search, { credentials: 'same-origin' })
       .then((res) => res.text())
       .then(apply)
       .catch(fail(() => location.reload()))
@@ -1909,6 +2022,21 @@ export const TIMERS = `
       const d = new Date();
       const shown = pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes());
       for (const el of clocks) el.textContent = shown;
+    }
+
+    for (const el of nowlines) {
+      const at = Date.now();
+      const from = Number(el.dataset.from);
+      const span = Number(el.dataset.span);
+      // Past midnight the day the chart was drawn for is over; the server has a new one,
+      // so ask for it rather than running the marker off the end.
+      if (at < from || at > from + span) { pull(); continue; }
+
+      const px = ((at - from) / span) * Number(el.dataset.plot);
+      const line = el.querySelector('line');
+      const dot = el.querySelector('circle');
+      if (line) { line.setAttribute('x1', px); line.setAttribute('x2', px); }
+      if (dot) dot.setAttribute('cx', px);
     }
 
     for (const el of live) {
@@ -2114,8 +2242,17 @@ const quiet = (label, line) =>
  * Still an `<h2>`, because it is still the heading of that block and the page should
  * say so to anything reading it without the stylesheet.
  */
-const block = (label, body, { wants = false, flush = false, foot = '' } = {}) =>
-  `<div class="block${wants ? ' wants' : ''}"><h2>${label}</h2>${
+/**
+ * `aside` rides in the label strip, hard right, opposite the name.
+ *
+ * The strip is already a full-width bar with the block's name on it, so a control that
+ * belongs to the whole block — which day the glass is showing, not which day any one
+ * figure on it belongs to — has a place to sit that is neither in the body nor in the
+ * foot. The radio has hand-rolled exactly this shape in `.block-head` since it was
+ * written; this is the same idea reaching the helper the rest of the page goes through.
+ */
+const block = (label, body, { wants = false, flush = false, foot = '', aside = '' } = {}) =>
+  `<div class="block${wants ? ' wants' : ''}"><h2>${label}${aside}</h2>${
     flush ? body : `<div class="block-body">${body}</div>`
   }${foot}</div>`;
 
@@ -2139,6 +2276,7 @@ const NOTHING = {
   inventory: 'Nothing they did not leave with.',
   caravan: 'Nobody at the gate, and nobody on the road here.',
   roster: 'Nobody has died here.',
+  forecast: 'No glass fitted. The sky is whatever you can see of it from here.',
   direction: 'Nothing to advise until somebody is standing here.',
   expedition: 'Nobody to send.',
   post: 'No link on the road opens one yet.',
@@ -2211,6 +2349,7 @@ export function campPage(view, { error, pane = 'camp' } = {}) {
     ${section('moment', renderMoment(view.expedition))}
     ${section('raid', renderRaidWarning(view.raidExpectedAt))}
     ${section('sky', renderWeather(view.weather))}
+    ${section('forecast', renderForecast(view.forecast))}
 
     ${/*
       * The away log and Next, side by side.
@@ -2414,6 +2553,220 @@ function stacked(weather) {
   return [...totals.values()]
     .map((effect) => `${effect.what} ×${Math.round(effect.factor * 100) / 100}`)
     .join(' · ');
+}
+
+/**
+ * The week ahead, as a line rather than as a sentence.
+ *
+ * **The chart is the reading.** Temperature is what decides how much the hour is worth —
+ * heat widens the gap between day and night, cloud narrows it — so a plot of temperature
+ * against time *is* a plot of how much choosing a departure hour will pay, for a week. A
+ * paragraph could have said "it turns cold on Thursday"; only a line says how cold,
+ * against what, and for how long.
+ *
+ * Three things are drawn on one set of axes because they are one question. The night
+ * bands are when the discount is available; the line is how big it is; the weather blocks
+ * are why it moves. Reading any of them apart from the other two would be reading a
+ * different chart.
+ *
+ * Deliberately no axis furniture beyond two numbers and the days. This page states figures
+ * where a player needs them and does not decorate them, and a temperature chart with grid
+ * lines, ticks and a legend would be four times the ink for the same three facts.
+ */
+/**
+ * Yesterday, today, tomorrow — and the name of the day being shown.
+ *
+ * Plain links rather than the in-place form the rest of the page posts through, because
+ * this changes what is being *read* and not what the camp has done. The address is the
+ * state: a reload lands on the same day, and the link can be sent to somebody.
+ *
+ * An arrow at the end of its reach is rendered as text rather than as a dead control. A
+ * disabled-looking link that does nothing is a worse answer than no link.
+ */
+function dayNav(forecast) {
+  const NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const day = forecast.from.getUTCDay();
+
+  const label =
+    forecast.offset === 0
+      ? 'Today'
+      : forecast.offset === -1
+        ? 'Yesterday'
+        : forecast.offset === 1
+          ? 'Tomorrow'
+          : NAMES[day];
+
+  const step = (to, glyph, title) =>
+    `<a href="?day=${to}" class="f-step" title="${escape(title)}" aria-label="${escape(title)}">${glyph}</a>`;
+
+  return `<span class="f-nav">
+      ${forecast.canGoBack ? step(forecast.offset - 1, '&larr;', 'The day before') : '<span class="f-step off">&larr;</span>'}
+      <span class="tag">${escape(label)}</span>
+      ${forecast.canGoOn ? step(forecast.offset + 1, '&rarr;', 'The day after') : '<span class="f-step off">&rarr;</span>'}
+    </span>`;
+}
+
+function renderForecast(forecast) {
+  if (!forecast) return quiet('The glass', NOTHING.forecast);
+
+  const W = 720;
+  const H = 190;
+  const TOP = 12;
+  const FLOOR = 150;
+  const RIGHT = 34;
+  const plot = W - RIGHT;
+
+  const t0 = forecast.from.getTime();
+  const span = forecast.until.getTime() - t0;
+  const x = (at) => ((at - t0) / span) * plot;
+
+  // Round the ends outward to whole degrees so the axis reads in numbers a person would
+  // say, and the warmest hour of the week is not drawn on the frame.
+  const low = Math.floor(forecast.low) - 1;
+  const high = Math.ceil(forecast.high) + 1;
+  const y = (c) => TOP + (1 - (c - low) / (high - low)) * (FLOOR - TOP);
+
+  const points = forecast.series.map((p) => ({ x: x(p.at), y: y(p.degrees), ...p }));
+  const line = points.map((p, i) => `${i ? 'L' : 'M'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join('');
+  const area = `${line}L${plot},${FLOOR}L0,${FLOOR}Z`;
+
+  /*
+   * Day and night as two grounds rather than one shading.
+   *
+   * Night on its own could only ever be a shade darker than a page that is already nearly
+   * black — there was nowhere left to go. Lifting the daylight instead gives the pair a
+   * step in both directions, and a hairline at each turn makes the edge an edge: this is
+   * the one boundary on the chart a player is reading *for*, and a soft one says the sun
+   * fades out over an hour, which it does not.
+   */
+  const daylight = `<rect x="0" y="${TOP}" width="${plot}" height="${FLOOR - TOP}" class="f-daylight"/>`;
+
+  const nights = forecast.dark
+    .map((d) => {
+      const from = x(d.from);
+      const to = x(d.to);
+      const edges = [d.from, d.to]
+        .filter((at) => at > t0 && at < forecast.until.getTime())
+        .map(
+          (at) =>
+            `<line x1="${x(at).toFixed(1)}" y1="${TOP}" x2="${x(at).toFixed(1)}" y2="${FLOOR}" class="f-turn"/>`,
+        )
+        .join('');
+      return `<rect x="${from.toFixed(1)}" y="${TOP}" width="${(to - from).toFixed(1)}" height="${FLOOR - TOP}" class="f-night"/>${edges}`;
+    })
+    .join('');
+
+  // Four or five gridlines at whole degrees, labelled on the right where the eye lands
+  // after reading the line left to right.
+  const step = Math.max(1, Math.round((high - low) / 4));
+  const rows = [];
+  for (let c = Math.ceil(low / step) * step; c <= high; c += step) {
+    rows.push(`<line x1="0" y1="${y(c).toFixed(1)}" x2="${plot}" y2="${y(c).toFixed(1)}" class="f-grid"/>
+      <text x="${plot + 6}" y="${(y(c) + 4).toFixed(1)}" class="f-axis">${c}°</text>`);
+  }
+
+  /*
+   * The turns of the light, named on the axis under their own lines.
+   *
+   * These are the two hours on the chart a player is reading it *for* — when the discount
+   * starts and when it stops — so they are the two that get a figure rather than a tick.
+   * Brighter than the six-hourly divisions beneath them, which are only there to give the
+   * day a shape.
+   */
+  const turns = forecast.turns.map((turn) => ({ ...turn, px: x(turn.at) }));
+  const turnLabels = turns
+    .map(
+      (turn) =>
+        `<text x="${turn.px.toFixed(1)}" y="${FLOOR + 15}" class="f-sun" text-anchor="middle">${escape(at(turn.hour, turn.minute))}</text>`,
+    )
+    .join('');
+
+  // Every six hours, which is the division a day is actually read by — and the labels are
+  // world hours, the same clock the strip at the top of the page is showing.
+  //
+  // A tick that would land under a sunrise figure is dropped rather than drawn through it:
+  // the turn is the one worth reading, and two numbers on top of each other are neither.
+  const clear = (px) => turns.every((turn) => Math.abs(turn.px - px) > 26);
+
+  const days = [];
+  for (let hour = 0; hour <= 24; hour += 6) {
+    const at_ = t0 + hour * 3600_000;
+    const px = Math.min(plot - 1, x(at_));
+    const label = clear(px)
+      ? `<text x="${(hour === 24 ? px - 16 : px + 5).toFixed(1)}" y="${FLOOR + 15}" class="f-axis">${String(hour % 24).padStart(2, '0')}</text>`
+      : '';
+    days.push(`<line x1="${px.toFixed(1)}" y1="${TOP}" x2="${px.toFixed(1)}" y2="${FLOOR}" class="f-day"/>${label}`);
+  }
+
+  /*
+   * The current hour, and it moves.
+   *
+   * Painted where the server says it is and then walked across the day by the same tick
+   * that drives the clock in the strip — the window is a fixed day, so the marker travels
+   * rather than the chart scrolling under it. The attributes are what the browser needs to
+   * do the arithmetic itself: the day's first instant, its span, and how many viewBox units
+   * the plot is wide, which is the one number it could not otherwise know.
+   */
+  const nowLine = forecast.now
+    ? (() => {
+        const nowX = x(forecast.now.getTime());
+        return `<g data-nowline data-from="${t0}" data-span="${span}" data-plot="${plot}">
+          <line x1="${nowX.toFixed(1)}" y1="${TOP}" x2="${nowX.toFixed(1)}" y2="${FLOOR}" class="f-now"/>
+          <circle cx="${nowX.toFixed(1)}" cy="${TOP - 4}" r="2.5" class="f-now-dot"/>
+        </g>`;
+      })()
+    : '';
+
+  const weather = forecast.weather
+    .map((event) => {
+      const from = x(event.from);
+      return `<rect x="${from.toFixed(1)}" y="${FLOOR + 22}" width="${Math.max(2, x(event.to) - from).toFixed(1)}" height="5" class="f-weather"><title>${escape(`${event.name} — ${event.effects.map((e) => `${e.what} ×${e.factor}`).join(', ') || 'nothing out there'}`)}</title></rect>`;
+    })
+    .join('');
+
+  // The extremes, marked where they happen. A week's high and low are the two figures a
+  // forecast is actually read for, and hunting for them along a line is work the chart
+  // can do instead.
+  const peak = points.reduce((a, b) => (b.degrees > a.degrees ? b : a));
+  const trough = points.reduce((a, b) => (b.degrees < a.degrees ? b : a));
+  const mark = (p, label, dy) =>
+    `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3" class="f-mark"/>
+     <text x="${Math.min(plot - 30, Math.max(2, p.x - 12)).toFixed(1)}" y="${(p.y + dy).toFixed(1)}" class="f-extreme">${escape(`${label} ${Math.round(p.degrees)}°`)}</text>`;
+
+  return block(
+    'The glass',
+    `<div class="forecast">
+      <svg viewBox="0 0 ${W} ${H}" role="img"
+           aria-label="${escape(`Temperature across today, between ${forecast.low} and ${forecast.high} degrees`)}">
+        <defs>
+          <linearGradient id="f-wash" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" class="f-hot"/>
+            <stop offset="100%" class="f-cold"/>
+          </linearGradient>
+        </defs>
+        ${daylight}${nights}${rows.join('')}${days.join('')}${turnLabels}
+        <path d="${area}" class="f-area"/>
+        <path d="${line}" class="f-line"/>
+        ${mark(peak, 'high', -9)}${mark(trough, 'low', 16)}
+        ${nowLine}${weather}
+      </svg>
+      <div class="forecast-foot">
+        ${/*
+          * A key rather than a sentence.
+          *
+          * "Shaded is dark, the bar beneath is weather" made the reader hold two mappings
+          * in their head and then go looking for the things they described. A swatch is
+          * the thing itself: it is drawn from the same custom properties the chart is, so
+          * it cannot come to disagree with the chart the way a sentence about it can.
+          */ ''}
+        <span class="f-key"><i class="k-day"></i>day</span>
+        <span class="f-key"><i class="k-night"></i>night</span>
+        <span class="f-key"><i class="k-weather"></i>weather</span>
+        <span class="f-key"><i class="k-now"></i>now</span>
+      </div>
+    </div>`,
+    { flush: true, aside: dayNav(forecast) },
+  );
 }
 
 /**

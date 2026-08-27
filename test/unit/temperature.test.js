@@ -6,6 +6,7 @@ import {
   KR_RANGE,
   climateAt,
   coefficientsAt,
+  nextDegreeChange,
   daylightFraction,
   sunAt,
   sunFactors,
@@ -29,8 +30,16 @@ const close = (actual, expected, what, tol = 1e-9) =>
   assert.ok(Math.abs(actual - expected) < tol, `${what}: ${actual} !== ${expected}`);
 
 test('the year is warm in summer and cold in winter, and the sky moves it', () => {
-  close(climateAt(midnight(2026, 5, 21), []), 33, 'midsummer', 0.1);
-  close(climateAt(midnight(2025, 11, 21), []), 7, 'midwinter', 0.1);
+  // Loose, because the air wanders off the seasonal curve by design — a temperature that
+  // hit its mean exactly every day would be a diagram of weather rather than weather.
+  // What has to hold is the season, not the hour: midsummer is hot and midwinter is not.
+  const DRIFT = 3;
+  close(climateAt(midnight(2026, 5, 21), []), 33, 'midsummer', DRIFT);
+  close(climateAt(midnight(2025, 11, 21), []), 7, 'midwinter', DRIFT);
+  assert.ok(
+    climateAt(midnight(2026, 5, 21), []) - climateAt(midnight(2025, 11, 21), []) > 20,
+    'and the two are a season apart however the air wandered',
+  );
 
   // Warmth is added, not multiplied: a storm over a rain is warmer than the rain and
   // cooler than the storm, which only a sum can say.
@@ -46,19 +55,26 @@ test('the year is warm in summer and cold in winter, and the sky moves it', () =
   assert.ok(both > rain && both < storm, 'and a storm over rain sits between the two');
 });
 
-test('the climate does not know what hour it is, and the thermometer does', () => {
+test('the climate does not carry the daily swing, and the thermometer does', () => {
   // The one that would be a double count. `Kr` scales the swing between day and night, so
   // feeding the current point on that swing back in as its input would make a trip's
   // factor depend on when the player happened to look at the page.
-  const day = midnight(2026, 5, 14);
-  const dawn = day + 4 * HOUR;
-  const afternoon = day + 15 * HOUR;
+  //
+  // Asserted as the exact invariant rather than as "the climate holds still", which it no
+  // longer does — the air drifts, and drift belongs to both readings. What separates them
+  // is the diurnal term, and that depends on the hour of the day and on nothing else: the
+  // gap between the two readings at 15:00 is the same today, tomorrow and in a year.
+  const gap = (at) => temperatureAt(at, []) - climateAt(at, []);
 
-  close(climateAt(dawn, []), climateAt(afternoon, []), 'the climate held still', 0.02);
-  assert.ok(
-    temperatureAt(afternoon, []) > temperatureAt(dawn, []) + 10,
-    'but the afternoon is much hotter than before dawn',
-  );
+  for (const hour of [0, 4, 9, 15, 21]) {
+    const today = midnight(2026, 5, 14) + hour * HOUR;
+    close(gap(today), gap(today + 24 * HOUR), `the swing moved overnight at ${hour}:00`);
+    close(gap(today), gap(today + 300 * 24 * HOUR), `and over a year at ${hour}:00`);
+  }
+
+  // And it is a swing rather than a constant: the afternoon is well above the small hours.
+  const day = midnight(2026, 5, 14);
+  assert.ok(gap(day + 15 * HOUR) - gap(day + 3 * HOUR) > 12, 'the afternoon is the hot end');
 });
 
 test('the coefficients stay inside their bands at every hour of a full year', () => {
@@ -121,9 +137,11 @@ test('daylight costs on the counter and pays in what turns up', () => {
   assert.ok(dark.radiation < 1, 'the dark is kinder on the counter');
   assert.ok(dark.finds < 1, 'and thinner on what is found');
 
-  // Symmetric about one: whatever the day adds, the night takes off.
-  close(lit.radiation + dark.radiation, 2, 'dose is centred', 0.01);
-  close(lit.finds + dark.finds, 2, 'finds are centred', 0.01);
+  // Centred on one, give or take the drift: the two windows are hours apart and the air
+  // moves between them, so the coefficients they are read at are not identical. What must
+  // hold is that the day adds about what the night takes off, not that it matches exactly.
+  close(lit.radiation + dark.radiation, 2, 'dose is centred', 0.2);
+  close(lit.finds + dark.finds, 2, 'finds are centred', 0.2);
 });
 
 test('a hot sky widens the gap between day and night, and a wet one narrows it', () => {
@@ -171,4 +189,44 @@ test('an empty window and a missing bound behave like the rest of the module', (
   assert.throws(() => sunFactors([], undefined, 1000), TypeError);
   assert.throws(() => climateAt(NaN, []), TypeError);
   assert.throws(() => temperatureAt(undefined, []), TypeError);
+});
+
+test('the strip is armed for the instant its own figure stops being true', () => {
+  // A rendered temperature is stale within minutes — the air moves about two degrees an
+  // hour at the steep part of the day — and beside a chart whose marker walks along the
+  // line correctly, a strip stuck three degrees out is the page contradicting itself.
+  const day = midnight(2026, 5, 14);
+
+  for (let hour = 0; hour < 24; hour += 1) {
+    const from = day + hour * HOUR;
+    const when = nextDegreeChange([], from);
+
+    assert.ok(when > from, `hour ${hour}: the alarm did not move forward`);
+
+    const shown = Math.round(temperatureAt(from, []));
+    const capped = when - from >= 3 * HOUR - 1;
+
+    if (!capped) {
+      assert.notEqual(
+        Math.round(temperatureAt(when, [])),
+        shown,
+        `hour ${hour}: fired while the figure was still right`,
+      );
+      assert.equal(
+        Math.round(temperatureAt(when - 60_000, [])),
+        shown,
+        `hour ${hour}: it had already been wrong for a minute`,
+      );
+    }
+  }
+});
+
+test('the alarm is capped, so a plateau cannot leave the strip unarmed for ever', () => {
+  // Around the turn of the day the curve sits inside one degree for a long while, and an
+  // alarm that never fires is the failure this exists to fix.
+  const day = midnight(2026, 5, 14);
+  for (let hour = 0; hour < 24; hour += 1) {
+    const from = day + hour * HOUR;
+    assert.ok(nextDegreeChange([], from) - from <= 3 * HOUR, `hour ${hour}: uncapped`);
+  }
 });

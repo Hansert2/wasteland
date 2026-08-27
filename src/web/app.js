@@ -193,10 +193,17 @@ export function createApp() {
    * typo in a link is visible instead of silently landing somewhere plausible.
    */
   const showCamp = (pane) => async (req, res) => {
+    // Which day the glass is showing, as an offset from today. A query parameter rather
+    // than a path because it is a reading of one block and not a view of its own: the
+    // rail's active marker still has exactly one thing to be right about, and a link to
+    // `/camp` is still a link to today. Nonsense is clamped rather than refused — this
+    // decides what a chart draws, not what the camp does.
+    const day = Number.parseInt(req.query?.day, 10) || 0;
+
     const view = await withTransaction(async (client) => {
       const settlementId = await settlementIdForPlayer(client, req.playerId);
       if (!settlementId) throw new InputError('This account has no camp.');
-      return viewCamp(client, settlementId, Date.now());
+      return viewCamp(client, settlementId, Date.now(), { day });
     });
 
     res.send(campPage(view, { pane }));
