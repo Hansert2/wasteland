@@ -11,6 +11,7 @@ import {
   climateAt,
   coefficientsAt,
   isLit,
+  nextBandChange,
   sunAt,
   temperatureAt,
   travelFactors,
@@ -103,7 +104,12 @@ function hourStrip(state, now, fitted) {
     band: time.band,
     // Free at every tier: which way the hour is pushing. Numbers cost fuel; the direction
     // never does, because the whole decision the sun offers is when to spend an hour.
-    lean: lit ? 'dearer on the counter, and more turns up' : 'kinder on the counter, and less does',
+    //
+    // Phrased to sit in the same column as "dose ×1.37 · finds ×1.55" and read as the
+    // same kind of thing — two clauses, same order, one line. The first version was a
+    // sentence fragment with no subject sat in a value column, which read as neither
+    // prose nor a figure.
+    lean: lit ? 'doses harder, finds more' : 'doses lighter, finds less',
     lit,
 
     // The clock: the hour itself, and when the light turns. Without it the strip says how
@@ -111,7 +117,13 @@ function hourStrip(state, now, fitted) {
     clock: hasClock,
     hour: hasClock ? time.hour : null,
     minute: hasClock ? time.minute : null,
-    turnsAt: hasClock ? new Date(nextTurnOfLight(now)) : null,
+    // Three things, and all for different jobs: the reading is what the strip prints, and
+    // `refreshAt` is what arms the timer that makes the strip rewrite itself. The two are
+    // not the same instant — `evening` begins well before sunset and `night` an hour
+    // after it — so a strip armed only for the light turn would sit on a stale word.
+    refreshAt: new Date(Math.min(nextBandChange(now), nextTurnOfLight(now))),
+    turnsHour: hasClock ? worldTimeAt(nextTurnOfLight(now)).hour : null,
+    turnsMinute: hasClock ? worldTimeAt(nextTurnOfLight(now)).minute : null,
     turning: lit ? 'sunset' : 'sunrise',
     roughly: hasClock ? null : roughLight(now, lit),
 

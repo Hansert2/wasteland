@@ -161,6 +161,29 @@ export function bandAt(at) {
   return 'night';
 }
 
+/**
+ * The next instant the band changes — what a page showing the band has to wake up for.
+ *
+ * The turn of the light is not enough on its own: `evening` begins three-quarters of the
+ * way through the daylight and `night` an hour after sunset, so a strip armed only for
+ * sunrise and sunset would sit on a stale word for hours. Walked in minutes rather than
+ * solved, because the boundaries are fractions of a daylight span that itself moves, and
+ * a day is 1,440 of them.
+ */
+export function nextBandChange(at) {
+  requireInstant(at, 'nextBandChange');
+
+  const here = bandAt(at);
+  const minute = 60_000;
+
+  for (let step = 1; step <= 24 * 60; step += 1) {
+    const when = at + step * minute;
+    if (bandAt(when) !== here) return when;
+  }
+
+  return at + DAY_MS;
+}
+
 /** Whether the sun is up at `at`. */
 export function isLit(at) {
   const hour = hourAt(at);

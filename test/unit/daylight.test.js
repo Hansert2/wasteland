@@ -8,6 +8,7 @@ import {
   daylightHoursAt,
   hourAt,
   isLit,
+  nextBandChange,
   splitOf,
   sunAt,
   worldTimeAt,
@@ -186,4 +187,44 @@ test('a missing instant throws rather than answering about 1970', () => {
   assert.throws(() => bandAt(NaN), TypeError);
   assert.throws(() => daylightFraction(undefined, 1000), TypeError);
   assert.throws(() => daylightFraction(1000, null), TypeError);
+});
+
+test('the next band change is the instant the word on the page stops being true', () => {
+  // What the strip arms its timer on. The turn of the light is not enough by itself:
+  // `evening` begins three-quarters of the way through the daylight and `night` an hour
+  // after sunset, so a strip woken only at sunrise and sunset sits on a stale word.
+  const day = midnight(2026, 5, 14);
+
+  for (let hour = 0; hour < 24; hour += 1) {
+    const from = day + hour * HOUR;
+    const next = nextBandChange(from);
+
+    assert.ok(next > from, `did not move forward from hour ${hour}`);
+    assert.notEqual(bandAt(next), bandAt(from), `hour ${hour}: the band did not change`);
+    assert.ok(next - from <= DAY, `hour ${hour}: more than a day to the next band`);
+
+    // And nothing changed earlier than it claims: the instant before is still this band.
+    assert.equal(bandAt(next - 60_000), bandAt(from), `hour ${hour}: it changed sooner`);
+  }
+});
+
+test('a band boundary is not always a turn of the light', () => {
+  // The reason the alarm is on the band rather than on sunrise and sunset. Somewhere in
+  // the day there is a change of word with the sun still up, and one with it still down.
+  const day = midnight(2026, 5, 14);
+  const changes = [];
+  for (let minute = 0; minute < 24 * 60; minute += 1) {
+    const when = day + minute * 60_000;
+    if (bandAt(when) !== bandAt(when - 60_000)) changes.push(when);
+  }
+
+  assert.ok(changes.length >= 4, `only ${changes.length} band changes in a day`);
+  assert.ok(
+    changes.some((when) => isLit(when)) && changes.some((when) => !isLit(when)),
+    'every band change coincided with the light turning, which cannot be right',
+  );
+});
+
+test('the alarm throws on a missing instant like the rest of the module', () => {
+  assert.throws(() => nextBandChange(undefined), TypeError);
 });

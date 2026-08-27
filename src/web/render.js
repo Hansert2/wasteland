@@ -197,46 +197,71 @@ const STYLE = `
    * whatever is left and the way out is pinned under it however short the page is.
    */
   /*
-   * The strip across the top. Sticky, and the only thing on the page that moves on its
-   * own: the dispatch table runs past a screen, and the hour is what a row of it is read
-   * against, so a strip that scrolled away would take the context with it exactly when
-   * the decision is being made.
+   * The strip across the top of the content column. Sticky, and the only element on the
+   * page that moves independently of the rest: the dispatch table runs past a screen and
+   * the hour is what a row of it is read against, so a strip that scrolled away would
+   * take the context with it exactly when the decision is being made.
    *
-   * Full bleed with an inner column at the shell's own width, so the rule under it runs
-   * to both edges on a wide screen while its contents stay in line with everything below.
+   * Negative margins cancel the column's own padding so it sits flush against the three
+   * edges it meets, which is what makes it read as the top of the column rather than as
+   * the first card in it.
    */
-  #s-hour { position: sticky; top: 0; z-index: 20; }
+  main > #s-hour {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    margin: -20px -24px 0;
+  }
 
   .hourbar {
     background: var(--rail);
     border-bottom: 1px solid var(--rule);
   }
+  /*
+   * Two gaps, not one. The strip is a row of small groups — an instrument and its
+   * readings — and with a single gap the space between "13:46" and "to sunset" was the
+   * same as the space between the clock and the glass, so five separate facts read as one
+   * run of text. The parts of a group sit close; the groups stand apart.
+   */
   .hourbar-in {
     display: flex;
     align-items: baseline;
     flex-wrap: wrap;
-    gap: 6px 14px;
-    max-width: 1280px;
-    margin: 0 auto;
-    padding: 9px 20px;
+    gap: 8px 26px;
+    padding: 10px 20px;
     font-size: 13px;
   }
   .hourbar .band {
     font-variant-caps: all-small-caps;
     letter-spacing: .16em;
-    color: var(--ink);
+    color: var(--bone);
   }
-  .hourbar .val { color: var(--ink); }
-  .hourbar .note, .hourbar .clock { color: var(--quiet); }
-  .hourbar .sky-now { display: inline-flex; gap: 6px; align-items: baseline; }
-  .hourbar .sky-now .name { color: var(--accent, var(--ink)); }
+  .hourbar .val { color: var(--value); }
+  /*
+   * The oxide accent means "this is coming for you" — right for the raid clock, wrong for
+   * a sunset, which was the loudest thing on a strip meant to be glanced at. The weather's
+   * name keeps the accent; its countdown does not.
+   */
+  .hourbar .soft,
+  .hourbar .clock,
+  .hourbar .clock.deadline { color: var(--quiet); }
+  .hourbar .from { display: inline-flex; gap: 8px; align-items: baseline; }
+  .hourbar .from .tag,
+  .hourbar .cost-row .tag { color: var(--faint); }
+  .hourbar .sky-now { display: inline-flex; gap: 8px; align-items: baseline; }
+  .hourbar .sky-now .name { color: var(--oxide-light); }
 
-  /* Pushed to the far end so the reading and the disclosure do not read as one list. */
-  .hourbar .costs { margin-left: auto; position: relative; cursor: default; }
-  .hourbar .costs-cue {
-    color: var(--quiet);
-    border-bottom: 1px dotted var(--rule);
-  }
+  /*
+   * The band is the trigger. It is the one word on the strip that names what the hour is
+   * doing, so it is where a reader already looks to ask what that costs.
+   *
+   * It keeps a dotted rule under it, which is the only thing left signalling that there
+   * is anything to open. Without a cue the panel would be a fact the page holds and does
+   * not offer, which is the failure the honesty pass exists to prevent — a cost a player
+   * cannot find is a cost they cannot plan around.
+   */
+  .hourbar .costs { position: relative; cursor: help; }
+  .hourbar .costs .band { border-bottom: 1px dotted var(--edge); }
 
   /*
    * Opens on hover, on keyboard focus, and on tap.
@@ -248,15 +273,15 @@ const STYLE = `
    */
   .hourbar .costs-panel {
     position: absolute;
-    right: 0;
+    left: 0;
     top: calc(100% + 8px);
     visibility: hidden;
     opacity: 0;
-    min-width: 240px;
+    min-width: 300px;
     padding: 12px 14px;
-    background: var(--ground);
-    border: 1px solid var(--rule);
-    box-shadow: 0 6px 20px rgb(0 0 0 / .22);
+    background: var(--panel);
+    border: 1px solid var(--edge);
+    box-shadow: 0 6px 20px rgb(0 0 0 / .35);
     display: grid;
     gap: 6px;
     text-align: left;
@@ -267,21 +292,27 @@ const STYLE = `
   .hourbar .costs:focus .costs-panel { visibility: visible; opacity: 1; }
 
   .hourbar .costs-head {
+    display: block;
     font-variant-caps: all-small-caps;
     letter-spacing: .16em;
     color: var(--quiet);
   }
-  .hourbar .costs-head { display: block; }
   .hourbar .cost-row { display: flex; gap: 8px; align-items: baseline; }
-  .hourbar .cost-row .tag { min-width: 92px; color: var(--quiet); }
+  .hourbar .cost-row .tag { min-width: 74px; flex: none; }
   .hourbar .cost-row.together { border-top: 1px solid var(--rule); padding-top: 6px; }
+  /* No tag, so no column to indent past: the figures start where the heading does. */
+  .hourbar .cost-row.bare { padding-left: 0; }
+  .hourbar .cost-want {
+    display: block;
+    border-top: 1px solid var(--rule);
+    padding-top: 6px;
+    color: var(--faint);
+    max-width: 40ch;
+  }
 
-  /* On a phone the strip wraps to two lines rather than scrolling sideways, and the
-     disclosure loses its push to the end so it sits with what it explains. */
   @media (max-width: 640px) {
-    .hourbar-in { gap: 4px 10px; padding: 8px 14px; font-size: 12px; }
-    .hourbar .costs { margin-left: 0; }
-    .hourbar .costs-panel { right: auto; left: 0; min-width: 0; width: min(88vw, 260px); }
+    .hourbar-in { gap: 6px 16px; padding: 8px 14px; font-size: 12px; }
+    .hourbar .costs-panel { min-width: 0; width: min(88vw, 260px); }
   }
 
   .shell {
@@ -417,6 +448,7 @@ const STYLE = `
      hidden section is a button that silently did nothing. */
   /* Descendant, not child: four of these sit inside a lane on the Survivor view. */
   main section { display: none; margin: 0; }
+  main #s-hour { display: block; }
   main #s-error { display: block; }
   /*
    * Contact, on every view, for the reason the error box is on every view.
@@ -457,7 +489,11 @@ ${PANE_CSS}
   /* Left: the trip and the bench. Right: the person, gauges number-first, and what
      they are carrying. Two flex columns rather than grid cells, because grid rows are
      shared and a tall dispatch table would drag the pack down the page with it. */
-  body[data-pane="survivor"] main {
+  /* The column's own stack. Everything the views arrange lives here rather than on
+     "main", so the strip above it is never a grid item — see the note in campPage. */
+  .stream { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+
+  body[data-pane="survivor"] .stream {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 300px;
     gap: 18px 24px;
@@ -484,7 +520,7 @@ ${PANE_CSS}
   body[data-pane="survivor"] .lane-side .quiet { display: block; margin: 0; }
   body[data-pane="survivor"] .lane-side .quiet .tag { display: block; margin-bottom: 7px; }
   @media (max-width: 900px) {
-    body[data-pane="survivor"] main { display: flex; }
+    body[data-pane="survivor"] .stream { display: flex; }
     body[data-pane="survivor"] .lane { display: contents; }
   }
 
@@ -992,6 +1028,29 @@ ${PANE_CSS}
   .fitting span:last-child { font-size: 15px; line-height: 1.5; color: var(--dim); }
 
   /*
+   * The price and the button on one line.
+   *
+   * The inset is already a baseline row, but its last cell held both — and a form is
+   * block-level, so the button dropped underneath the price and every fitting cost two
+   * lines instead of one. On the watchtower, which now carries two branches, that was
+   * four lines of mostly nothing.
+   */
+  .fitting > span:last-child {
+    display: flex;
+    gap: 10px;
+    align-items: baseline;
+    flex-wrap: wrap;
+  }
+
+  /*
+   * A fitting is a second purchase inside a row that already has one. At the full button
+   * size it read as loudly as the Build beside it, which is the opposite of what the
+   * inset is claiming: scrap makes the thing bigger, fuel makes it do something new, and
+   * only one of those is the row's headline.
+   */
+  .fitting button { padding: 5px 11px; font-size: 9.5px; }
+
+  /*
    * ---- region plates ----
    *
    * Held down on purpose. §2.1 of the brief bans illustration because the atmosphere is
@@ -1340,6 +1399,10 @@ ${PANE_CSS}
     main { padding: 16px 16px 64px; }
     button { padding: 13px 16px; min-height: 44px; }
     .choice button { padding: 13px 0; }
+    /* The inset's button is compact on a desktop and must not stay compact here: a
+       class beats an element selector whatever the media query, so the 44px target has
+       to be restated rather than inherited. */
+    .fitting button { padding: 13px 16px; min-height: 44px; font-size: 10.5px; }
     .quiet .tag { min-width: 92px; flex-basis: 92px; }
 
     /* The structures table stops being a table: name, level and cost on the left, the
@@ -1448,15 +1511,42 @@ function hourBar(hour) {
   if (!hour) return '';
 
   const time = hour.clock
-    ? `<span class="val">${escape(`${String(hour.hour).padStart(2, '0')}:${String(hour.minute).padStart(2, '0')}`)}</span>`
+    ? `<span class="val" data-worldclock>${escape(at(hour.hour, hour.minute))}</span>`
     : '';
 
-  // The turn of the light is a deadline like every other on this page, so it is armed
-  // rather than painted: `test/db/page-contract.test.js` requires it, and the strip
-  // rewrites itself when the band changes rather than waiting for a reload.
+  /*
+   * Every figure on this strip is named for the instrument that bought it, which is the
+   * shape the radio already set: a fact the camp paid fuel for says so, and a fact it did
+   * not is simply there. Without the tags a player who fits the clock sees the strip grow
+   * two numbers and has to work out which purchase produced them — and a player who has
+   * fitted nothing has no way to tell that anything is missing at all.
+   */
+  const from = (name, body) =>
+    `<span class="from"><span class="tag">${escape(name)}</span>${body}</span>`;
+
+  const sunValue = hour.sun
+    ? `${factor({ what: 'dose', factor: round2(hour.sun.radiation) })}
+       ${factor({ what: 'finds', factor: round2(hour.sun.finds) })}`
+    : `<span class="soft">${escape(hour.lean)}</span>`;
+
+  /*
+   * When the light turns, as a time rather than as a countdown.
+   *
+   * A sunset is an hour you plan against — "is a nine-hour trip home before dark" is a
+   * question about 18:38, not about how many seconds are left — and a ticking figure was
+   * the most restless thing on a strip meant to be glanced at.
+   *
+   * The timer does not go away, it goes quiet. A hidden armed span keeps the strip
+   * rewriting itself the moment the band turns, which is the same trick the Contact box
+   * uses to arrive on its own: without it the strip would sit on a stale band until
+   * something else on the page happened to refresh.
+   */
   const light = hour.clock
-    ? `<span class="clock deadline">${countdown(hour.turnsAt, hour.turning)} to ${escape(hour.turning)}</span>`
-    : `<span class="note">${escape(hour.roughly)}</span>`;
+    ? `<span class="soft">${escape(hour.turning)}</span>
+       <span class="val">${escape(at(hour.turnsHour, hour.turnsMinute))}</span>`
+    : `<span class="soft">${escape(hour.roughly)}</span>`;
+
+  const turnAlarm = `<span hidden>${countdown(hour.refreshAt, '')}</span>`;
 
   const warmth =
     hour.temperature === null ? '' : `<span class="val">${escape(`${hour.temperature}°C`)}</span>`;
@@ -1467,13 +1557,6 @@ function hourBar(hour) {
         <span class="clock deadline">${countdown(event.endsAt, 'clearing')}</span></span>`,
     )
     .join('');
-
-  const sunLine = hour.sun
-    ? `<span class="cost-row"><span class="tag">The hour</span>
-         ${factor({ what: 'dose', factor: round2(hour.sun.radiation) })}
-         ${factor({ what: 'finds', factor: round2(hour.sun.finds) })}</span>`
-    : `<span class="cost-row"><span class="tag">The hour</span>
-         <span class="note">${escape(hour.lean)}</span></span>`;
 
   // Only what is actually costing something out there. The Blight halves the garden and
   // does nothing to a trip, so a row for it here would be a name beside a dash — and a
@@ -1487,9 +1570,41 @@ function hourBar(hour) {
     )
     .join('');
 
-  // Only when there is genuinely something to multiply. With a clear sky the hour is the
-  // only thing acting, and a Together row would restate the line directly above it — the
-  // same rule the sky block already follows for a single event.
+  /*
+   * The hour's own line, and it is named only when something else is on the panel to
+   * confuse it with.
+   *
+   * Under a clear sky it is the only row there is, and "Out there now — The hour — doses
+   * harder" says the same thing three times. With weather in force the label is doing
+   * real work: an unlabelled figure sitting under "Rad Storm" reads as the storm's.
+   *
+   * Same rule as the Together row directly below, for the same reason: nothing is
+   * distinguished from things that are not there.
+   */
+  const sunLine = skyRows
+    ? `<span class="cost-row"><span class="tag">The hour</span>${sunValue}</span>`
+    : `<span class="cost-row bare">${sunValue}</span>`;
+
+  /*
+   * What is not fitted, and what that costs you *in this panel* — the other half of the
+   * radio's pattern. "No radio fitted. You will hear them when they arrive." is a line
+   * about a thing to go and build; a silence is only an absence.
+   *
+   * One line, not two. Two absences stated separately was three paragraphs of small grey
+   * text under a three-line fragment, and the whole panel stopped being readable — which
+   * is a strange way to explain a cost.
+   */
+  const missing =
+    !hour.clock && !hour.glass
+      ? 'Nothing fitted to measure this. The hour is a guess and so are the figures.'
+      : !hour.glass
+        ? 'No glass fitted, so the hour is words rather than figures.'
+        : !hour.clock
+          ? 'No clock fitted, so the hour itself is a guess.'
+          : '';
+
+  const wants = missing ? `<span class="cost-want">${escape(missing)}</span>` : '';
+
   const together = hour.together && skyRows
     ? `<span class="cost-row together"><span class="tag">Together</span>
          ${factor({ what: 'dose', factor: round2(hour.together.radiation) })}
@@ -1498,20 +1613,31 @@ function hourBar(hour) {
 
   return `<div class="hourbar">
     <div class="hourbar-in">
-      <span class="band">${escape(hour.band)}</span>
-      ${time}${warmth}${light}${sky}
+      ${/*
+        * Figures first and the band last, which is the order the strip is actually read
+        * in: the hour and the temperature are what a glance is for, and the band is the
+        * word you go back to when you want to know what they mean. It is also the
+        * trigger, so it sits at the end of its own row rather than in front of the
+        * numbers it explains.
+        */ ''}
+      ${hour.clock ? from('Clock', `${time}${light}`) : light}
+      ${hour.glass ? from('Glass', warmth) : ''}
       <span class="costs" tabindex="0" role="button" aria-label="What going out now costs">
-        <span class="costs-cue">what it costs</span>
+        <span class="band">${escape(hour.band)}</span>
         <span class="costs-panel">
           <span class="costs-head">Out there now</span>
-          ${skyRows}${sunLine}${together}
+          ${skyRows}${sunLine}${together}${wants}
         </span>
       </span>
+      ${sky}${turnAlarm}
     </div>
   </div>`;
 }
 
 const round2 = (value) => Math.round(value * 100) / 100;
+
+/** A world-clock reading, zero-padded: 18:38. */
+const at = (h, m) => `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 
 /**
  * The way out, and the only thing on the page that belongs to no column.
@@ -1701,9 +1827,11 @@ export const TIMERS = `
   // second copy kept in step by a test. Keep clock() closing over nothing.
   const clock = ${clock.toString()};
   const fmt = (ms) => clock(ms / 1000);
+  const pad = (n) => String(n).padStart(2, '0');
 
   let live = [];
   let stores = [];
+  let clocks = [];
   let since = Date.now();
   let busy = false;
 
@@ -1717,6 +1845,9 @@ export const TIMERS = `
     // weather, which is why this is a straight line and not a simulation — the moment
     // it would need to be more than that, fresh state has arrived anyway.
     stores = [...document.querySelectorAll('[data-amount]')];
+    // The world clock. World time is UTC by construction, so the browser reads it off
+    // its own Date with no offset to carry and no way to disagree with the server.
+    clocks = [...document.querySelectorAll('[data-worldclock]')];
     since = Date.now();
   };
 
@@ -1772,6 +1903,12 @@ export const TIMERS = `
       const fill = el.closest('.store');
       const track = fill && fill.querySelector('[data-fill]');
       if (track && cap > 0) track.style.width = (100 * clamped) / cap + '%';
+    }
+
+    if (clocks.length > 0) {
+      const d = new Date();
+      const shown = pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes());
+      for (const el of clocks) el.textContent = shown;
     }
 
     for (const el of live) {
@@ -2043,15 +2180,32 @@ export function campPage(view, { error, pane = 'camp' } = {}) {
     </div>`);
 
   return layout(view.name, `<div class="shell">
-    ${/*
-      * Outside `main`, so it is on every view without being listed on any of them — the
-      * same mechanism the rail and the stores use. Inside a `section` so the in-place
-      * swap keeps it current: the band turns, the temperature drifts, and the sky clears
-      * without anybody reloading.
-      */ ''}
-    ${section('hour', hourBar(view.hour))}
     ${rail(pane, identity, section('stores', renderResources(view.resources)))}
     <main>
+    ${/*
+      * The first thing in the content column, and revealed on every view by hand — the
+      * pattern the error box and the Contact box already use, rather than a sixth entry
+      * in every pane.
+      *
+      * It took three attempts to land here and both failures are worth the line. Dropped
+      * inside `.shell` it auto-placed into the rail's own grid cell, 198px wide and
+      * underneath it: rendered, validated, invisible. Lifted out above the shell it
+      * pushed the whole card down, so the rail no longer reached the top of the page —
+      * and once it was sticky, its own fill scrolled over the crest. Inside the column it
+      * belongs to, it simply sits where it should and the rail is never touched.
+      */ ''}
+    ${section('hour', hourBar(view.hour))}
+    ${/*
+      * Everything but the strip, in a wrapper that carries whatever arrangement the view
+      * wants. The Survivor view turns this into two columns; the strip stays a child of
+      * the column itself.
+      *
+      * That split is what makes the strip sticky on the one view where it matters most.
+      * A sticky box is confined to its containing block, and for a grid item that is its
+      * grid area — one auto-sized row, exactly its own height, with nowhere to travel. As
+      * a flex child of a tall column it has the whole page to stay put against.
+      */ ''}
+    <div class="stream">
     ${section('error', error ? `<p class="error">${escape(error)}</p>` : '')}
 
     ${section('moment', renderMoment(view.expedition))}
@@ -2125,6 +2279,7 @@ export function campPage(view, { error, pane = 'camp' } = {}) {
     ${section('standings', renderStandings(view.standings))}
 
     ${section('roster', renderRoster(view.fallenCount))}
+    </div>
     </main>
     ${EXIT}
   </div>`, { pane });

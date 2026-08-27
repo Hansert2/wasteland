@@ -161,10 +161,10 @@ test('every block on the page belongs to a view that can show it', async () => {
    * carries all its data attributes — and is on no view. Nothing throws, nothing logs,
    * and the feature is simply invisible until somebody notices it missing.
    *
-   * `s-head`, `s-stores` and `s-hour` are exempt because they live outside `main` — the
-   * first two in the rail, the third in the strip across the top — and so outside the
-   * filter entirely. That is the mechanism for "on every view" and it is a stronger one
-   * than listing an id five times: a sixth view cannot be added without them. `s-error` is exempt in the other direction: it
+   * `s-head` and `s-stores` are exempt because they live in the rail rather than in the
+   * stream — outside `main`, and so outside the filter entirely. That is the mechanism
+   * for "on every view" and it is a stronger one than listing an id five times: a sixth
+   * view cannot be added without them. `s-error` is exempt in the other direction: it
    * is in the stream and turned on for every view by hand, because a refused action
    * that renders into a hidden section is a button that appears to have done nothing.
    */
@@ -175,12 +175,20 @@ test('every block on the page belongs to a view that can show it', async () => {
   );
 
   for (const id of ids) {
-    if (id === 's-head' || id === 's-stores' || id === 's-hour') continue;
+    if (id === 's-head' || id === 's-stores') continue;
 
     if (id === 's-error') {
       assert.ok(
         camp.includes('main #s-error { display: block; }'),
         'the error box must be on every view, not on one of them',
+      );
+      continue;
+    }
+
+    if (id === 's-hour') {
+      assert.ok(
+        camp.includes('main #s-hour { display: block; }'),
+        'the hour must be on every view, not on one of them',
       );
       continue;
     }
