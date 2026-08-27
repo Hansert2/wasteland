@@ -2297,10 +2297,47 @@ grind the region you have. The same rule, in the same words, for the same reason
 > **The gain from choosing the right departure hour must stay under the step to the next
 > rung.**
 
-If sending someone to the Salt Flats at dusk out-earns sending them somewhere better, the
-map has stopped mattering and this phase has repeated the mistake the bound was written to
-prevent. `Kr` and `Kl` are provisional above precisely because this is what sets them, and
+If sending someone out at dusk out-earns sending them somewhere better, the map has
+stopped mattering and this phase has repeated the mistake the bound was written to
+prevent. `Kr` and `Kf` are provisional above precisely because this is what sets them, and
 it is measured rather than argued.
+
+#### Measured 2026-08-27: inside the bound everywhere it is about progression
+
+`tools/daylight-balance.mjs` sweeps every region across every departure hour at all three
+turns of the year, in **yield per day including bench time** — the dose a trip takes *is*
+bench hours, so measuring per trip would report the cost of daylight and miss the benefit
+of darkness entirely.
+
+Every region that pays in scrap or fuel is inside. The Deep Zone swings 14% against a 61%
+step to the next rung, Coastal Wreckage 21% against 22%, Underground Bunkers 15% against
+22%. The Fence Line swings **0%**, exactly as the finds decision intended. What darkness
+actually buys at the Deep Zone is about **eight hours off the bench** — 39.5 down to 31.0
+— paid for in what turns up.
+
+**One region is over, and it is deliberately accepted: Irradiated Farmland, at 50%
+against a 22% step.** It is the only region that combines full reach — six hours, so it
+can be aimed wholly into light or wholly into dark — with dose-dominated economics, eight
+rads against a six-hour trip, so its bench time is longer than its journey. Every other
+region has either no dose or compressed reach.
+
+The reason for accepting rather than tuning is what the bound is *for*. It exists so that
+optimising something small cannot out-earn moving up the map: *"the map stops mattering
+and the right play is to grind the region you already have, carefully."* That is an
+argument about progression. Scrap builds and fuel opens the road. **Farmland pays in
+food**, which is consumed, capped by storage, and produced by the garden anyway — so
+grinding it at night feeds the camp rather than advancing it, and the failure the bound
+describes cannot happen there.
+
+The alternative was rejected on measurement rather than taste: bringing 50% under 22%
+needs roughly `Kr ∈ [0.08, 0.17]`, and the skills work already established that a cautious
+curve here reads as nothing at all. It would fix one food region by making the whole
+mechanic invisible.
+
+**`daylight-balance.mjs` encodes this rather than leaving it to memory.** It carries a
+`PROGRESSION` set of scrap and fuel, marks Farmland *over, accepted (consumable)*, and
+counts only progression currencies in its verdict — because a guard that fires every run
+is a guard nobody reads, and the next violation needs to be the one that stands out.
 
 ### The tests
 

@@ -49,6 +49,25 @@ const SEASONS = [
 /** Neighbours within ten percent are one rung, which is what the plan defines a rung as. */
 const RUNG_WIDTH = 0.1;
 
+/**
+ * The currencies the bound is actually about.
+ *
+ * The bound exists so that optimising something small cannot out-earn moving up the map —
+ * "the map stops mattering and the right play is to grind the region you already have,
+ * carefully." That is an argument about *progression*. Scrap builds and fuel opens the
+ * road; both are how a camp gets further.
+ *
+ * Food and water are not that. They are consumed, capped by storage, and produced by the
+ * garden and the purifier anyway, so grinding a food region feeds the camp rather than
+ * advancing it. A swing in food per day is worth reporting and is not a reason to make
+ * the mechanic invisible everywhere — see the note on Irradiated Farmland in
+ * `docs/PLAN.md` under Phase 9, which is the one region this distinction decides.
+ *
+ * Kept as an explicit list rather than inferred, so that adding a currency is a decision
+ * somebody makes rather than a default somebody inherits.
+ */
+const PROGRESSION = new Set(['scrap', 'fuel']);
+
 const { rows } = await pool.query(
   `select slug, name, danger, travel_hours, loot, finds, radiation_per_trip
      from regions order by danger, travel_hours`,
@@ -207,9 +226,15 @@ for (let i = 0; i < rungs.length; i += 1) {
   for (const member of rung.members) {
     let verdict = 'top rung';
     if (step !== null) {
-      const inside = member.swing < step;
-      if (!inside) over += 1;
-      verdict = inside ? 'inside the bound' : 'OVER THE BOUND';
+      if (member.swing < step) verdict = 'inside the bound';
+      else if (PROGRESSION.has(member.currency)) {
+        over += 1;
+        verdict = 'OVER THE BOUND';
+      } else {
+        // Loud enough to notice, quiet enough that a real violation still stands out. A
+        // guard that fires every run is a guard nobody reads.
+        verdict = 'over, accepted (consumable)';
+      }
     }
 
     console.log(
@@ -228,9 +253,11 @@ for (let i = 0; i < rungs.length; i += 1) {
 
 console.log(
   over === 0
-    ? '\nEvery region is inside the bound: the hour is worth choosing, and never worth\n' +
-        'more than going somewhere better.'
-    : `\n${over} region(s) OVER THE BOUND - the hour out-earns the map. Lower Kr and Kf.`,
+    ? '\nEvery progression currency is inside the bound: the hour is worth choosing, and\n' +
+        'never worth more than going somewhere better. A row marked accepted swings wider\n' +
+        'on a consumable, which the bound is not about — see docs/PLAN.md, Phase 9.'
+    : `\n${over} region(s) OVER THE BOUND on scrap or fuel — the hour out-earns the map.\n` +
+      'That is the case the bound was written for. Lower Kr and Kf.',
 );
 
 await pool.end();
