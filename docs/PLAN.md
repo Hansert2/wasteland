@@ -2263,6 +2263,38 @@ that changes nothing in the simulation and sells one fact. Two more of those:
   one that lets you plan a trip that leaves in bad weather and returns in good. The tower
   is where the camp learns things; it already sells one.
 
+#### What the glass turned out to be — built 2026-08-27
+
+A **chart of the current world day**, not a line of figures. Temperature against time is
+the same plot as *how much the hour is worth*, because temperature is what sets `Kr` and
+`Kf` — so one line answers "when should the long trip go" for a whole day. Day and night
+are two grounds a step either side of the block's own fill, the weather that arrives is a
+bar beneath, and the two turns of the light are named on the axis, because those are the
+hours the chart is read for.
+
+**The window is a fixed day and the marker travels across it.** Plotting "now to now plus
+a day" would pin the present to the left edge for ever. Arrows in the label strip reach
+six days either way — a week of forecast and a week of record. That reach is a design
+decision and not a limit of the arithmetic: the seed would answer for any day the world
+has ever had, and an instrument that printed a year would end planning rather than serve
+it.
+
+**The temperature wanders, and it had to.** It was a cosine on a cosine — a perfect wave,
+identical every day, which reads as a diagram of weather rather than as weather. Drift is
+drawn at anchors eight hours apart and smoothstepped between them, seeded from the anchor
+index alone so it is a fact about the world rather than about the camp reading it. It made
+the climate genuinely time-varying, and three tests were right to fail: what survives is
+that the gap between the thermometer and the climate is the diurnal term, which depends on
+the hour of the day and on nothing else.
+
+**A page that draws a number twice has to keep both true.** The chart's marker walks the
+line every second while the strip's temperature was server-rendered text — wrong within
+eight minutes, three degrees out after three. `nextDegreeChange` arms the strip for the
+instant its *displayed* figure changes, capped so a plateau at the turn of the day cannot
+leave it unarmed. That failure was found by being asked whether the two would agree, not
+by any test: every visual defect in this phase was invisible to a suite that reads HTML
+and never lays it out.
+
 **`upgradeFor` becomes `upgradesFor`, returning a list.** The singular is an accident of
 there having been three structures and three upgrades, and the watchtower is now the first
 with two. Three call sites in `view-camp.js` (686, 739, 834) name the result `branch`, and
