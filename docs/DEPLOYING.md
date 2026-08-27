@@ -184,6 +184,10 @@ fortnight and had never been read back, which is a thing you find out at the wor
     ./scripts/restore-check.sh                      # dump the running db and check it
     ./scripts/restore-check.sh ~/backups/x.sql.gz   # check a backup already on disk
 
+No `sudo`: it needs your docker group membership, not root, and running it as root would
+have the app container write its scratch database as a different user for no reason. It
+can be run from anywhere — it finds the repo root itself.
+
 It restores into a scratch database called `wl_restore_check`, compares every table
 against the live one, loads every camp through the real service layer, and drops the
 scratch database again. **It never writes to the live database and never drops it**, so it

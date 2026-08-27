@@ -15,6 +15,11 @@
 
 set -euo pipefail
 
+# Run from the repo root whatever directory it was called from: the compose file, and the
+# `src/` the play step imports, are both relative to it. `cd scripts && ./restore-check.sh`
+# is the obvious way to run a script and it would otherwise fail on a missing compose file.
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.prod.yml}"
 DB_SERVICE="${DB_SERVICE:-db}"
 DB_USER="${POSTGRES_USER:-wasteland}"
