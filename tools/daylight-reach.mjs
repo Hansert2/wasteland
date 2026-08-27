@@ -12,19 +12,23 @@
  * and that belongs in `daylight-balance.mjs` beside the real resolver. The plan's table of
  * achievable ranges comes from here, so the table has something behind it.
  *
+ * **The sun comes from `src/game/daylight.js`, not from arithmetic repeated here.** The
+ * first version of this file worked the range out analytically from an assumed daylight
+ * length, which was right and was still the wrong shape: a table in the plan derived from
+ * a tool's private copy of a formula stops describing the game the moment the game's copy
+ * is retuned. The range is swept against the shipped function instead, so if the seasonal
+ * swing changes this moves with it.
+ *
  * The find count and the nominal dose are carried because they are the two levers a region
  * actually exposes. A region with an empty find table and no dose is indifferent to the
  * hour whatever the arithmetic says — which is the whole reason daylight pays in finds —
  * so the table marks it rather than printing a multiplier on nothing.
  *
- * A trip of T hours beginning anywhere in a day with L hours of light captures between
- * `max(0, L - (24 - R))` and `min(L, R)` of them, where R is the remainder after whole
- * days; whole days each contribute exactly L. That is the whole calculation.
- *
  *   node tools/daylight-reach.mjs [Kr] [Kf]
  */
+import { daylightFraction, daylightHoursAt } from '../src/game/daylight.js';
 
-const DAY_HOURS = 24;
+const HOUR_MS = 60 * 60 * 1000;
 
 /**
  * Regions as seeded, in dispatch-table order. Kept here rather than read from the database
@@ -47,22 +51,29 @@ const REGIONS = [
   ['Harrow End', 26, 2, 40],
 ];
 
-/** Daylight window at the solstices and the equinox, in hours. */
-const WINDOWS = [
-  ['winter', 9],
-  ['equinox', 12],
-  ['summer', 15],
+/** One world day at each turn of the year, named for what the sun is doing. */
+const SEASONS = [
+  ['midwinter', Date.UTC(2025, 11, 21)],
+  ['equinox', Date.UTC(2026, 2, 21)],
+  ['midsummer', Date.UTC(2026, 5, 21)],
 ];
 
-/** The range of daylight fractions a trip of `hours` can be aimed at. */
-export function reach(hours, lightHours) {
-  const wholeDays = Math.floor(hours / DAY_HOURS);
-  const remainder = hours - wholeDays * DAY_HOURS;
+/** Departure hours swept per day. Quarter-hours: fine enough that the ends are the ends. */
+const STEPS = 96;
 
-  const least = wholeDays * lightHours + Math.max(0, lightHours - (DAY_HOURS - remainder));
-  const most = wholeDays * lightHours + Math.min(lightHours, remainder);
+/** The range of daylight fractions a trip of `hours` can be aimed at on a given day. */
+export function reach(day, hours) {
+  let least = Infinity;
+  let most = -Infinity;
 
-  return { least: least / hours, most: most / hours };
+  for (let step = 0; step < STEPS; step += 1) {
+    const from = day + (step / STEPS) * 24 * HOUR_MS;
+    const d = daylightFraction(from, from + hours * HOUR_MS);
+    least = Math.min(least, d);
+    most = Math.max(most, d);
+  }
+
+  return { least, most };
 }
 
 const factor = (d, k) => 1 + k * (2 * d - 1);
@@ -73,8 +84,8 @@ const Kf = Number(process.argv[3] ?? 0.5);
 
 console.log(`Kr=${Kr} (dose)  Kf=${Kf} (finds)\n`);
 
-for (const [season, lightHours] of WINDOWS) {
-  console.log(`--- ${season}: ${lightHours}h of light ---`);
+for (const [season, day] of SEASONS) {
+  console.log(`--- ${season}: ${daylightHoursAt(day).toFixed(1)}h of light ---`);
   console.log('region                  T    d range      dose range    finds range   worst->best');
 
   for (const [name, hours, findCount, rads] of REGIONS) {
@@ -86,7 +97,7 @@ for (const [season, lightHours] of WINDOWS) {
       continue;
     }
 
-    const { least, most } = reach(hours, lightHours);
+    const { least, most } = reach(day, hours);
     const doseLow = factor(least, Kr);
     const doseHigh = factor(most, Kr);
     const findsLow = factor(least, Kf);

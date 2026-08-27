@@ -1961,28 +1961,28 @@ draft of this section claimed the long regions "wash out to `d ≈ 0.5`" and tha
 strong — it was reasoned about rather than worked out. `tools/daylight-reach.mjs` computes
 the achievable range of `d` for every region, since a trip of `T` hours starting anywhere
 in a day with `L` hours of light captures between `max(0, L − (24 − T))` and `min(L, T)` of
-them. At the equinox (`L = 12`), with the provisional `Kr = 0.35`:
+them. Swept against `daylightFraction` in `src/game/daylight.js` rather than against a
+tool's private copy of the formula, so the table moves if the seasonal swing is ever
+retuned. At the equinox, with the provisional `Kr = 0.35` and `Kf = 0.5`:
 
-    region                  T    d range     dose range    finds range   worst→best
-    The Fence Line        0.17   no finds, no dose — indifferent to the hour
-    The Old Service Road  0.75   0.00–1.00            —      0.50–1.50        200%
-    The Ruined City          4   0.00–1.00            —      0.50–1.50        200%
-    Irradiated Farmland      6   0.00–1.00    0.65–1.35      0.50–1.50        108%
-    The Millrace             8   0.00–1.00    0.65–1.35      0.50–1.50        108%
-    Underground Bunkers      9   0.00–1.00    0.65–1.35      0.50–1.50        108%
-    Coastal Wreckage        12   0.00–1.00    0.65–1.35      0.50–1.50        108%
-    Sixteen Wells           14   0.14–0.86    0.75–1.25      0.64–1.36         67%
-    The Deep Zone           18   0.33–0.67    0.88–1.12      0.83–1.17         26%
-    The Waterworks          20   0.40–0.60    0.93–1.07      0.90–1.10         15%
-    Harrow End              26   0.46–0.54    0.97–1.03      0.96–1.04          6%
-
-`worst→best` is measured on whichever lever the region exposes — finds where there is no
-dose. The two zero-dose rows showing 200% are the one-way daylight preference named above:
-a 0.75h and a 4h trip with one cheap find each, and it is `Kf` at 0.5 that makes the
-percentage look alarming rather than the tinned stew being worth anything.
+    --- equinox: 11.9h of light ---
+    region                  T    d range      dose range    finds range   worst->best
+    The Fence Line        0.17   no finds, no dose - indifferent to the hour
+    The Old Service Road  0.75    0.00-1.00             -     0.50-1.50         200%
+    The Ruined City          4    0.00-1.00             -     0.50-1.50         200%
+    Irradiated Farmland      6    0.00-1.00     0.65-1.35     0.50-1.50         108%
+    The Millrace             8    0.00-1.00     0.65-1.35     0.50-1.50         108%
+    Underground Bunkers      9    0.00-1.00     0.65-1.35     0.50-1.50         108%
+    Coastal Wreckage        12    0.00-0.99     0.65-1.35     0.50-1.49         107%
+    Sixteen Wells           14    0.14-0.85     0.75-1.25     0.64-1.35          67%
+    The Deep Zone           18    0.33-0.66     0.88-1.11     0.83-1.16          26%
+    The Waterworks          20    0.40-0.60     0.93-1.07     0.90-1.10          15%
+    Harrow End              26    0.46-0.54     0.97-1.03     0.96-1.04           6%
 
 **The compression is gradual and only Harrow End truly washes out.** Seven of eleven
-regions have the whole range. The Deep Zone keeps a 26% spread between its best and worst
+regions have effectively the whole range — Coastal Wreckage at twelve hours reaches 0.99
+rather than 1.00, because the equinox day is 11.9 hours and a twelve-hour trip is six
+minutes longer than the sun is up. The Deep Zone keeps a 26% spread between its best and worst
 departure hour, which against a 25-rad nominal dose is about six rads, or seven hours of
 bench time — small, real, and worth a glance at the clock. The Waterworks keeps 15%. Only
 the twenty-six-hour trip is genuinely indifferent to when it leaves, and a trip longer than
