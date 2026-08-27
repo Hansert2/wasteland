@@ -125,10 +125,23 @@ export const UPGRADES = {
   },
 };
 
-/** The upgrade a given structure can be fitted with, if any. */
-export function upgradeFor(kind) {
-  const found = Object.entries(UPGRADES).find(([, spec]) => spec.kind === kind);
-  return found ? { slug: found[0], ...found[1] } : null;
+/**
+ * The upgrades a given structure can be fitted with, in declaration order.
+ *
+ * A list rather than the single branch this used to return. The singular was never a
+ * decision — it was an accident of there having been three structures with an upgrade
+ * each — and the watchtower is the first to want two: the radio sells the hour of the
+ * next raid, and the glass sells the sky. Both are things the tower learns, and neither
+ * is a level of the other.
+ *
+ * Order is `UPGRADES` key order, so the page renders them in the order they are written
+ * rather than in whatever order an object happens to iterate. Empty for a structure with
+ * no branch, which the shelter still is.
+ */
+export function upgradesFor(kind) {
+  return Object.entries(UPGRADES)
+    .filter(([, spec]) => spec.kind === kind)
+    .map(([slug, spec]) => ({ slug, ...spec }));
 }
 
 /**

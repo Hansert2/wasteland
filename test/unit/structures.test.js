@@ -12,7 +12,7 @@ import {
   storageCap,
   structureEffect,
   upgradeCost,
-  upgradeFor,
+  upgradesFor,
 } from '../../src/game/structures.js';
 import { CONFIG } from '../../src/game/constants.js';
 
@@ -124,10 +124,16 @@ test('every upgrade is fitted to a structure that exists', () => {
     assert.ok(STRUCTURES[spec.kind], `${slug} is fitted to an unknown structure`);
     assert.ok(spec.summary, `${slug} has no summary`);
     assert.ok(spec.fuel > 0, `${slug} is not priced in fuel`);
-    assert.equal(upgradeFor(spec.kind).slug, slug);
+    assert.ok(
+      upgradesFor(spec.kind).some((branch) => branch.slug === slug),
+      `${slug} is not offered by the structure it is fitted to`,
+    );
   }
 
-  assert.equal(upgradeFor('garden'), null, 'not every structure has a branch yet');
+  // A list rather than one branch, because the watchtower is about to have two. What
+  // stays true is that a structure with no fuel branch offers nothing rather than null.
+  assert.deepEqual(upgradesFor('garden'), [], 'not every structure has a branch yet');
+  assert.deepEqual(upgradesFor('nonsense'), [], 'and an unknown one is not an error');
 });
 
 test('the fuel track is priced in fuel, which nothing in the camp produces', () => {

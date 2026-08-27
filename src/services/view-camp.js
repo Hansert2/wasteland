@@ -32,7 +32,7 @@ import {
   productionRates,
   structureEffect,
   upgradeCost,
-  upgradeFor,
+  upgradesFor,
 } from '../game/structures.js';
 
 /**
@@ -695,18 +695,17 @@ export async function viewCamp(client, settlementId, now = Date.now()) {
     // side by side and disagreed out loud: the advice said there was fuel enough for the
     // Radio while the forecast beneath it said the camp could pay for nothing at all.
     // Both were computed honestly off different lists, which is the worst kind of wrong.
-    ...structures.flatMap((structure) => {
-      const branch = upgradeFor(structure.kind);
-      return branch && !fitted.has(branch.slug)
-        ? [{
-            what: branch.name,
-            costs: { fuel: branch.fuel },
-            // A fitting under its level is waiting on a build, not on an hour — the
-            // same rule the bench recipes get.
-            blocked: Number(structure.level) < branch.requiresLevel,
-          }]
-        : [];
-    }),
+    ...structures.flatMap((structure) =>
+      upgradesFor(structure.kind)
+        .filter((branch) => !fitted.has(branch.slug))
+        .map((branch) => ({
+          what: branch.name,
+          costs: { fuel: branch.fuel },
+          // A fitting under its level is waiting on a build, not on an hour — the
+          // same rule the bench recipes get.
+          blocked: Number(structure.level) < branch.requiresLevel,
+        })),
+    ),
   ];
 
   const plans = planFor(doors, have, netRates);
@@ -749,10 +748,11 @@ export async function viewCamp(client, settlementId, now = Date.now()) {
    * same as the row that offers the button.
    */
   const fittable = structures
-    .map((structure) => ({ structure, branch: upgradeFor(structure.kind) }))
+    .flatMap((structure) =>
+      upgradesFor(structure.kind).map((branch) => ({ structure, branch })),
+    )
     .find(
       ({ structure, branch }) =>
-        branch &&
         !fitted.has(branch.slug) &&
         beingFitted === null &&
         Number(structure.level) >= branch.requiresLevel &&
@@ -843,30 +843,25 @@ export async function viewCamp(client, settlementId, now = Date.now()) {
       // prose says what the sky looks like; this says what it costs.
       effects: effectsOf(event.kind),
     })),
-    structures: structures.map((s) => {
-      const branch = upgradeFor(s.kind);
-      return {
-        ...s,
-        nextCost: upgradeCost(s.kind, s.level),
-        // What the next level is short by, or null when the camp can pay for it.
-        shortBy: shortfall(purse, pack, upgradeCost(s.kind, s.level) ?? {}),
-        // What it does now and what the next level buys, so the page can answer
-        // "why would I upgrade this" without the player working it out themselves.
-        effect: structureEffect(s.kind, s.level),
-        nextEffect: structureEffect(s.kind, s.level + 1),
-        summary: STRUCTURES[s.kind]?.summary ?? '',
-        // The fuel branch, if this structure has one.
-        upgrade: branch
-          ? {
-              ...branch,
-              fitted: fitted.has(branch.slug),
-              shortBy: shortfall(purse, pack, { fuel: branch.fuel }),
-              fittingUntil:
-                beingFitted?.upgrade === branch.slug ? beingFitted.completes_at : null,
-            }
-          : null,
-      };
-    }),
+    structures: structures.map((s) => ({
+      ...s,
+      nextCost: upgradeCost(s.kind, s.level),
+      // What the next level is short by, or null when the camp can pay for it.
+      shortBy: shortfall(purse, pack, upgradeCost(s.kind, s.level) ?? {}),
+      // What it does now and what the next level buys, so the page can answer
+      // "why would I upgrade this" without the player working it out themselves.
+      effect: structureEffect(s.kind, s.level),
+      nextEffect: structureEffect(s.kind, s.level + 1),
+      summary: STRUCTURES[s.kind]?.summary ?? '',
+      // The fuel branches this structure has, in declaration order. A list because the
+      // watchtower has two: the radio and the glass are both things the tower learns.
+      upgrades: upgradesFor(s.kind).map((branch) => ({
+        ...branch,
+        fitted: fitted.has(branch.slug),
+        shortBy: shortfall(purse, pack, { fuel: branch.fuel }),
+        fittingUntil: beingFitted?.upgrade === branch.slug ? beingFitted.completes_at : null,
+      })),
+    })),
     // Builds and fittings share one crew, so either one occupies the queue.
     buildInFlight: structures.some((s) => s.build_completes_at !== null) || beingFitted !== null,
     fallenCount: fallen[0].n,

@@ -3329,9 +3329,15 @@ function renderStructures(structures, buildInFlight, someoneAlive, direction, qu
  * page should not make those look like the same purchase.
  */
 function fittingIn(structure, buildInFlight, someoneAlive) {
-  const upgrade = structure.upgrade;
-  if (!upgrade) return '';
+  // A structure can carry more than one branch — the watchtower sells the hour of the
+  // next raid and the sky as two separate purchases — so each gets its own inset in
+  // declaration order. A structure with none renders nothing at all, as the shelter does.
+  return (structure.upgrades ?? [])
+    .map((upgrade) => oneFittingIn(structure, upgrade, buildInFlight, someoneAlive))
+    .join('');
+}
 
+function oneFittingIn(structure, upgrade, buildInFlight, someoneAlive) {
   /*
    * The fitting lives *inside* its structure's description, behind a 2px inset.
    *

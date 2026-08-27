@@ -659,13 +659,17 @@ test('a price the camp cannot meet says what it is short by, and offers no butto
 
     const view = await viewCamp(client, settlementId);
 
-    // A fitting priced in fuel, against a camp that has ten.
-    const withUpgrade = view.structures.find((s) => s.upgrade && !s.upgrade.fitted);
-    assert.ok(withUpgrade, 'some structure has an unfitted branch');
+    // A fitting priced in fuel, against a camp that has ten. `upgrades` is a list: a
+    // structure can carry more than one branch, so the first unfitted one anywhere will
+    // do rather than the branch of some particular structure.
+    const branch = view.structures
+      .flatMap((s) => s.upgrades ?? [])
+      .find((u) => !u.fitted);
+    assert.ok(branch, 'some structure has an unfitted branch');
     assert.match(
-      withUpgrade.upgrade.shortBy,
+      branch.shortBy,
       /needs \d+ more fuel/,
-      `expected a shortfall, got ${withUpgrade.upgrade.shortBy}`,
+      `expected a shortfall, got ${branch.shortBy}`,
     );
 
     // Scrap is plentiful, so the builds themselves are affordable — the guard has to
@@ -685,7 +689,7 @@ test('a price the camp cannot meet says what it is short by, and offers no butto
     const html = campPage(view);
     assert.ok(html.includes(needsItem.shortBy), 'the shortfall reaches the page');
     assert.ok(
-      !html.includes(`name="upgrade" value="${withUpgrade.upgrade.slug}"`),
+      !html.includes(`name="upgrade" value="${branch.slug}"`),
       'an unaffordable fitting must not carry a submit button',
     );
   });
