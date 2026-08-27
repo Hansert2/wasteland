@@ -189,6 +189,9 @@ against the live one, loads every camp through the real service layer, and drops
 scratch database again. **It never writes to the live database and never drops it**, so it
 is safe to run on the box while people are playing.
 
+A *failing* run leaves the scratch database behind on purpose, so there is something to
+look at. The next run drops it before it starts, so nothing accumulates.
+
 The last step is the one that matters, and it is a different claim from the others. Row
 counts prove the *file* arrived; advancing every camp through `viewCamp` proves the *game*
 arrived. A dump can restore cleanly and still be a save nothing can play.
