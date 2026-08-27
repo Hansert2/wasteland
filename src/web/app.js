@@ -137,11 +137,25 @@ export function createApp() {
       throw new InputError('Those passwords do not match.');
     }
 
+    /*
+     * The camp's clock, from the browser that founded it.
+     *
+     * Clamped rather than validated, and defaulted rather than required: this decides
+     * what hour a page prints, not what the camp may do, so a missing or absurd value
+     * should land the camp at Greenwich rather than refuse to found it. Fourteen hours
+     * either side covers every real offset with room to spare.
+     */
+    const clockOffset = Math.max(
+      -840,
+      Math.min(840, Math.trunc(Number(req.body.clockOffset)) || 0),
+    );
+
     const { playerId } = await withTransaction((client) =>
       foundSettlement(client, {
         email: req.body.email,
         password: req.body.password,
         settlementName: req.body.settlementName,
+        clockOffset,
         now: Date.now(),
       }),
     );

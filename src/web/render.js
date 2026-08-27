@@ -1670,7 +1670,7 @@ function hourBar(hour) {
   if (!hour) return '';
 
   const time = hour.clock
-    ? `<span class="val" data-worldclock>${escape(at(hour.hour, hour.minute))}</span>`
+    ? `<span class="val" data-worldclock data-offset="${hour.offset}">${escape(at(hour.hour, hour.minute))}</span>`
     : '';
 
   /*
@@ -2072,10 +2072,12 @@ export const TIMERS = `
       if (track && cap > 0) track.style.width = (100 * clamped) / cap + '%';
     }
 
-    if (clocks.length > 0) {
-      const d = new Date();
-      const shown = pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes());
-      for (const el of clocks) el.textContent = shown;
+    // The camp's own hour, not Greenwich's: the offset rides on the element because it
+    // is a fact about the camp and the browser has no business guessing it from its own
+    // locale — a player on holiday would otherwise watch their camp change timezone.
+    for (const el of clocks) {
+      const shifted = new Date(Date.now() + Number(el.dataset.offset || 0) * 60000);
+      el.textContent = pad(shifted.getUTCHours()) + ':' + pad(shifted.getUTCMinutes());
     }
 
     for (const el of nowlines) {
@@ -2245,8 +2247,27 @@ export function landingPage({ error, signUp = false } = {}) {
               <label>Password <input name="password" type="password" required autocomplete="new-password" minlength="8"></label>
               <label>Password again <input name="passwordAgain" type="password" required autocomplete="new-password" minlength="8"></label>
               <label>Camp name <input name="settlementName" placeholder="Camp"></label>
+              ${/*
+                * The camp's clock, taken from the browser and never asked for.
+                *
+                * A camp keeps its own hour so that dark outside and dark in the game are
+                * the same dark, and the only place that offset is knowable without asking
+                * is here. Filled by script and harmless without it: an empty field lands
+                * as Greenwich, which is exactly what every camp founded before this had.
+                *
+                * A fixed offset rather than a zone name, so it never jumps an hour in
+                * spring — see migration 015. The cost is that a camp founded in summer
+                * keeps summer's offset, which is an hour of drift and no discontinuity.
+                */ ''}
+              <input type="hidden" name="clockOffset" id="clock-offset">
               <button type="submit">Begin</button>
             </form>
+            <script>
+              // getTimezoneOffset is minutes *behind* UTC, so the sign is flipped: a
+              // browser two hours east reports -120 and the camp wants +120.
+              document.getElementById('clock-offset').value =
+                -new Date().getTimezoneOffset();
+            </script>
           </div>
         </div>
       </details>

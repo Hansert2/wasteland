@@ -10,12 +10,25 @@
  * camps to disagree about what o'clock it is. That is the whole reason the clock could be
  * built before the roster: it adds a decision without adding a fact.
  *
- * **World time is UTC**, for the reason `world_events` has no `settlement_id`: every camp
- * is under the same sky, and a sky that told two players different hours would be two
- * skies. Computed by arithmetic rather than through `Date` getters so that a machine set
- * to Chicago and a machine set to Seoul cannot possibly answer differently — the Unix
- * epoch is midnight UTC, so the fractional part of `now / DAY_MS` *is* the fraction of the
- * world's day, on every platform, with no timezone database involved.
+ * **The hour belongs to the camp; the weather belongs to the world.** Every function here
+ * takes an `offset` in minutes, which comes from `settlements.clock_offset_minutes` and is
+ * nothing more than a shift of the instant before the arithmetic starts.
+ *
+ * That split replaced a single UTC clock on 2026-08-27, and the reasoning it replaced is
+ * worth keeping because it was half right. Weather genuinely is global — every camp must
+ * see the same storm, which is why `world_events` has no `settlement_id`. The *hour* is
+ * not: nothing compares two camps' clocks, and sharing one meant a player in Auckland
+ * always checked in at world-night while one in Denver always checked in at world-morning.
+ *
+ * **Stored, never read from a clock.** The offset is a column, so a camp's sky does not
+ * change when the server moves or the player travels, and an expedition still replays
+ * exactly. Reading the host's locale here would have been the same class of mistake as
+ * reading `Date.now()` inside the tick.
+ *
+ * Computed by arithmetic rather than through `Date` getters, so that a machine set to
+ * Chicago and one set to Seoul cannot answer differently for the same camp — the Unix
+ * epoch is midnight UTC, so the fractional part of `now / DAY_MS` is the fraction of the
+ * day, on every platform, with no timezone database involved.
  *
  * **The year is real.** The world runs at one hour to the hour from `WORLD_EPOCH`, so a
  * real year is a world year and the seasons cost one cosine term. That was not built for
@@ -121,9 +134,12 @@ export function sunAt(at) {
   return { sunrise: SOLAR_NOON - hours / 2, sunset: SOLAR_NOON + hours / 2, hours };
 }
 
-/** The world hour of `at`, as a fraction: 13.5 is half past one in the afternoon. */
-export function hourAt(at) {
-  const days = at / DAY_MS;
+/** An instant shifted into a camp's own reckoning. */
+const local = (at, offset = 0) => at + (Number(offset) || 0) * 60_000;
+
+/** The camp's hour at `at`, as a fraction: 13.5 is half past one in the afternoon. */
+export function hourAt(at, offset = 0) {
+  const days = local(at, offset) / DAY_MS;
   return (days - Math.floor(days)) * 24;
 }
 
@@ -134,24 +150,24 @@ export function hourAt(at) {
  * looking up. Both come off the same instant, so a camp with a clock and a camp without
  * are never describing different afternoons.
  */
-export function worldTimeAt(at) {
+export function worldTimeAt(at, offset = 0) {
   requireInstant(at, 'worldTimeAt');
 
-  const hour = hourAt(at);
+  const hour = hourAt(at, offset);
   return {
     hour: Math.floor(hour),
     minute: Math.floor((hour % 1) * 60),
-    band: bandAt(at),
+    band: bandAt(at, offset),
     daylightHours: daylightHoursAt(at),
     ...sunAt(at),
   };
 }
 
 /** Which of the five bands `at` falls in. */
-export function bandAt(at) {
+export function bandAt(at, offset = 0) {
   requireInstant(at, 'bandAt');
 
-  const hour = hourAt(at);
+  const hour = hourAt(at, offset);
   const { sunrise, sunset, hours } = sunAt(at);
 
   if (hour < sunrise - DAWN_HOURS) return 'night';
@@ -171,15 +187,15 @@ export function bandAt(at) {
  * solved, because the boundaries are fractions of a daylight span that itself moves, and
  * a day is 1,440 of them.
  */
-export function nextBandChange(at) {
+export function nextBandChange(at, offset = 0) {
   requireInstant(at, 'nextBandChange');
 
-  const here = bandAt(at);
+  const here = bandAt(at, offset);
   const minute = 60_000;
 
   for (let step = 1; step <= 24 * 60; step += 1) {
     const when = at + step * minute;
-    if (bandAt(when) !== here) return when;
+    if (bandAt(when, offset) !== here) return when;
   }
 
   return at + DAY_MS;
@@ -217,8 +233,8 @@ export function nextDegreeChange(events, at, capHours = 3) {
 }
 
 /** Whether the sun is up at `at`. */
-export function isLit(at) {
-  const hour = hourAt(at);
+export function isLit(at, offset = 0) {
+  const hour = hourAt(at, offset);
   const { sunrise, sunset } = sunAt(at);
   return hour >= sunrise && hour < sunset;
 }
@@ -239,16 +255,22 @@ export function isLit(at) {
  * Returns 0.5 — the neutral value, the one that scales nothing — for an empty window,
  * matching `integrateFactors` returning 1.0 for the same case.
  */
-export function daylightFraction(from, to) {
+export function daylightFraction(from, to, offset = 0) {
   requireInstant(from, 'daylightFraction');
   requireInstant(to, 'daylightFraction');
 
   const span = to - from;
   if (span <= 0) return 0.5;
 
+  // Worked entirely in the camp's own reckoning: the window shifts, and so do the day
+  // boundaries the lit hours are measured inside. A trip is the same length either way,
+  // so only where it falls against the sun changes.
+  const start = local(from, offset);
+  const end = local(to, offset);
+
   let lit = 0;
-  const firstDay = Math.floor(from / DAY_MS);
-  const lastDay = Math.floor((to - 1) / DAY_MS);
+  const firstDay = Math.floor(start / DAY_MS);
+  const lastDay = Math.floor((end - 1) / DAY_MS);
 
   for (let day = firstDay; day <= lastDay; day += 1) {
     const midnight = day * DAY_MS;
@@ -257,7 +279,7 @@ export function daylightFraction(from, to) {
     const litFrom = midnight + sunrise * HOUR_MS;
     const litTo = midnight + sunset * HOUR_MS;
 
-    lit += Math.max(0, Math.min(to, litTo) - Math.max(from, litFrom));
+    lit += Math.max(0, Math.min(end, litTo) - Math.max(start, litFrom));
   }
 
   return lit / span;
@@ -267,9 +289,9 @@ export function daylightFraction(from, to) {
  * The same window as hours of light and hours of dark, which is what the dispatch table
  * says once the camp has a clock: "6h light, 3h dark".
  */
-export function splitOf(from, to) {
+export function splitOf(from, to, offset = 0) {
   const span = Math.max(0, to - from) / HOUR_MS;
-  const light = daylightFraction(from, to) * span;
+  const light = daylightFraction(from, to, offset) * span;
   return { light, dark: span - light };
 }
 
@@ -351,9 +373,9 @@ export function climateAt(at, active) {
  * Coldest a little before dawn, hottest in the middle of the afternoon. This is the glass's
  * readout and nothing else reads it — the mechanical work is all done by `climateAt`.
  */
-export function temperatureAt(at, active) {
+export function temperatureAt(at, active, offset = 0) {
   requireInstant(at, 'temperatureAt');
-  const hour = hourAt(at);
+  const hour = hourAt(at, offset);
   const diurnal = DIURNAL_SWING_C * Math.cos((2 * Math.PI * (hour - HOTTEST_HOUR)) / 24);
   return climateAt(at, active) + diurnal;
 }
@@ -419,7 +441,7 @@ export function coefficientsAt(climate) {
  * `finds: []`, no dose — is exactly and automatically indifferent to the hour rather than
  * collecting a free multiplier on the highest-throughput region in the game.
  */
-export function sunFactors(events, from, to) {
+export function sunFactors(events, from, to, offset = 0) {
   requireInstant(from, 'sunFactors');
   requireInstant(to, 'sunFactors');
 
@@ -435,7 +457,8 @@ export function sunFactors(events, from, to) {
     const hours = next - cursor;
 
     const k = coefficientsAt(climateAt(cursor, activeAt(events, cursor)));
-    const lean = 2 * daylightFraction(cursor, next) - 1;
+
+    const lean = 2 * daylightFraction(cursor, next, offset) - 1;
 
     radiation += (1 + k.radiation * lean) * hours;
     finds += (1 + k.finds * lean) * hours;
@@ -464,9 +487,9 @@ export function sunFactors(events, from, to) {
  * to the hour, instead of collecting a free multiplier on the highest-throughput region in
  * the game.
  */
-export function travelFactors(events, from, to) {
+export function travelFactors(events, from, to, offset = 0) {
   const sky = integrateFactors(events, from, to);
-  const sun = sunFactors(events, from, to);
+  const sun = sunFactors(events, from, to, offset);
 
   return {
     loot: sky.loot,
@@ -494,9 +517,13 @@ export function travelFactors(events, from, to) {
  * Sampled every fifteen minutes: a day at hourly resolution is twenty-five points, and the
  * corners show.
  */
-export function dayWindow(at, offset = 0) {
+export function dayWindow(at, days = 0, offset = 0) {
   requireInstant(at, 'dayWindow');
-  const from = (Math.floor(at / DAY_MS) + offset) * DAY_MS;
+  // Two different offsets meet here and they are not the same thing: `days` is how many
+  // days the chart has been paged forward or back, and `offset` is the camp's clock. The
+  // window is returned in real instants, so the shift is taken off again at the end.
+  const shift = (Number(offset) || 0) * 60_000;
+  const from = (Math.floor(local(at, offset) / DAY_MS) + days) * DAY_MS - shift;
   return { from, to: from + DAY_MS };
 }
 
@@ -520,7 +547,7 @@ export const FORECAST_STEP_MS = 15 * 60 * 1000;
  * the same reading — a forecast that drew the dark from one source and the temperature
  * from another could disagree with itself.
  */
-export function forecastSeries(events, from, to, step = FORECAST_STEP_MS) {
+export function forecastSeries(events, from, to, step = FORECAST_STEP_MS, offset = 0) {
   requireInstant(from, 'forecastSeries');
   requireInstant(to, 'forecastSeries');
 
@@ -528,8 +555,8 @@ export function forecastSeries(events, from, to, step = FORECAST_STEP_MS) {
   for (let at = from; at <= to; at += step) {
     series.push({
       at,
-      degrees: temperatureAt(at, activeAt(events, at)),
-      lit: isLit(at),
+      degrees: temperatureAt(at, activeAt(events, at), offset),
+      lit: isLit(at, offset),
     });
   }
 
@@ -543,13 +570,16 @@ export function forecastSeries(events, from, to, step = FORECAST_STEP_MS) {
  * minute the light turns instead of on whichever sample happened to straddle it. A chart
  * whose shading is a step function of its own resolution looks like a rendering fault.
  */
-export function darkSpansBetween(from, to) {
+export function darkSpansBetween(from, to, offset = 0) {
   requireInstant(from, 'darkSpansBetween');
   requireInstant(to, 'darkSpansBetween');
 
+  // Returned in real instants so the chart can plot them against real instants, but
+  // reckoned in the camp's day so a band lands where the camp's sun actually sets.
+  const shift = (Number(offset) || 0) * 60_000;
   const spans = [];
-  const firstDay = Math.floor(from / DAY_MS);
-  const lastDay = Math.floor(to / DAY_MS);
+  const firstDay = Math.floor((from + shift) / DAY_MS);
+  const lastDay = Math.floor((to + shift) / DAY_MS);
 
   for (let day = firstDay - 1; day <= lastDay + 1; day += 1) {
     const midnight = day * DAY_MS;
@@ -560,8 +590,8 @@ export function darkSpansBetween(from, to) {
     const darkFrom = midnight + sunset * HOUR_MS;
     const darkTo = midnight + DAY_MS + sunAt(midnight + DAY_MS).sunrise * HOUR_MS;
 
-    const start = Math.max(from, darkFrom);
-    const end = Math.min(to, darkTo);
+    const start = Math.max(from, darkFrom - shift);
+    const end = Math.min(to, darkTo - shift);
     if (end > start) spans.push({ from: start, to: end });
   }
 

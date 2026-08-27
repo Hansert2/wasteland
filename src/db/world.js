@@ -201,6 +201,10 @@ export async function loadWorld(client, settlementId) {
       caravanSeed: Number(settlement.caravan_seed),
       caravanCount: settlement.caravan_count,
       nextCaravanAt: settlement.next_caravan_at?.getTime() ?? null,
+      // The camp's own clock, in minutes ahead of UTC. The tick needs it because a trip
+      // is scaled by how much of it happened in daylight, and which hours those were is a
+      // question about this camp's sky rather than about Greenwich's.
+      clockOffset: Number(settlement.clock_offset_minutes) || 0,
       // Read-only in the tick: standing feeds raid tempering, and only trades and
       // successions write it, so saveWorld deliberately does not carry it back.
       standings,

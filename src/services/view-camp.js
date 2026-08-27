@@ -91,10 +91,10 @@ const DAY_MS = 24 * HOUR_MS;
  * be stated before one is chosen, so the strip answers the question it can — what going
  * out now is worth — and leaves the rest to the trip.
  */
-function hourStrip(state, now, fitted) {
+function hourStrip(state, now, fitted, clock = 0) {
   const active = activeAt(state.worldEvents, now);
-  const time = worldTimeAt(now);
-  const lit = isLit(now);
+  const time = worldTimeAt(now, clock);
+  const lit = isLit(now, clock);
 
   // The sun at this instant: full daylight or full dark, since an instant is one or the
   // other. `2d - 1` is +1 or -1, so the factors are simply 1 plus or minus the
@@ -108,6 +108,8 @@ function hourStrip(state, now, fitted) {
 
   return {
     band: time.band,
+    // Carried to the page so the ticking clock in the browser shows this camp's hour.
+    offset: clock,
     // Free at every tier: which way the hour is pushing. Numbers cost fuel; the direction
     // never does, because the whole decision the sun offers is when to spend an hour.
     //
@@ -135,19 +137,19 @@ function hourStrip(state, now, fitted) {
      */
     refreshAt: new Date(
       Math.min(
-        nextBandChange(now),
-        nextTurnOfLight(now),
+        nextBandChange(now, clock),
+        nextTurnOfLight(now, clock),
         hasGlass ? nextDegreeChange(state.worldEvents ?? [], now) : Infinity,
       ),
     ),
-    turnsHour: hasClock ? worldTimeAt(nextTurnOfLight(now)).hour : null,
-    turnsMinute: hasClock ? worldTimeAt(nextTurnOfLight(now)).minute : null,
+    turnsHour: hasClock ? worldTimeAt(nextTurnOfLight(now, clock), clock).hour : null,
+    turnsMinute: hasClock ? worldTimeAt(nextTurnOfLight(now, clock), clock).minute : null,
     turning: lit ? 'sunset' : 'sunrise',
-    roughly: hasClock ? null : roughLight(now, lit),
+    roughly: hasClock ? null : roughLight(now, lit, clock),
 
     // The glass: the temperature, and the sun's numbers rather than its direction.
     glass: hasGlass,
-    temperature: hasGlass ? Math.round(temperatureAt(now, active)) : null,
+    temperature: hasGlass ? Math.round(temperatureAt(now, active, clock)) : null,
     sun: hasGlass ? sun : null,
 
     // The sky's own numbers are free and always have been — the sky block has printed
@@ -189,8 +191,8 @@ function clampDay(day) {
  * The horizon is a design decision rather than a limit of the arithmetic; see
  * `FORECAST_HOURS`.
  */
-async function forecastOf(client, now, offset) {
-  const { from, to: until } = dayWindow(now, offset);
+async function forecastOf(client, now, days, clock = 0) {
+  const { from, to: until } = dayWindow(now, days, clock);
 
   /*
    * The past is what the table says; the future is what the seed says.
@@ -211,7 +213,7 @@ async function forecastOf(client, now, offset) {
       : [];
   const events = [...stored, ...ahead];
 
-  const series = forecastSeries(events, from, until);
+  const series = forecastSeries(events, from, until, undefined, clock);
   const degrees = series.map((point) => point.degrees);
 
   return {
@@ -220,15 +222,15 @@ async function forecastOf(client, now, offset) {
     // Null on any day but the one being lived: a marker for "now" on Thursday's chart
     // while it is Tuesday would be a line pointing at nothing.
     now: now >= from && now < until ? new Date(now) : null,
-    offset,
-    canGoBack: offset > -DAY_REACH,
-    canGoOn: offset < DAY_REACH,
+    offset: days,
+    canGoBack: days > -DAY_REACH,
+    canGoOn: days < DAY_REACH,
     series: series.map((point) => ({
       at: point.at,
       degrees: Math.round(point.degrees * 10) / 10,
       lit: point.lit,
     })),
-    dark: darkSpansBetween(from, until),
+    dark: darkSpansBetween(from, until, clock),
     /*
      * Sunrise and sunset for this day, as instants and as readings.
      *
@@ -239,14 +241,15 @@ async function forecastOf(client, now, offset) {
      * would print the viewer's own afternoon beside a world one.
      */
     turns: (() => {
-      const { sunrise, sunset } = sunAt(from);
+      const shift = clock * 60_000;
+      const { sunrise, sunset } = sunAt(from + shift);
       return [
         { kind: 'sunrise', at: from + sunrise * HOUR_MS },
         { kind: 'sunset', at: from + sunset * HOUR_MS },
       ].map((turn) => ({
         ...turn,
-        hour: worldTimeAt(turn.at).hour,
-        minute: worldTimeAt(turn.at).minute,
+        hour: worldTimeAt(turn.at, clock).hour,
+        minute: worldTimeAt(turn.at, clock).minute,
       }));
     })(),
     // Only what is in force during the window, and only the kinds that do something —
@@ -269,13 +272,14 @@ async function forecastOf(client, now, offset) {
 }
 
 /** The next instant the light turns, sunrise or sunset, whichever comes first. */
-function nextTurnOfLight(now) {
-  const today = Math.floor(now / DAY_MS) * DAY_MS;
+function nextTurnOfLight(now, clock = 0) {
+  const shift = clock * 60_000;
+  const today = Math.floor((now + shift) / DAY_MS) * DAY_MS;
 
   for (const day of [today, today + DAY_MS]) {
     const { sunrise, sunset } = sunAt(day);
     for (const hour of [sunrise, sunset]) {
-      const at = day + hour * HOUR_MS;
+      const at = day + hour * HOUR_MS - shift;
       if (at > now) return at;
     }
   }
@@ -284,8 +288,8 @@ function nextTurnOfLight(now) {
 }
 
 /** How much of the day is left, for a camp with no clock to read it off. */
-function roughLight(now, lit) {
-  const hours = (nextTurnOfLight(now) - now) / HOUR_MS;
+function roughLight(now, lit, clock = 0) {
+  const hours = (nextTurnOfLight(now, clock) - now) / HOUR_MS;
 
   if (!lit) return hours < 2 ? 'the sky is going grey' : 'a long way from light';
   if (hours < 1) return 'the light is nearly gone';
@@ -322,7 +326,7 @@ function reportOn(row, state, now) {
     region,
     survivor: state.survivor,
     seed,
-    weather: travelFactors(overTheTrip, departedAt, returnsAt),
+    weather: travelFactors(overTheTrip, departedAt, returnsAt, state.settlement.clockOffset ?? 0),
     choices,
     standings: state.settlement.standings,
   });
@@ -554,7 +558,8 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
   const { state, events } = await advanceSettlement(client, settlementId, now);
 
   const { rows: settlements } = await client.query(
-    `select name, founded_at, next_raid_at, caravan_seed, caravan_count, next_caravan_at
+    `select name, founded_at, next_raid_at, caravan_seed, caravan_count, next_caravan_at,
+            clock_offset_minutes
        from settlements where id = $1`,
     [settlementId],
   );
@@ -633,10 +638,20 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
   );
   const beingFitted = upgradeRows.find((row) => row.installed_at === null) ?? null;
 
+  /*
+   * The camp's own clock, in minutes ahead of UTC.
+   *
+   * Read once and threaded into everything that asks what hour it is, rather than reached
+   * for at each call site — a page where one figure used the camp's evening and the next
+   * used Greenwich's would be wrong in a way nobody could see, and this file has already
+   * had that bug once with the radiation threshold.
+   */
+  const clock = Number(settlements[0].clock_offset_minutes) || 0;
+
   // Only when there is a glass to read it with: the query is cheap and the derivation is
   // cheaper, but a camp that cannot see the week should not be paying for a week's rows.
   const forecast = fitted.has('glass')
-    ? await forecastOf(client, now, clampDay(day))
+    ? await forecastOf(client, now, clampDay(day), Number(settlements[0].clock_offset_minutes) || 0)
     : null;
 
   // What the camp can actually pay with: stores, and what is on the survivor.
@@ -1094,7 +1109,7 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
      * cost they cannot plan around. What fuel buys is precision: the clock sells the hour
      * and the exact turn of the light, the glass sells the temperature and the numbers.
      */
-    hour: hourStrip(state, now, fitted),
+    hour: hourStrip(state, now, fitted, clock),
     /**
      * The week ahead, and the whole of what the glass is worth its fuel for.
      *

@@ -437,7 +437,7 @@ function returnExpedition(state, at, events) {
     region: expedition.region,
     survivor,
     seed: expedition.seed,
-    weather: travelFactors(state.worldEvents, expedition.departedAt, at),
+    weather: travelFactors(state.worldEvents, expedition.departedAt, at, state.settlement.clockOffset ?? 0),
     // Whatever the player answered while they were out. An empty list is the trip
     // exactly as it would have resolved before any of this existed.
     choices: expedition.choices,

@@ -508,6 +508,66 @@ test('the page burns at the threshold the tick burns at, not at the constant', a
   });
 });
 
+test('the camp keeps its own hour, and the weather keeps the world', async () => {
+  /*
+   * World time was UTC for everybody until 2026-08-27, on the grounds that every camp is
+   * under one sky. That conflated two things. Weather genuinely is global — every camp
+   * must meet the same storm — but nothing compares two camps' clocks, and sharing one
+   * meant a player in Auckland always checked in at world-night.
+   *
+   * So the hour is the camp's and the weather is the world's, and this pins both halves.
+   * The offset is a stored column rather than anything read from a clock, which is what
+   * makes a trip still replay exactly: a camp that moves servers keeps its own evening.
+   */
+  await withRollback(async (client) => {
+    const { settlementId } = await seed(client);
+
+    // The Clock has to be fitted, because the exact hour is what it sells: without it the
+    // strip gives the band and a rough phrase, which is the tiering working rather than a
+    // problem. The band is checked below and is free at every tier.
+    await client.query(
+      `insert into structure_upgrades (settlement_id, kind, upgrade, completes_at, installed_at)
+       values ($1, 'shelter', 'clock', now(), now())`,
+      [settlementId],
+    );
+
+    // Ten in the evening, UTC. Far enough into the night that a two-hour shift crosses
+    // midnight and a seven-hour one is still the afternoon.
+    const now = Date.UTC(2026, 5, 14, 22);
+
+    const withClock = async (minutes) => {
+      await client.query('update settlements set clock_offset_minutes = $2 where id = $1', [
+        settlementId,
+        minutes,
+      ]);
+      return viewCamp(client, settlementId, now);
+    };
+
+    const utc = await withClock(0);
+    const east = await withClock(120);
+    const west = await withClock(-420);
+
+    assert.equal(utc.hour.hour, 22, 'Greenwich reads ten at night');
+    assert.equal(east.hour.hour, 0, 'two hours east it is already tomorrow');
+    assert.equal(west.hour.hour, 15, 'seven hours west it is the afternoon');
+
+    assert.equal(west.hour.band, 'the heat of the day', 'and the band follows the hour');
+    assert.notEqual(utc.hour.band, west.hour.band);
+
+    // The offset reaches the page, so the ticking clock in the browser shows this camp's
+    // hour rather than the one the viewer's own machine happens to be in.
+    assert.equal(west.hour.offset, -420);
+
+    // And the sky is untouched: the same instant is the same weather everywhere, because
+    // `world_events` is keyed on the world and not on the camp.
+    assert.deepEqual(
+      utc.weather.map((w) => w.kind),
+      west.weather.map((w) => w.kind),
+      'two camps at the same instant must meet the same storm',
+    );
+  });
+});
+
 test('the advice for a new camp is derived from what the camp has actually done', async () => {
   await withRollback(async (client) => {
     const { settlementId, characterId } = await seed(client, {

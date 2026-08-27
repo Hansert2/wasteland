@@ -37,7 +37,13 @@ const SUCCESSOR_SALVAGE = 0.5;
  *
  * Caller supplies the transaction; a half-founded account is not a state we allow.
  */
-export async function foundSettlement(client, { email, password, settlementName, now = Date.now() }) {
+export async function foundSettlement(client, {
+  email,
+  password,
+  settlementName,
+  clockOffset = 0,
+  now = Date.now(),
+}) {
   const cleanEmail = String(email ?? '').trim().toLowerCase();
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(cleanEmail)) {
     throw new InputError('That does not look like an email address.');
@@ -62,8 +68,12 @@ export async function foundSettlement(client, { email, password, settlementName,
   }
 
   const { rows: settlements } = await client.query(
-    'insert into settlements (player_id, name, founded_at, last_tick_at) values ($1, $2, $3, $3) returning id',
-    [playerId, camp, new Date(now)],
+    `insert into settlements (player_id, name, founded_at, last_tick_at, clock_offset_minutes)
+     values ($1, $2, $3, $3, $4) returning id`,
+    // The camp's own hour, so dark outside and dark in the game are the same dark. Taken
+    // from the browser that founded it and defaulted to Greenwich, which is what every
+    // camp founded before migration 015 has.
+    [playerId, camp, new Date(now), Math.max(-840, Math.min(840, Math.trunc(clockOffset) || 0))],
   );
   const settlementId = settlements[0].id;
 

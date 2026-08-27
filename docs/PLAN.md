@@ -1865,6 +1865,36 @@ signature.
 timezone for everybody, for the reason `world_events` has no `settlement_id`: every camp
 is under the same sky, and a sky that told two players different hours would be two skies.
 
+**Revised 2026-08-27, and the reasoning above is half wrong.** It conflates two things.
+**Weather** genuinely is global — every camp must meet the same storm, which is why
+`world_events` has no `settlement_id` and why it never will. **The hour** is not: nothing
+in the game compares two camps' clocks, and the argument for sharing one was an analogy
+rather than a constraint.
+
+Worse, the shared clock created the unfairness the objection below was written to answer.
+A player in Auckland always checked in at world-night and one in Denver always at
+world-morning — a systematically different game through no choice of their own. The phase
+answered that by putting the mechanical weight on the *trip*; a per-camp offset means it
+does not need answering.
+
+So: **the hour belongs to the camp and the weather to the world.**
+`settlements.clock_offset_minutes` (migration `015`) shifts the instant before any of the
+arithmetic starts, and every function in `daylight.js` takes it. It buys the thing that
+made it worth doing — dark outside and dark in the game are the same dark, so sending
+somebody out at bedtime and reading the report over breakfast is a rhythm the game can
+express.
+
+Two decisions inside it. **A fixed offset rather than a named zone**, because a zone brings
+daylight saving and would jump the sky an hour twice a year — a discontinuity in a function
+that is otherwise smooth, and a trip spanning the transition would get an hour more or less
+daylight than the dispatch table promised. The cost is that a camp founded in summer keeps
+summer's offset, which is an hour of drift and no cliff.
+
+And **stored rather than read**, which is the load-bearing half. Taken from the browser once
+at founding and kept as a column, so a camp does not change its sky when the server moves or
+the player travels, and an expedition still replays exactly. Reading the host's locale would
+have been the same class of mistake as reading `Date.now()` inside the tick.
+
 Five bands, always free to read: *before dawn*, *morning*, *the heat of the day*,
 *evening*, *night*. Their boundaries move with the season, which costs one cosine term
 and is the only thing the year is for.
@@ -2744,7 +2774,21 @@ playtime**: 72% idle at brutal against 48% at gentle.
 And that is the tension this design has not resolved. The game's largest measured balance
 problem is that idleness makes danger 4 out-earn danger 5 — Coastal Wreckage at 19.4
 fuel/day against the Deep Zone's 13.7, because the dose idles the survivor. **This design
-increases idleness deliberately.** That is not a reason to drop it; it is the reason the
+increases idleness deliberately.**
+
+**Answered 2026-08-27, and the answer changes the question rather than accepting it: the
+idle figure is per *survivor*, and the thing that matters is whether the *camp* is idle.**
+Two people alternating means somebody is always available, so a survivor spending seventy
+percent of their time recovering is not seventy percent of a quiet page — it is the other
+one working. Idleness only reads as dead time in a camp of one, which is the camp the
+measurement was taken in because it is the only camp the game has.
+
+That turns a tension into a **constraint on Phase 7**: the second survivor has to arrive
+*early*. A roster whose second arrival is a reward for weeks of play would leave every new
+camp playing the version of this that does not work, and the mechanic would be judged on
+its worst case. Whatever finally schedules arrivals — a wanderer at the gate, a passenger
+with a caravan, on the raid and caravan seed pattern — the second one belongs in the first
+day or two, and the cap after that can be as slow as it likes. That is not a reason to drop it; it is the reason the
 exponent and the stamina cost have to be chosen against the idle column and not only
 against the contest column. Somewhere around `^4` and between `steep` and `brutal` is where
 to start looking, and `fuel-balance.mjs` has to be re-run against whatever is chosen before
