@@ -2591,7 +2591,7 @@ The two ship as a pair or not at all. The roster without stamina is the thing al
 measured as changing one bucket on 12% of visits; stamina without the roster is a mechanic
 that switches the page off.
 
-### The question that kills it or confirms it, before anything is built
+### The question that kills it or confirms it — asked and answered
 
 `skill-sensitivity.mjs` is the wrong instrument, because stamina does not act on moments —
 it acts on which person is sent. The question is:
@@ -2607,6 +2607,49 @@ The food axis is what gives it a chance of surviving that test. With recovery pr
 food, sending the tired one costs food the camp may want for something else, which is a
 second thing to weigh. Without it the answer is always "send the rested one", and there is
 nothing here.
+
+#### Measured 2026-08-27, and the answer inverts the proposal
+
+`tools/stamina-sensitivity.mjs`. A camp of two picks somebody to send; what the choice is
+worth is the haul over how long that person is then unavailable, and with two gauges the
+downtime is `max(rads to clear / decay, stamina to refill / regen)`. **That max is the
+whole mechanic.** Read over eight dosing regions and four thousand states each:
+
+    shape      cost/regen   binds   contested   cleanest wrong   rested wrong
+    gentle         1.5/2      29%         22%              47%            53%
+    moderate       3/1.5      64%         32%              91%             9%
+    steep          4.5/1      79%         39%              95%             5%
+    brutal        6/0.75      92%         44%              97%             3%
+
+*Contested* is the share of states where the cleanest survivor and the most rested one are
+different people — the only states where anything is being chosen. The two right-hand
+columns are read inside those alone.
+
+**Only the gentle shape is a decision.** At 47/53 neither single-gauge policy is right more
+than a coin flip, so a player has to weigh dose against tiredness. Every harsher shape
+collapses into a *swap*: at brutal, "send the most rested" is right 97% of the time, which
+is not stamina adding a choice but stamina taking radiation's job.
+
+> **A punishing stamina system is less interesting than a light one**, which is the
+> opposite of what the overhaul document proposes. Exhaustion at zero and hard gating
+> produce the bottom row of that table.
+
+The signal is real but modest: about a fifth of dispatches are contested, and in those the
+call is near enough even. For scale, the scavenging skill was judged worth building at
+"moves one answer in ten".
+
+**So the shape is settled before the mechanic is: cost around 1.5 stamina an hour of
+travel, recovery around 2 an hour at rest.** A trip pays itself back in roughly
+three-quarters of the hours it took, which is well inside the thirty-one hours the Deep
+Zone's dose already costs — stamina is the *second* constraint by design, and binds on 29%
+of occasions rather than on most of them.
+
+**One correction, recorded because it looked like a result for ten minutes.** The first
+version of this instrument counted states where the best pick was *neither* the cleanest
+nor the most rested, and printed a flat zero at every shape. That was arithmetic, not
+evidence: with two survivors and two gauges the winner is always better on at least one of
+them, so the column could not have been anything else. The question had to be narrowed to
+one that can vary.
 
 ### Constraints it must not break
 
