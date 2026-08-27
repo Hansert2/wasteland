@@ -48,6 +48,9 @@ export const WORLD_EVENTS = {
     name: 'Rad Storm',
     hours: [18, 48],
     share: 14,
+    // A dirty sky is a hot one, and the game has said so since it was written: everything
+    // outside is hotter than it looks.
+    warmth: +6,
     // Water is what you catch from the sky, so a dirty sky is dirty water.
     production: { water: 0.4 },
     radiation: 1.8,
@@ -86,6 +89,9 @@ export const WORLD_EVENTS = {
     name: 'Long Light',
     hours: [24, 60],
     share: 12,
+    // The season turned and stayed turned. This is the one that is warm because it is
+    // simply a good spell of weather.
+    warmth: +5,
     production: { food: 1.5 },
     description: 'The season has turned and stayed turned. Things are growing that had stopped.',
   },
@@ -93,6 +99,9 @@ export const WORLD_EVENTS = {
     name: 'Hard Rain',
     hours: [8, 20],
     share: 9,
+    // Overcast for two days. The sun is doing almost nothing, which is the whole of what
+    // `warmth` measures.
+    warmth: -6,
     production: { water: 2.2 },
     description:
       'It has not stopped since the night before last. Everything in the camp that holds water is out in it.',
@@ -115,6 +124,9 @@ export const WORLD_EVENTS = {
     // week.
     hours: [6, 14],
     share: 9,
+    // Cooler than clear despite what a dust storm sounds like, and for the reason the prose
+    // already gives: the light is the wrong colour, so less of it is arriving.
+    warmth: -2,
     loot: 0.6,
     description:
       'The air is full of it and the light is the wrong colour. Nobody who went out this morning found much.',
@@ -232,6 +244,33 @@ export function deriveEventsBetween(seed, from, to) {
 /** Events covering an instant. Several can overlap; the world is not tidy. */
 export function activeAt(events, at) {
   return (events ?? []).filter((e) => e.startsAt <= at && at < e.endsAt);
+}
+
+/**
+ * How much warmer or colder than clear the sky is, in degrees, summed across everything
+ * in force.
+ *
+ * **Added rather than multiplied**, unlike every other composition here: these are
+ * offsets on a temperature, and a rad storm over a hard rain is warmer than the rain and
+ * cooler than the storm, which is what a sum says and what a product could not.
+ *
+ * Only four of the seven carry one. Caravan Season is traffic rather than weather, the
+ * Blight is in the soil, and the Slip is something that fell — none of them is the sky
+ * doing anything to the temperature, and giving them a token value would be inventing
+ * content to fill a column.
+ *
+ * `warmth` has exactly one job downstream: it is half of what sets how much the hour of a
+ * trip matters. See `climateAt` in `daylight.js`. It is deliberately *not* a second set of
+ * production or haul multipliers — the sky already owns those, and a silent second
+ * contributor to them would make `effectsOf` an incomplete account of what the weather is
+ * costing, which is a contract the page prints.
+ */
+export function warmthOf(active) {
+  let warmth = 0;
+  for (const event of active ?? []) {
+    warmth += WORLD_EVENTS[event.kind]?.warmth ?? 0;
+  }
+  return warmth;
 }
 
 /**

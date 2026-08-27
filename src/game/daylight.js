@@ -24,6 +24,8 @@
  * cannot be sent into it, and in high summer the night is six hours.
  */
 
+import { activeAt, nextBoundaryAfter, warmthOf } from './world-events.js';
+
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
 
@@ -215,4 +217,131 @@ function requireInstant(at, who) {
   if (!Number.isFinite(at)) {
     throw new TypeError(`${who}: expected an epoch-ms number`);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Temperature, and the one thing it decides.
+// ---------------------------------------------------------------------------
+
+/**
+ * The world's temperature in degrees: annual mean, and how far the solstices swing it.
+ *
+ * Fictional and globally consistent, like the hour and for the same reason. Seven degrees
+ * at midwinter and thirty-three at midsummer — a wide year, because a season that moved
+ * the thermometer by three degrees would be a readout rather than a thing to plan around.
+ */
+const ANNUAL_MEAN_C = 20;
+const ANNUAL_SWING_C = 13;
+
+/** How far the day climbs above its own mean, and the hour it peaks. */
+const DIURNAL_SWING_C = 7;
+const HOTTEST_HOUR = 15;
+
+/**
+ * The climate band `Kr` and `Kf` are read against, and the bounds they are held inside.
+ *
+ * The clamp is not decoration. A year-long term means a suite that passes in August can
+ * fail in January on a day nobody deployed, and a sky that stacked three warm events
+ * would otherwise push the factors past anything that had been measured. Held here, the
+ * bound is a property of the code rather than of the calendar the test happened to run in.
+ */
+const CLIMATE_FLOOR_C = 5;
+const CLIMATE_CEILING_C = 35;
+
+export const KR_RANGE = [0.2, 0.45];
+export const KF_RANGE = [0.35, 0.65];
+
+/**
+ * How warm the season and the sky are, independent of the hour.
+ *
+ * **This is the number that decides how much the hour matters, and the diurnal term is
+ * deliberately not in it.** Putting it in would count the same fact twice: the swing
+ * between day and night *is* what `Kr` scales, so feeding the current point on that swing
+ * back in as an input would make a trip's factor depend on when you happened to look.
+ */
+export function climateAt(at, active) {
+  requireInstant(at, 'climateAt');
+  return seasonalMean(at) + warmthOf(active);
+}
+
+/**
+ * What the thermometer reads: the climate plus wherever the day has got to.
+ *
+ * Coldest a little before dawn, hottest in the middle of the afternoon. This is the glass's
+ * readout and nothing else reads it — the mechanical work is all done by `climateAt`.
+ */
+export function temperatureAt(at, active) {
+  requireInstant(at, 'temperatureAt');
+  const hour = hourAt(at);
+  const diurnal = DIURNAL_SWING_C * Math.cos((2 * Math.PI * (hour - HOTTEST_HOUR)) / 24);
+  return climateAt(at, active) + diurnal;
+}
+
+function seasonalMean(at) {
+  return ANNUAL_MEAN_C - ANNUAL_SWING_C * Math.cos(2 * Math.PI * yearPhase(at));
+}
+
+/** Where a climate sits in its band, 0 at the floor and 1 at the ceiling. */
+function warmth01(climate) {
+  const span = CLIMATE_CEILING_C - CLIMATE_FLOOR_C;
+  return Math.min(1, Math.max(0, (climate - CLIMATE_FLOOR_C) / span));
+}
+
+const lerp = ([low, high], t) => low + (high - low) * t;
+
+/**
+ * How much the hour is worth, at a given climate.
+ *
+ * `radiation` is what a daylight hour costs on the counter and a dark one saves; `finds`
+ * is what daylight turns up and darkness misses. Heat widens both; cold and cloud narrow
+ * them. That is temperature's entire mechanical job — one lever, deliberately, because the
+ * sky already owns production, haul and dose, and a second global system pulling the same
+ * three would make `effectsOf` an incomplete account of what the weather costs.
+ */
+export function coefficientsAt(climate) {
+  const t = warmth01(climate);
+  return { radiation: lerp(KR_RANGE, t), finds: lerp(KF_RANGE, t) };
+}
+
+/**
+ * What the sun did to a whole trip: `{ radiation, finds }`, centred on 1.
+ *
+ * Both are `1 + K * (2d - 1)`, so a trip that spent half its hours in the light is
+ * multiplied by exactly one and resolves as it would have with no sun in the game at all.
+ * That is the same compatibility guarantee gear and weather already hold to.
+ *
+ * **Integrated properly, not as a product of two averages.** The interval is walked in the
+ * pieces the weather cuts it into — `nextBoundaryAfter` yields those, as it does for the
+ * sky — and each piece contributes its own daylight share at its own climate. Taking the
+ * trip's mean `d` and its mean climate and combining them once would be cheaper and would
+ * quietly misattribute a hot spell that fell entirely in the dark.
+ *
+ * Bulk loot is not here. Daylight pays in finds, so that the Fence Line — ten minutes,
+ * `finds: []`, no dose — is exactly and automatically indifferent to the hour rather than
+ * collecting a free multiplier on the highest-throughput region in the game.
+ */
+export function sunFactors(events, from, to) {
+  requireInstant(from, 'sunFactors');
+  requireInstant(to, 'sunFactors');
+
+  const span = to - from;
+  if (span <= 0) return { radiation: 1, finds: 1 };
+
+  let radiation = 0;
+  let finds = 0;
+  let cursor = from;
+
+  while (cursor < to) {
+    const next = Math.min(to, nextBoundaryAfter(events, cursor));
+    const hours = next - cursor;
+
+    const k = coefficientsAt(climateAt(cursor, activeAt(events, cursor)));
+    const lean = 2 * daylightFraction(cursor, next) - 1;
+
+    radiation += (1 + k.radiation * lean) * hours;
+    finds += (1 + k.finds * lean) * hours;
+    cursor = next;
+  }
+
+  return { radiation: radiation / span, finds: finds / span };
 }

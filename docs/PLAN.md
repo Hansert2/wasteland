@@ -1904,12 +1904,16 @@ So:
 > the counter. Darkness finds less and costs less.
 
 Let `d` be the fraction of a trip's hours that fell in daylight. Both factors are centred
-on `d = 0.5`, so a trip spanning a full day and night resolves *exactly* as it does today
-— the same discipline gear and weather already follow, and the same guarantee: a game
-with this phase in it and a trip that straddles must roll what it rolled before.
+on `d = 0.5`, so a trip that spent as many hours in the light as in the dark resolves
+*exactly* as it does today — the same discipline gear and weather already follow.
 
-    radiation = 1 + Kr * (2d - 1)        Kr ≈ 0.35  temperate
-    finds     = 1 + Kf * (2d - 1)        Kf ≈ 0.5   temperate, and generous on purpose
+**What is centred is `d`, not the clock**, and the difference is worth saying because the
+first draft of this section got it wrong. A full twenty-four hours is neutral only at the
+equinox: a summer day is fifteen hours of light against nine of dark, so a day-long trip
+in July is a daylight trip whenever it leaves. Caught by writing the test.
+
+    radiation = 1 + Kr * (2d - 1)        Kr in [0.20, 0.45]
+    finds     = 1 + Kf * (2d - 1)        Kf in [0.35, 0.65], generous on purpose
 
 **Daylight pays in `finds`, and bulk loot is not touched at all.** Decided 2026-08-27,
 after the reach table below showed the first draft's bulk-loot multiplier handing the
@@ -2196,7 +2200,7 @@ seasonal term. No new seed, no new generator, no new slot calendar, nothing to k
 step with the one that exists. It also gives the seven existing kinds a temperature
 character for free: a rad storm is hot, hard rain is cold, long light is warm.
 
-**It has exactly one mechanical job: it sets `Kr` and `Kl`.** Heat widens the gap between
+**It has exactly one mechanical job: it sets `Kr` and `Kf`.** Heat widens the gap between
 day and night; cold and cloud narrow it. That is the whole of it, and the restraint is the
 design rather than an omission — the sky already owns production, haul and dose, and a
 second global system pulling the same three levers would make `effectsOf` an incomplete
@@ -2212,11 +2216,31 @@ weekend away. A weather kind that quietly raises the burn rate moves that window
 player who is not at the keyboard to see why. If it is ever wanted, it wants its own
 measurement and a restatement of the guard, not a `warmth` coefficient.
 
-**The seasonal hazard, named now.** A year-long term means a suite that passes in August
-can fail in January, and it would fail on a day nobody changed anything. `Kr` and `Kl` are
-therefore clamped to a band — roughly `Kr ∈ [0.20, 0.45]` — and the test asserts the band
-holds at every hour of a full simulated year rather than at `Date.now()`. Any test that
-reads the clock instead of being handed one is a flake waiting for a season.
+**The seasonal hazard, named now and built.** A year-long term means a suite that passes
+in August can fail in January, and it would fail on a day nobody changed anything. `Kr`
+and `Kf` are therefore clamped to their bands, and `test/unit/temperature.test.js` reads
+them at **every hour of a full year** — 8,784 of them, against a clear sky, against every
+warm event stacked at once, and against every cold one. Any test that reads the wall clock
+instead of being handed an instant is a flake waiting for a season.
+
+**As built.** The climate is the annual mean (20°C) swung ±13 by the season, plus the
+`warmth` of whatever sky is in force, read against a band of 5°C to 35°C. Four of the
+seven kinds carry a `warmth`: Rad Storm +6 (a dirty sky is a hot one, which the prose
+already said), Long Light +5, Hard Rain −6, Dust −2. The other three do not, and that is
+deliberate rather than unfinished — Caravan Season is traffic, the Blight is in the soil,
+and the Slip is something that fell. None of them is the sky doing anything to the
+temperature, and a token value would be content invented to fill a column.
+
+**Warmth is summed where everything else here is multiplied**, because these are offsets
+on a temperature: a storm over a hard rain is warmer than the rain and cooler than the
+storm, which is what a sum says and what a product could not.
+
+**The thermometer and the lever are two different readings, and separating them is the
+one subtle thing in this section.** `temperatureAt` includes the diurnal swing and is what
+the glass prints. `climateAt` excludes it and is what sets `Kr` and `Kf`. Feeding the
+current point on the day/night swing into the coefficient that *scales* that swing would
+count the same fact twice, and would make a trip's factor depend on the hour the player
+happened to load the page.
 
 ### 4. What the instruments buy
 
