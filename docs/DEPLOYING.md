@@ -176,6 +176,43 @@ A snapshot of a running Postgres is a crash-consistent copy and recovers like a 
 cut; a dump is a copy of the game. There is no other state anywhere — no uploads, no
 cache, no files — and the game has no undo.
 
+### Restoring, and checking that you can
+
+**A backup nobody has restored is a file, not a backup.** This one had run nightly for a
+fortnight and had never been read back, which is a thing you find out at the worst moment.
+
+    ./scripts/restore-check.sh                      # dump the running db and check it
+    ./scripts/restore-check.sh ~/backups/x.sql.gz   # check a backup already on disk
+
+It restores into a scratch database called `wl_restore_check`, compares every table
+against the live one, loads every camp through the real service layer, and drops the
+scratch database again. **It never writes to the live database and never drops it**, so it
+is safe to run on the box while people are playing.
+
+The last step is the one that matters, and it is a different claim from the others. Row
+counts prove the *file* arrived; advancing every camp through `viewCamp` proves the *game*
+arrived. A dump can restore cleanly and still be a save nothing can play.
+
+Verified 2026-08-27 against a database of fifteen camps: twelve tables matched and all
+fifteen advanced. Verified to fail, too — a dump truncated at six thousand bytes exits 3
+rather than reporting success, which is the only reason to believe the passing case.
+
+**To actually restore, when it is not a drill:**
+
+    docker compose -f docker-compose.prod.yml stop app
+    gunzip -c ~/backups/wasteland-2026-08-27.sql.gz       | docker compose -f docker-compose.prod.yml exec -T db           psql -v ON_ERROR_STOP=1 -U wasteland -d wasteland
+    docker compose -f docker-compose.prod.yml start app
+
+Stop the app first: it holds a row lock per camp while it ticks, and restoring underneath
+a running game is how you get half of one. `ON_ERROR_STOP=1` is not optional — without it
+psql reports success having skipped every statement it could not run, which is the same
+shape of lie as a `pg_dump` that fails and leaves a valid empty gzip.
+
+**The clock caveat applies on the way back.** A save restored into a much later clock
+resolves every hour in between on the next page load. That is the design working as
+intended and it will still surprise you: a camp restored from last week's dump comes back
+to a week of hunger at once.
+
 ## Deploying to Fly
 
 `Dockerfile` is host-agnostic — the same image runs on Render or Railway, and moving
