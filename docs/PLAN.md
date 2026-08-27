@@ -2638,8 +2638,9 @@ The signal is real but modest: about a fifth of dispatches are contested, and in
 call is near enough even. For scale, the scavenging skill was judged worth building at
 "moves one answer in ten".
 
-**So the shape is settled before the mechanic is: cost around 1.5 stamina an hour of
-travel, recovery around 2 an hour at rest.** A trip pays itself back in roughly
+**So the shape is settled before the mechanic is — or it was, until the section below
+found the reason.** Against a threshold radiation the answer is a gentle stamina: cost
+around 1.5 an hour of travel, recovery around 2 an hour at rest. A trip pays itself back in roughly
 three-quarters of the hours it took, which is well inside the thirty-one hours the Deep
 Zone's dose already costs — stamina is the *second* constraint by design, and binds on 29%
 of occasions rather than on most of them.
@@ -2650,6 +2651,104 @@ nor the most rested, and printed a flat zero at every shape. That was arithmetic
 evidence: with two survivors and two gauges the winner is always better on at least one of
 them, so the column could not have been anything else. The question had to be narrowed to
 one that can vary.
+
+#### The shapes have to match, and radiation's is the one that is wrong
+
+Measured 2026-08-27, following the table above, because the obvious next question was
+whether a harsher radiation would make room for a harsher stamina. It does not, and *why*
+it does not is the useful part.
+
+    decay  shape       contested   cleanest wrong   rested wrong   survivor idle
+      0.8  gentle           22%              47%             53%              4%
+      0.3  gentle           22%              44%             59%              6%
+      0.8  brutal           44%              97%              3%             48%
+      0.3  brutal           44%              96%              4%             48%
+
+Slowing the decay by nearly three times barely moves anything. **`radWait` is zero until
+the dose crosses sixty**, so a slower decay only sharpens a gauge that is dormant in most
+states. Radiation is a *threshold*; stamina as modelled is *linear*.
+
+> **A threshold gauge and a linear gauge cannot contest each other across a range.** Below
+> the line stamina decides alone; above it radiation swamps everything. Only a stamina
+> small enough to lose to the rare bite looks like a decision — which is exactly why
+> "gentle" was the only shape that worked, and it was working for the wrong reason.
+
+So the shapes have to match, and radiation's is the one to change.
+
+#### Radiation on a curve, and the cliff nobody should have to learn
+
+**Proposed by the user 2026-08-27: no hard threshold, an exponential cost to health
+instead.** Damage as `radDamagePerHour * (rads/100)^4`, chosen so the top of the scale —
+where the game is already balanced — stays near where it is, and the flat nothing below
+sixty becomes a slope.
+
+    coming home at      today    cube      ^4
+        30 rads          0 hp    1 hp     0 hp
+        45 rads          0 hp    5 hp     2 hp
+        60 rads          0 hp   16 hp     8 hp
+        75 rads         15 hp   40 hp    24 hp
+        90 rads         58 hp   83 hp    60 hp
+
+The cube is a death sentence at ninety on a survivor who also arrives with up to forty-five
+hazard damage. The fourth power leaves that end alone and does its work lower down.
+
+**It makes radiation more of a decision, not less**, which was the risk worth checking —
+the measured 44% came from crossing the threshold, and a curve has no line to cross. What
+a further 25 rads costs, in health, at each starting level:
+
+    already at    today   quartic
+             0      0.0       0.1
+            20      0.0       1.9
+            35      0.0       7.5
+            50     14.8      21.1
+
+    levels where today says the dose is free: 8 of 11
+    levels where the curve says it is free  : 0 of 11
+
+**Today, taking another twenty-five rads is free at eight levels out of eleven.** The
+decision only exists in a narrow band near the cliff; everywhere else the answer is "yes,
+obviously". A curve asks a different question at every level, which is what a gauge is for.
+
+#### What that does to stamina, which is the reason for all of it
+
+With no threshold there is nothing to wait *under*. What makes somebody unavailable is
+health: they bleed while irradiated and only heal once the dose is nearly gone. So the two
+gauges become health and stamina, and both are continuous.
+
+    shape      contested   healthiest wrong   rested wrong   survivor idle
+    gentle           47%                 9%             91%             48%
+    moderate         47%                15%             85%             51%
+    steep            45%                37%             63%             61%
+    brutal           45%                62%             38%             72%
+
+**The contest doubles and then inverts.** Nearly half of all dispatches are contested
+rather than a fifth, because a continuous gauge always has something to say. And it is now
+the *harsh* stamina shapes that hold their own: gentle loses at 91%, because a radiation
+that is no longer dormant simply out-argues it.
+
+That is the first table read the other way round, and it is one finding rather than two:
+**two gauges contest when they are the same shape and the same size.**
+
+#### The cost, and the tension left open
+
+`survivor idle` runs 48% to 72%. Two qualifications before that number is used for
+anything: recovery here waits for health *as well as* for the dose, which the threshold
+model did not, so part of the jump is the stricter definition rather than the mechanic —
+the two tables' idle columns are not comparable. And the game gates dispatch on nothing at
+all: going out hot is the player's judgement, so this is what a cautious player would
+choose rather than what the rules impose.
+
+What is comparable is the trend inside the table. **Buying the contest costs a fifth of the
+playtime**: 72% idle at brutal against 48% at gentle.
+
+And that is the tension this design has not resolved. The game's largest measured balance
+problem is that idleness makes danger 4 out-earn danger 5 — Coastal Wreckage at 19.4
+fuel/day against the Deep Zone's 13.7, because the dose idles the survivor. **This design
+increases idleness deliberately.** That is not a reason to drop it; it is the reason the
+exponent and the stamina cost have to be chosen against the idle column and not only
+against the contest column. Somewhere around `^4` and between `steep` and `brutal` is where
+to start looking, and `fuel-balance.mjs` has to be re-run against whatever is chosen before
+any of it is believed.
 
 ### Constraints it must not break
 
