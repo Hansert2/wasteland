@@ -1420,6 +1420,13 @@ have a design waiting for them below — `skill_medicine`, and whatever finally 
 the already-wired `skill_scavenging`. The other two do not: `skill_combat` and `stamina`
 were measured and found to be scenery, so when the drop comes it is those two that go.
 
+**Corrected 2026-08-27: `stamina` was never measured.** The sensitivity table has three
+axes — health, radiation, scavenging — and no stamina row. Combat is measured scenery;
+stamina was convicted by sitting beside it in a sentence. It has a design of its own now,
+in **Phase 10**, which also supplies this phase with the justification it has been missing
+since its premise was retired: not "more hands so more verbs", which was false, but
+"survivor-hours are scarce and must be allocated". The two ship as a pair or not at all.
+
 #### Skills: measured 2026-08-20, designed, and deliberately not built
 
 The one part of this phase worth rescuing, and the measurement that says which part.
@@ -2481,6 +2488,151 @@ bench time**, since uptime is the currency this phase actually trades in. Re-run
    honesty rule, but a table that shows the optimum too plainly makes the choice for the
    player. Show the split and the direction; do not rank the rows.
 5. **Night moments changing what a seed means.** §5. Droppable without touching the rest.
+
+## Phase 10 — stamina, and what a survivor's day is worth
+
+*Against: one survivor, and nothing to decide about them.*
+
+Designed 2026-08-27 from `wasteland-overhaul.md` §§4–5, which proposed stamina and sleep
+and which this file had already refused once. The refusal was half right, and the half that
+was wrong is the reason this section exists.
+
+### The correction that opens it
+
+**Stamina was never measured.** Phase 7 records `skill_combat` and `stamina` as "measured
+and found to be scenery", and `tools/skill-sensitivity.mjs` has three axes in its table —
+health, radiation, scavenging. There is no stamina row. Combat is measured scenery; stamina
+was convicted by sitting next to it.
+
+The column has been on `characters` since migration `001` and nothing has ever read it.
+
+### What the measurement actually taught, which is not what it was asked
+
+    radiation 0 -> 75    44% of answers change
+    health 100 -> 60      0% of answers change
+
+The difference is not size. **Radiation gates dispatch** — it decides when the survivor may
+leave again — and health gates nothing until the last few points, because the game
+guarantees a healthy survivor cannot die: maximum hazard at danger 5 is 45 against 100
+health.
+
+> **A gauge matters if it decides what you may do next.**
+
+That is the whole finding. It is what makes stamina *possible*, and it is also what makes
+it dangerous.
+
+### The trap: a second radiation
+
+A stamina bar that gates dispatch is radiation wearing a different label. Two gauges doing
+one job means the player only ever meets the tighter of them — invisible whenever radiation
+binds first, indistinguishable from radiation when it does not. That is the failure to
+design against, and it is not hypothetical: it is what the overhaul document proposes.
+
+The separation has to be structural.
+
+> **Radiation limits where you can go. Stamina limits how much you can do at all.**
+
+Radiation comes only from dangerous ground and decays on a clock that fuel can buy down.
+Stamina comes from *everything* — travelling, building, crafting — so the question it asks
+is "what did this person spend the day on", which the game has never asked.
+
+### The five decisions
+
+**1. It depletes from everything.** Travel, construction, crafting. Not from danger, which
+is radiation's job, and not from the passage of time, which is nobody's.
+
+**2. It recovers passively.** Sleep is an accelerator and never a requirement. The
+alternative — recovery only through scheduled sleep — means a player away for three days
+returns to a survivor who has been exhausted for sixty hours and done nothing, which is
+precisely the punish-a-weekend-away failure the 36-to-72-hour guard exists to prevent. The
+overhaul document lists "a well-prepared camp must remain safe during a normal real-world
+absence" among its balance principles and then proposes the mechanic that breaks it.
+
+**3. Recovery drinks food, and this is the load-bearing one.** Measured 2026-08-27:
+
+    garden   grows   a mouth eats   surplus   surplus in mouths
+      L1       0.6            0.5       0.1         x0.2
+      L2       1.2            0.5       0.7         x1.4
+      L4       2.4            0.5       1.9         x3.8
+      L6       3.6            0.5       3.1         x6.2
+      L8       4.8            0.5       4.3         x8.6
+
+**Food is not a constraint in this game; it is a solved problem by garden level two.** Every
+camp measured is sitting at its storage cap and throwing food away hourly. So "recovery
+costs hunger" at any modest rate costs *nothing*, and stamina would be scenery for a third
+time.
+
+For it to bite, recovery has to drink something like **five to eight times** a survivor's
+ordinary consumption while it is happening. That is a large number and it is the number to
+measure rather than to guess. What it buys is worth the trouble: the garden has one
+interesting level and seven decorative ones, and this gives it a track. **Production would
+limit labour, and labour builds production** — a loop the game does not have.
+
+**4. Sleep is the accelerator.** It trades the survivor's availability for a faster
+recovery: they cannot travel, build, craft or answer contact while asleep. That is the
+decision — not whether to recover, but whether to spend the hours recovering *fast*.
+
+**5. It needs the roster, and that is not a detour.** With one survivor, "what did this
+person spend the day on" has one answer, and stamina does not create a choice — it removes
+verbs. The camp goes quiet, which is strictly worse than today and the opposite of what
+Phase 7 was measured to need.
+
+### What this does to Phase 7
+
+Phase 7's premise was retired on 2026-08-19: one survivor is not a bottleneck on the verbs,
+because every verb guards on *alive* rather than on *home*. That retirement was correct, and
+it left the roster without a justification, where it has sat since.
+
+**This is a different justification.** Not "more hands, so more verbs are available" — which
+was measured false — but "survivor-hours are scarce and must be allocated", which is a claim
+about scarcity rather than about availability.
+
+The two ship as a pair or not at all. The roster without stamina is the thing already
+measured as changing one bucket on 12% of visits; stamina without the roster is a mechanic
+that switches the page off.
+
+### The question that kills it or confirms it, before anything is built
+
+`skill-sensitivity.mjs` is the wrong instrument, because stamina does not act on moments —
+it acts on which person is sent. The question is:
+
+> **Does stamina ever make the right answer "send the tired one anyway"?**
+
+Simulate a camp of two or three against a stamina budget and compare optimal play with the
+trivial policy — *send whoever has the most*. If the trivial policy is always optimal then
+stamina is not a decision, it is queue discipline with a gauge attached, and the honest
+outcome is to drop the column at last.
+
+The food axis is what gives it a chance of surviving that test. With recovery priced in
+food, sending the tired one costs food the camp may want for something else, which is a
+second thing to weigh. Without it the answer is always "send the rested one", and there is
+nothing here.
+
+### Constraints it must not break
+
+**The 36-to-72-hour starvation window** (`test/unit/tick.test.js:131`). A survivor
+recovering stamina on empty stores starves faster. Recovery must either stop when there is
+no food, or be measured against that window with the window restated — and restated for a
+camp at its bed cap rather than for one person, which Phase 7 already flags.
+
+**`regenHungerCeiling` is 25**, and health regenerates only below it. Recovery that pushes
+hunger past 25 stops the survivor healing, so stamina recovery and health recovery would
+compete for the same room. That is either a tension worth having or an accident that makes
+injury unrecoverable, and it has to be chosen rather than discovered.
+
+**Storage caps become a stamina reserve.** A camp at 350/350 throws food away every hour
+today; once recovery drinks it, shelter levels quietly become labour capacity. Worth having,
+and worth being a decision the page states rather than a surprise a player works out.
+
+### Schema
+
+None. `characters.stamina` is `numeric(6,3) not null default 100 check (stamina between 0
+and 100)` and has been since migration `001`.
+
+The one column three phases have wanted to drop turns out to be the one this needs. That is
+an argument for having left it, and it is not a strong enough argument to have left it on —
+the plan's own note stands: a schema describing a system nothing implements reads, to
+anyone planning against it, as a system that is nearly there.
 
 ## Dead time, and telling the player which loop they are in — 2026-08-21
 
