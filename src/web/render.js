@@ -322,14 +322,37 @@ const STYLE = `
     max-width: 1280px;
     margin: 0 auto;
     min-height: 100vh;
-    background: var(--ground);
+    /* The rail's column, painted by the shell rather than by the rail — see the note on
+       the rail below. Hard-edged rather than a blend: this is two fills meeting on a
+       line, and the line is where the content column puts its own border. */
+    background: linear-gradient(to right, var(--rail) 0 198px, var(--ground) 198px);
     border-left: 1px solid var(--rule);
     border-right: 1px solid var(--rule);
   }
 
   /* The foot of the left column, wearing the rail's own ground so the two read as one
      surface with a button resting on the bottom of it. */
-  .exit { grid-column: 1; grid-row: 2; background: var(--rail); padding: 20px; }
+  /*
+   * The way out stays in view with the rest of the column.
+   *
+   * It spans both rows rather than sitting in the second one, for the reason the rail
+   * needed align-self: start — a sticky box is confined to its grid area, and an
+   * auto-sized row is exactly the height of the thing in it. Spanning gives it somewhere
+   * to travel; end alignment keeps it where it has always been drawn, at the foot.
+   *
+   * Pinned to the bottom rather than under the rail, because the rail's height is not a
+   * number this stylesheet knows: the stores are four rows or none, and the crest is one
+   * line or two. Top and bottom is a layout that does not need to be told.
+   */
+  .exit {
+    grid-column: 1;
+    grid-row: 1 / 3;
+    align-self: end;
+    position: sticky;
+    bottom: 0;
+    background: var(--rail);
+    padding: 20px;
+  }
 
   /*
    * The divider between rail and content is on "main", not on the rail.
@@ -339,11 +362,30 @@ const STYLE = `
    * empty Road — and it spans both grid rows, so the line now runs past the way out as
    * well and reaches the floor on every view, which is what it was always trying to do.
    */
+  /*
+   * The rail stays put, so the five views are always one click away.
+   *
+   * Two things had to change together. A grid item stretches to its area by default, so
+   * the rail's box was exactly as tall as the column and sticky had nowhere to travel —
+   * align-self: start gives it its own height back. And a rail that is only as tall as
+   * its contents no longer paints the column it sits in, which is why the fill moved onto
+   * the shell as a hard-edged gradient: a grid track cannot carry a background, and this
+   * is the honest way to give one to a column rather than to the thing standing in it.
+   *
+   * The height cap is for a short window. Sticky pins the top of a box taller than the
+   * viewport and leaves its bottom off-screen for good, which would put the nav — the
+   * whole point of this — permanently out of reach on a laptop.
+   */
   .rail {
     grid-column: 1;
     grid-row: 1;
     width: 198px;
-    background: var(--rail);
+    align-self: start;
+    position: sticky;
+    top: 0;
+    max-height: 100vh;
+    overflow-y: auto;
+    scrollbar-width: thin;
   }
 
   /* The mark at rail size, above the camp's own name.
@@ -1458,10 +1500,17 @@ ${PANE_CSS}
   @media (max-width: 560px) {
     /* Edge to edge on a phone: a card with a floor either side of it is a card nobody
        can read, and there is no wide screen left to centre anything in. */
-    .shell { display: block; border-left: 0; border-right: 0; }
+    .shell { display: block; border-left: 0; border-right: 0; background: var(--ground); }
     main { border-left: 0; }
+    /* A band across the top rather than a column beside one: nothing to stick to, nothing
+       to paint behind, and a header that followed the page down would cost a phone the
+       one thing it has least of. */
     .rail {
       width: auto;
+      position: static;
+      max-height: none;
+      overflow: visible;
+      background: var(--rail);
       border-bottom: 1px solid var(--rule);
     }
     /* The crest loses its rule for the same reason .who does: the rail is one band
@@ -1503,7 +1552,9 @@ ${PANE_CSS}
     /* Block flow here, so this is the last thing on the page rather than the
        bottom of a column. It keeps the rail's ground and gains a rule, because
        on a phone it follows main instead of sitting beneath a nav. */
-    .exit { padding: 14px 16px 18px; border-top: 1px solid var(--rule); }
+    /* Block flow on a phone, so it is simply the last thing on the page — which is what
+       it was always trying to be, and what keeping it out of the rail buys. */
+    .exit { position: static; padding: 14px 16px 18px; border-top: 1px solid var(--rule); }
     main { padding: 16px 16px 64px; }
     button { padding: 13px 16px; min-height: 44px; }
     .choice button { padding: 13px 0; }

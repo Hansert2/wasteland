@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
+import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+
 import { landingPage } from '../../src/web/render.js';
 
 /**
@@ -75,4 +78,32 @@ test('the sheet reaches the page with its braces balanced', () => {
   const close = bare.split('}').length - 1;
 
   assert.equal(open, close, `${open} opening braces against ${close} closing`);
+});
+
+test('no backtick is written inside the stylesheet', async () => {
+  /*
+   * Three syntax errors in one day came from naming something in backticks inside a CSS
+   * comment. STYLE is a template literal, so the first backtick ends it and the rest of
+   * the file becomes whatever it happens to parse as — usually a confusing error pointing
+   * at a line that is fine.
+   *
+   * Read as text rather than imported, and that is the point: by the time the module can
+   * be imported the mistake has already been fixed, so a runtime assertion could never
+   * see it. This is a lint, and it belongs in the suite because the failure it prevents
+   * is a page that does not render at all.
+   */
+  const source = await readFile(
+    fileURLToPath(new URL('../../src/web/render.js', import.meta.url)),
+    'utf8',
+  );
+
+  const opened = source.indexOf('const STYLE = `');
+  const body = source.slice(opened + 'const STYLE = `'.length);
+  const closed = body.indexOf('`');
+
+  assert.ok(opened > 0, 'the stylesheet is not where this test thinks it is');
+  assert.ok(
+    body.slice(0, closed).trim().endsWith('}') || closed > 1000,
+    `a backtick ends STYLE ${closed} characters in, which is far too early`,
+  );
 });
