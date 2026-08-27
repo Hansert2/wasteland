@@ -3024,7 +3024,16 @@ function renderSurvivor(survivor, strain, vitals) {
 function gaugeNotes(strain, vitals) {
   if (!vitals) return { health: '', hunger: '', radiation: '' };
 
-  const burnsAt = rate(strain?.threshold ?? 100);
+  /*
+   * The dose at which this survivor stops gaining health and starts losing it.
+   *
+   * Read off `strain` rather than named as a constant, because there is no constant any
+   * more: radiation damages on a curve and smothers healing in proportion, so the crossing
+   * point falls out of the two and moves with medicine. It was `strain.threshold` until
+   * the cliff was removed, and that field going away silently left this printing 100 —
+   * a fallback doing the work of a value, which is the quietest way for a page to lie.
+   */
+  const tipsAt = rate(strain?.tipping ?? 65);
   // Filtration is bolted to the purifier and does not follow anyone into the Deep Zone,
   // so the camp's figure and the road's figure are two different numbers whenever it is
   // fitted — and the difference is the whole of what the upgrade sells.
@@ -3038,8 +3047,12 @@ function gaugeNotes(strain, vitals) {
 
   return {
     health: stats('0 – 100 · 0 is a grave', [
-      ['heals', `+${rate(vitals.regenPerHour)}/h`],
-      ['only while', `hunger < ${rate(vitals.regenHungerCeiling)} · rads < ${rate(vitals.regenRadCeiling)}`],
+      ['heals', `+${rate(vitals.regenPerHour)}/h clear`],
+      // Healing fades with the dose rather than stopping at a line, so this says what it
+      // is worth rather than when it switches off — which is what the old
+      // "rads < 20" row was claiming and is no longer true at any dose.
+      ['slowed by', 'the dose, in proportion'],
+      ['only while', `hunger < ${rate(vitals.regenHungerCeiling)}`],
       ['starving', `to -${rate(vitals.starvationDamagePerHour)}/h`],
       ['irradiated', `to -${rate(vitals.radDamagePerHour)}/h`],
     ]),
@@ -3052,8 +3065,11 @@ function gaugeNotes(strain, vitals) {
     ]),
     radiation: stats('0 – 100 · carried in from the road', [
       ...scrubs,
-      ['burns at', `${burnsAt}+`],
-      ['no healing above', rate(vitals.regenRadCeiling)],
+      // Two rows where there used to be two thresholds, and both are now facts about the
+      // whole scale rather than lines on it: every dose costs something, and the crossing
+      // point is where the cost overtakes the rest.
+      ['costs health', 'at every dose'],
+      ['net loss above', `${tipsAt}`],
     ]),
   };
 }
