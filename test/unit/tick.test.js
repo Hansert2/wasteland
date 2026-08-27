@@ -235,6 +235,7 @@ const awayState = (overrides = {}) =>
     expedition: {
       id: 'exp_1',
       status: 'active',
+      departedAt: T0,
       returnsAt: T0 + hours(4),
       seed: 1234,
       region: REGION,
@@ -297,6 +298,7 @@ test('dying out there loses the expedition and everything in it', () => {
       expedition: {
         id: 'exp_1',
         status: 'active',
+        departedAt: T0,
         returnsAt: T0 + hours(4),
         seed,
         region: deadly,
@@ -579,6 +581,7 @@ test('filtration stays in the camp and does not follow anyone into the wasteland
     expedition: {
       id: 'exp_1',
       status: 'active',
+      departedAt: T0,
       returnsAt: T0 + hours(100),
       seed: 1,
       region: REGION,
@@ -765,6 +768,7 @@ test('a rad storm makes the same trip dirtier without changing what it found', (
       expedition: {
         id: 'exp_1',
         status: 'active',
+        departedAt: T0,
         returnsAt: T0 + hours(4),
         seed: 1234,
         region: { ...REGION, radiationPerTrip: 20 },

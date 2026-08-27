@@ -28,8 +28,19 @@ export async function advanceSettlement(client, settlementId, now) {
   // The weather for the stretch about to be simulated. Generated on demand rather
   // than by anything scheduled: a camp resolving a six-week absence needs the storms
   // that happened during it, and nothing was running to have recorded them.
-  await ensureWorldEvents(client, state.lastTickAt, now);
-  state.worldEvents = await loadWorldEvents(client, state.lastTickAt, now);
+  //
+  // **The window reaches back to an in-flight departure, not only to the last tick.**
+  // The sky is integrated across a whole trip, and a trip that began before the last
+  // check-in started before this window would otherwise open. Loading from
+  // `lastTickAt` alone would leave those early hours with no events found, which
+  // `activeAt` reports as clear sky — so a storm walked through would silently cost
+  // nothing, and the more often a player checked in the more of their own weather
+  // they would erase. The tick's own walk still starts at `lastTickAt`; this only
+  // widens what it can see.
+  const from = Math.min(state.lastTickAt, state.expedition?.departedAt ?? Infinity);
+
+  await ensureWorldEvents(client, from, now);
+  state.worldEvents = await loadWorldEvents(client, from, now);
 
   const { state: advanced, events } = applyTick(state, now);
   await saveWorld(client, advanced);

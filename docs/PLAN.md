@@ -41,6 +41,15 @@ that costs every later reader a paragraph.
   and the right play is to grind the region you already have, carefully.
 - **The road** — Phase 8. Seven links, paid for in fuel, each reconnecting the camp to
   somewhere that was out there all along.
+- **The glass** — Phase 9's weather instruments, fitted to the watchtower. Called the
+  glass rather than the barometer because it is what somebody in this camp would call it,
+  the same reason a moment is *contact* on the page.
+- **Sampled and integrated** — how a factor is taken across a trip. *Sampled* reads it once,
+  at the hour of return; *integrated* takes the duration-weighted mean of every hour
+  between departure and return. The sky was sampled until Phase 9 and is integrated after
+  it, along with the sun: **a trip is scaled by what it walked through, for the hours it
+  walked through it.** Where the older word appears in a comment, that comment predates
+  the change.
 
 ## The load-bearing decisions
 
@@ -1793,6 +1802,528 @@ worth least while the journey is still thin" assumed Phase 7 would thicken the j
 first. Nothing is going to, in that shape — and the measurement said the specific shape
 of the thinness is *the same two or three verbs every visit*, which is what a destination
 answers directly: the verbs stop being the point when they are paying for something.
+
+## Phase 9 — time and conditions
+
+*Against: every trip is the same trip.*
+
+Designed 2026-08-27, from `wasteland-overhaul.md` at the repo root — a feature document
+written without this file open, whose Expansion 1 §§6–11 is Phase 7 re-derived and whose
+§§4–5 propose the two columns `tools/skill-sensitivity.mjs` measured as scenery. Its
+§§1–3 are the part that is genuinely new, and this is that part designed properly. The
+overhaul document is a source, not a plan; nothing else in it is scheduled by this
+section.
+
+### Why this before the roster
+
+**It is the only proposal in that document that adds a decision without touching
+`characters_one_living_idx`.** The roster is still the largest change in the game and
+still has no re-justification since its premise was retired on 2026-08-19. This phase
+does not wait on that and does not prejudge it.
+
+**It needs no migration.** Not "a small one" — none. Enumerated, because a claim like
+that is usually wrong:
+
+- The clock and the temperature are pure functions of `now`. Nothing is stored, so
+  nothing is stored *wrong*.
+- Temperature is derived from the sky rather than generated beside it, so there is no
+  second seed, no second calendar, and no second table.
+- The two new fittings need no DDL: `structure_upgrades.upgrade` is plain text validated
+  in code against `UPGRADES`, deliberately (`migrations/006`). Only `camp_structures.kind`
+  is a check constraint, and no structure is added.
+- No new slice boundary, so `settlements.last_tick_at` keeps its meaning.
+
+That makes this the cheapest phase since Phase 6, and it is cheap in the same way: it
+reuses the world seed, the sky, the fitting track and the dispatch table, and adds one
+pure module.
+
+### The one idea
+
+**The camp already knows what the sky is doing. It does not know what time it is, and
+time is the only thing that changes what the sky costs you.**
+
+Everything below is that sentence. The sky stays global, stays seeded, stays a window
+with a kind. What this phase adds is a second axis through it — the hour — and one
+consequence attached to that axis rather than seven small ones.
+
+### 1. The world clock
+
+A pure function of `now`, in a new `src/game/daylight.js`. No state, no I/O, no seed, and
+nothing in `State`: the tick does not learn a new field, and `applyTick` keeps its
+signature.
+
+**World time is UTC, and `WORLD_EPOCH` is already the world's first instant.** One
+timezone for everybody, for the reason `world_events` has no `settlement_id`: every camp
+is under the same sky, and a sky that told two players different hours would be two skies.
+
+Five bands, always free to read: *before dawn*, *morning*, *the heat of the day*,
+*evening*, *night*. Their boundaries move with the season, which costs one cosine term
+and is the only thing the year is for.
+
+**Rejected: a world day of 25 hours.** It was the obvious fix to the objection below —
+drift the phase against the player's habits so everyone eventually sees every band at
+their usual hour — and it fails on two counts. It puts a 25th hour on a clock face, which
+is a lie the page then has to keep; and it decouples world hours from the real hours that
+`travel_hours` and `returns_at` are denominated in, so "a nine-hour trip" would stop
+meaning nine of the hours the clock shows. Recorded because it is a good idea that does
+not survive contact with the units.
+
+**The objection it was meant to fix, and the actual answer.** A player who checks in at
+eight in the morning, local, checks in at the same world band every day for ever. If the
+mechanical weight sat on the hour of the *check-in*, that player would be playing a
+permanently smaller game through no fault of their own.
+
+So it does not sit there. **The weight is on the trip, not on the visit.** What the player
+chooses is a region and therefore a duration, and a duration from any given hour lands
+whatever mix of light and dark it lands. Every player has the full range of that choice
+available from every check-in hour they keep. The band at the top of the page is a
+planning input and a piece of weather; it is not a gate, and nothing in this phase reads
+it to decide what the player may do.
+
+### 2. Day and night, and where the weight goes
+
+The rule from Phase 6 applies unchanged: a thing that only makes the reward bigger is a
+progress bar. Night has to change *which option wins*.
+
+**`tools/skill-sensitivity.mjs` already says which lever can do that.** Over 34,800
+occasions per axis it found radiation moves the right answer 44% of the time and health
+moves it between 0% and 8%. That is not a hint, it is a measurement taken for a different
+question that happens to answer this one:
+
+- A night mechanic built on **hazard** would be scenery, for exactly the reason
+  `skill_combat` is scenery — a healthy survivor cannot die, so softening or sharpening a
+  hit is only a decision in the last few points before death.
+- A night mechanic built on **dose** lands on the axis where all the leverage in this game
+  already is.
+
+So:
+
+> **The day is dear and the night is cheap.** Daylight turns things up and costs you on
+> the counter. Darkness finds less and costs less.
+
+Let `d` be the fraction of a trip's hours that fell in daylight. Both factors are centred
+on `d = 0.5`, so a trip spanning a full day and night resolves *exactly* as it does today
+— the same discipline gear and weather already follow, and the same guarantee: a game
+with this phase in it and a trip that straddles must roll what it rolled before.
+
+    radiation = 1 + Kr * (2d - 1)        Kr ≈ 0.35  temperate
+    finds     = 1 + Kf * (2d - 1)        Kf ≈ 0.5   temperate, and generous on purpose
+
+**Daylight pays in `finds`, and bulk loot is not touched at all.** Decided 2026-08-27,
+after the reach table below showed the first draft's bulk-loot multiplier handing the
+Fence Line a free ~29 scrap/h — a ten-minute walk with `finds: []` and
+`radiation_per_trip: 0` is trivially all-daylight and pays nothing for it, so the trade
+collapsed into a bonus on the one region least in need of one. Finds fix that at the root
+rather than with a minimum trip length, which would be a cliff: the Fence Line has no find
+table and no dose, so it becomes correctly and completely indifferent to the sun, which is
+what a walk to the wire should be.
+
+It also makes the two halves *structurally* different rather than two scalars on one roll,
+which is nearer to *different, not worse* than a haul multiplier ever was — and it stays
+inside the standing rule that the sky and gear both follow: `rollFinds` takes one
+`chance(random, find.chance)` draw per find, so this shifts a threshold and never a draw
+count. Clamp the result to `[0, 1]`; the richest find in the game is `scavenged_parts` at
+0.55, so nothing overflows today and something will.
+
+**`Kf` is generous on purpose, and that is the lesson from skills rather than a guess.**
+`skill_scavenging` at level 8 — a +70% haul — moved one answer in ten, and the plan's
+conclusion was that a cautious curve here reads as nothing at all. A find shifting from
+0.55 to 0.59 is invisible; 0.55 to 0.64 is a decision. Provisional, and it is
+`daylight-balance.mjs` that sets it.
+
+**Why that is a real choice and not a discount.** Radiation is the standing limiter on
+survivor uptime: a Deep Zone trip doses ~25 nominal against a decay of 0.8/h, which is
+thirty-one hours on the bench. Night buys that back and pays for it in what turns up. A
+camp that has fitted filtration wants the day, because it can afford the dose and wants
+the parts; a camp that has not wants the night. **The same region is a different purchase
+to two different camps**, which is the standard this game holds a mechanic to.
+
+**Different regions get different flavours of the same choice, which falls out rather than
+being designed.** The Deep Zone carries 25 rads and a rich find table, so it is a real
+two-sided trade. Coastal Wreckage carries 4 rads and good finds, so its dose lever is
+worth about two hours of bench time and the decision there is almost purely about what
+turns up. The Old Service Road and the Ruined City have finds and no dose at all, so they
+keep a small one-way daylight preference — a tinned stew at six percentage points better,
+which is named here rather than waved past. **The trade is only a trade where both levers
+exist**, it grades with danger, and near the wire the hour genuinely does not matter.
+
+**It also gives the danger-5 fuel inversion a move.** Queue item 2 — Coastal Wreckage
+sustaining 19.4 fuel/day against the Deep Zone's 13.1, because 25 rads idles the survivor
+43% of the time — is a fact about dose against uptime, and this is a lever on exactly that.
+This is *not* a claim that it fixes it. It is a claim that `tools/fuel-balance.mjs` must be
+re-run afterwards, and that tuning the inversion before this lands would be tuning against
+a number about to move.
+
+**How much of `d` a player can actually choose, measured rather than asserted.** The first
+draft of this section claimed the long regions "wash out to `d ≈ 0.5`" and that was too
+strong — it was reasoned about rather than worked out. `tools/daylight-reach.mjs` computes
+the achievable range of `d` for every region, since a trip of `T` hours starting anywhere
+in a day with `L` hours of light captures between `max(0, L − (24 − T))` and `min(L, T)` of
+them. At the equinox (`L = 12`), with the provisional `Kr = 0.35`:
+
+    region                  T    d range     dose range    finds range   worst→best
+    The Fence Line        0.17   no finds, no dose — indifferent to the hour
+    The Old Service Road  0.75   0.00–1.00            —      0.50–1.50        200%
+    The Ruined City          4   0.00–1.00            —      0.50–1.50        200%
+    Irradiated Farmland      6   0.00–1.00    0.65–1.35      0.50–1.50        108%
+    The Millrace             8   0.00–1.00    0.65–1.35      0.50–1.50        108%
+    Underground Bunkers      9   0.00–1.00    0.65–1.35      0.50–1.50        108%
+    Coastal Wreckage        12   0.00–1.00    0.65–1.35      0.50–1.50        108%
+    Sixteen Wells           14   0.14–0.86    0.75–1.25      0.64–1.36         67%
+    The Deep Zone           18   0.33–0.67    0.88–1.12      0.83–1.17         26%
+    The Waterworks          20   0.40–0.60    0.93–1.07      0.90–1.10         15%
+    Harrow End              26   0.46–0.54    0.97–1.03      0.96–1.04          6%
+
+`worst→best` is measured on whichever lever the region exposes — finds where there is no
+dose. The two zero-dose rows showing 200% are the one-way daylight preference named above:
+a 0.75h and a 4h trip with one cheap find each, and it is `Kf` at 0.5 that makes the
+percentage look alarming rather than the tinned stew being worth anything.
+
+**The compression is gradual and only Harrow End truly washes out.** Seven of eleven
+regions have the whole range. The Deep Zone keeps a 26% spread between its best and worst
+departure hour, which against a 25-rad nominal dose is about six rads, or seven hours of
+bench time — small, real, and worth a glance at the clock. The Waterworks keeps 15%. Only
+the twenty-six-hour trip is genuinely indifferent to when it leaves, and a trip longer than
+a day *should* be.
+
+**The season moves the range rather than only its width, which nobody designed and which is
+the best thing here.** In summer (`L = 15`) the Deep Zone's range is `0.50–0.83`: it cannot
+be sent into the dark at all, and its dose floor is 1.00. In winter (`L = 9`) it is
+`0.17–0.50` and it can never be a daylight trip, ceiling 1.00. **The long trips are forced
+into the sun in summer and into the dark in winter**, so the same region is a different
+proposition in March and in August without a single extra mechanic. The cost is that the
+deep-region fuel economy now drifts about ±12% across the year with nobody able to opt out,
+which `fuel-balance.mjs` must be run against at both solstices rather than once.
+
+**The Fence Line takes the whole upside and none of the downside, and that is a fault in
+the draft above rather than a quirk to accept.** A ten-minute walk to the wire is trivially
+all-daylight or all-dark, it has `radiation_per_trip: 0`, and it is already measured at
+~24 scrap/h — about seven times any long region, deliberately kept. Under the two scalars
+as drafted it becomes ~29 scrap/h in the sun and pays nothing for it, because the dose that
+makes this a trade everywhere else does not exist there. The trade collapses into a bonus
+on precisely the region that least needs one.
+
+The fix was not a minimum trip length, which is a cliff, but a change of lever, and it is
+**settled above**: daylight pays in `finds` and bulk loot is untouched. `finds: []` and
+`radiation_per_trip: 0` on the Fence Line make it exactly and automatically indifferent to
+the hour, with no exception written anywhere. The residual cost is legibility — finds are
+chancy, so the effect is noisier to feel than a bulk number, which is why `Kf` is generous
+and why the page has to print the multiplier for it to be a decision at all.
+
+**The `dose range` column below is therefore the whole of what the table measures.** The
+reach arithmetic is about `d` and applies to both factors identically; only the dose
+column is quoted because dose is the lever with the measured 44% and the one that decides
+whether a long trip's narrow band is worth a glance at the clock.
+
+### Everything a trip meets is integrated, the sky included
+
+**Decided 2026-08-27, and it is the largest change in the phase.** The first draft
+integrated the sun and left the sky sampled at `returns_at` as it is today, on the grounds
+that sampling had never falsified a promise. That is true and it is not enough. **A trip
+is scaled by what it walked through, for the hours it walked through it** — one rule, both
+systems, no exception to explain to anybody.
+
+**The exploit that settles it.** The sky is sampled at the instant of return
+(`tick.js:440`, `view-camp.js:85`) and `render.js:1987` prints a live countdown to the
+weather clearing. Those two facts together are a live, plannable exploit in production
+today: read that a rad storm lifts in four hours, dispatch a nine-hour trip, walk four
+hours through the storm, come home five hours after it cleared, and take **none** of its
+×1.8 dose. It runs the other way too — time a trip to *end* inside caravan season and
+collect ×1.5 on a haul gathered almost entirely outside it. Rad storms run 18–48h, so the
+countdown is long enough to plan against, and the correct play under sampling is to time
+arrivals rather than to choose destinations.
+
+**The mechanism, and it is one the code already has.** For each factor, take the
+duration-weighted mean across `[departedAt, returnsAt]`. World events are windows, so cut
+the trip at every boundary that falls inside it and average the constant pieces —
+`nextBoundaryAfter` in `world-events.js` already yields those boundaries, and this is the
+tick's slice walk with a different accumulator:
+
+```js
+export function integrateFactors(events, from, to) {
+  let cursor = from;
+  let loot = 0;
+  let radiation = 0;
+
+  while (cursor < to) {
+    const next = Math.min(to, nextBoundaryAfter(events, cursor));
+    const span = next - cursor;
+    const held = expeditionFactors(activeAt(events, cursor));
+    loot += held.loot * span;
+    radiation += held.radiation * span;
+    cursor = next;
+  }
+
+  const hours = to - from;
+  return { loot: loot / hours, radiation: radiation / hours };
+}
+```
+
+**Arithmetic mean over time, not geometric, and the reason is worth writing down because
+somebody will ask.** `expeditionFactors` composes *concurrent* events multiplicatively —
+two blights are worse than one — and that stays. Composition across *time* is a different
+question, and both quantities here accumulate per hour: dose is taken hour by hour, and a
+haul is what was gathered over the trip. An hour under a storm contributes a storm-hour's
+worth. That is an arithmetic average, and a geometric one would understate a short severe
+window against a long mild one for no reason anybody could defend.
+
+**Built 2026-08-27, and the prediction below was measured rather than left as algebra.**
+Over 40,000 trips per duration across five years of generated weather, the mean drift
+between sampling and integrating is **0.01% at worst** on both dose and haul, at every
+region length from ten minutes to twenty-six hours. The variance falls as predicted and
+in proportion to how much calendar a trip averages: 2% at four hours, 5% at nine, 10% at
+eighteen, 15% at twenty-six. So every number measured under sampling stands, and what
+this change actually bought was the exploit and the tail.
+
+**The expected value does not move; the variance does.** This matters for how the change
+is verified. By linearity of expectation over a stationary event process, the mean factor
+of a time-average equals the mean factor of a point sample — so **the ninety-day soak's
+totals should land inside sampling noise**, and if they move materially something is
+wrong. What integration removes is the *tail*: the best case an attentive player can
+engineer by timing an arrival, which is the exploit, and the worst case of arriving under
+a storm that only just began. That is the intended effect stated as a testable prediction
+rather than a hope.
+
+**It buys the glass its real job.** Because world events are derived from the world seed
+rather than observed, the events covering a *future* trip are already computable. Once the
+sky is integrated, the dispatch table can honestly say "the storm covers the first four
+hours of this trip" instead of only "there is a storm now" — which is a far better thing
+for the weather fitting to sell than the current-conditions readout the first draft gave
+it. Derive those future slots for display; **do not insert them.** `eventForSlot` is
+deterministic and `ensureWorldEvents` inserts `on conflict do nothing`, so a slot shown on
+the page is byte-identical to the one stored later, and writing ahead would only invent a
+way for the two to disagree.
+
+**What it costs, stated plainly.** Every balance number measured to date was measured
+under sampling: `region-balance.mjs`, `fuel-balance.mjs`, `moment-balance.mjs` and the
+soak. All of them must be re-run, and the prediction above is what makes that a
+confirmation rather than a re-tuning. `view-camp.js:55` carries a comment explaining why
+the weather at scheduled return is the right weather; it becomes false the moment this
+lands, and leaving it would be the exact failure this file already has a lesson about — a
+comment claiming more than the code delivers.
+
+**Sequencing.** Land the sky integration **on its own, before any of the sun**, and re-run
+the four instruments against it. It touches no new content and changes one function, so a
+soak that moves is unambiguously about integration; folding it in with a new mechanic
+would leave nobody able to say which one moved what.
+
+**Done, and the re-run turned out to prove less than it sounds.** `region-balance`,
+`fuel-balance` and `moment-balance` all run under a **clear sky** — none of them puts a
+world event into the state at all — so integration cannot move them, and a green run is
+a tautology rather than evidence. The evidence is the drift measurement above and the
+ninety-day soak, which does go through the real service layer with real weather. Worth
+knowing before anyone cites an unchanged `fuel-balance` table as confirmation of
+anything.
+
+**Two things the build found that the design had not.**
+
+1. **The weather window was loaded from `lastTickAt`, and a trip starts earlier than
+   that.** `advance-settlement.js` fetched events for `[lastTickAt, now]`, which is the
+   right window for the tick's own walk and the wrong one for a trip that departed before
+   the last check-in. Events falling entirely inside the erased stretch were simply not
+   found, and `activeAt` reports "not found" as clear sky — so **the more often a player
+   checked in, the more of their own weather they erased.** That would have been a new
+   exploit installed by the change that removed the old one. The window now reaches back
+   to an in-flight departure.
+2. **`reportOn` could never see weather that had not started yet**, which was a live
+   disagreement between the page and the tick predating all of this: the report sampled
+   `activeAt(worldEvents, returnsAt)` against a set loaded only up to `now`, so a storm
+   due to begin in two hours and cover the return was invisible to it. Integration fixes
+   it by construction, because the report now derives the remainder of the trip's sky
+   from the world seed — stored rows for the elapsed hours, derived ones for what is
+   still to come, and the two sets never describe the same slot.
+
+**A note on the test that guards the first of those.** It compares two camps under one
+sky, sharing an expedition seed, one watched halfway and one not — and it only works
+because the storm it turns on is **written into `world_events` explicitly**. The first
+version let the real calendar supply the weather and passed with the bug still in place,
+because whether an event happens to open and close inside one particular ten-hour stretch
+is a fact about the day the suite runs. That is the shape the database suite already
+flaked in once. A guard that cannot be shown to go red is not a guard; this one was run
+against the unfixed code and observed to fail.
+
+**The sun follows the same rule, and needed it first.** `d` is computed across
+`[departedAt, returnsAt]` for the reason the sky now is, plus one of its own: the dispatch
+table will tell the player how many hours of their trip fall in the dark *before they
+commit*, and a factor sampled at `returns_at` would make that sentence false — a trip
+nine-tenths in daylight that happened to arrive at half past midnight would score as a
+pure night trip, and "always arrive at 2am" would beat choosing a destination.
+
+**A note on which levers are integrated.** The sky today scales `loot` and `radiation` and
+nothing else; `rollFinds` and `rollHazard` take no sky argument. Integration is a change
+to *how* a factor is measured across a trip, not to which factors exist, so it applies to
+the two that are there. The accumulator above is field-agnostic: the day a world event
+wants a `hazard` or `finds` coefficient, it gets integrated the same way with no further
+thought.
+
+**One function, called from two places.** `returnExpedition` and `reportOn` must compose
+sky and sun identically or the report lies about the trip it is reporting on. That is the
+duplication this file already has a rule about: export one `travelFactors(expedition,
+worldEvents)` from `daylight.js` and have both call it, rather than two call sites
+multiplying two things in the same order and hoping.
+
+**The tick gains no boundary.** Day and night touch expedition resolution only. Camp
+production, consumption, raids, caravans and crafting are untouched, so `nextEventAfter`
+is unchanged and a month's absence costs exactly what it costs today.
+
+**`departedAt` is already available.** `reportOn` has `row.departed_at`; the tick's
+expedition state does not carry it but `returnsAt - travelHours * HOUR_MS` is exact.
+Select it in `src/db/world.js` anyway — deriving a stored column is how the two drift.
+
+### 3. Temperature
+
+**Derived from the sky, not generated beside it.** A `warmth` field on each `WORLD_EVENTS`
+spec, composed the way `productionFactors` composes, plus the diurnal swing and the
+seasonal term. No new seed, no new generator, no new slot calendar, nothing to keep in
+step with the one that exists. It also gives the seven existing kinds a temperature
+character for free: a rad storm is hot, hard rain is cold, long light is warm.
+
+**It has exactly one mechanical job: it sets `Kr` and `Kl`.** Heat widens the gap between
+day and night; cold and cloud narrow it. That is the whole of it, and the restraint is the
+design rather than an omission — the sky already owns production, haul and dose, and a
+second global system pulling the same three levers would make `effectsOf` an incomplete
+account of what the weather is doing to you. `effectsOf` is a contract the page prints.
+Adding a silent second contributor to those numbers is the failure mode this phase is most
+likely to have, and one lever is how it is avoided.
+
+**Deliberately not built: cold raising food consumption.** The overhaul document asks for
+it and it is the obvious camp-side effect. It is refused here because consumption is where
+the load-bearing balance guard lives: `test/unit/tick.test.js` pins time-to-death between
+36 and 72 hours, and that constant exists so the game punishes neglect rather than a
+weekend away. A weather kind that quietly raises the burn rate moves that window for a
+player who is not at the keyboard to see why. If it is ever wanted, it wants its own
+measurement and a restatement of the guard, not a `warmth` coefficient.
+
+**The seasonal hazard, named now.** A year-long term means a suite that passes in August
+can fail in January, and it would fail on a day nobody changed anything. `Kr` and `Kl` are
+therefore clamped to a band — roughly `Kr ∈ [0.20, 0.45]` — and the test asserts the band
+holds at every hour of a full simulated year rather than at `Date.now()`. Any test that
+reads the clock instead of being handed one is a flake waiting for a season.
+
+### 4. What the instruments buy
+
+**The mechanic is never a secret.** The bands and the *direction* are free and always on
+the page: you always know it is night, and you always know the night is kinder on the
+counter and thinner on the haul. This phase adds no hidden multiplier, which is the
+standing rule since the UI-honesty pass — a player who cannot see the number cannot plan
+around it, and the whole decision here is when to spend survivor-hours.
+
+What fuel buys is *precision*, and the radio is the precedent: it is already an upgrade
+that changes nothing in the simulation and sells one fact. Two more of those:
+
+- **The clock — fitted to the shelter.** The exact hour, and, on the dispatch table, the
+  daylight-and-dark split of each proposed trip in hours. Without it the table says "most
+  of it in the dark"; with it, "6h light, 3h dark". The shelter is chosen because it is the
+  only structure with no branch on the fuel track and because a clock on the wall is what a
+  shelter is. Cheap and early: this should be reachable in the first day.
+- **The glass — fitted to the watchtower, beside the radio.** Today's actual `Kr` and `Kl`,
+  the current temperature, and the conditions for the next several hours — which is the
+  one that lets you plan a trip that leaves in bad weather and returns in good. The tower
+  is where the camp learns things; it already sells one.
+
+**`upgradeFor` becomes `upgradesFor`, returning a list.** The singular is an accident of
+there having been three structures and three upgrades, and the watchtower is now the first
+with two. Three call sites in `view-camp.js` (686, 739, 834) name the result `branch`, and
+the page renders one. This is small, and it is the only structural change in the phase, so
+it should be done first and on its own.
+
+### 5. Night content
+
+**Nothing is gated at dispatch.** No region, offer, recipe or road link becomes unavailable
+because of the hour. The timezone objection is the reason: a player whose only check-ins
+are world-daylight must never be locked out of a verb, and a night-gated *destination*
+would do exactly that where a night-weighted *trip* does not.
+
+Night belongs in what the trip meets. `momentsFor(region, seed)` places moments across the
+travel hours, so the world hour of each placement is already knowable — a moment can be
+tagged as one that only happens in the dark, and darkness is reached by leaving at the
+right time rather than by checking in at it.
+
+**This makes moment placement depend on departure time, and that is a real change worth
+stating.** Today a trip's moments are a function of `(region, seed)` alone. They would
+become a function of `(region, seed, departedAt)` — still pure, still replayable, still
+derived from stored columns, but no longer reproducible from the seed by itself. Every
+tool that regenerates moments from a seed must be handed a departure, `moment-balance.mjs`
+included. If that turns out to cost more than the content is worth, night moments are the
+part of this phase to drop; §§1–3 do not depend on them.
+
+### The bound applies, restated
+
+Uplift from attending must stay under the step to the next rung, or the right play is to
+grind the region you have. The same rule, in the same words, for the same reason:
+
+> **The gain from choosing the right departure hour must stay under the step to the next
+> rung.**
+
+If sending someone to the Salt Flats at dusk out-earns sending them somewhere better, the
+map has stopped mattering and this phase has repeated the mistake the bound was written to
+prevent. `Kr` and `Kl` are provisional above precisely because this is what sets them, and
+it is measured rather than argued.
+
+### The tests
+
+**For the sky integration, which lands first and on its own:**
+
+1. A trip entirely inside one weather window resolves *identically* to what sampling gave
+   it — the constant case must not move, roll for roll.
+2. A trip under a storm for its first third takes a third of the storm's dose surcharge,
+   not none of it and not all of it. This is the exploit, written as an assertion.
+3. A trip that ends the instant a storm clears is no longer free of that storm.
+4. Weather that changes twice mid-trip integrates all three pieces; boundaries inside the
+   trip are cut, not rounded.
+5. Two blights *concurrently* still compose multiplicatively. Integration is across time
+   and must not quietly flatten the existing composition across events.
+6. `integrateFactors` is pure and replay-stable: same events, same window, same answer.
+7. Predicted, and the point of the whole exercise: **the ninety-day soak's totals move
+   inside sampling noise.** A material move means the mean was not preserved and the
+   change is wrong, not merely tuned.
+
+**For the sun:**
+
+8. A trip whose hours straddle a full day and night resolves *identically* to the same
+   trip with the sun absent — roll for roll, not merely in total.
+9. `d` is computed across the trip, not sampled: a trip nine-tenths in daylight returning
+   after midnight is a daylight trip.
+10. Daylight moves `finds` and leaves bulk loot alone. The Fence Line, with `finds: []`
+    and no dose, resolves identically at every hour of the day — the Fence Line case is
+    the reason the lever changed, so it is the one to pin.
+11. A find's chance is clamped to `[0, 1]`, and the draw *count* is unchanged: the same
+    seed takes the same number of draws from the generator with and without the sun.
+12. `Kr` and `Kf` stay inside their band at every hour of a full simulated year. No test in
+    this phase reads the wall clock.
+13. Bands, temperature and factors are pure: same `now`, same events, same answer, on any
+    machine and in any local timezone. Run at least one case under a non-UTC `TZ`.
+14. No new slice boundary. A long absence with an expedition in flight cuts the same slices
+    it cuts today.
+15. The report and the tick agree. The same expedition through `reportOn` and through
+    `returnExpedition` produces the same factors, which is what one shared function is for.
+16. The dispatch table's promised split matches the split the trip actually resolves
+    against — the contract, tested, since it is the reason any of this is integrated.
+17. Zero migrations: the suite that builds a database from `migrations/` is untouched.
+18. The bound, measured rather than asserted.
+
+### The instrument
+
+`tools/daylight-balance.mjs`, on the pattern of `region-balance.mjs`: sweep departure hour
+against every region, report haul per trip, dose per trip and **fuel per day including
+bench time**, since uptime is the currency this phase actually trades in. Re-run
+`fuel-balance.mjs` afterwards — this moves the numbers behind queue item 2 — and
+`moment-balance.mjs` if night moments are built.
+
+### The hazards, recorded before they are found
+
+1. **A player locked to one band.** Answered by putting the weight on the trip, and the
+   answer is only as good as that. If any later change gates a verb on the hour, this
+   objection comes back and it comes back unfixed.
+2. **Two systems on the same three levers.** Temperature gets one job so that `effectsOf`
+   stays a complete account of what the weather costs. The moment a second contributor is
+   added silently, the page is lying with true numbers.
+3. **The season breaking the suite on a day nobody deployed.** Clamped band, year-long
+   test, no wall clock in tests.
+4. **The dispatch table becoming a solver.** Printing the split and the multipliers is the
+   honesty rule, but a table that shows the optimum too plainly makes the choice for the
+   player. Show the split and the direction; do not rank the rows.
+5. **Night moments changing what a seed means.** §5. Droppable without touching the rest.
 
 ## Dead time, and telling the player which loop they are in — 2026-08-21
 

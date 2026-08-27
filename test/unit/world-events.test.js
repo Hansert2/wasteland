@@ -5,9 +5,11 @@ import {
   WORLD_EPOCH,
   WORLD_EVENTS,
   activeAt,
+  deriveEventsBetween,
   effectsOf,
   eventForSlot,
   expeditionFactors,
+  integrateFactors,
   nextBoundaryAfter,
   productionFactors,
   slotAt,
@@ -211,5 +213,126 @@ test('a short event is short because that is what makes it a decision', () => {
   assert.ok(
     Object.values(WORLD_EVENTS).some((spec) => mean(spec) < 20),
     'the calendar holds something you can sit out',
+  );
+});
+
+
+// ---------------------------------------------------------------------------
+// Integrating the sky across a trip, rather than sampling it at the return hour.
+// ---------------------------------------------------------------------------
+
+const T0 = WORLD_EPOCH + hours(1000);
+// Weighted means are computed in milliseconds, so exact equality would be asserting
+// something about IEEE754 rather than about the sky.
+const close = (actual, expected, what) =>
+  assert.ok(Math.abs(actual - expected) < 1e-9, `${what}: ${actual} !== ${expected}`);
+const stormFrom = (from, to) => ({ slot: 1, kind: 'rad_storm', startsAt: from, endsAt: to });
+
+test('a trip wholly inside one sky gets exactly what sampling gave it', () => {
+  // The constant case is the compatibility guarantee: integration must not move a trip
+  // that had nothing to average, or every measured number moves for no reason.
+  const events = [stormFrom(T0 - hours(10), T0 + hours(30))];
+
+  const sampled = expeditionFactors(activeAt(events, T0 + hours(9)));
+  const integrated = integrateFactors(events, T0, T0 + hours(9));
+
+  assert.equal(integrated.radiation, sampled.radiation);
+  assert.equal(integrated.loot, sampled.loot);
+});
+
+test('a trip under a storm for a third of it takes a third of the surcharge', () => {
+  // The arithmetic stated as an assertion: a mean weighted by hours, not a reading at
+  // either end. The storm covers the first three hours of a nine-hour trip.
+  const events = [stormFrom(T0, T0 + hours(3))];
+  const { radiation } = integrateFactors(events, T0, T0 + hours(9));
+
+  const full = WORLD_EVENTS.rad_storm.radiation;
+  close(radiation, (full * 3 + 1 * 6) / 9, 'three hours of nine');
+  assert.ok(radiation > 1 && radiation < full, 'neither none of it nor all of it');
+});
+
+test('a trip that ends as the storm clears is no longer free of it', () => {
+  // The exploit, written down. The page prints a countdown to the sky clearing, so
+  // under sampling this trip was the correct play: walk through the whole storm and
+  // arrive one minute after it lifts, paying nothing.
+  const events = [stormFrom(T0, T0 + hours(8))];
+
+  const sampled = expeditionFactors(activeAt(events, T0 + hours(8)));
+  assert.equal(sampled.radiation, 1, 'which is what made it worth doing');
+
+  const { radiation } = integrateFactors(events, T0, T0 + hours(8));
+  close(radiation, WORLD_EVENTS.rad_storm.radiation, 'the whole trip was in it');
+});
+
+test('weather that turns twice mid-trip integrates all three pieces', () => {
+  // Boundaries inside the window are cut, not rounded to the nearest end.
+  const events = [
+    stormFrom(T0 + hours(2), T0 + hours(4)),
+    { slot: 2, kind: 'dust', startsAt: T0 + hours(6), endsAt: T0 + hours(10) },
+  ];
+
+  const { radiation, loot } = integrateFactors(events, T0, T0 + hours(10));
+
+  close(radiation, (1 * 2 + WORLD_EVENTS.rad_storm.radiation * 2 + 1 * 6) / 10, 'dose');
+  close(loot, (1 * 6 + WORLD_EVENTS.dust.loot * 4) / 10, 'haul');
+});
+
+test('concurrent events still compose multiplicatively inside a slice', () => {
+  // Integration is across *time*. Composition across events is a separate rule and
+  // must not be quietly flattened into an average by this change.
+  const events = [
+    stormFrom(T0, T0 + hours(4)),
+    { slot: 2, kind: 'blight', startsAt: T0, endsAt: T0 + hours(4) },
+    { slot: 3, kind: 'dust', startsAt: T0, endsAt: T0 + hours(4) },
+  ];
+
+  const both = integrateFactors(events, T0, T0 + hours(4));
+  const sampled = expeditionFactors(activeAt(events, T0 + hours(1)));
+
+  close(both.loot, sampled.loot, 'same composition');
+  close(both.loot, WORLD_EVENTS.dust.loot, 'the two that touch loot, multiplied');
+});
+
+test('a clear sky integrates to exactly no change at all', () => {
+  const { loot, radiation } = integrateFactors([], T0, T0 + hours(26));
+  assert.equal(loot, 1);
+  assert.equal(radiation, 1);
+});
+
+test('a missing bound throws rather than quietly reporting clear skies', () => {
+  // A silent 1.0 here would disable the weather everywhere at once and look like
+  // nothing had happened, which is the failure this project keeps meeting.
+  assert.throws(() => integrateFactors([], undefined, T0), TypeError);
+  assert.throws(() => integrateFactors([], T0, NaN), TypeError);
+});
+
+test('derived events match the ones a slot generates, and are sorted', () => {
+  // The database is a cache of this function; for any slot the two must agree, which
+  // is what lets a report use stored rows for the past and derived ones for the future.
+  const from = WORLD_EPOCH + hours(500);
+  const to = from + hours(400);
+  const derived = deriveEventsBetween(20260101, from, to);
+
+  assert.ok(derived.length > 0, 'four hundred hours of world has weather in it');
+  for (const event of derived) {
+    assert.deepEqual(event, eventForSlot(20260101, event.slot));
+    assert.ok(event.startsAt < to && event.endsAt > from, 'and it overlaps the window');
+  }
+
+  const starts = derived.map((event) => event.startsAt);
+  assert.deepEqual(starts, [...starts].sort((a, b) => a - b));
+});
+
+test('an event running when the window opens is not missed', () => {
+  // The reason `OVERLAP_MARGIN_SLOTS` exists: a blight can begin well before a window
+  // and still be in force throughout it.
+  const seed = 20260101;
+  const early = eventForSlot(seed, 40);
+  const midway = early.startsAt + (early.endsAt - early.startsAt) / 2;
+
+  const derived = deriveEventsBetween(seed, midway, midway + hours(1));
+  assert.ok(
+    derived.some((event) => event.slot === 40),
+    'the event in force at the window`s opening is in the set',
   );
 });

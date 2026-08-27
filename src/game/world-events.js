@@ -189,6 +189,46 @@ export function slotAt(at) {
   return Math.max(0, Math.ceil((at - WORLD_EPOCH) / (MEAN_GAP_HOURS * HOUR_MS)));
 }
 
+/**
+ * How many slots back to look for weather that is still running.
+ *
+ * An event can begin before a window opens and still be in force inside it. The longest
+ * runs 120 hours against a 96-hour mean gap, so two slots back covers it; three is the
+ * same query and leaves room for the ranges to be retuned.
+ *
+ * Lives here rather than beside the query that uses it because it is a fact about
+ * `WORLD_EVENTS[kind].hours` against `MEAN_GAP_HOURS` — retuning either is what would
+ * make it wrong, and both are in this file.
+ */
+export const OVERLAP_MARGIN_SLOTS = 3;
+
+/**
+ * The events covering `[from, to)`, generated from the seed rather than read from a table.
+ *
+ * The database is a cache of this function, so for any slot the two agree — *unless* the
+ * shares or durations have been retuned since a slot was written, which migration `014`
+ * deliberately allows: stored slots keep whatever they were, and only unwritten ones
+ * follow the new content. That is what makes this a supplement and never a replacement.
+ *
+ * **The past is what the table says; the future is what the seed says.** Callers that need
+ * weather beyond `now` — the report on a trip that has not landed yet — take the stored
+ * rows for the elapsed part and derive only what comes after, which is why nothing here
+ * writes: pre-inserting the future would freeze it against the next balance pass for no
+ * gain, and the calendar's whole point is that unwritten slots follow the current shares.
+ */
+export function deriveEventsBetween(seed, from, to) {
+  const first = Math.max(0, slotAt(from) - OVERLAP_MARGIN_SLOTS);
+  const last = slotAt(to);
+
+  const events = [];
+  for (let slot = first; slot <= last; slot += 1) {
+    const event = eventForSlot(seed, slot);
+    if (event.startsAt < to && event.endsAt > from) events.push(event);
+  }
+
+  return events.sort((a, b) => a.startsAt - b.startsAt);
+}
+
 /** Events covering an instant. Several can overlap; the world is not tidy. */
 export function activeAt(events, at) {
   return (events ?? []).filter((e) => e.startsAt <= at && at < e.endsAt);
@@ -209,9 +249,13 @@ export function productionFactors(active) {
 }
 
 /**
- * What the sky is doing to a trip. Applied to the *results* of rolls and never to
- * the number of rolls taken, the same rule gear follows — an expedition under a clear
- * sky must draw exactly what it drew before world events existed.
+ * What the sky is doing to a trip at one instant. Applied to the *results* of rolls and
+ * never to the number of rolls taken, the same rule gear follows — an expedition under a
+ * clear sky must draw exactly what it drew before world events existed.
+ *
+ * Composition here is across *concurrent* events and stays multiplicative: two blights
+ * are worse than one. Composition across *time* is a different question with a different
+ * answer — see `integrateFactors`.
  */
 export function expeditionFactors(active) {
   let loot = 1;
@@ -224,6 +268,59 @@ export function expeditionFactors(active) {
   }
 
   return { loot, radiation };
+}
+
+/**
+ * What the sky did to a whole trip: the duration-weighted mean of `expeditionFactors`
+ * across `[from, to)`.
+ *
+ * **A trip is scaled by what it walked through, for the hours it walked through it.**
+ * This replaced sampling the sky at the hour of return, which was not merely a
+ * simplification but a live exploit: the page prints a countdown to the weather clearing,
+ * so a player could dispatch into a rad storm, come home after it lifted, and take none of
+ * its dose for hours genuinely spent under it. Under sampling the correct play was to time
+ * arrivals rather than to choose destinations.
+ *
+ * **Arithmetic mean over time, not geometric.** Both quantities accumulate per hour — dose
+ * is taken hour by hour and a haul is what was gathered over the trip — so an hour under a
+ * storm contributes a storm-hour's worth. A geometric mean would understate a short severe
+ * window against a long mild one, which nothing about the fiction or the arithmetic asks
+ * for.
+ *
+ * The interval is walked in pieces cut at event boundaries, exactly as the tick walks a
+ * slice: `nextBoundaryAfter` already yields those instants, and between two of them the
+ * factor is constant, so this is exact rather than a sampled approximation of an integral.
+ *
+ * Expectation is preserved. Averaging over a window has the same mean as sampling a point
+ * in it, so what this removes is the tail — the best case an attentive player could
+ * engineer, and the worst case of arriving under a storm that had only just begun.
+ */
+export function integrateFactors(events, from, to) {
+  // Loud rather than neutral, following `applyTick`'s check on `now`. A missing bound
+  // yields NaN, and returning clear skies for it would disable the weather silently and
+  // everywhere — the exact shape of failure this file keeps learning about.
+  if (!Number.isFinite(from) || !Number.isFinite(to)) {
+    throw new TypeError('integrateFactors: `from` and `to` must be epoch-ms numbers');
+  }
+
+  const span = to - from;
+  if (span <= 0) return { loot: 1, radiation: 1 };
+
+  let loot = 0;
+  let radiation = 0;
+  let cursor = from;
+
+  while (cursor < to) {
+    const next = Math.min(to, nextBoundaryAfter(events, cursor));
+    const held = expeditionFactors(activeAt(events, cursor));
+    const hours = next - cursor;
+
+    loot += held.loot * hours;
+    radiation += held.radiation * hours;
+    cursor = next;
+  }
+
+  return { loot: loot / span, radiation: radiation / span };
 }
 
 /**

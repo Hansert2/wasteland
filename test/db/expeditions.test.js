@@ -5,8 +5,10 @@ import { pool } from '../../src/db/pool.js';
 import { loadWorld } from '../../src/db/world.js';
 import { advanceSettlement } from '../../src/services/advance-settlement.js';
 import { dispatchExpedition } from '../../src/services/dispatch-expedition.js';
+import { viewCamp } from '../../src/services/view-camp.js';
 import { foundSettlement, raiseSuccessor } from '../../src/services/settlement-lifecycle.js';
 import { ORDINARY } from '../../src/game/wanderers.js';
+import { slotAt } from '../../src/game/world-events.js';
 import { InputError } from '../../src/errors.js';
 
 const hours = (h) => h * 60 * 60 * 1000;
@@ -225,6 +227,109 @@ test('a survivor who starves while away is not brought home by the tick', async 
     );
     assert.equal(rows[0].status, 'lost');
     assert.ok(rows[0].resolved_at, 'a lost expedition still records when it ended');
+  });
+});
+
+test('checking in mid-trip does not change the trip', async () => {
+  // The bug the widened weather window fixes, pinned as a property rather than as a
+  // number. The sky is integrated across the whole trip, so resolution needs the events
+  // covering it — but the loader used to fetch only `[lastTickAt, now]`. A player who
+  // checked in halfway therefore moved `lastTickAt` past the first half of their own
+  // trip, and the weather in those hours was no longer found. `activeAt` reports that as
+  // clear sky, so a storm walked through silently cost nothing, and the more attentive
+  // the player the more of their own weather they erased.
+  //
+  // Two identical camps under the same global sky, sharing an expedition seed so the
+  // rolls match: one is watched halfway and one is not. The trip must not care.
+  await withRollback(async (client) => {
+    const region = { travelHours: 20, radiation: 20, loot: { scrap: [10, 10] } };
+    const watched = await setup(client, region);
+    const alone = await setup(client, region);
+
+    const now = Date.now();
+    await advanceSettlement(client, watched.settlementId, now);
+    await advanceSettlement(client, alone.settlementId, now);
+
+    const a = await dispatchExpedition(client, watched.settlementId, watched.slug, now);
+    const b = await dispatchExpedition(client, alone.settlementId, alone.slug, now);
+
+    // Same dice for both, so anything that differs is the weather and not the roll.
+    await client.query('update expeditions set seed = 4242 where id in ($1, $2)', [
+      a.expeditionId,
+      b.expeditionId,
+    ]);
+
+    // A storm that begins and ends inside the *first half* of the trip, so it is exactly
+    // what a mid-trip check-in would erase. Written explicitly rather than left to the
+    // calendar: whether a real event happens to open and close inside those ten hours is
+    // a property of the day the suite runs, which is how a test like this becomes a
+    // flake instead of a guard. Whatever else the sky is doing reaches both camps
+    // equally, so the window is still the only difference between them.
+    const slot = slotAt(now);
+    await client.query('delete from world_events where slot = $1', [slot]);
+    await client.query(
+      `insert into world_events (slot, kind, starts_at, ends_at) values ($1, 'rad_storm', $2, $3)`,
+      [slot, new Date(now + hours(2)), new Date(now + hours(8))],
+    );
+
+    // The watched camp is looked at halfway, which is what used to erase the first half
+    // of its weather. The other is left alone until the trip lands.
+    await advanceSettlement(client, watched.settlementId, now + hours(10));
+
+    await advanceSettlement(client, watched.settlementId, now + hours(20));
+    await advanceSettlement(client, alone.settlementId, now + hours(20));
+
+    const { rows } = await client.query(
+      'select id, log from expeditions where id in ($1, $2) order by id',
+      [a.expeditionId, b.expeditionId],
+    );
+    assert.equal(rows.length, 2);
+    assert.deepEqual(rows[0].log, rows[1].log, 'watching a trip changed what it brought home');
+  });
+});
+
+test('the report on a trip in flight agrees with the trip that lands', async () => {
+  // The other half of the same change. The sky is integrated across the whole trip, and
+  // a trip in flight ends in the future: the report takes stored rows for the hours
+  // already elapsed and derives the rest from the world seed, while the tick — running
+  // later, when those hours are past — reads every one of them from the table. If the
+  // two ever disagreed, the page would describe a trip that did not happen.
+  //
+  // The dose is what this measures, because it is the outcome the sky scales hardest.
+  await withRollback(async (client) => {
+    const { settlementId, slug } = await setup(client, {
+      travelHours: 20,
+      radiation: 20,
+      loot: { scrap: [10, 10] },
+    });
+
+    // `Date.now()` rather than a chosen instant: a camp is founded at the wall clock, and
+    // `applyTick` refuses to run backwards, so a fixed past date silently does nothing.
+    const now = Date.now();
+    await advanceSettlement(client, settlementId, now);
+    await dispatchExpedition(client, settlementId, slug, now);
+
+    // One instant short of the return, so the report's prediction covers the whole trip
+    // and is still a prediction.
+    const view = await viewCamp(client, settlementId, now + hours(20) - 1);
+    assert.ok(view.expedition, 'somebody is out there');
+    const predictedDose = view.expedition.radiation;
+    assert.ok(predictedDose > 0, 'and the region doses them');
+
+    const before = await loadWorld(client, settlementId);
+    const { events } = await advanceSettlement(client, settlementId, now + hours(20));
+    const after = await loadWorld(client, settlementId);
+
+    assert.ok(
+      events.some((event) => event.type === 'expedition_returned'),
+      'and they came back',
+    );
+
+    const actualDose = Number(after.survivor.radiation) - Number(before.survivor.radiation);
+    assert.ok(
+      Math.abs(actualDose - predictedDose) < 0.05,
+      `the page said ${predictedDose} rads and the trip delivered ${actualDose}`,
+    );
   });
 });
 

@@ -1,4 +1,4 @@
-import { eventForSlot, slotAt } from '../game/world-events.js';
+import { OVERLAP_MARGIN_SLOTS, eventForSlot, slotAt } from '../game/world-events.js';
 
 /**
  * The world's weather, kept ahead of whoever is looking at it.
@@ -19,15 +19,6 @@ import { eventForSlot, slotAt } from '../game/world-events.js';
  * would silently rewrite history for every camp at once.
  */
 export const WORLD_SEED = 20260101;
-
-/**
- * How many slots back to look for weather that is still running.
- *
- * An event can begin before a window opens and still be in force inside it. The
- * longest runs 120 hours against a 96-hour mean gap, so two slots back covers it;
- * three is the same query and leaves room for the ranges to be retuned.
- */
-const OVERLAP_MARGIN_SLOTS = 3;
 
 /**
  * Generate whatever weather is missing for the window `[from, until]`.

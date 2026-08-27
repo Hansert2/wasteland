@@ -115,7 +115,7 @@ export async function loadWorld(client, settlementId) {
     // The region travels with the expedition because resolution is pure: the tick
     // must be able to roll an outcome without reaching back into the database.
     const { rows: active } = await client.query(
-      `select e.id, e.status, e.returns_at, e.seed, e.choices,
+      `select e.id, e.status, e.departed_at, e.returns_at, e.seed, e.choices,
               r.slug, r.name, r.danger, r.travel_hours, r.loot, r.finds, r.radiation_per_trip
          from expeditions e
          join regions r on r.id = e.region_id
@@ -128,6 +128,11 @@ export async function loadWorld(client, settlementId) {
       expedition = {
         id: row.id,
         status: row.status,
+        // Carried because the sky is integrated across the trip rather than sampled at
+        // its end, and an integral needs both ends. Derivable from `returnsAt` less
+        // `travelHours`, and selected anyway: deriving a stored column is how the two
+        // come to disagree.
+        departedAt: row.departed_at.getTime(),
         returnsAt: row.returns_at.getTime(),
         seed: row.seed,
         // What the player answered while it was in flight. Read-only in the tick: the

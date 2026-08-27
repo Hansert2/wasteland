@@ -2,8 +2,9 @@ import { advanceSettlement } from './advance-settlement.js';
 import {
   WORLD_EVENTS,
   activeAt,
+  deriveEventsBetween,
   effectsOf,
-  expeditionFactors,
+  integrateFactors,
   productionFactors,
 } from '../game/world-events.js';
 import { answerTo, resolveExpedition } from '../game/expeditions.js';
@@ -52,10 +53,16 @@ const HOUR_MS = 60 * 60 * 1000;
  * the same arithmetic the tick will do later, done sooner so the page has something
  * true to say.
  *
- * The weather used is the weather **at the scheduled return**, not the weather now,
- * because that is what the tick will resolve against. World events are derived rather
- * than observed, so that hour is already knowable, and using it is what makes the
- * report land on what actually comes home rather than near it.
+ * The weather used is the weather **across the whole trip**, because that is what the
+ * tick will resolve against — the duration-weighted mean of what was in force between
+ * departure and return, not a reading taken at either end.
+ *
+ * That window runs into the future, and the loaded events stop at `now`. World events are
+ * derived from the world seed rather than observed, so the remainder is generated here and
+ * deliberately not written: the past is what the table says it is, and pre-inserting the
+ * future would freeze it against the next balance pass for nothing. Stored rows cover
+ * everything up to `now` and derived ones start at or after it, so the two sets never
+ * describe the same slot.
  *
  * Returns null when nobody is out, which is most of the time.
  */
@@ -75,14 +82,20 @@ function reportOn(row, state, now) {
   };
 
   const choices = row.choices ?? [];
+  const departedAt = row.departed_at.getTime();
   const returnsAt = row.returns_at.getTime();
-  const elapsed = Math.max(0, (now - row.departed_at.getTime()) / HOUR_MS);
+  const elapsed = Math.max(0, (now - departedAt) / HOUR_MS);
+
+  const stillToCome = deriveEventsBetween(WORLD_SEED, now, returnsAt).filter(
+    (event) => event.startsAt >= now,
+  );
+  const overTheTrip = [...(state.worldEvents ?? []), ...stillToCome];
 
   const outcome = resolveExpedition({
     region,
     survivor: state.survivor,
     seed,
-    weather: expeditionFactors(activeAt(state.worldEvents, returnsAt)),
+    weather: integrateFactors(overTheTrip, departedAt, returnsAt),
     choices,
     standings: state.settlement.standings,
   });
