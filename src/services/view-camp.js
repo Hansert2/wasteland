@@ -4,9 +4,18 @@ import {
   activeAt,
   deriveEventsBetween,
   effectsOf,
+  expeditionFactors,
   productionFactors,
 } from '../game/world-events.js';
-import { travelFactors } from '../game/daylight.js';
+import {
+  climateAt,
+  coefficientsAt,
+  isLit,
+  sunAt,
+  temperatureAt,
+  travelFactors,
+  worldTimeAt,
+} from '../game/daylight.js';
 import { answerTo, resolveExpedition } from '../game/expeditions.js';
 import {
   isOpen,
@@ -43,6 +52,7 @@ import {
  * who is, as of now, already dead.
  */
 const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
 
 /**
  * What is knowable about a trip that is still happening.
@@ -66,6 +76,96 @@ const HOUR_MS = 60 * 60 * 1000;
  *
  * Returns null when nobody is out, which is most of the time.
  */
+/**
+ * What the top strip knows, tiered by what the camp has fitted.
+ *
+ * The costs quoted are for *this instant* rather than for a trip: out there right now, in
+ * this light, under this sky. A trip's factors are integrated across its hours and cannot
+ * be stated before one is chosen, so the strip answers the question it can — what going
+ * out now is worth — and leaves the rest to the trip.
+ */
+function hourStrip(state, now, fitted) {
+  const active = activeAt(state.worldEvents, now);
+  const time = worldTimeAt(now);
+  const lit = isLit(now);
+
+  // The sun at this instant: full daylight or full dark, since an instant is one or the
+  // other. `2d - 1` is +1 or -1, so the factors are simply 1 plus or minus the
+  // coefficient — which is what the strip means by "out there now".
+  const k = coefficientsAt(climateAt(now, active));
+  const lean = lit ? 1 : -1;
+  const sun = { radiation: 1 + k.radiation * lean, finds: 1 + k.finds * lean };
+
+  const hasClock = fitted.has('clock');
+  const hasGlass = fitted.has('glass');
+
+  return {
+    band: time.band,
+    // Free at every tier: which way the hour is pushing. Numbers cost fuel; the direction
+    // never does, because the whole decision the sun offers is when to spend an hour.
+    lean: lit ? 'dearer on the counter, and more turns up' : 'kinder on the counter, and less does',
+    lit,
+
+    // The clock: the hour itself, and when the light turns. Without it the strip says how
+    // much of the day is left in words rather than refusing to say anything.
+    clock: hasClock,
+    hour: hasClock ? time.hour : null,
+    minute: hasClock ? time.minute : null,
+    turnsAt: hasClock ? new Date(nextTurnOfLight(now)) : null,
+    turning: lit ? 'sunset' : 'sunrise',
+    roughly: hasClock ? null : roughLight(now, lit),
+
+    // The glass: the temperature, and the sun's numbers rather than its direction.
+    glass: hasGlass,
+    temperature: hasGlass ? Math.round(temperatureAt(now, active)) : null,
+    sun: hasGlass ? sun : null,
+
+    // The sky's own numbers are free and always have been — the sky block has printed
+    // them since the honesty pass, and hiding them here would be a regression dressed as
+    // an upgrade. Only the sun's half is bought.
+    sky: active.map((event) => ({
+      kind: event.kind,
+      name: WORLD_EVENTS[event.kind]?.name ?? event.kind,
+      endsAt: new Date(event.endsAt),
+      effects: effectsOf(event.kind),
+    })),
+
+    // What the two come to together, for the panel behind the strip.
+    together: hasGlass
+      ? {
+          radiation: expeditionFactors(active).radiation * sun.radiation,
+          finds: sun.finds,
+          loot: expeditionFactors(active).loot,
+        }
+      : null,
+  };
+}
+
+/** The next instant the light turns, sunrise or sunset, whichever comes first. */
+function nextTurnOfLight(now) {
+  const today = Math.floor(now / DAY_MS) * DAY_MS;
+
+  for (const day of [today, today + DAY_MS]) {
+    const { sunrise, sunset } = sunAt(day);
+    for (const hour of [sunrise, sunset]) {
+      const at = day + hour * HOUR_MS;
+      if (at > now) return at;
+    }
+  }
+
+  return now;
+}
+
+/** How much of the day is left, for a camp with no clock to read it off. */
+function roughLight(now, lit) {
+  const hours = (nextTurnOfLight(now) - now) / HOUR_MS;
+
+  if (!lit) return hours < 2 ? 'the sky is going grey' : 'a long way from light';
+  if (hours < 1) return 'the light is nearly gone';
+  if (hours < 3) return 'not long before dark';
+  return 'hours yet before dark';
+}
+
 function reportOn(row, state, now) {
   if (!row) return null;
 
@@ -833,6 +933,20 @@ export async function viewCamp(client, settlementId, now = Date.now()) {
       name: spec.name,
       standing: standingOf(standings, slug),
     })),
+    /**
+     * The strip across the top of every view: what hour it is, and what that costs.
+     *
+     * Outside the five panes deliberately, the way the stores and the Contact box are.
+     * The sky block lives on the Camp view and the dispatch table lives on Survivor, so
+     * until this existed a player could not see what the weather was doing while choosing
+     * where to send somebody — the one moment the answer matters most.
+     *
+     * Three tiers, and the *mechanic* is never one of them. Without an instrument the
+     * band and the direction are still printed, because a cost a player cannot see is a
+     * cost they cannot plan around. What fuel buys is precision: the clock sells the hour
+     * and the exact turn of the light, the glass sells the temperature and the numbers.
+     */
+    hour: hourStrip(state, now, fitted),
     // Weather is visible to everyone: it is the sky, not a secret.
     weather: activeAt(state.worldEvents, now).map((event) => ({
       kind: event.kind,

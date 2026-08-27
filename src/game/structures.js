@@ -107,6 +107,34 @@ export const UPGRADES = {
     craftHoursMultiplier: 2 / 3,
     summary: 'Powered tools at the bench: every craft takes a third less time.',
   },
+  clock: {
+    kind: 'shelter',
+    name: 'The Clock',
+    // The cheapest thing on the fuel track by a wide margin, and low enough on the
+    // shelter that a camp meets it in its first day. The sun is a decision the game
+    // starts asking immediately, so the instrument that sharpens it cannot sit behind
+    // sixty fuel and a level-four build — that would be a mechanic the early game has
+    // and cannot see.
+    fuel: 12,
+    hours: 0.4,
+    requiresLevel: 1,
+    // Changes nothing in the simulation, like the radio. It sells the hour: the exact
+    // time instead of the band, and sunrise and sunset instead of "hours yet before
+    // dark". What the sun *does* is never hidden — only how precisely you can read it.
+    summary: 'A clock on the wall, running again: you know the hour and when the light goes.',
+  },
+  glass: {
+    kind: 'watchtower',
+    name: 'The Glass',
+    // The second thing the tower sells, and the reason `upgradesFor` returns a list.
+    // Priced with the radio rather than with the clock: a forecast is worth more than a
+    // reading, because it is the one that lets you send somebody out into weather that
+    // has not arrived yet.
+    fuel: 50,
+    hours: 1,
+    requiresLevel: 4,
+    summary: 'Instruments on the tower: the temperature, and what the next few hours hold.',
+  },
   radio: {
     kind: 'watchtower',
     name: 'Radio',

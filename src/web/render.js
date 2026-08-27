@@ -196,6 +196,94 @@ const STYLE = `
    * takes the slack ("1fr") and row two is the height of the button, so the rail fills
    * whatever is left and the way out is pinned under it however short the page is.
    */
+  /*
+   * The strip across the top. Sticky, and the only thing on the page that moves on its
+   * own: the dispatch table runs past a screen, and the hour is what a row of it is read
+   * against, so a strip that scrolled away would take the context with it exactly when
+   * the decision is being made.
+   *
+   * Full bleed with an inner column at the shell's own width, so the rule under it runs
+   * to both edges on a wide screen while its contents stay in line with everything below.
+   */
+  #s-hour { position: sticky; top: 0; z-index: 20; }
+
+  .hourbar {
+    background: var(--rail);
+    border-bottom: 1px solid var(--rule);
+  }
+  .hourbar-in {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 6px 14px;
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 9px 20px;
+    font-size: 13px;
+  }
+  .hourbar .band {
+    font-variant-caps: all-small-caps;
+    letter-spacing: .16em;
+    color: var(--ink);
+  }
+  .hourbar .val { color: var(--ink); }
+  .hourbar .note, .hourbar .clock { color: var(--quiet); }
+  .hourbar .sky-now { display: inline-flex; gap: 6px; align-items: baseline; }
+  .hourbar .sky-now .name { color: var(--accent, var(--ink)); }
+
+  /* Pushed to the far end so the reading and the disclosure do not read as one list. */
+  .hourbar .costs { margin-left: auto; position: relative; cursor: default; }
+  .hourbar .costs-cue {
+    color: var(--quiet);
+    border-bottom: 1px dotted var(--rule);
+  }
+
+  /*
+   * Opens on hover, on keyboard focus, and on tap.
+   *
+   * A focus-within rule on a focusable trigger is what makes the last two work: a phone
+   * has no hover at all, and a panel that only answered to hover would put a real cost
+   * somewhere a phone could never reach. Hidden by visibility rather than by display, so
+   * the panel keeps its box and does not reflow the strip when it opens.
+   */
+  .hourbar .costs-panel {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 8px);
+    visibility: hidden;
+    opacity: 0;
+    min-width: 240px;
+    padding: 12px 14px;
+    background: var(--ground);
+    border: 1px solid var(--rule);
+    box-shadow: 0 6px 20px rgb(0 0 0 / .22);
+    display: grid;
+    gap: 6px;
+    text-align: left;
+    transition: opacity .12s ease;
+  }
+  .hourbar .costs:hover .costs-panel,
+  .hourbar .costs:focus-within .costs-panel,
+  .hourbar .costs:focus .costs-panel { visibility: visible; opacity: 1; }
+
+  .hourbar .costs-head {
+    font-variant-caps: all-small-caps;
+    letter-spacing: .16em;
+    color: var(--quiet);
+  }
+  .hourbar .costs-head { display: block; }
+  .hourbar .cost-row { display: flex; gap: 8px; align-items: baseline; }
+  .hourbar .cost-row .tag { min-width: 92px; color: var(--quiet); }
+  .hourbar .cost-row.together { border-top: 1px solid var(--rule); padding-top: 6px; }
+
+  /* On a phone the strip wraps to two lines rather than scrolling sideways, and the
+     disclosure loses its push to the end so it sits with what it explains. */
+  @media (max-width: 640px) {
+    .hourbar-in { gap: 4px 10px; padding: 8px 14px; font-size: 12px; }
+    .hourbar .costs { margin-left: 0; }
+    .hourbar .costs-panel { right: auto; left: 0; min-width: 0; width: min(88vw, 260px); }
+  }
+
   .shell {
     display: grid;
     grid-template-columns: 198px minmax(0, 1fr);
@@ -1333,6 +1421,99 @@ export function layout(title, body, { pane } = {}) {
 }
 
 /**
+ * The strip across the top: what hour it is, what the sky is doing, and what that costs.
+ *
+ * **Outside `main`, which is the mechanism for "on every view".** The five views are a
+ * CSS filter over `main > section`; anything in that stream belongs to a pane. The rail
+ * and the stores are on every view because they sit outside it, and this joins them for
+ * the same reason and by the same means rather than by being listed five times. A sixth
+ * view could not lose it.
+ *
+ * It is here because of a split nobody had noticed: the sky block is on the Camp view and
+ * the dispatch table is on Survivor, so until now a player could not see what the weather
+ * was doing while choosing where to send somebody — the one moment it decides anything.
+ *
+ * **Sticky**, and the only element on the page that moves independently of the rest. The
+ * dispatch table is longer than a screen, and the hour is what a row of it is read
+ * against; a strip that scrolls away takes the context with it exactly when the decision
+ * is being made.
+ *
+ * The costs are behind a disclosure rather than printed, because the strip is glanced at
+ * far more often than it is consulted, and a line of multipliers on every view would be
+ * read once and then never again. It opens on hover, on keyboard focus and on tap — the
+ * element is focusable and the panel answers to `:focus-within`, so a phone, which has no
+ * hover at all, is not left with a fact it cannot reach.
+ */
+function hourBar(hour) {
+  if (!hour) return '';
+
+  const time = hour.clock
+    ? `<span class="val">${escape(`${String(hour.hour).padStart(2, '0')}:${String(hour.minute).padStart(2, '0')}`)}</span>`
+    : '';
+
+  // The turn of the light is a deadline like every other on this page, so it is armed
+  // rather than painted: `test/db/page-contract.test.js` requires it, and the strip
+  // rewrites itself when the band changes rather than waiting for a reload.
+  const light = hour.clock
+    ? `<span class="clock deadline">${countdown(hour.turnsAt, hour.turning)} to ${escape(hour.turning)}</span>`
+    : `<span class="note">${escape(hour.roughly)}</span>`;
+
+  const warmth =
+    hour.temperature === null ? '' : `<span class="val">${escape(`${hour.temperature}°C`)}</span>`;
+
+  const sky = hour.sky
+    .map(
+      (event) => `<span class="sky-now"><span class="name">${escape(event.name)}</span>
+        <span class="clock deadline">${countdown(event.endsAt, 'clearing')}</span></span>`,
+    )
+    .join('');
+
+  const sunLine = hour.sun
+    ? `<span class="cost-row"><span class="tag">The hour</span>
+         ${factor({ what: 'dose', factor: round2(hour.sun.radiation) })}
+         ${factor({ what: 'finds', factor: round2(hour.sun.finds) })}</span>`
+    : `<span class="cost-row"><span class="tag">The hour</span>
+         <span class="note">${escape(hour.lean)}</span></span>`;
+
+  // Only what is actually costing something out there. The Blight halves the garden and
+  // does nothing to a trip, so a row for it here would be a name beside a dash — and a
+  // dash in a panel headed "Out there now" reads as a missing number rather than as an
+  // absent one. The strip above still names it, which is where "what is happening" lives.
+  const skyRows = hour.sky
+    .filter((event) => event.effects.some((effect) => effect.where === 'road'))
+    .map(
+      (event) => `<span class="cost-row"><span class="tag">${escape(event.name)}</span>
+        ${sideOf(event.effects, 'road')}</span>`,
+    )
+    .join('');
+
+  // Only when there is genuinely something to multiply. With a clear sky the hour is the
+  // only thing acting, and a Together row would restate the line directly above it — the
+  // same rule the sky block already follows for a single event.
+  const together = hour.together && skyRows
+    ? `<span class="cost-row together"><span class="tag">Together</span>
+         ${factor({ what: 'dose', factor: round2(hour.together.radiation) })}
+         ${factor({ what: 'finds', factor: round2(hour.together.finds) })}</span>`
+    : '';
+
+  return `<div class="hourbar">
+    <div class="hourbar-in">
+      <span class="band">${escape(hour.band)}</span>
+      ${time}${warmth}${light}${sky}
+      <span class="costs" tabindex="0" role="button" aria-label="What going out now costs">
+        <span class="costs-cue">what it costs</span>
+        <span class="costs-panel">
+          <span class="costs-head">Out there now</span>
+          ${skyRows}${sunLine}${together}
+        </span>
+      </span>
+    </div>
+  </div>`;
+}
+
+const round2 = (value) => Math.round(value * 100) / 100;
+
+/**
  * The way out, and the only thing on the page that belongs to no column.
  *
  * It reads as the foot of the rail and is not inside it, because those are two
@@ -1862,6 +2043,13 @@ export function campPage(view, { error, pane = 'camp' } = {}) {
     </div>`);
 
   return layout(view.name, `<div class="shell">
+    ${/*
+      * Outside `main`, so it is on every view without being listed on any of them — the
+      * same mechanism the rail and the stores use. Inside a `section` so the in-place
+      * swap keeps it current: the band turns, the temperature drifts, and the sky clears
+      * without anybody reloading.
+      */ ''}
+    ${section('hour', hourBar(view.hour))}
     ${rail(pane, identity, section('stores', renderResources(view.resources)))}
     <main>
     ${section('error', error ? `<p class="error">${escape(error)}</p>` : '')}
