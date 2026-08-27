@@ -2916,15 +2916,34 @@ function describe(event) {
  * urgent it is far better than a colour would.
  */
 function strainNote(strain) {
-  if (!strain || strain.state === 'mending') return '';
+  if (!strain) return '';
 
   const clear = `clear in ${duration(strain.hoursToMending)}`;
 
+  // Losing health, and by how much. There is no line to be "past" any more — the dose
+  // costs on a curve — so the note says the rate and when it stops, which is what the
+  // old sentence was using the threshold to imply.
   if (strain.state === 'burning') {
-    return `<small>past ${strain.threshold}: losing ${n(strain.damagePerHour)} health an hour, under ${strain.threshold} in ${duration(strain.hoursToSafe)}, ${clear}</small>`;
+    return `<small>losing ${n(strain.damagePerHour)} health an hour, gaining again under ${Math.round(strain.tipping)} in ${duration(strain.hoursToSafe)}, ${clear}</small>`;
   }
 
-  return `<small>not healing until this is down, ${clear}</small>`;
+  // Holding: the dose is taking about what rest is giving back. A real state and the one
+  // the page used to describe as "not healing", which was true and told nobody why.
+  if (strain.state === 'stalled') {
+    return `<small>the dose is taking what rest gives back, ${clear}</small>`;
+  }
+
+  // Mending, but slowly, because the dose is smothering it. Worth saying: this is the
+  // forty points of the scale where the page used to have nothing at all to report.
+  //
+  // Only once the slowing is worth a sentence, though. A trace of a dose costs a tenth of
+  // an hour's healing, and announcing that would be the page finding something to say
+  // rather than having something to say — which is the failure `NOTHING` exists to avoid.
+  if (strain.healingPerHour > 0 && strain.healingPerHour < strain.fullHealing * 0.85) {
+    return `<small>healing at ${n(strain.healingPerHour)} an hour, slowed by the dose, ${clear}</small>`;
+  }
+
+  return '';
 }
 
 function renderSurvivor(survivor, strain, vitals) {

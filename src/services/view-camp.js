@@ -36,6 +36,7 @@ import { directionFor } from '../game/direction.js';
 import { WANDERERS, radThresholdFor, wandererFor } from '../game/wanderers.js';
 import { stateAt, timelineOf } from '../game/timeline.js';
 import { CONFIG } from '../game/constants.js';
+import { radDamagePerHourAt } from '../game/tick.js';
 import { LINKS, TRADE_POST_LINKS, linkCost, linkGives, neighbourFor } from '../game/road.js';
 import { WORLD_SEED, loadWorldEvents } from '../db/world-events.js';
 import { FACTIONS, caravanVisit, postKeeper, priceAt, standingOf } from '../game/factions.js';
@@ -440,50 +441,52 @@ function reportOn(row, state, now) {
  * the whole point of that upgrade is this number: a player weighing 60 fuel against it
  * should be able to see what it buys.
  *
- * **The threshold is the survivor's, not the constant.** `radThresholdFor` lifts it five
- * points per level of medicine above ordinary, and the tick has burned against that figure
- * since wanderers existed while this block read the flat sixty — so a survivor with a good
- * medic was told they were burning while the simulation had them merely stalled, and told
- * how many hours to safety against a line the tick was not using. It has always been wrong
- * and the radiation stat block repeated it into a second place on the page.
+ * **Rewritten 2026-08-27, when radiation stopped having a cliff.** There is no threshold
+ * to be past any more: the dose damages on a curve and smothers healing in proportion, so
+ * health per hour is one number that slides from +2 down through zero at about sixty-five
+ * rads. The three states survive because they are still three different situations a
+ * player is in — gaining, holding, losing — but they are now *read off the number* rather
+ * than off a line, and the number is the same one the tick applies.
  *
- * `regenRadCeiling` stays flat, and that is not an oversight: the tick's regen guard reads
- * `config.regenRadCeiling` directly. Medicine buys a higher tolerance for burning, not an
- * earlier return to healing, and the page must say what the tick does rather than what
- * would be tidier.
+ * That last part is the whole reason this function exists rather than the page doing its
+ * own arithmetic: `strainOf` read a flat threshold while the tick read a medicine-adjusted
+ * one for months, and told a camp with a good medic it was burning while the simulation
+ * had it merely stalled.
  */
 function strainOf(survivor, decayPerHour) {
   const rads = Number(survivor.radiation) || 0;
-  const until = (mark) => (rads <= mark ? 0 : (rads - mark) / decayPerHour);
-  const threshold = radThresholdFor(CONFIG.radThreshold, survivor?.skillMedicine);
+  const damage = radDamagePerHourAt(survivor, CONFIG);
 
-  if (rads >= threshold) {
-    const severity = (rads - threshold) / (100 - threshold);
-    return {
-      state: 'burning',
-      threshold,
-      damagePerHour: CONFIG.radDamagePerHour * severity,
-      hoursToSafe: until(threshold),
-      hoursToMending: until(CONFIG.regenRadCeiling),
-    };
+  // What the survivor is actually gaining or losing this hour, hunger aside — which is
+  // the figure the tick will apply and therefore the only honest thing to print.
+  const smothered = 1 - Math.min(100, Math.max(0, rads)) / 100;
+  const healing = CONFIG.regenPerHour * smothered;
+  const net = healing - damage;
+
+  // The dose at which this survivor stops gaining, which replaces the constant the page
+  // used to name. Solved by walking rather than algebraically: the curve's exponent is a
+  // tuning constant and a closed form here would silently stop being true if it moved.
+  let tipping = 100;
+  for (let r = 0; r <= 100; r += 0.5) {
+    const at = { ...survivor, radiation: r };
+    if (CONFIG.regenPerHour * (1 - r / 100) - radDamagePerHourAt(at, CONFIG) >= 0) tipping = r;
   }
 
-  if (rads >= CONFIG.regenRadCeiling) {
-    return {
-      state: 'stalled',
-      threshold,
-      damagePerHour: 0,
-      hoursToSafe: 0,
-      hoursToMending: until(CONFIG.regenRadCeiling),
-    };
-  }
+  const hoursTo = (mark) => (rads <= mark ? 0 : (rads - mark) / decayPerHour);
 
   return {
-    state: 'mending',
-    threshold,
-    damagePerHour: 0,
-    hoursToSafe: 0,
-    hoursToMending: 0,
+    state: net > 0.05 ? 'mending' : net < -0.05 ? 'burning' : 'stalled',
+    // Per hour, net, and signed the way the page reads it: what they are losing.
+    damagePerHour: Math.max(0, -net),
+    healingPerHour: Math.max(0, net),
+    // What healing would be with no dose at all, so the page can tell "healing" from
+    // "healing slowly" without keeping a second copy of a tuning constant.
+    fullHealing: CONFIG.regenPerHour,
+    tipping,
+    hoursToSafe: hoursTo(tipping),
+    // No longer "hours until healing starts" — healing has already started. This is how
+    // long until the dose is doing nothing worth naming.
+    hoursToMending: hoursTo(10),
   };
 }
 

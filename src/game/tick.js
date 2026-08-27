@@ -554,21 +554,45 @@ function simulateSurvivor(state, hours, at, events, config) {
 
 /** Health change for one slice. Damage ramps across each band rather than snapping on. */
 /**
- * The dose this survivor carries before it starts costing them.
+ * The dose this survivor is *effectively* carrying, after what they know about medicine.
  *
- * `radThreshold` was a single number for everybody, and it is the most decision-moving
- * number in the game: `tools/skill-sensitivity.mjs` measured radiation moving the right
- * answer on 44% of moments against 0% for health. So this is where medicine acts, and
- * the reason it acts here rather than on damage taken — softening hits is the obvious
- * first idea and was measured to be scenery, because a healthy survivor already cannot
- * die on a trip.
+ * Medicine used to lift a threshold: `radThresholdFor` gave a better medic five more
+ * points of tolerance per level, and below that line a dose cost nothing. With the line
+ * gone the same idea has to act on the same axis, so it shifts the dose down instead — a
+ * survivor with a good medic carries thirty rads as though they were twenty-five. The
+ * translation is exact: five points a level, in the direction that helps.
  *
- * Read at every site that asks the question, so a survivor cannot be judged mending by
- * one clause and irradiated by another. Ordinary medicine returns the constant exactly,
- * which is what makes this change free for a camp that has not met a wanderer yet.
+ * It acts here, on the dose, rather than on damage taken, and that is deliberate and
+ * measured. Softening hits is the obvious first idea and `tools/skill-sensitivity.mjs`
+ * found it to be scenery — health at 60 changes the right answer on 0 of 34,800
+ * occasions, because a healthy survivor already cannot die on a trip. Radiation moves it
+ * on 44%.
+ *
+ * Read at every site that asks, so a survivor cannot be judged mending by one clause and
+ * irradiated by another. Ordinary medicine returns the dose unchanged, which is what
+ * makes this free for a camp that has not met a wanderer yet.
  */
-function radLimit(survivor, config) {
-  return radThresholdFor(config.radThreshold, survivor?.skillMedicine);
+function effectiveRads(survivor, config) {
+  const relief = radThresholdFor(config.radThreshold, survivor?.skillMedicine) - config.radThreshold;
+  return Math.max(0, (Number(survivor?.radiation) || 0) - relief);
+}
+
+/**
+ * What a dose costs in health, per hour, on a curve rather than past a cliff.
+ *
+ * Every dose costs something and the cost accelerates, which is the whole change: under
+ * the threshold a further 25 rads was free at eight starting levels out of eleven, so the
+ * decision radiation offered existed only in a narrow band near sixty and was a foregone
+ * conclusion everywhere else.
+ *
+ * Exported because the page has to say the same thing the tick does. That is not a
+ * courtesy — `strainOf` read a flat threshold while the tick read a medicine-adjusted one
+ * for months, and told a camp with a good medic it was burning while the simulation had it
+ * merely stalled.
+ */
+export function radDamagePerHourAt(survivor, config = CONFIG) {
+  const rads = effectiveRads(survivor, config);
+  return config.radDamagePerHour * (rads / 100) ** config.radDamageExponent;
 }
 
 function healthDelta(survivor, hours, config) {
@@ -579,16 +603,27 @@ function healthDelta(survivor, hours, config) {
     delta -= config.starvationDamagePerHour * severity * hours;
   }
 
-  const limit = radLimit(survivor, config);
-  if (survivor.radiation >= limit) {
-    const severity = band(survivor.radiation, limit);
-    delta -= config.radDamagePerHour * severity * hours;
-  }
+  delta -= radDamagePerHourAt(survivor, config) * hours;
 
-  const comfortable =
-    survivor.hunger < config.regenHungerCeiling && survivor.radiation < config.regenRadCeiling;
-  if (comfortable && delta === 0) {
-    delta += config.regenPerHour * hours;
+  /*
+   * Healing fades with the dose rather than switching off past a line.
+   *
+   * Both halves of radiation now act on one axis and continuously: it damages on a curve,
+   * and it smothers recovery in proportion. Health per hour is simply the difference, and
+   * the point where that crosses zero lands at about sixty-five rads — within five of the
+   * threshold the game was already tuned around, which is the whole reason this is safe to
+   * do. The balance point is kept; the cliff is not.
+   *
+   * What it removes is a dead zone. Between twenty and sixty rads a survivor used to
+   * neither heal nor suffer, so forty points of the scale were the same point and a player
+   * had no way to tell whether thirty was better than fifty. It was not.
+   *
+   * Hunger keeps its gate, because starvation is a different kind of thing: you are fed or
+   * you are not, and there is no partial credit for a half-empty stomach.
+   */
+  if (survivor.hunger < config.regenHungerCeiling) {
+    const smothered = 1 - clamp(effectiveRads(survivor, config), 0, 100) / 100;
+    delta += config.regenPerHour * smothered * hours;
   }
 
   return delta;
@@ -599,12 +634,24 @@ function healthDelta(survivor, hours, config) {
  * @returns {boolean} whether anything was consumed
  */
 function rescue(survivor, at, events, config) {
-  const needed =
+  /*
+   * Which of the two is killing them, now that radiation has no line to be over.
+   *
+   * Both are rates once the cliff is gone, so the question is simply which is taking more
+   * health this hour — hunger only bites past its own threshold, and the dose always bites
+   * a little. That reads correctly at both ends: a survivor starving with ten rads reaches
+   * for food, and one at eighty rads with a full belly reaches for the Rad-X.
+   *
+   * The old test asked whether the dose was past a threshold, which under a curve would be
+   * asking whether it was past a number that no longer means anything.
+   */
+  const starving =
     survivor.hunger >= config.starvationThreshold
-      ? 'ration'
-      : survivor.radiation >= radLimit(survivor, config)
-        ? 'antirad'
-        : null;
+      ? config.starvationDamagePerHour * band(survivor.hunger, config.starvationThreshold)
+      : 0;
+  const irradiated = radDamagePerHourAt(survivor, config);
+
+  const needed = starving <= 0 && irradiated <= 0 ? null : starving >= irradiated ? 'ration' : 'antirad';
   if (!needed) return false;
 
   const item = survivor.inventory?.find((i) => i.kind === needed && i.qty > 0);
@@ -649,12 +696,23 @@ function kill(state, at, cause, events) {
   });
 }
 
+/**
+ * What to write on the stone.
+ *
+ * With no threshold to be over, "was it the radiation" becomes "was the radiation doing
+ * enough to matter". A survivor who starved carrying a trace of a dose died of hunger, and
+ * saying otherwise would make `radiation` the cause of almost every death — the curve is
+ * never quite zero.
+ *
+ * The bar is one health an hour: real damage rather than a rounding error, and about what
+ * seventy rads costs. Below that the dose was weather, not the killer.
+ */
 function causeOf(survivor, config) {
-  const limit = radLimit(survivor, config);
-  if (survivor.radiation >= limit && survivor.hunger < config.starvationThreshold) {
-    return 'radiation';
-  }
-  if (survivor.radiation >= limit) return 'starvation_and_radiation';
+  const irradiated = radDamagePerHourAt(survivor, config) >= 1;
+  const starving = survivor.hunger >= config.starvationThreshold;
+
+  if (irradiated && !starving) return 'radiation';
+  if (irradiated) return 'starvation_and_radiation';
   return 'starvation';
 }
 

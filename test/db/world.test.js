@@ -397,27 +397,46 @@ test('the page says what a radiation figure is costing, not only what it is', as
       return (await viewCamp(client, settlementId, now)).strain;
     };
 
-    // Burning: past the threshold, and the bleed ramps rather than being a flat rate,
-    // so "past 60" and "at 87" have to be different news.
-    const mild = await at(62);
-    const bad = await at(87);
+    // Rewritten 2026-08-27, when radiation stopped having a cliff. The three states are
+    // still three real situations — gaining, holding, losing — but they are read off the
+    // net rate now rather than off a line, so the doses that produce them have moved.
+
+    // Losing, and the bleed accelerates rather than ramping, so 75 and 95 are very
+    // different news. That was true before and is more true now.
+    const mild = await at(75);
+    const bad = await at(95);
     assert.equal(mild.state, 'burning');
     assert.equal(bad.state, 'burning');
     assert.ok(
-      bad.damagePerHour > mild.damagePerHour * 5,
-      `62 rads costs ${mild.damagePerHour}/h and 87 costs ${bad.damagePerHour}/h`,
+      bad.damagePerHour > mild.damagePerHour * 3,
+      `75 rads costs ${mild.damagePerHour}/h and 95 costs ${bad.damagePerHour}/h`,
     );
     assert.ok(mild.hoursToSafe > 0 && bad.hoursToSafe > mild.hoursToSafe);
 
-    // Stalled: nothing lost, nothing regained. The state a Deep Zone run leaves behind
-    // for the better part of two days, and the one the page said least about.
-    const stalled = await at(45);
+    // Holding: the dose takes about what rest gives back. It sits near the tipping point
+    // now rather than across a forty-point dead zone.
+    const stalled = await at(Math.round(mild.tipping));
     assert.equal(stalled.state, 'stalled');
-    assert.equal(stalled.damagePerHour, 0);
-    assert.ok(stalled.hoursToMending > 0, 'stalled means waiting for something');
+    assert.ok(stalled.damagePerHour < 0.1 && stalled.healingPerHour < 0.1);
 
-    // Mending: the only state in which waiting works, and the only one that says nothing.
-    const clear = await at(12);
+    // And the forty points that used to report nothing at all: between the old healing
+    // ceiling and the old threshold a survivor now heals, slowly, and the page says so.
+    // This is the whole of what removing the cliff bought.
+    const middling = await at(45);
+    assert.equal(middling.state, 'mending');
+    assert.ok(
+      middling.healingPerHour > 0 && middling.healingPerHour < middling.fullHealing,
+      `45 rads should heal slowly, got ${middling.healingPerHour}/h`,
+    );
+
+    const cleaner = await at(25);
+    assert.ok(
+      cleaner.healingPerHour > middling.healingPerHour,
+      'and 25 rads has to be better than 45, which under the old model it was not',
+    );
+
+    // Mending freely: the dose is doing nothing worth naming.
+    const clear = await at(5);
     assert.equal(clear.state, 'mending');
     assert.equal(clear.hoursToMending, 0);
 
@@ -458,32 +477,34 @@ test('the page burns at the threshold the tick burns at, not at the constant', a
       return (await viewCamp(client, settlementId, now)).strain;
     };
 
-    // 62 rads: past the flat threshold, and inside the tolerance a good medic buys.
-    const ordinary = await strainWith(ORDINARY, 62);
-    const skilled = await strainWith(ORDINARY + 2, 62);
+    // Medicine used to lift a threshold; with the cliff gone it shifts the dose down by
+    // the same five points a level, so the same reading has to come out better for a
+    // better medic. The property is unchanged even though the mechanism is not.
+    const ordinary = await strainWith(ORDINARY, 70);
+    const skilled = await strainWith(ORDINARY + 2, 70);
 
-    assert.equal(ordinary.state, 'burning', 'an ordinary survivor is past the line at 62');
-    assert.equal(skilled.state, 'stalled', 'a better medic is not, and the page must agree');
+    assert.ok(
+      skilled.damagePerHour < ordinary.damagePerHour,
+      `a better medic must suffer less at the same dose: ${skilled.damagePerHour} vs ${ordinary.damagePerHour}`,
+    );
+    assert.ok(
+      skilled.tipping > ordinary.tipping,
+      'and hold their own at a higher dose before they start losing',
+    );
 
-    assert.equal(ordinary.threshold, CONFIG.radThreshold);
-    assert.equal(skilled.threshold, radThresholdFor(CONFIG.radThreshold, ORDINARY + 2));
-    assert.ok(skilled.threshold > ordinary.threshold, 'medicine lifts the line');
-
-    // And the page agrees with the tick about where the line is, which is the whole point.
+    // The page reads the survivor in the database rather than a constant, which is the
+    // bug this test was written for and is still the thing worth pinning.
     const { rows } = await client.query(
       'select skill_medicine from characters where settlement_id = $1 and died_at is null',
       [settlementId],
     );
-    assert.equal(
-      skilled.threshold,
-      radThresholdFor(CONFIG.radThreshold, rows[0].skill_medicine),
-      'the page read a different survivor than the one in the database',
-    );
+    assert.equal(Number(rows[0].skill_medicine), ORDINARY + 2, 'the fixture took');
 
-    // Medicine buys tolerance for burning, not an earlier return to healing: the tick's
-    // regen guard reads the flat ceiling, so the page must too.
-    const stillStalled = await strainWith(ORDINARY + 4, CONFIG.regenRadCeiling + 1);
-    assert.equal(stillStalled.state, 'stalled', 'no amount of medicine starts healing early');
+    const poor = await strainWith(ORDINARY - 1, 70);
+    assert.ok(
+      poor.damagePerHour > ordinary.damagePerHour,
+      'and a worse medic suffers more, which the old threshold also said',
+    );
   });
 });
 
