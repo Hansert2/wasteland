@@ -8,6 +8,8 @@ import { viewCamp } from '../../src/services/view-camp.js';
 import { campPage } from '../../src/web/render.js';
 import { STRUCTURES } from '../../src/game/structures.js';
 import { STEPS } from '../../src/game/direction.js';
+import { CONFIG } from '../../src/game/constants.js';
+import { ORDINARY, radThresholdFor } from '../../src/game/wanderers.js';
 
 const T0 = Date.UTC(2287, 0, 1);
 const hours = (h) => h * 60 * 60 * 1000;
@@ -433,6 +435,55 @@ test('the page says what a radiation figure is costing, not only what it is', as
       filtered.hoursToMending < unfiltered.hoursToMending / 2,
       `filtration should more than halve the wait: ${unfiltered.hoursToMending} -> ${filtered.hoursToMending}`,
     );
+  });
+});
+
+test('the page burns at the threshold the tick burns at, not at the constant', async () => {
+  // Wrong since wanderers existed, and repeated into a second place on the page when the
+  // radiation stat block was added. `radThresholdFor` lifts the line five points per level
+  // of medicine above ordinary and the tick has always burned against that figure; the
+  // page read the flat sixty. A camp with a good medic was told it was burning while the
+  // simulation had it merely stalled, and told how many hours to safety against a line
+  // nothing was using.
+  await withRollback(async (client) => {
+    const { settlementId } = await seed(client);
+    const now = Date.now();
+
+    const strainWith = async (medicine, radiation) => {
+      await client.query(
+        `update characters set skill_medicine = $2, radiation = $3
+          where settlement_id = $1 and died_at is null`,
+        [settlementId, medicine, radiation],
+      );
+      return (await viewCamp(client, settlementId, now)).strain;
+    };
+
+    // 62 rads: past the flat threshold, and inside the tolerance a good medic buys.
+    const ordinary = await strainWith(ORDINARY, 62);
+    const skilled = await strainWith(ORDINARY + 2, 62);
+
+    assert.equal(ordinary.state, 'burning', 'an ordinary survivor is past the line at 62');
+    assert.equal(skilled.state, 'stalled', 'a better medic is not, and the page must agree');
+
+    assert.equal(ordinary.threshold, CONFIG.radThreshold);
+    assert.equal(skilled.threshold, radThresholdFor(CONFIG.radThreshold, ORDINARY + 2));
+    assert.ok(skilled.threshold > ordinary.threshold, 'medicine lifts the line');
+
+    // And the page agrees with the tick about where the line is, which is the whole point.
+    const { rows } = await client.query(
+      'select skill_medicine from characters where settlement_id = $1 and died_at is null',
+      [settlementId],
+    );
+    assert.equal(
+      skilled.threshold,
+      radThresholdFor(CONFIG.radThreshold, rows[0].skill_medicine),
+      'the page read a different survivor than the one in the database',
+    );
+
+    // Medicine buys tolerance for burning, not an earlier return to healing: the tick's
+    // regen guard reads the flat ceiling, so the page must too.
+    const stillStalled = await strainWith(ORDINARY + 4, CONFIG.regenRadCeiling + 1);
+    assert.equal(stillStalled.state, 'stalled', 'no amount of medicine starts healing early');
   });
 });
 

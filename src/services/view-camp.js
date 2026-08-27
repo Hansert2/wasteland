@@ -33,7 +33,7 @@ import {
 } from '../game/moments.js';
 import { openWithin, planFor } from '../game/planning.js';
 import { directionFor } from '../game/direction.js';
-import { WANDERERS, wandererFor } from '../game/wanderers.js';
+import { WANDERERS, radThresholdFor, wandererFor } from '../game/wanderers.js';
 import { stateAt, timelineOf } from '../game/timeline.js';
 import { CONFIG } from '../game/constants.js';
 import { LINKS, TRADE_POST_LINKS, linkCost, linkGives, neighbourFor } from '../game/road.js';
@@ -439,18 +439,31 @@ function reportOn(row, state, now) {
  * `decayPerHour` is passed in rather than read here because filtration changes it, and
  * the whole point of that upgrade is this number: a player weighing 60 fuel against it
  * should be able to see what it buys.
+ *
+ * **The threshold is the survivor's, not the constant.** `radThresholdFor` lifts it five
+ * points per level of medicine above ordinary, and the tick has burned against that figure
+ * since wanderers existed while this block read the flat sixty — so a survivor with a good
+ * medic was told they were burning while the simulation had them merely stalled, and told
+ * how many hours to safety against a line the tick was not using. It has always been wrong
+ * and the radiation stat block repeated it into a second place on the page.
+ *
+ * `regenRadCeiling` stays flat, and that is not an oversight: the tick's regen guard reads
+ * `config.regenRadCeiling` directly. Medicine buys a higher tolerance for burning, not an
+ * earlier return to healing, and the page must say what the tick does rather than what
+ * would be tidier.
  */
 function strainOf(survivor, decayPerHour) {
   const rads = Number(survivor.radiation) || 0;
   const until = (mark) => (rads <= mark ? 0 : (rads - mark) / decayPerHour);
+  const threshold = radThresholdFor(CONFIG.radThreshold, survivor?.skillMedicine);
 
-  if (rads >= CONFIG.radThreshold) {
-    const severity = (rads - CONFIG.radThreshold) / (100 - CONFIG.radThreshold);
+  if (rads >= threshold) {
+    const severity = (rads - threshold) / (100 - threshold);
     return {
       state: 'burning',
-      threshold: CONFIG.radThreshold,
+      threshold,
       damagePerHour: CONFIG.radDamagePerHour * severity,
-      hoursToSafe: until(CONFIG.radThreshold),
+      hoursToSafe: until(threshold),
       hoursToMending: until(CONFIG.regenRadCeiling),
     };
   }
@@ -458,7 +471,7 @@ function strainOf(survivor, decayPerHour) {
   if (rads >= CONFIG.regenRadCeiling) {
     return {
       state: 'stalled',
-      threshold: CONFIG.radThreshold,
+      threshold,
       damagePerHour: 0,
       hoursToSafe: 0,
       hoursToMending: until(CONFIG.regenRadCeiling),
@@ -467,7 +480,7 @@ function strainOf(survivor, decayPerHour) {
 
   return {
     state: 'mending',
-    threshold: CONFIG.radThreshold,
+    threshold,
     damagePerHour: 0,
     hoursToSafe: 0,
     hoursToMending: 0,
