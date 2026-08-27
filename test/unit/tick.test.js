@@ -5,7 +5,14 @@ import { applyTick } from '../../src/game/tick.js';
 import { CONFIG } from '../../src/game/constants.js';
 import { STRUCTURES } from '../../src/game/structures.js';
 
-const T0 = Date.UTC(2287, 0, 1);
+// Midday rather than midnight, and the reason is the sun. A trip's finds are scaled by
+// how much of it happened in daylight, so a fixture departing at midnight in deep
+// midwinter is a pure night trip — and the `chance: 1` find below, which several tests
+// read as a certainty, becomes a coin weighted by the season. Midday puts the four-hour
+// probe trip inside the shortest day of the year with hours to spare, where the clamp
+// makes a certain find certain again. This is the same lesson `test/db/expeditions.test.js`
+// already carries: a fixture that calls itself tuned must actually be tuned.
+const T0 = Date.UTC(2287, 0, 1, 9);
 const hours = (h) => h * 60 * 60 * 1000;
 const days = (d) => hours(24 * d);
 

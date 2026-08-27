@@ -4,9 +4,9 @@ import {
   activeAt,
   deriveEventsBetween,
   effectsOf,
-  integrateFactors,
   productionFactors,
 } from '../game/world-events.js';
+import { travelFactors } from '../game/daylight.js';
 import { answerTo, resolveExpedition } from '../game/expeditions.js';
 import {
   isOpen,
@@ -95,7 +95,7 @@ function reportOn(row, state, now) {
     region,
     survivor: state.survivor,
     seed,
-    weather: integrateFactors(overTheTrip, departedAt, returnsAt),
+    weather: travelFactors(overTheTrip, departedAt, returnsAt),
     choices,
     standings: state.settlement.standings,
   });

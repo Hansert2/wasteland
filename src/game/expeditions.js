@@ -13,7 +13,8 @@ import { stateAt, timelineOf } from './timeline.js';
  * @param {object} args.region   danger, loot ranges, finds, radiation
  * @param {object} args.survivor health, scavenging skill and pack at the moment of return
  * @param {number} args.seed
- * @param {{loot: number, radiation: number}} [args.weather] world events in force
+ * @param {{loot: number, radiation: number, finds: number}} [args.weather] what the world
+ *        did to this trip — the sky and the sun, composed by `travelFactors`
  * @param {{index: number, option: string}[]} [args.choices] answers to the trip's moments
  * @param {Record<string, number>} [args.standings] standing per faction, for a parley
  */
@@ -28,10 +29,14 @@ export function resolveExpedition({ region, survivor, seed, weather, choices, st
   // The sky follows the same rule for the same reason: it scales what a roll produced
   // and never how many rolls were taken, so a trip under clear skies is identical to
   // one taken before there was such a thing as weather.
-  const sky = { loot: 1, radiation: 1, ...weather };
+  //
+  // `finds` joins them and is the sun's, not the sky's — daylight turns things up and
+  // darkness misses them. It defaults to 1, which is also what a trip with as many hours
+  // of light as of dark comes out at, so the guarantee above still holds exactly.
+  const sky = { loot: 1, radiation: 1, finds: 1, ...weather };
 
   const loot = rollLoot(random, region, survivor, sky, log);
-  const finds = rollFinds(random, region, log);
+  const finds = rollFinds(random, region, sky, log);
   const radiation = rollRadiation(random, region, sky, log);
   const { damage, cause } = rollHazard(random, region, equipment, log);
 
@@ -473,11 +478,28 @@ function rollLoot(random, region, survivor, sky, log) {
   return loot;
 }
 
-function rollFinds(random, region, log) {
+/**
+ * What turned up out there, and how much the light had to do with it.
+ *
+ * The sun shifts each find's threshold rather than the number of draws taken, which is
+ * the rule gear and the sky both follow. Clamped, because a chance is a probability: the
+ * richest find in the game is `scavenged_parts` at 0.55 against a ceiling of 1.65, so
+ * nothing overflows today and something eventually will.
+ *
+ * **One asymmetry worth naming.** A find that misses does not draw for its quantity, so
+ * moving these thresholds can move how many draws this function takes, and therefore what
+ * `rollRadiation` and `rollHazard` see — where the sky's loot and dose factors only ever
+ * scale a result. The guarantee that matters is unaffected: at `finds: 1` the thresholds
+ * are identical and the whole stream is, which covers a clear sky, a trip with as much
+ * light as dark, and every trip taken before the sun existed. Past that the trip is
+ * meant to be different, and this is a slightly different kind of different.
+ */
+function rollFinds(random, region, sky, log) {
   const finds = [];
 
   for (const find of region.finds ?? []) {
-    if (!chance(random, find.chance)) continue;
+    const odds = Math.min(1, Math.max(0, find.chance * (sky.finds ?? 1)));
+    if (!chance(random, odds)) continue;
     const [min, max] = find.qty ?? [1, 1];
     const qty = intBetween(random, min, max);
     if (qty <= 0) continue;

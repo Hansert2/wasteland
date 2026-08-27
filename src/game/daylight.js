@@ -24,7 +24,12 @@
  * cannot be sent into it, and in high summer the night is six hours.
  */
 
-import { activeAt, nextBoundaryAfter, warmthOf } from './world-events.js';
+import {
+  activeAt,
+  integrateFactors,
+  nextBoundaryAfter,
+  warmthOf,
+} from './world-events.js';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
@@ -344,4 +349,34 @@ export function sunFactors(events, from, to) {
   }
 
   return { radiation: radiation / span, finds: finds / span };
+}
+
+/**
+ * Everything the world did to a trip, as one set of factors: `{ loot, radiation, finds }`.
+ *
+ * **One function, because two call sites must not compose this twice.** `returnExpedition`
+ * resolves a trip that has landed and `reportOn` describes one still in the air, and if
+ * they multiplied the same two things in two places the page would eventually describe a
+ * trip that did not happen. That failure has already happened once here in a smaller form;
+ * this is the shape that prevents it.
+ *
+ * The sky contributes haul and dose, integrated across the trip. The sun contributes dose
+ * and finds, integrated the same way. Dose is the one they share, and they compose
+ * multiplicatively on it: a daylight trip under a rad storm is dearer than either alone,
+ * which is both what the fiction says and what two independent scalings mean.
+ *
+ * Bulk loot belongs to the sky alone. That is the decision that keeps the Fence Line —
+ * ten minutes to the wire, no find table, no dose — exactly and automatically indifferent
+ * to the hour, instead of collecting a free multiplier on the highest-throughput region in
+ * the game.
+ */
+export function travelFactors(events, from, to) {
+  const sky = integrateFactors(events, from, to);
+  const sun = sunFactors(events, from, to);
+
+  return {
+    loot: sky.loot,
+    radiation: sky.radiation * sun.radiation,
+    finds: sun.finds,
+  };
 }

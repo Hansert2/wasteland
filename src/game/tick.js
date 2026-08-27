@@ -9,12 +9,8 @@ import {
   standingOf,
 } from './factions.js';
 import { nextRaidAt, resolveRaid } from './raids.js';
-import {
-  activeAt,
-  integrateFactors,
-  nextBoundaryAfter,
-  productionFactors,
-} from './world-events.js';
+import { activeAt, nextBoundaryAfter, productionFactors } from './world-events.js';
+import { travelFactors } from './daylight.js';
 import {
   campDefence,
   campWealth,
@@ -430,10 +426,10 @@ function returnExpedition(state, at, events) {
   const expedition = state.expedition;
   const survivor = state.survivor;
 
-  // The sky across the whole trip, not the sky at the hour they got back. A trip spans
-  // hours and the weather turns during it, so what it cost is the duration-weighted mean
-  // of what was in force — see `integrateFactors`, which also records the exploit that
-  // sampling at the return hour left open.
+  // What the world did across the whole trip, not what it was doing at the hour they got
+  // back: the sky and the sun both integrated between departure and return. See
+  // `travelFactors`, which is one function precisely so that this and `reportOn` cannot
+  // compose the same two things differently.
   //
   // `departedAt` rather than `at` less the region's travel hours: the same instant, and
   // the stored one cannot drift from the row the trip was dispatched with.
@@ -441,7 +437,7 @@ function returnExpedition(state, at, events) {
     region: expedition.region,
     survivor,
     seed: expedition.seed,
-    weather: integrateFactors(state.worldEvents, expedition.departedAt, at),
+    weather: travelFactors(state.worldEvents, expedition.departedAt, at),
     // Whatever the player answered while they were out. An empty list is the trip
     // exactly as it would have resolved before any of this existed.
     choices: expedition.choices,
