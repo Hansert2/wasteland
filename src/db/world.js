@@ -24,7 +24,8 @@ export async function settlementIdForPlayer(client, playerId) {
 export async function loadWorld(client, settlementId) {
   const { rows: settlements } = await client.query(
     `select id, last_tick_at, raid_seed, raid_count, next_raid_at,
-            caravan_seed, caravan_count, next_caravan_at
+            caravan_seed, caravan_count, next_caravan_at,
+            clock_offset_minutes, solar_noon_minutes
        from settlements where id = $1`,
     [settlementId],
   );
@@ -205,6 +206,16 @@ export async function loadWorld(client, settlementId) {
       // is scaled by how much of it happened in daylight, and which hours those were is a
       // question about this camp's sky rather than about Greenwich's.
       clockOffset: Number(settlement.clock_offset_minutes) || 0,
+      /*
+       * Where the sun peaks on that clock, in hours — see migration 016.
+       *
+       * `Number.isFinite` rather than `??`, because `Number(null)` is 0 and `Number(x)`
+       * never returns null: a nullish coalesce here never fires, and a missing column
+       * would land the camp's noon at midnight rather than at the default.
+       */
+      solarNoon: Number.isFinite(Number(settlement.solar_noon_minutes))
+        ? Number(settlement.solar_noon_minutes) / 60
+        : 12,
       // Read-only in the tick: standing feeds raid tempering, and only trades and
       // successions write it, so saveWorld deliberately does not carry it back.
       standings,

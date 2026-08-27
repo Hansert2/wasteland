@@ -75,11 +75,21 @@ const MEAN_DAYLIGHT_HOURS = 12;
 const DAYLIGHT_SWING_HOURS = 3;
 
 /**
- * Solar noon, in world hours.
+ * When the sun is highest, in hours on the camp's own clock.
  *
- * Fixed at midday rather than derived, because the world has one longitude by
- * construction. Daylight is symmetric about it, which is what keeps sunrise and sunset a
- * single number apart and lets everything below be stated in terms of that number.
+ * Twelve is the default and it is an assumption rather than a fact: it is true only for a
+ * camp sitting on its timezone's meridian. Amsterdam is about twenty minutes west of
+ * CEST's and an hour into summer time, so its sun peaks at 13:40 — and with noon hardcoded
+ * the model put sunrise at 05:24 against a real 06:47. The day *length* was right; the
+ * whole day was centred early.
+ *
+ * That is a second quantity from the clock offset and genuinely independent of it. What
+ * time is it here is something a browser knows; where the sun sits against that clock
+ * depends on longitude, and it does not. So it is stored per camp — see migration `016` —
+ * and passed in beside the offset.
+ *
+ * Daylight stays symmetric about it, which is what keeps sunrise and sunset a single
+ * number apart.
  */
 const SOLAR_NOON = 12;
 
@@ -129,9 +139,9 @@ export function daylightHoursAt(at) {
  * comfortably inside the day, so **the lit window never crosses midnight** and nothing
  * downstream has to handle a wrap.
  */
-export function sunAt(at) {
+export function sunAt(at, noon = SOLAR_NOON) {
   const hours = daylightHoursAt(at);
-  return { sunrise: SOLAR_NOON - hours / 2, sunset: SOLAR_NOON + hours / 2, hours };
+  return { sunrise: noon - hours / 2, sunset: noon + hours / 2, hours };
 }
 
 /** An instant shifted into a camp's own reckoning. */
@@ -150,25 +160,25 @@ export function hourAt(at, offset = 0) {
  * looking up. Both come off the same instant, so a camp with a clock and a camp without
  * are never describing different afternoons.
  */
-export function worldTimeAt(at, offset = 0) {
+export function worldTimeAt(at, offset = 0, noon = SOLAR_NOON) {
   requireInstant(at, 'worldTimeAt');
 
   const hour = hourAt(at, offset);
   return {
     hour: Math.floor(hour),
     minute: Math.floor((hour % 1) * 60),
-    band: bandAt(at, offset),
+    band: bandAt(at, offset, noon),
     daylightHours: daylightHoursAt(at),
-    ...sunAt(at),
+    ...sunAt(at, noon),
   };
 }
 
 /** Which of the five bands `at` falls in. */
-export function bandAt(at, offset = 0) {
+export function bandAt(at, offset = 0, noon = SOLAR_NOON) {
   requireInstant(at, 'bandAt');
 
   const hour = hourAt(at, offset);
-  const { sunrise, sunset, hours } = sunAt(at);
+  const { sunrise, sunset, hours } = sunAt(at, noon);
 
   if (hour < sunrise - DAWN_HOURS) return 'night';
   if (hour < sunrise) return 'before dawn';
@@ -187,15 +197,15 @@ export function bandAt(at, offset = 0) {
  * solved, because the boundaries are fractions of a daylight span that itself moves, and
  * a day is 1,440 of them.
  */
-export function nextBandChange(at, offset = 0) {
+export function nextBandChange(at, offset = 0, noon = SOLAR_NOON) {
   requireInstant(at, 'nextBandChange');
 
-  const here = bandAt(at, offset);
+  const here = bandAt(at, offset, noon);
   const minute = 60_000;
 
   for (let step = 1; step <= 24 * 60; step += 1) {
     const when = at + step * minute;
-    if (bandAt(when, offset) !== here) return when;
+    if (bandAt(when, offset, noon) !== here) return when;
   }
 
   return at + DAY_MS;
@@ -233,9 +243,9 @@ export function nextDegreeChange(events, at, capHours = 3) {
 }
 
 /** Whether the sun is up at `at`. */
-export function isLit(at, offset = 0) {
+export function isLit(at, offset = 0, noon = SOLAR_NOON) {
   const hour = hourAt(at, offset);
-  const { sunrise, sunset } = sunAt(at);
+  const { sunrise, sunset } = sunAt(at, noon);
   return hour >= sunrise && hour < sunset;
 }
 
@@ -255,7 +265,7 @@ export function isLit(at, offset = 0) {
  * Returns 0.5 — the neutral value, the one that scales nothing — for an empty window,
  * matching `integrateFactors` returning 1.0 for the same case.
  */
-export function daylightFraction(from, to, offset = 0) {
+export function daylightFraction(from, to, offset = 0, noon = SOLAR_NOON) {
   requireInstant(from, 'daylightFraction');
   requireInstant(to, 'daylightFraction');
 
@@ -274,7 +284,7 @@ export function daylightFraction(from, to, offset = 0) {
 
   for (let day = firstDay; day <= lastDay; day += 1) {
     const midnight = day * DAY_MS;
-    const { sunrise, sunset } = sunAt(midnight);
+    const { sunrise, sunset } = sunAt(midnight, noon);
 
     const litFrom = midnight + sunrise * HOUR_MS;
     const litTo = midnight + sunset * HOUR_MS;
@@ -289,9 +299,9 @@ export function daylightFraction(from, to, offset = 0) {
  * The same window as hours of light and hours of dark, which is what the dispatch table
  * says once the camp has a clock: "6h light, 3h dark".
  */
-export function splitOf(from, to, offset = 0) {
+export function splitOf(from, to, offset = 0, noon = SOLAR_NOON) {
   const span = Math.max(0, to - from) / HOUR_MS;
-  const light = daylightFraction(from, to, offset) * span;
+  const light = daylightFraction(from, to, offset, noon) * span;
   return { light, dark: span - light };
 }
 
@@ -441,7 +451,7 @@ export function coefficientsAt(climate) {
  * `finds: []`, no dose — is exactly and automatically indifferent to the hour rather than
  * collecting a free multiplier on the highest-throughput region in the game.
  */
-export function sunFactors(events, from, to, offset = 0) {
+export function sunFactors(events, from, to, offset = 0, noon = SOLAR_NOON) {
   requireInstant(from, 'sunFactors');
   requireInstant(to, 'sunFactors');
 
@@ -458,7 +468,7 @@ export function sunFactors(events, from, to, offset = 0) {
 
     const k = coefficientsAt(climateAt(cursor, activeAt(events, cursor)));
 
-    const lean = 2 * daylightFraction(cursor, next, offset) - 1;
+    const lean = 2 * daylightFraction(cursor, next, offset, noon) - 1;
 
     radiation += (1 + k.radiation * lean) * hours;
     finds += (1 + k.finds * lean) * hours;
@@ -487,9 +497,9 @@ export function sunFactors(events, from, to, offset = 0) {
  * to the hour, instead of collecting a free multiplier on the highest-throughput region in
  * the game.
  */
-export function travelFactors(events, from, to, offset = 0) {
+export function travelFactors(events, from, to, offset = 0, noon = SOLAR_NOON) {
   const sky = integrateFactors(events, from, to);
-  const sun = sunFactors(events, from, to, offset);
+  const sun = sunFactors(events, from, to, offset, noon);
 
   return {
     loot: sky.loot,
@@ -537,6 +547,9 @@ export function dayWindow(at, days = 0, offset = 0) {
  */
 export const DAY_REACH = 6;
 
+/** Noon on a camp's clock, in hours, for callers that have no camp to ask. */
+export const DEFAULT_SOLAR_NOON = SOLAR_NOON;
+
 export const FORECAST_STEP_MS = 15 * 60 * 1000;
 
 /**
@@ -547,7 +560,7 @@ export const FORECAST_STEP_MS = 15 * 60 * 1000;
  * the same reading — a forecast that drew the dark from one source and the temperature
  * from another could disagree with itself.
  */
-export function forecastSeries(events, from, to, step = FORECAST_STEP_MS, offset = 0) {
+export function forecastSeries(events, from, to, step = FORECAST_STEP_MS, offset = 0, noon = SOLAR_NOON) {
   requireInstant(from, 'forecastSeries');
   requireInstant(to, 'forecastSeries');
 
@@ -556,7 +569,7 @@ export function forecastSeries(events, from, to, step = FORECAST_STEP_MS, offset
     series.push({
       at,
       degrees: temperatureAt(at, activeAt(events, at), offset),
-      lit: isLit(at, offset),
+      lit: isLit(at, offset, noon),
     });
   }
 
@@ -570,7 +583,7 @@ export function forecastSeries(events, from, to, step = FORECAST_STEP_MS, offset
  * minute the light turns instead of on whichever sample happened to straddle it. A chart
  * whose shading is a step function of its own resolution looks like a rendering fault.
  */
-export function darkSpansBetween(from, to, offset = 0) {
+export function darkSpansBetween(from, to, offset = 0, noon = SOLAR_NOON) {
   requireInstant(from, 'darkSpansBetween');
   requireInstant(to, 'darkSpansBetween');
 
@@ -583,12 +596,12 @@ export function darkSpansBetween(from, to, offset = 0) {
 
   for (let day = firstDay - 1; day <= lastDay + 1; day += 1) {
     const midnight = day * DAY_MS;
-    const { sunrise, sunset } = sunAt(midnight);
+    const { sunrise, sunset } = sunAt(midnight, noon);
 
     // Dark runs from this day's sunset to the next day's sunrise. Taking it as one span
     // rather than two half-nights is what stops a band being cut at midnight.
     const darkFrom = midnight + sunset * HOUR_MS;
-    const darkTo = midnight + DAY_MS + sunAt(midnight + DAY_MS).sunrise * HOUR_MS;
+    const darkTo = midnight + DAY_MS + sunAt(midnight + DAY_MS, noon).sunrise * HOUR_MS;
 
     const start = Math.max(from, darkFrom - shift);
     const end = Math.min(to, darkTo - shift);

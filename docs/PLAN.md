@@ -1895,6 +1895,57 @@ at founding and kept as a column, so a camp does not change its sky when the ser
 the player travels, and an expedition still replays exactly. Reading the host's locale would
 have been the same class of mistake as reading `Date.now()` inside the tick.
 
+#### One number was doing two jobs
+
+**Corrected 2026-08-28, by the user, against a window.** The offset shipped and the sky was
+still wrong: on 27 August the game put dawn at 05:24 where Amsterdam's was 06:47. The day
+*length* was close — 13.2 hours against 13.8 — so nothing about the season was broken. The
+whole day was simply centred an hour and a half early.
+
+Because there are two quantities here and migration `015` shipped one of them.
+
+> **What time is it here** is the timezone offset, and a browser knows it.
+> **Where does the sun sit against that clock** is a different thing, and a browser cannot
+> know it.
+
+The second depends on how far the camp sits from its timezone's meridian, plus whatever
+summer time is doing — Amsterdam is about twenty minutes west of the CEST meridian and an
+hour into summer, so its solar noon is 13:40 rather than 12:00. `daylight.js` had `SOLAR_NOON
+= 12` as a constant and built the day symmetrically around it, which is right only for a camp
+standing on its own meridian. Shifting the *clock* by two hours moves the numbers on the face
+and the sun with them; it cannot move the sun *relative* to the face, and that is exactly the
+error that was left.
+
+So `settlements.solar_noon_minutes` (migration `016`), and `sunAt(at, noon)` takes it like
+every other hour-aware function takes the offset. Measured against the real sky on 28 August,
+with the camp set to 820:
+
+    sunrise   sunset   midpoint
+    07:03     20:16    13:40     the game
+    06:49     20:31    13:40     Amsterdam
+
+**The midpoint is now exact and the amplitude is deliberately not.** `DAYLIGHT_SWING_HOURS`
+is 3, so the modelled year runs 9 to 15 hours where Amsterdam's runs about 8 to 16.5. That is
+a balance constant — day length is a loot multiplier — and it is chosen rather than
+inherited. A camp that wanted a real latitude would change that number, and would have to
+re-run `daylight-balance.mjs` afterwards.
+
+**Why the default stays 720.** Noon is the idealised world and is correct for a camp on its
+meridian; it is also the only value that needs no knowledge the game does not have. A camp
+that wants its sky to match a real window sets its own, and nothing else in the game reads
+the column.
+
+**How it hid.** `loadWorld` never selected either clock column, so the tick ran on Greenwich
+and noon while the page ran on the camp's own — and both suites stayed green, because a
+default is quiet. The fix that mattered was less the query than the test now at
+`test/db/world.test.js`, which asserts the *tick* sees the columns rather than that the page
+does. The second bug in the same hour was `(Number(x) ?? 720)`, which never fires: `Number()`
+returns `NaN` for garbage and `0` for `null`, never nullish, so a missing column would have
+landed noon at midnight rather than at the default. Both are the same lesson —
+
+> **A default that is never observed to be a default is indistinguishable from a wire that
+> was never connected.**
+
 Five bands, always free to read: *before dawn*, *morning*, *the heat of the day*,
 *evening*, *night*. Their boundaries move with the season, which costs one cosine term
 and is the only thing the year is for.

@@ -558,6 +558,13 @@ test('the camp keeps its own hour, and the weather keeps the world', async () =>
     // hour rather than the one the viewer's own machine happens to be in.
     assert.equal(west.hour.offset, -420);
 
+    // The tick reads them too, not just the page. `loadWorld` did not select either
+    // column at first, so the simulation silently used Greenwich and noon while the page
+    // showed the camp's own hour — and every test passed, because defaults are quiet.
+    const world = await loadWorld(client, settlementId);
+    assert.equal(world.settlement.clockOffset, -420, 'the tick reads the camp clock');
+    assert.equal(world.settlement.solarNoon, 12, 'and where its sun sits');
+
     // And the sky is untouched: the same instant is the same weather everywhere, because
     // `world_events` is keyed on the world and not on the camp.
     assert.deepEqual(

@@ -8,8 +8,9 @@ import {
   productionFactors,
 } from '../game/world-events.js';
 import {
-  climateAt,
   DAY_REACH,
+  DEFAULT_SOLAR_NOON,
+  climateAt,
   darkSpansBetween,
   dayWindow,
   forecastSeries,
@@ -91,10 +92,10 @@ const DAY_MS = 24 * HOUR_MS;
  * be stated before one is chosen, so the strip answers the question it can — what going
  * out now is worth — and leaves the rest to the trip.
  */
-function hourStrip(state, now, fitted, clock = 0) {
+function hourStrip(state, now, fitted, clock = 0, noon = DEFAULT_SOLAR_NOON) {
   const active = activeAt(state.worldEvents, now);
-  const time = worldTimeAt(now, clock);
-  const lit = isLit(now, clock);
+  const time = worldTimeAt(now, clock, noon);
+  const lit = isLit(now, clock, noon);
 
   // The sun at this instant: full daylight or full dark, since an instant is one or the
   // other. `2d - 1` is +1 or -1, so the factors are simply 1 plus or minus the
@@ -137,15 +138,15 @@ function hourStrip(state, now, fitted, clock = 0) {
      */
     refreshAt: new Date(
       Math.min(
-        nextBandChange(now, clock),
-        nextTurnOfLight(now, clock),
+        nextBandChange(now, clock, noon),
+        nextTurnOfLight(now, clock, noon),
         hasGlass ? nextDegreeChange(state.worldEvents ?? [], now) : Infinity,
       ),
     ),
-    turnsHour: hasClock ? worldTimeAt(nextTurnOfLight(now, clock), clock).hour : null,
-    turnsMinute: hasClock ? worldTimeAt(nextTurnOfLight(now, clock), clock).minute : null,
+    turnsHour: hasClock ? worldTimeAt(nextTurnOfLight(now, clock, noon), clock, noon).hour : null,
+    turnsMinute: hasClock ? worldTimeAt(nextTurnOfLight(now, clock, noon), clock, noon).minute : null,
     turning: lit ? 'sunset' : 'sunrise',
-    roughly: hasClock ? null : roughLight(now, lit, clock),
+    roughly: hasClock ? null : roughLight(now, lit, clock, noon),
 
     // The glass: the temperature, and the sun's numbers rather than its direction.
     glass: hasGlass,
@@ -191,7 +192,7 @@ function clampDay(day) {
  * The horizon is a design decision rather than a limit of the arithmetic; see
  * `FORECAST_HOURS`.
  */
-async function forecastOf(client, now, days, clock = 0) {
+async function forecastOf(client, now, days, clock = 0, noon = DEFAULT_SOLAR_NOON) {
   const { from, to: until } = dayWindow(now, days, clock);
 
   /*
@@ -213,7 +214,7 @@ async function forecastOf(client, now, days, clock = 0) {
       : [];
   const events = [...stored, ...ahead];
 
-  const series = forecastSeries(events, from, until, undefined, clock);
+  const series = forecastSeries(events, from, until, undefined, clock, noon);
   const degrees = series.map((point) => point.degrees);
 
   return {
@@ -230,7 +231,7 @@ async function forecastOf(client, now, days, clock = 0) {
       degrees: Math.round(point.degrees * 10) / 10,
       lit: point.lit,
     })),
-    dark: darkSpansBetween(from, until, clock),
+    dark: darkSpansBetween(from, until, clock, noon),
     /*
      * Sunrise and sunset for this day, as instants and as readings.
      *
@@ -242,14 +243,14 @@ async function forecastOf(client, now, days, clock = 0) {
      */
     turns: (() => {
       const shift = clock * 60_000;
-      const { sunrise, sunset } = sunAt(from + shift);
+      const { sunrise, sunset } = sunAt(from + shift, noon);
       return [
         { kind: 'sunrise', at: from + sunrise * HOUR_MS },
         { kind: 'sunset', at: from + sunset * HOUR_MS },
       ].map((turn) => ({
         ...turn,
-        hour: worldTimeAt(turn.at, clock).hour,
-        minute: worldTimeAt(turn.at, clock).minute,
+        hour: worldTimeAt(turn.at, clock, noon).hour,
+        minute: worldTimeAt(turn.at, clock, noon).minute,
       }));
     })(),
     // Only what is in force during the window, and only the kinds that do something —
@@ -272,12 +273,12 @@ async function forecastOf(client, now, days, clock = 0) {
 }
 
 /** The next instant the light turns, sunrise or sunset, whichever comes first. */
-function nextTurnOfLight(now, clock = 0) {
+function nextTurnOfLight(now, clock = 0, noon = DEFAULT_SOLAR_NOON) {
   const shift = clock * 60_000;
   const today = Math.floor((now + shift) / DAY_MS) * DAY_MS;
 
   for (const day of [today, today + DAY_MS]) {
-    const { sunrise, sunset } = sunAt(day);
+    const { sunrise, sunset } = sunAt(day, noon);
     for (const hour of [sunrise, sunset]) {
       const at = day + hour * HOUR_MS - shift;
       if (at > now) return at;
@@ -288,8 +289,8 @@ function nextTurnOfLight(now, clock = 0) {
 }
 
 /** How much of the day is left, for a camp with no clock to read it off. */
-function roughLight(now, lit, clock = 0) {
-  const hours = (nextTurnOfLight(now, clock) - now) / HOUR_MS;
+function roughLight(now, lit, clock = 0, noon = DEFAULT_SOLAR_NOON) {
+  const hours = (nextTurnOfLight(now, clock, noon) - now) / HOUR_MS;
 
   if (!lit) return hours < 2 ? 'the sky is going grey' : 'a long way from light';
   if (hours < 1) return 'the light is nearly gone';
@@ -326,7 +327,13 @@ function reportOn(row, state, now) {
     region,
     survivor: state.survivor,
     seed,
-    weather: travelFactors(overTheTrip, departedAt, returnsAt, state.settlement.clockOffset ?? 0),
+    weather: travelFactors(
+      overTheTrip,
+      departedAt,
+      returnsAt,
+      state.settlement.clockOffset ?? 0,
+      state.settlement.solarNoon ?? DEFAULT_SOLAR_NOON,
+    ),
     choices,
     standings: state.settlement.standings,
   });
@@ -559,7 +566,7 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
 
   const { rows: settlements } = await client.query(
     `select name, founded_at, next_raid_at, caravan_seed, caravan_count, next_caravan_at,
-            clock_offset_minutes
+            clock_offset_minutes, solar_noon_minutes
        from settlements where id = $1`,
     [settlementId],
   );
@@ -648,10 +655,24 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
    */
   const clock = Number(settlements[0].clock_offset_minutes) || 0;
 
+  /*
+   * When the sun is highest on that clock, in hours.
+   *
+   * A second quantity from the offset and independent of it — see migration `016`. The
+   * offset says what time it is here; this says where the sun sits against it, which
+   * depends on longitude and on summer time and which nothing but the player knows.
+   */
+  // `Number.isFinite` and not `??`: `Number(null)` is 0 and `Number()` never returns
+  // null, so a nullish coalesce never fires and a missing column would put noon at
+  // midnight. The tick had exactly that bug for twenty minutes and every test passed.
+  const noon = Number.isFinite(Number(settlements[0].solar_noon_minutes))
+    ? Number(settlements[0].solar_noon_minutes) / 60
+    : DEFAULT_SOLAR_NOON;
+
   // Only when there is a glass to read it with: the query is cheap and the derivation is
   // cheaper, but a camp that cannot see the week should not be paying for a week's rows.
   const forecast = fitted.has('glass')
-    ? await forecastOf(client, now, clampDay(day), Number(settlements[0].clock_offset_minutes) || 0)
+    ? await forecastOf(client, now, clampDay(day), clock, noon)
     : null;
 
   // What the camp can actually pay with: stores, and what is on the survivor.
@@ -1109,7 +1130,7 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
      * cost they cannot plan around. What fuel buys is precision: the clock sells the hour
      * and the exact turn of the light, the glass sells the temperature and the numbers.
      */
-    hour: hourStrip(state, now, fitted, clock),
+    hour: hourStrip(state, now, fitted, clock, noon),
     /**
      * The week ahead, and the whole of what the glass is worth its fuel for.
      *
