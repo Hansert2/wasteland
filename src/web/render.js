@@ -449,6 +449,9 @@ const STYLE = `
   /* Descendant, not child: four of these sit inside a lane on the Survivor view. */
   main section { display: none; margin: 0; }
   main #s-hour { display: block; }
+  /* Records is not one of the camp's views, so it is revealed by name like the shell's
+     own blocks rather than through PANES. */
+  body[data-pane="records"] #s-records { display: block; }
   main #s-error { display: block; }
   /*
    * Contact, on every view, for the reason the error box is on every view.
@@ -2308,7 +2311,17 @@ const NOTHING = {
  *
  * The graveyard stays at the bottom. It is the one thing on the page that is finished.
  */
-export function campPage(view, { error, pane = 'camp' } = {}) {
+/**
+ * The parts of the page that belong to the camp rather than to any view of it.
+ *
+ * The mark, who this camp is, its stores, the hour across the top, the error box and
+ * whatever is on the wire. Every one of them is true on all five views, and Records had
+ * none of them — because it is a separate `layout()` call and simply never grew them.
+ *
+ * Written once and called twice, so that cannot happen again. A sixth page gets the shell
+ * by using this; a page that does not use it is visibly not a view of the camp.
+ */
+function shell(view, pane, { error, inner }) {
   const identity = section('head', `
     <div class="who">
       <span class="tag">Camp</span>
@@ -2317,36 +2330,26 @@ export function campPage(view, { error, pane = 'camp' } = {}) {
          founded ${escape(view.foundedAt.toISOString().slice(0, 10))}</p>
     </div>`);
 
-  return layout(view.name, `<div class="shell">
+  return `<div class="shell">
     ${rail(pane, identity, section('stores', renderResources(view.resources)))}
     <main>
-    ${/*
-      * The first thing in the content column, and revealed on every view by hand — the
-      * pattern the error box and the Contact box already use, rather than a sixth entry
-      * in every pane.
-      *
-      * It took three attempts to land here and both failures are worth the line. Dropped
-      * inside `.shell` it auto-placed into the rail's own grid cell, 198px wide and
-      * underneath it: rendered, validated, invisible. Lifted out above the shell it
-      * pushed the whole card down, so the rail no longer reached the top of the page —
-      * and once it was sticky, its own fill scrolled over the crest. Inside the column it
-      * belongs to, it simply sits where it should and the rail is never touched.
-      */ ''}
     ${section('hour', hourBar(view.hour))}
-    ${/*
-      * Everything but the strip, in a wrapper that carries whatever arrangement the view
-      * wants. The Survivor view turns this into two columns; the strip stays a child of
-      * the column itself.
-      *
-      * That split is what makes the strip sticky on the one view where it matters most.
-      * A sticky box is confined to its containing block, and for a grid item that is its
-      * grid area — one auto-sized row, exactly its own height, with nowhere to travel. As
-      * a flex child of a tall column it has the whole page to stay put against.
-      */ ''}
     <div class="stream">
     ${section('error', error ? `<p class="error">${escape(error)}</p>` : '')}
-
     ${section('moment', renderMoment(view.expedition))}
+    ${inner}
+    </div>
+    </main>
+    ${EXIT}
+  </div>`;
+}
+
+export function campPage(view, { error, pane = 'camp' } = {}) {
+  return layout(
+    view.name,
+    shell(view, pane, {
+      error,
+      inner: `
     ${section('raid', renderRaidWarning(view.raidExpectedAt))}
     ${section('sky', renderWeather(view.weather))}
     ${section('forecast', renderForecast(view.forecast))}
@@ -2417,11 +2420,10 @@ export function campPage(view, { error, pane = 'camp' } = {}) {
     ${section('post', renderPost(view.post, Boolean(view.survivor)))}
     ${section('standings', renderStandings(view.standings))}
 
-    ${section('roster', renderRoster(view.fallenCount))}
-    </div>
-    </main>
-    ${EXIT}
-  </div>`, { pane });
+    ${section('roster', renderRoster(view.fallenCount))}`,
+    }),
+    { pane },
+  );
 }
 
 /**
@@ -4161,22 +4163,32 @@ export function graveyardPage(view) {
        ${escape(new Date(view.holding.bornAt).toISOString().slice(0, 10))}.</p>`
     : '<p class="standing-empty">Nobody holds the camp.</p>';
 
-  const identity = `<div class="who">
-      <span class="tag">Camp</span>
-      <h1>${escape(view.name)}</h1>
-      <p>founded ${escape(view.foundedAt.toISOString().slice(0, 10))}</p>
-    </div>`;
-
-  return layout(`${view.name} — the fallen`, `<div class="shell">
-    ${rail('records', identity)}
-    <main>
-      <p class="page-title">The fallen of ${escape(view.name)}</p>
-      <p>The camp outlives its people.</p>
-      ${holding}
-      ${view.fallen.length === 0 ? '<p>Nobody has died here yet.</p>' : `<div class="stones">${stones}</div>`}
-    </main>
-    ${EXIT}
-  </div>`, { pane: 'records' });
+  /*
+   * The same shell as every other view, which it did not have.
+   *
+   * This page built its own rail, with an identity that was not even a section — so it
+   * could not swap — and no stores, no hour and no Contact box. The stores climb here as
+   * anywhere; the hour turns; and a moment's window is measured in tens of minutes and is
+   * gone if nobody answers it. A player who wandered into Records at the wrong moment was
+   * never shown the box at all.
+   *
+   * `s-records` is its own section so it swaps like the rest, and it is revealed by name
+   * the way the error box and Contact are rather than through `PANES`, which lists the
+   * blocks of the camp page.
+   */
+  return layout(
+    `${view.name} — the fallen`,
+    shell(view, 'records', {
+      inner: section(
+        'records',
+        `<p class="page-title">The fallen of ${escape(view.name)}</p>
+         <p>The camp outlives its people.</p>
+         ${holding}
+         ${view.fallen.length === 0 ? '<p>Nobody has died here yet.</p>' : `<div class="stones">${stones}</div>`}`,
+      ),
+    }),
+    { pane: 'records' },
+  );
 }
 
 /**

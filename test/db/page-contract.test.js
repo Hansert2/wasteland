@@ -246,6 +246,37 @@ test('each view has something on it, and Contact is on all of them', async () =>
   );
 });
 
+test('Records is a view of the camp, not a page beside it', async () => {
+  /*
+   * Records had its own `layout()` call and grew none of the shell: no stores, no hour,
+   * and no Contact box. The first two are a rail that stops climbing; the third is the
+   * one that matters, because a moment's window is measured in tens of minutes and is
+   * gone if nobody answers it. A player who wandered in at the wrong time was never shown
+   * the box at all — and the test above this one could not see it, because it reads the
+   * camp page and Records is not one of its panes.
+   *
+   * Pinned by id rather than by looks: these are what the client script finds its work
+   * with, so a Records page that renders them under different ids is the same failure
+   * wearing a different mask.
+   */
+  const records = STATES.graveyard;
+
+  for (const id of ['s-head', 's-stores', 's-hour', 's-moment', 's-error', 's-records']) {
+    assert.match(records, new RegExp(`<section id="${id}">`), `Records is missing ${id}`);
+  }
+
+  // The stores climb here as anywhere, which is the whole of what they are for.
+  assert.ok(
+    [...records.matchAll(/data-amount="[^"]*"/g)].length >= 4,
+    'the rail on Records does not carry live stores',
+  );
+
+  // And the shell is the shared one rather than a second copy that happens to match
+  // today: the camp page's own blocks must not have followed it in.
+  assert.ok(!records.includes('id="s-structures"'), 'Records grew the camp page with it');
+  assert.ok(!records.includes('id="s-forecast"'), 'Records grew the camp page with it');
+});
+
 test('every gauge says what its number counts, in a place the note script can find', async () => {
   /*
    * Played on 2026-08-24: the Survivor block read `HUNGER 0.0` and `RADIATION 0.7` and

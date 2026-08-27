@@ -9,6 +9,28 @@ import { viewCamp } from '../../src/services/view-camp.js';
 import { foundSettlement, raiseSuccessor } from '../../src/services/settlement-lifecycle.js';
 import { ORDINARY } from '../../src/game/wanderers.js';
 import { slotAt } from '../../src/game/world-events.js';
+import { daylightFraction } from '../../src/game/daylight.js';
+
+/**
+ * The next instant from which a trip of `hours` is wholly in daylight.
+ *
+ * Needed because the sun scales what a trip turns up: in the dark a find is drawn against
+ * a threshold below its own chance, so a `chance: 1` find is no longer a certainty and a
+ * test asserting one lands passes or fails depending on the hour the suite happens to run.
+ * That is the shape this file already flaked in once, and the answer is the same one —
+ * pin the thing that was being left to chance rather than loosen the assertion.
+ *
+ * Daylight rather than dark because the factor is clamped at one: in the sun a certainty
+ * stays a certainty, which is the only condition under which this test means what it says.
+ */
+function inDaylight(from, hours) {
+  const HOUR = 60 * 60 * 1000;
+  for (let step = 0; step <= 48 * 4; step += 1) {
+    const at = from + step * 15 * 60 * 1000;
+    if (daylightFraction(at, at + hours * HOUR) === 1) return at;
+  }
+  throw new Error('no daylight window that long, which cannot be right');
+}
 import { InputError } from '../../src/errors.js';
 
 const hours = (h) => h * 60 * 60 * 1000;
@@ -165,7 +187,8 @@ test('a found item ends up in the pack', async () => {
        on conflict (slug) do nothing`,
     );
 
-    const now = Date.now();
+    // Sent in daylight on purpose: see `inDaylight`. The region's trip is four hours.
+    const now = inDaylight(Date.now(), 4);
     await dispatchExpedition(client, settlementId, slug, now);
     await advanceSettlement(client, settlementId, now + hours(5));
 

@@ -1,3 +1,5 @@
+import { viewCamp } from './view-camp.js';
+
 /**
  * Everyone who has held this camp, and what it cost them.
  *
@@ -7,15 +9,21 @@
  * survivor's pack or their expedition history, so what someone was carrying when they
  * starved is still sitting in `inventory_items` waiting to be read.
  *
- * No tick here. The dead do not change, so there is nothing to advance — this is the
- * one page that can be rendered from a plain read.
+ * **The dead do not change; everything around them does.** This page skipped the tick on
+ * the grounds that a graveyard has nothing to bring up to date, which is true of the
+ * graves and was quietly wrong about the page: the rail's stores climb, the hour turns,
+ * and a Contact window opens and closes on a timer. Records was the one view where all
+ * three were simply absent — a player who wandered in during a moment's window would find
+ * it gone, having never been shown it.
+ *
+ * So the camp's own view is built first and this adds the graves to it. One call rather
+ * than a second copy of the shell: the camp page and this one now render the same rail,
+ * the same strip and the same box, and cannot drift apart because there is nothing to
+ * drift from. It costs a handful of queries on a page nobody loads twice a minute, which
+ * is the cheaper half of the trade.
  */
-export async function viewGraveyard(client, settlementId) {
-  const { rows: settlements } = await client.query(
-    'select name, founded_at from settlements where id = $1',
-    [settlementId],
-  );
-  if (!settlements[0]) throw new Error(`no settlement ${settlementId}`);
+export async function viewGraveyard(client, settlementId, now = Date.now()) {
+  const camp = await viewCamp(client, settlementId, now);
 
   const { rows: fallen } = await client.query(
     `select h.id, h.name, h.born_at, h.died_at, h.cause_of_death, h.days_survived,
@@ -56,8 +64,9 @@ export async function viewGraveyard(client, settlementId) {
   );
 
   return {
-    name: settlements[0].name,
-    foundedAt: settlements[0].founded_at,
+    // Everything the shell needs — name, stores, the hour, whatever is on the wire —
+    // comes through unchanged, so the page below can be the same page.
+    ...camp,
     holding: living[0] ? { name: living[0].name, bornAt: living[0].born_at } : null,
     fallen: fallen.map((row) => ({
       name: row.name,

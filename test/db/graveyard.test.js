@@ -49,6 +49,16 @@ const bury = async (client, settlementId, at, cause = 'starvation') => {
 /** A fixed clock, well in the past, so every lifespan is positive and known. */
 const T0 = Date.now() - hours(500);
 
+/*
+ * The graveyard advances the camp now, which it did not used to.
+ *
+ * Records was the one page rendered from a plain read, on the grounds that the dead do
+ * not change — true of the graves, and quietly wrong about the rail beside them. It runs
+ * the tick like every other view, so these fixtures have to name the instant they are
+ * asking about instead of letting it default to the wall clock: `T0` is five hundred
+ * hours ago, and a camp advanced five hundred hours starves whoever is holding it.
+ */
+
 test('a camp nobody has died in has an empty graveyard', async () => {
   await withRollback(async (client) => {
     const settlementId = await setup(client);
@@ -56,7 +66,7 @@ test('a camp nobody has died in has an empty graveyard', async () => {
     // gets whoever that is. See src/game/wanderers.js.
     const { wanderer } = await raiseSuccessor(client, settlementId);
 
-    const view = await viewGraveyard(client, settlementId);
+    const view = await viewGraveyard(client, settlementId, Date.now());
     assert.deepEqual(view.fallen, []);
     assert.equal(view.holding.name, wanderer.name, 'and says who is holding it');
   });
@@ -71,7 +81,7 @@ test('the fallen are remembered with what it cost them', async () => {
       now: T0 + hours(49),
     });
 
-    const view = await viewGraveyard(client, settlementId);
+    const view = await viewGraveyard(client, settlementId, T0 + hours(50));
     assert.equal(view.fallen.length, 1);
 
     const dead = view.fallen[0];
@@ -101,7 +111,7 @@ test('the dead are listed most recent first', async () => {
     // anyone twice — which is what the prime count in WANDERERS buys.
     assert.equal(new Set(held).size, 3, `three arrivals, three people: ${held}`);
 
-    const view = await viewGraveyard(client, settlementId);
+    const view = await viewGraveyard(client, settlementId, clock);
     assert.deepEqual(
       view.fallen.map((f) => f.name),
       [...held].reverse(),
@@ -131,7 +141,7 @@ test('a memorial records the trips they made and where they went last', async ()
     await advanceSettlement(client, settlementId, now + hours(5));
     await bury(client, settlementId, now + hours(6));
 
-    const view = await viewGraveyard(client, settlementId);
+    const view = await viewGraveyard(client, settlementId, now + hours(7));
     assert.equal(view.fallen[0].trips, 1);
     assert.equal(view.fallen[0].lastRegion, 'The Long Walk');
   });
@@ -152,7 +162,7 @@ test('and what they were still carrying', async () => {
     );
     await bury(client, settlementId, T0 + hours(30), 'radiation');
 
-    const view = await viewGraveyard(client, settlementId);
+    const view = await viewGraveyard(client, settlementId, T0 + hours(31));
     assert.deepEqual(view.fallen[0].carrying, [{ name: 'Rad-X', qty: 2 }]);
   });
 });
@@ -163,7 +173,7 @@ test('an empty pack is remembered as an empty pack, not as missing data', async 
     await raiseSuccessor(client, settlementId, { name: 'Vera', now: T0 });
     await bury(client, settlementId, T0 + hours(30));
 
-    const view = await viewGraveyard(client, settlementId);
+    const view = await viewGraveyard(client, settlementId, T0 + hours(31));
     assert.deepEqual(view.fallen[0].carrying, []);
     assert.equal(view.fallen[0].trips, 0);
     assert.equal(view.fallen[0].lastRegion, null);
