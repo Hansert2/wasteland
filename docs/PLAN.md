@@ -1960,6 +1960,52 @@ This is *not* a claim that it fixes it. It is a claim that `tools/fuel-balance.m
 re-run afterwards, and that tuning the inversion before this lands would be tuning against
 a number about to move.
 
+
+#### Re-run 2026-08-27, and the number did not move
+
+**It does not give the inversion a move. The paragraph above was wrong, and measuring is
+the only reason anyone knows.** Coastal Wreckage still sustains 19.4 fuel/day against the
+Deep Zone's 13.7 — within noise of the 13.1 on record — and no policy available to a
+player closes it.
+
+`fuel-balance.mjs` gained a player who *waits for the dark*: attentive, but holding out for
+a departure at least half in the night rather than taking the first legal hour. Both a
+patient version and a realistic one were run.
+
+    region              attentive   waits <=3h   waits <=24h   + filtration
+    Coastal Wreckage         19.4         19.4          19.4           19.4
+    The Deep Zone            13.7         13.6          13.3           18.0
+    The Waterworks           14.4         14.4          14.2           19.8
+    Harrow End               19.0         19.0          19.0           22.1
+
+**Timing the departure is worth nothing on the fuel regions, and a long wait is worth less
+than nothing.** The reason is structural and is already visible in the reach table below:
+the lever needs *full reach* and *heavy dose* in the same region, and the map has no such
+region. Everything with the whole range of `d` available is nine hours or under and doses
+two to eight rads; everything that doses twenty-five or more is eighteen hours or longer,
+where `d` is compressed to 0.33-0.66 and half of even that is unreachable without waiting
+out the swing. The one place both conditions meet is Irradiated Farmland, which is the one
+already recorded as over the bound - and it pays in food.
+
+**What actually closes the inversion is filtration, which already exists.** It lifts the
+Deep Zone to 18.0 and the Waterworks to 19.8, and puts Harrow End at 22.1, above Coastal
+Wreckage. So danger 5 out-earns danger 4 for a camp that has bought the thing the fuel
+track sells for exactly this purpose, and does not for one that has not. The inversion is
+therefore narrower than the queue entry says: it is the Deep Zone and the Waterworks,
+unfiltered, and Harrow End already matches Coastal Wreckage without help.
+
+**None of this makes the sun a bad mechanic; it makes it a different one.** It is a
+tiebreaker at the moment of dispatch - the hour says whether *now* is a good time to go -
+and not a strategy to hold out for. What it measurably moves is finds and bench time on
+the near and middle rungs, which is where the reach is.
+
+**Also found: the instrument was broken by the phase it was meant to measure.**
+`fuel-balance.mjs`, `balance.mjs` and `onboarding.mjs` each build an expedition by hand and
+none set `departedAt`, so `travelFactors` threw the moment it was asked for a window. That
+is `integrateFactors` refusing a missing bound rather than quietly returning clear skies -
+the guard written on the grounds that a silent 1.0 would disable the weather everywhere and
+look like nothing had happened. It earned its place on its first outing.
+
 **How much of `d` a player can actually choose, measured rather than asserted.** The first
 draft of this section claimed the long regions "wash out to `d ≈ 0.5`" and that was too
 strong — it was reasoned about rather than worked out. `tools/daylight-reach.mjs` computes

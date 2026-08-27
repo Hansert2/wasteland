@@ -65,7 +65,7 @@ function play(minutes, { withFence }) {
         actions.push({ at: now, what: 'returned from the fence line' });
       }
       state.expedition = {
-        id: `e${seed}`, status: 'active', returnsAt: now + TRAVEL * HOUR,
+        id: `e${seed}`, status: 'active', departedAt: now, returnsAt: now + TRAVEL * HOUR,
         seed: seed++, region: FENCE, resolvedAt: null, log: null,
       };
     }

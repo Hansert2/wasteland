@@ -101,6 +101,7 @@ function run({ upgrades = [], goAt, days = 60, seed0 = 1 }) {
       state.expedition = {
         id: `e${seed}`,
         status: 'active',
+        departedAt: now,
         returnsAt: now + TRAVEL_HOURS * HOUR,
         seed: seed++,
         region: DEEP_ZONE,

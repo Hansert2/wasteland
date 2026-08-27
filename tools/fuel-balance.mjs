@@ -34,6 +34,7 @@ import { CONFIG } from '../src/game/constants.js';
 import { LINKS, linkCost, roadCost } from '../src/game/road.js';
 import { UPGRADES } from '../src/game/structures.js';
 import { ORDINARY } from '../src/game/wanderers.js';
+import { daylightFraction } from '../src/game/daylight.js';
 
 const HOUR = 3600_000;
 const T0 = Date.UTC(2287, 0, 1);
@@ -142,7 +143,7 @@ function camp() {
  * survivor on day nine did not earn sixty days of fuel, and averaging over the restart
  * would quietly hide the region that keeps doing it.
  */
-function play(region, { goAt = 20, checkInsPerDay = null, upgrades = [], seed0 = 1 } = {}) {
+function play(region, { goAt = 20, checkInsPerDay = null, upgrades = [], seed0 = 1, nightly = false, holdHours = 24 } = {}) {
   let state = camp();
   state.settlement.upgrades = upgrades;
 
@@ -161,6 +162,7 @@ function play(region, { goAt = 20, checkInsPerDay = null, upgrades = [], seed0 =
 
   const gap = checkInsPerDay ? Math.round(24 / checkInsPerDay) : 1;
   let hour = 0;
+  let held = 0;
 
   while (now < end) {
     const before = state.settlement.resources.fuel.amount;
@@ -192,10 +194,32 @@ function play(region, { goAt = 20, checkInsPerDay = null, upgrades = [], seed0 =
     // Only a player who is looking can dispatch.
     if (hour % gap !== 0) continue;
 
+    /*
+     * A player who waits for the dark, which is the lever Phase 9 added and the reason
+     * this file is being run again.
+     *
+     * Darkness takes a third off the dose, and dose is bench time — so on a region whose
+     * rate is limited by waiting rather than by walking, leaving at the right hour buys
+     * trips. Waiting to leave costs hours too, which is exactly the trade being measured:
+     * a policy that held out for a perfect midnight departure would spend more than it
+     * saved, so this takes any departure at least half in the dark and gives up after a
+     * day of looking.
+     */
+    if (nightly && state.survivor.radiation <= goAt) {
+      const lit = daylightFraction(now, now + region.travelHours * HOUR);
+      if (lit > 0.5 && held < holdHours) {
+        held += 1;
+        waiting += 1;
+        continue;
+      }
+      held = 0;
+    }
+
     if (state.survivor.radiation <= goAt) {
       state.expedition = {
         id: `e${seed}`,
         status: 'active',
+        departedAt: now,
         returnsAt: now + region.travelHours * HOUR,
         seed: seed++,
         region,
@@ -267,6 +291,8 @@ for (const region of paysFuel) {
     ['attentive   ', { checkInsPerDay: null }],
     ['twice a day ', { checkInsPerDay: 2 }],
     ['+ filtration', { checkInsPerDay: null, upgrades: ['filtration'] }],
+    ['waits <= 3h  ', { checkInsPerDay: null, nightly: true, holdHours: 3 }],
+    ['waits <= 24h ', { checkInsPerDay: null, nightly: true, holdHours: 24 }],
   ]) {
     const a = average(region, opts);
     if (label.trim() === 'attentive') sustained.set(region.slug, a.perDay);
