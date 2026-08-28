@@ -231,6 +231,38 @@ const STYLE = `
     padding: 10px 20px;
     font-size: 13px;
   }
+  /*
+   * The place control. Sits at the end of the strip and takes as little of it as a word,
+   * because it is set once and then read never: an open select of a hundred zones would
+   * be the largest thing on a panel meant to be glanced at.
+   */
+  .place { margin-left: auto; font-size: 12px; }
+  .place > summary {
+    cursor: pointer;
+    color: var(--faint);
+    font-variant-caps: all-small-caps;
+    letter-spacing: .14em;
+    list-style: none;
+  }
+  .place > summary::-webkit-details-marker { display: none; }
+  .place > summary:hover { color: var(--prose); }
+  .place-in {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding-top: 8px;
+    max-width: 260px;
+  }
+  .place-form { display: flex; gap: 6px; }
+  .place-form select {
+    flex: 1 1 auto;
+    min-width: 0;
+    background: var(--panel);
+    color: var(--prose);
+    border: 1px solid var(--rule);
+    padding: 3px 4px;
+    font: inherit;
+  }
   .hourbar .band {
     font-variant-caps: all-small-caps;
     letter-spacing: .16em;
@@ -1666,7 +1698,7 @@ export function layout(title, body, { pane } = {}) {
  * element is focusable and the panel answers to `:focus-within`, so a phone, which has no
  * hover at all, is not left with a fact it cannot reach.
  */
-function hourBar(hour) {
+function hourBar(hour, place) {
   if (!hour) return '';
 
   const time = hour.clock
@@ -1788,9 +1820,52 @@ function hourBar(hour) {
           ${skyRows}${sunLine}${together}${wants}
         </span>
       </span>
-      ${sky}${turnAlarm}
+      ${sky}${turnAlarm}${placePicker(place)}
     </div>
   </div>`;
+}
+
+/**
+ * Where the camp says it is.
+ *
+ * Free at every tier, unlike the hour beside it. The clock and the glass sell precision —
+ * the exact minute, the temperature — and this is not precision, it is the camp knowing
+ * where it stands. A player whose sky is eight hours out from their window has a broken
+ * game rather than an un-upgraded one, and there is nothing to sell them there.
+ *
+ * Collapsed, because it is read once and then never again. The strip is glanced at every
+ * visit and this is set on the first one.
+ */
+function placePicker(place) {
+  if (!place) return '';
+
+  const hours = Math.ceil(place.cooldownLeft / (60 * 60 * 1000));
+  const body =
+    place.cooldownLeft > 0
+      ? `<span class="soft">Set recently. The camp can move again in
+           ${hours === 1 ? 'an hour' : `${hours} hours`}.</span>`
+      : `<form class="place-form" method="post" action="/clock">
+           <select name="zone" data-zonepick aria-label="Where this camp is">
+             ${place.zones
+               .map((z) => `<option value="${escape(z.zone)}">${escape(z.label)}</option>`)
+               .join('')}
+           </select>
+           <button type="submit">Set</button>
+         </form>
+         <span class="soft">Moves the clock and the sun together. Once a day.</span>`;
+
+  /*
+   * The summary says what is wrong rather than what the control is, when something is.
+   * A camp that has never set this is standing on the idealised sky — noon at 12:00 sharp,
+   * Greenwich — which is a coherent sky and almost certainly not the player's, and the
+   * strip has no other way of admitting that.
+   */
+  const summary = place.everSet ? 'Where we are' : 'Where we are — not set';
+
+  return `<details class="place">
+    <summary>${escape(summary)}</summary>
+    <div class="place-in">${body}</div>
+  </details>`;
 }
 
 const round2 = (value) => Math.round(value * 100) / 100;
@@ -2005,13 +2080,23 @@ export const TIMERS = `
     // weather, which is why this is a straight line and not a simulation — the moment
     // it would need to be more than that, fresh state has arrived anyway.
     stores = [...document.querySelectorAll('[data-amount]')];
-    // The world clock. World time is UTC by construction, so the browser reads it off
-    // its own Date with no offset to carry and no way to disagree with the server.
+    // The camp clock. Not UTC since migration 015: each element carries its camp's own
+    // offset, and the tick below shifts the browser's Date by it rather than reading the
+    // viewer's locale — so the strip shows the camp's hour on any machine anywhere.
     clocks = [...document.querySelectorAll('[data-worldclock]')];
     // The marker on the glass. The day it is drawn against stands still, so the present
     // walks across it — and it has to walk on the client, because nothing fetches the page
     // between one minute and the next.
     nowlines = [...document.querySelectorAll('[data-nowline]')];
+    // The zone picker opens on the browser's own place, so the usual answer is one click.
+    // A default and not a claim: the server derives the offset from whichever zone is
+    // actually submitted, so nothing here is trusted, only pre-filled.
+    for (const el of document.querySelectorAll('[data-zonepick]')) {
+      try {
+        const here = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        if (here && [...el.options].some((o) => o.value === here)) el.value = here;
+      } catch (e) {}
+    }
     since = Date.now();
   };
 
@@ -2263,9 +2348,9 @@ export function landingPage({ error, signUp = false } = {}) {
               ${/*
                 * And the zone the offset came from, which is a different fact. The offset
                 * says what time it is here; only the zone says where the sun sits against
-                * that — see zones.js. Amsterdam and Athens are both UTC+2 in summer and
-                * their solar noons are seventy-five minutes apart, so no arithmetic on the
-                * offset alone could have got both right.
+                * that — see zones.js. Madrid and Warsaw are both CEST in summer and their
+                * solar noons are ninety-nine minutes apart, so no arithmetic on the offset
+                * alone could have got both right.
                 *
                 * Also filled by script and also harmless without it: an unrecognised or
                 * missing zone leaves the camp on the idealised sky, sun at 12:00 sharp.
@@ -2422,7 +2507,7 @@ function shell(view, pane, { error, inner }) {
   return `<div class="shell">
     ${rail(pane, identity, section('stores', renderResources(view.resources)))}
     <main>
-    ${section('hour', hourBar(view.hour))}
+    ${section('hour', hourBar(view.hour, view.place))}
     <div class="stream">
     ${section('error', error ? `<p class="error">${escape(error)}</p>` : '')}
     ${section('moment', renderMoment(view.expedition))}

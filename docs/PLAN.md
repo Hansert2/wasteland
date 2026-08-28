@@ -1939,9 +1939,14 @@ timezone's meridian" is not a question a person can answer about where they live
 
 The camp's *clock* cannot answer it, which is worth stating because it is the obvious thing
 to reach for and it is the same conflation a second time. An offset is quantised to whole
-zones with summer time folded in, so it has already thrown longitude away. **Amsterdam and
-Athens are both UTC+2 in August and their solar noons are 13:40 and 12:25** — seventy-five
+zones with summer time folded in, so it has already thrown longitude away. **Madrid and
+Warsaw are both CEST in August and their solar noons are 14:15 and 12:36** — ninety-nine
 minutes apart on an identical clock, so no arithmetic on the offset could get both right.
+
+*(Corrected 2026-08-28: this argument first used Amsterdam and Athens, on the assumption that
+both are UTC+2 in August. Greece keeps EET and springs to **+3**, so they share no clock and
+the example proved nothing. Caught by the db suite the moment the offset stopped being an
+assumption and started coming from the tz database — which is the argument for deriving it.)
 
 The camp's *zone* does answer it, and the browser has been able to say it all along:
 
@@ -1981,7 +1986,50 @@ one this fixed.
 **Why the default stays 720.** Noon is the idealised world and is correct for a camp on its
 meridian; it is also the only value that needs no knowledge the game does not have. Camps
 founded before this keep it, because there is nothing to derive their zone from after the
-fact.
+fact — which is what the picker below is for.
+
+#### The picker, and the exploit it would have opened
+
+**Asked for by the user 2026-08-28**, once deriving-at-founding turned out to leave every
+existing camp on the idealised sky with no way to say otherwise. A control on the camp page,
+and — their proposal — limited to once a day.
+
+**The daily limit is not the guard, and finding out why is the useful part.** `returnExpedition`
+read the camp's clock *at resolution*. Daylight multiplies finds and a trip's light is
+integrated between departure and return, so a player able to set their own timezone could
+send somebody out at dusk, roll the clock twelve hours, and have the whole trip resolve as
+though it had gone at dawn.
+
+> **A rate limit does not close an exploit, it rations it.** One change a day is one exploit
+> a day, and trips are shorter than a day.
+
+It was also, already, a live violation of the rule migration `015` called load-bearing —
+*stored rather than read, so every trip still replays exactly*. The clock was being read.
+Nothing but a hand at the database could reach it, so it never bit; the picker would have
+made it reachable. **The schema was wrong before the feature was proposed, and the feature is
+what made anyone look.**
+
+So migration `017` puts the sky on the trip, beside `departed_at` and `seed`: a trip replays
+under the sky it left beneath, whatever the camp does afterwards. `reportOn` reads the same
+frozen pair, because `travelFactors` being one function stops the two composing the sky
+differently only if they are handed the same arguments. The daily limit then goes back to
+being what it was meant as — the sky is a property of the camp rather than a dial — and
+`clock_changed_at` carries it.
+
+**The form takes a place and nothing else.** An offset sent alongside the zone would be a
+second fact the player could set independently, and the two are not independent: a camp
+claiming Amsterdam on a Denver clock is not a camp anywhere. Node ships the tz database, so
+`offsetForZone` derives it — correctly for Kathmandu's +345 and for Auckland's summer being
+our winter — and then stores it, which keeps `015`'s fixed-offset choice intact. Registration
+prefers the same derivation and falls back to the browser's reported offset only when the
+zone is one the table does not list.
+
+**Free at every tier**, unlike the hour beside it. The clock and the glass sell precision;
+this is not precision, it is the camp knowing where it stands. A player whose sky is eight
+hours out from their window has a broken game rather than an un-upgraded one, and there is
+nothing to sell them there. The summary says *not set* until it has been, because the
+idealised sky is coherent, almost certainly not the player's, and otherwise indistinguishable
+from a correct one.
 
 **How it hid.** `loadWorld` never selected either clock column, so the tick ran on Greenwich
 and noon while the page ran on the camp's own — and both suites stayed green, because a

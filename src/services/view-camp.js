@@ -1,4 +1,5 @@
 import { advanceSettlement } from './advance-settlement.js';
+import { choosableZones, cooldownLeft } from './set-camp-clock.js';
 import {
   WORLD_EVENTS,
   activeAt,
@@ -331,8 +332,19 @@ function reportOn(row, state, now) {
       overTheTrip,
       departedAt,
       returnsAt,
-      state.settlement.clockOffset ?? 0,
-      state.settlement.solarNoon ?? DEFAULT_SOLAR_NOON,
+      /*
+       * The sky frozen onto the trip at dispatch — migration 017 — falling back to the
+       * camp's for a trip that predates it.
+       *
+       * This has to read exactly what `returnExpedition` reads. `travelFactors` is one
+       * function so the two cannot compose the sky differently; that would be undone here
+       * by handing it different arguments, and the symptom would be a report promising
+       * one thing and the return delivering another.
+       */
+      row.clock_offset_minutes ?? state.settlement.clockOffset ?? 0,
+      row.solar_noon_minutes === null || row.solar_noon_minutes === undefined
+        ? (state.settlement.solarNoon ?? DEFAULT_SOLAR_NOON)
+        : Number(row.solar_noon_minutes) / 60,
     ),
     choices,
     standings: state.settlement.standings,
@@ -566,7 +578,7 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
 
   const { rows: settlements } = await client.query(
     `select name, founded_at, next_raid_at, caravan_seed, caravan_count, next_caravan_at,
-            clock_offset_minutes, solar_noon_minutes
+            clock_offset_minutes, solar_noon_minutes, clock_changed_at
        from settlements where id = $1`,
     [settlementId],
   );
@@ -599,7 +611,8 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
   const { rows: away } = await client.query(
     `select r.name, r.slug, r.danger, r.travel_hours, r.loot, r.finds, r.radiation_per_trip,
             r.description,
-            e.returns_at, e.departed_at, e.seed, e.choices
+            e.returns_at, e.departed_at, e.seed, e.choices,
+            e.clock_offset_minutes, e.solar_noon_minutes
        from expeditions e
        join regions r on r.id = e.region_id
        join characters c on c.id = e.character_id
@@ -1131,6 +1144,23 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
      * and the exact turn of the light, the glass sells the temperature and the numbers.
      */
     hour: hourStrip(state, now, fitted, clock, noon),
+    /**
+     * Where the camp says it is, and whether it may say so again yet.
+     *
+     * Free at every tier, unlike the hour itself. The clock and the glass sell *precision*
+     * — the exact hour, the temperature — and this is not precision, it is the camp
+     * knowing where it stands. A player whose sky is eight hours out from their window has
+     * a broken game rather than an un-upgraded one, and there is nothing to sell them
+     * there.
+     */
+    place: {
+      zones: choosableZones(),
+      cooldownLeft: cooldownLeft(settlements[0].clock_changed_at, now),
+      // Never set: worth saying, because every camp founded before migration 016 is
+      // standing on the idealised sky and has no way of knowing that from the strip.
+      everSet: settlements[0].clock_changed_at !== null,
+      offset: clock,
+    },
     /**
      * The week ahead, and the whole of what the glass is worth its fuel for.
      *

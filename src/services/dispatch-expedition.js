@@ -50,10 +50,33 @@ export async function dispatchExpedition(client, settlementId, regionSlug, now =
 
   const returnsAt = new Date(now + region.travel_hours * HOUR_MS);
 
+  /*
+   * The sky the trip is leaving under, frozen onto the trip — see migration 017.
+   *
+   * Daylight multiplies finds, and `returnExpedition` integrates it between departure and
+   * return. Reading the camp's clock at resolution instead would let a player who can set
+   * their own timezone send somebody out at dusk and collect at dawn, which is the same
+   * shape as the sky exploit of 2026-08-27. Stored with the trip, like `departed_at` and
+   * `seed`, so it replays exactly whatever the camp does afterwards.
+   */
+  const { rows: camp } = await client.query(
+    'select clock_offset_minutes, solar_noon_minutes from settlements where id = $1',
+    [settlementId],
+  );
+
   const { rows } = await client.query(
-    `insert into expeditions (character_id, region_id, departed_at, returns_at, seed)
-     values ($1, $2, $3, $4, $5) returning id`,
-    [character.id, region.id, new Date(now), returnsAt, newSeed()],
+    `insert into expeditions (character_id, region_id, departed_at, returns_at, seed,
+                              clock_offset_minutes, solar_noon_minutes)
+     values ($1, $2, $3, $4, $5, $6, $7) returning id`,
+    [
+      character.id,
+      region.id,
+      new Date(now),
+      returnsAt,
+      newSeed(),
+      camp[0]?.clock_offset_minutes ?? 0,
+      camp[0]?.solar_noon_minutes ?? 720,
+    ],
   );
 
   return { expeditionId: rows[0].id, returnsAt, regionName: region.name };

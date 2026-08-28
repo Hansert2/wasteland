@@ -18,6 +18,7 @@ import { answerMoment } from '../services/answer-moment.js';
 import { dispatchExpedition } from '../services/dispatch-expedition.js';
 import { startBuild } from '../services/start-build.js';
 import { startCraft } from '../services/start-craft.js';
+import { setCampClock } from '../services/set-camp-clock.js';
 import { startUpgrade } from '../services/start-upgrade.js';
 import { commitToRoad } from '../services/commit-to-road.js';
 import { tradeWithCaravan } from '../services/trade.js';
@@ -151,8 +152,8 @@ export function createApp() {
     );
 
     /*
-     * And where the sun sits against it, which the offset cannot say — Amsterdam and
-     * Athens share UTC+2 and their solar noons are seventy-five minutes apart. Passed
+     * And where the sun sits against it, which the offset cannot say — Madrid and
+     * Warsaw share CEST and their solar noons are ninety-nine minutes apart. Passed
      * raw; `zones.js` validates the shape and answers `null` for anything it does not
      * recognise, which lands the camp on the idealised sky rather than a wrong one.
      */
@@ -308,6 +309,27 @@ export function createApp() {
       const now = Date.now();
       await advanceSettlement(client, settlementId, now);
       await startUpgrade(client, settlementId, req.body.upgrade, now);
+    });
+
+    res.redirect(backToCamp(req));
+  });
+
+  app.post('/clock', requireAuth, async (req, res) => {
+    await withTransaction(async (client) => {
+      const settlementId = await settlementIdForPlayer(client, req.playerId);
+      if (!settlementId) throw new InputError('This account has no camp.');
+
+      /*
+       * No `advanceSettlement` first, unlike the routes around it. Those spend or free
+       * resources and need the balance current; this touches nothing the simulation reads
+       * mid-flight, because a trip already out carries its own sky (migration 017). Ticking
+       * here would only mean the clock change and the tick disagreed about which sky the
+       * moment between them belonged to.
+       */
+      await setCampClock(client, settlementId, {
+        zone: req.body.zone,
+        now: Date.now(),
+      });
     });
 
     res.redirect(backToCamp(req));

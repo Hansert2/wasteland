@@ -2,7 +2,7 @@ import { hashPassword, MIN_PASSWORD_LENGTH } from '../auth/passwords.js';
 import { UPGRADES, storageCap } from '../game/structures.js';
 import { InputError } from '../errors.js';
 import { wandererFor } from '../game/wanderers.js';
-import { solarNoonFor } from '../game/zones.js';
+import { solarNoonFor, offsetForZone } from '../game/zones.js';
 
 export { InputError };
 
@@ -69,7 +69,19 @@ export async function foundSettlement(client, {
     throw error;
   }
 
-  const offset = Math.max(-840, Math.min(840, Math.trunc(clockOffset) || 0));
+  /*
+   * The camp's clock. Derived from the zone where the zone is one we know, and taken from
+   * the browser's own report otherwise.
+   *
+   * That order rather than the reverse because the two can disagree, and when they do the
+   * zone is the one that also fixes the sun — deriving both from one place is what keeps a
+   * camp from claiming Amsterdam on a Denver clock. The browser's number stays as the
+   * fallback because it is right for every zone, including the ones the table has never
+   * heard of.
+   */
+  const reported = Math.max(-840, Math.min(840, Math.trunc(clockOffset) || 0));
+  const derived = offsetForZone(zone, now);
+  const offset = derived === null ? reported : derived;
 
   /*
    * Where the sun sits against that clock, derived from the browser's zone rather than

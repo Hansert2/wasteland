@@ -117,6 +117,7 @@ export async function loadWorld(client, settlementId) {
     // must be able to roll an outcome without reaching back into the database.
     const { rows: active } = await client.query(
       `select e.id, e.status, e.departed_at, e.returns_at, e.seed, e.choices,
+              e.clock_offset_minutes, e.solar_noon_minutes,
               r.slug, r.name, r.danger, r.travel_hours, r.loot, r.finds, r.radiation_per_trip
          from expeditions e
          join regions r on r.id = e.region_id
@@ -136,6 +137,20 @@ export async function loadWorld(client, settlementId) {
         departedAt: row.departed_at.getTime(),
         returnsAt: row.returns_at.getTime(),
         seed: row.seed,
+        /*
+         * The sky it left under, frozen at dispatch — migration 017. Carried for the same
+         * reason `departedAt` is: the trip's daylight is integrated, and reading the
+         * camp's clock at resolution would let a player who can set their own timezone
+         * change what a trip in flight already went through.
+         *
+         * Null for a trip dispatched before 017, and the tick falls back to the
+         * settlement, which is exactly what those trips were dispatched under.
+         */
+        clockOffset: row.clock_offset_minutes,
+        solarNoon:
+          row.solar_noon_minutes === null || row.solar_noon_minutes === undefined
+            ? null
+            : Number(row.solar_noon_minutes) / 60,
         // What the player answered while it was in flight. Read-only in the tick: the
         // route writes these, resolution only ever reads them.
         choices: row.choices ?? [],

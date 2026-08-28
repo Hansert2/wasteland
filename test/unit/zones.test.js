@@ -1,7 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { solarNoonFor, ZONE_LONGITUDE, IDEALISED_SOLAR_NOON } from '../../src/game/zones.js';
+import {
+  solarNoonFor,
+  offsetForZone,
+  ZONE_LONGITUDE,
+  IDEALISED_SOLAR_NOON,
+} from '../../src/game/zones.js';
 import { sunAt } from '../../src/game/daylight.js';
 
 const hm = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
@@ -13,13 +18,16 @@ test('the derived solar noon matches the real one, to the minute', () => {
    * sun does, and the point of the table is that the code has to agree with the world
    * rather than with itself.
    *
-   * Amsterdam and Athens sit first because they are the whole argument — the same offset,
-   * seventy-five minutes apart, which is why the offset alone could never have done this.
+   * Madrid and Warsaw sit first because they are the whole argument — both CEST, ninety-nine
+   * minutes apart, which is why the offset alone could never have done this. (An earlier
+   * version used Athens on the assumption it shares Amsterdam's summer clock. It does not:
+   * Greece keeps EET and springs to +3. Hence a pair checked against the tz database.)
    */
   const cases = [
-    ['Europe/Amsterdam', 120, '13:40'],
-    ['Europe/Athens', 120, '12:25'],
     ['Europe/Madrid', 120, '14:15'], // Spain keeps a clock two zones east of its sun.
+    ['Europe/Warsaw', 120, '12:36'],
+    ['Europe/Amsterdam', 120, '13:40'],
+    ['Europe/Athens', 180, '13:25'], // EEST, and +3 — not Amsterdam's clock at all.
     ['Europe/London', 60, '13:01'],
     ['America/New_York', -240, '12:56'],
     ['America/Denver', -360, '13:00'],
@@ -32,11 +40,24 @@ test('the derived solar noon matches the real one, to the minute', () => {
   }
 });
 
-test('Amsterdam and Athens share a clock and do not share a sun', () => {
+test('Madrid and Warsaw share a clock and do not share a sun', () => {
   // The finding the module exists for, asserted rather than described.
-  const amsterdam = solarNoonFor('Europe/Amsterdam', 120);
-  const athens = solarNoonFor('Europe/Athens', 120);
-  assert.equal(amsterdam - athens, 75, 'same offset, seventy-five minutes of sun apart');
+  const madrid = solarNoonFor('Europe/Madrid', 120);
+  const warsaw = solarNoonFor('Europe/Warsaw', 120);
+  assert.equal(madrid - warsaw, 99, 'one clock, ninety-nine minutes of sun apart');
+});
+
+test('the zones this argument rests on really do share a clock', () => {
+  /*
+   * The guard on the example itself. The first version of this module argued from Amsterdam
+   * and Athens and was simply wrong — Greece keeps EET and is +3 in summer — so the pair
+   * shared no clock and demonstrated nothing. Asserted against the tz database rather than
+   * against memory, because that is exactly the mistake that got through.
+   */
+  const august = Date.UTC(2026, 7, 28);
+  assert.equal(offsetForZone('Europe/Madrid', august), 120);
+  assert.equal(offsetForZone('Europe/Warsaw', august), 120);
+  assert.equal(offsetForZone('Europe/Athens', august), 180, 'Athens is not on that clock');
 });
 
 test('an unknown zone leaves the camp on the idealised sky', () => {
@@ -119,11 +140,11 @@ test('a derived noon moves the sun and never the length of the day', () => {
    */
   const at = Date.UTC(2026, 7, 28, 12);
   const amsterdam = sunAt(at, solarNoonFor('Europe/Amsterdam', 120) / 60);
-  const athens = sunAt(at, solarNoonFor('Europe/Athens', 120) / 60);
+  const warsaw = sunAt(at, solarNoonFor('Europe/Warsaw', 120) / 60);
 
-  assert.equal(amsterdam.hours, athens.hours, 'same day length');
+  assert.equal(amsterdam.hours, warsaw.hours, 'same day length');
   assert.ok(
-    Math.abs(amsterdam.sunrise - athens.sunrise - 75 / 60) < 1e-9,
+    Math.abs(amsterdam.sunrise - warsaw.sunrise - 64 / 60) < 1e-9,
     'shifted by exactly the difference in their suns',
   );
 });

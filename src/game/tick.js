@@ -441,8 +441,12 @@ function returnExpedition(state, at, events) {
       state.worldEvents,
       expedition.departedAt,
       at,
-      state.settlement.clockOffset ?? 0,
-      state.settlement.solarNoon ?? 12,
+      // The sky the trip left under, not the one the camp is standing in now. A camp can
+      // set its own timezone, and without this a player could send somebody out at dusk,
+      // move the clock, and have the whole trip integrated as though it went at dawn.
+      // `??` and not `||`: an offset of 0 is Greenwich, which is a real clock.
+      expedition.clockOffset ?? state.settlement.clockOffset ?? 0,
+      expedition.solarNoon ?? state.settlement.solarNoon ?? 12,
     ),
     // Whatever the player answered while they were out. An empty list is the trip
     // exactly as it would have resolved before any of this existed.

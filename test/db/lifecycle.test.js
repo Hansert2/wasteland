@@ -261,9 +261,9 @@ test('a camp is founded with the sun its browser implied, not with a number it a
       client,
       newAccount({ clockOffset: 120, zone: 'Europe/Amsterdam' }),
     );
-    const athens = await foundSettlement(
+    const warsaw = await foundSettlement(
       client,
-      newAccount({ clockOffset: 120, zone: 'Europe/Athens' }),
+      newAccount({ clockOffset: 120, zone: 'Europe/Warsaw' }),
     );
 
     const sunOf = async (settlementId) => {
@@ -275,10 +275,10 @@ test('a camp is founded with the sun its browser implied, not with a number it a
     };
 
     const a = await sunOf(amsterdam.settlementId);
-    const b = await sunOf(athens.settlementId);
+    const b = await sunOf(warsaw.settlementId);
 
     assert.equal(a.solar_noon_minutes, 820, 'Amsterdam keeps its sun at 13:40');
-    assert.equal(b.solar_noon_minutes, 745, 'Athens keeps its own at 12:25');
+    assert.equal(b.solar_noon_minutes, 756, 'Warsaw keeps its own at 12:36');
     assert.equal(a.clock_offset_minutes, b.clock_offset_minutes, 'on an identical clock');
 
     // And the tick sees it, which is the half that was missing last time.

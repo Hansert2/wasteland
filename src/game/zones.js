@@ -7,10 +7,10 @@
  *
  * The camp's UTC offset cannot answer it either, which is worth being explicit about
  * because it is the obvious thing to try. An offset is quantised to whole zones and has
- * summer time folded into it, so it loses longitude entirely. Amsterdam and Athens are
- * both UTC+2 in August and their solar noons are 13:40 and 12:25 — seventy-five minutes
- * apart on an identical clock. Deriving the sun from the offset would put one of them an
- * hour and a quarter wrong to get the other right.
+ * summer time folded into it, so it loses longitude entirely. Madrid and Warsaw are both
+ * CEST in August and their solar noons are 14:15 and 12:36 — ninety-nine minutes apart on
+ * an identical clock. Deriving the sun from the offset would put one of them an hour and a
+ * half wrong to get the other right.
  *
  * The camp's *zone* does answer it. `Intl.DateTimeFormat().resolvedOptions().timeZone`
  * gives `Europe/Amsterdam`, needs no permission, and every browser has it. A zone is a
@@ -26,7 +26,9 @@
  *                = 720 + offsetMinutes − 4 × longitude
  *
  * Amsterdam: 720 + 120 − 4(4.90) = 820, which is 13:40 and matches the sky.
- * Athens:    720 + 120 − 4(23.73) = 745, which is 12:25.
+ * Madrid:    720 + 120 − 4(−3.70) = 855, which is 14:15 — Spain keeps a clock two zones
+ *             east of its own sun, and this is where that shows up.
+ * Warsaw:     720 + 120 − 4(21.01) = 756, which is 12:36.
  * Denver:    720 − 360 − 4(−104.99) = 780, which is 13:00.
  *
  * ### What it deliberately leaves out
@@ -214,4 +216,42 @@ export function solarNoonFor(zone, offsetMinutes) {
    * and the check constraint is not there to be argued with from the application.
    */
   return Math.max(0, Math.min(1439, Math.round(noon)));
+}
+
+/**
+ * The zone's offset from UTC, in minutes, at a given instant.
+ *
+ * Node ships the full tz database, so the server can work this out rather than being told
+ * it. That matters for the timezone picker: an offset taken from the form would be a number
+ * the player could set independently of the place they chose, and the two are not
+ * independent — a camp claiming to be in Amsterdam on a Denver clock is not a camp anywhere.
+ *
+ * Read once and then **stored**, which keeps migration 015's choice intact: a fixed offset
+ * rather than a live zone lookup, so the sky never jumps an hour in spring. The camp is
+ * asked where it is; it is not thereafter tracked.
+ *
+ * Handles the cases that catch hand-rolled tables — Kathmandu is +345, and Auckland's
+ * summer is our winter — because it is not a hand-rolled table.
+ */
+export function offsetForZone(zone, at = Date.now()) {
+  const name = String(zone ?? '').trim();
+  if (!ZONE_SHAPE.test(name)) return null;
+
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: name,
+      timeZoneName: 'longOffset',
+    }).format(new Date(at));
+
+    // `GMT+02:00`, or a bare `GMT` for UTC itself.
+    const match = /GMT(?:([+-])(\d{2}):(\d{2}))?/.exec(parts);
+    if (!match) return null;
+    if (!match[1]) return 0;
+
+    const minutes = Number(match[2]) * 60 + Number(match[3]);
+    return match[1] === '-' ? -minutes : minutes;
+  } catch {
+    // An unknown zone throws a RangeError here rather than returning anything.
+    return null;
+  }
 }
