@@ -652,7 +652,7 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
   );
 
   const { rows: inventoryRows } = await client.query(
-    `select i.slug, i.name, i.kind, i.potency, ii.qty
+    `select i.slug, i.name, i.kind, i.potency, i.description, ii.qty
        from inventory_items ii
        join items i on i.id = ii.item_id
        join characters c on c.id = ii.character_id
@@ -678,23 +678,46 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
     const health = Number(state.survivor?.health ?? 0);
     const dose = Number(state.survivor?.radiation ?? 0);
 
+    const round = (value) => Math.round(value * 10) / 10;
+
     if (row.kind === 'ration') {
+      const mends = Math.min(points, 100 - health);
       return {
         ...row,
-        use: health >= 100 ? null : { effect: `+${Math.round(Math.min(points, 100 - health) * 10) / 10} health` },
+        use: health >= 100 ? null : { effect: `+${round(mends)} health` },
         idle: health >= 100 ? 'nothing to mend' : null,
+        // What it is worth in the abstract, for the note: the row above is capped by how
+        // hurt they happen to be, and "+0.4 health" says nothing about the item.
+        worth: `+${round(points)} health`,
       };
     }
 
     if (row.kind === 'antirad') {
+      const scrubs = Math.min(points, dose);
       return {
         ...row,
-        use: dose <= 0 ? null : { effect: `−${Math.round(Math.min(points, dose) * 10) / 10} rads` },
+        use: dose <= 0 ? null : { effect: `−${round(scrubs)} rads` },
         idle: dose <= 0 ? 'no dose to scrub' : null,
+        worth: `−${round(points)} rads`,
       };
     }
 
-    return { ...row, use: null, idle: null };
+    /*
+     * Worn rather than taken, and the pack has never said what any of it does.
+     *
+     * A Plate Vest has sat in this list as a name and a count since gear shipped, while
+     * `equipmentOf` quietly reads its potency on every trip. Both are capped — armour at
+     * 60% and a weapon at 50% — so a second vest is not twice the vest, and the figure
+     * shown is the one that would actually apply.
+     */
+    if (row.kind === 'armour') {
+      return { ...row, use: null, idle: null, worth: `blunts ${Math.min(60, points * 2)}% of damage` };
+    }
+    if (row.kind === 'weapon') {
+      return { ...row, use: null, idle: null, worth: `avoids ${Math.min(50, points * 2)}% of hazards` };
+    }
+
+    return { ...row, use: null, idle: null, worth: 'used at the bench' };
   });
 
   const { rows: upgradeRows } = await client.query(

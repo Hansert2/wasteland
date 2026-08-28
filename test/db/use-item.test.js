@@ -172,7 +172,16 @@ test('the pack says what each thing would do, and what it would not', async () =
     assert.equal(by.get('preserved_meal').use.effect, '+35 health');
     assert.equal(by.get('rad_scrubber').use.effect, '−22.5 rads');
     assert.equal(by.get('scrap_spear').use, null, 'a spear is carried, not taken');
-    assert.equal(by.get('scrap_spear').idle, null, 'and says nothing about it');
+    assert.equal(by.get('scrap_spear').idle, null, 'and is not idle either — it is worn');
+
+    /*
+     * And every row says what the thing is worth, which the pack has never done. A Plate
+     * Vest sat here as a name and a count while `equipmentOf` read its potency on every
+     * trip; both gear figures are capped, so what is shown is what would actually apply.
+     */
+    assert.equal(by.get('scrap_spear').worth, 'avoids 25% of hazards');
+    assert.equal(by.get('preserved_meal').worth, '+35 health', 'what the ration is worth');
+    assert.ok(by.get('preserved_meal').description, 'and every item has its own line');
 
     // Mended and clean, the same two things have nothing to offer and say so.
     await client.query(
@@ -185,5 +194,41 @@ test('the pack says what each thing would do, and what it would not', async () =
     assert.equal(now.get('preserved_meal').use, null);
     assert.equal(now.get('preserved_meal').idle, 'nothing to mend');
     assert.equal(now.get('rad_scrubber').idle, 'no dose to scrub');
+  });
+});
+
+test('a thing worth more than the moment says so', async () => {
+  /*
+   * A Rad-X is worth thirty rads. A survivor carrying one rad can still take it, and would
+   * spend the whole tablet to scrub that one — which is their call to make and only a
+   * decision if the page tells them. So the row carries both figures: what the thing is
+   * worth, and what taking it here and now would actually do.
+   *
+   * Only when they differ. The ordinary case must not be two rows saying one number.
+   */
+  await withRollback(async (client) => {
+    const { settlementId, characterId } = await seed(client, { health: 100, radiation: 1 });
+    await give(client, characterId, 'rad_x');
+
+    const trace = await viewCamp(client, settlementId, T0 + 60 * 60 * 1000);
+    const tablet = trace.inventory.find((item) => item.slug === 'rad_x');
+
+    // Read back rather than hardcoded: `viewCamp` advances the camp, and an hour of decay
+    // takes 0.8 off the dose before the page is ever drawn.
+    const { radiation } = await condition(client, settlementId);
+    assert.ok(radiation > 0 && radiation < 1, `a trace of a dose, not ${radiation}`);
+
+    assert.equal(tablet.worth, '−30 rads', 'what a Rad-X is worth');
+    assert.equal(
+      tablet.use.effect,
+      `−${Math.round(radiation * 10) / 10} rads`,
+      'and what it would do against the dose actually carried',
+    );
+    assert.notEqual(tablet.worth, tablet.use.effect, 'so the page has two things to say');
+
+    await client.query('update characters set radiation = 80 where id = $1', [characterId]);
+    const dosed = await viewCamp(client, settlementId, T0 + 60 * 60 * 1000);
+    const full = dosed.inventory.find((item) => item.slug === 'rad_x');
+    assert.equal(full.worth, full.use.effect, 'and only one when the whole tablet lands');
   });
 });

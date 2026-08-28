@@ -416,13 +416,43 @@ const STYLE = `
    */
   /* A tab that opens onto an empty pack still says so: a blank panel reads as a failure. */
   .none { color: var(--faint); margin: 0; }
-  .carrying { width: 100%; }
-  .carrying .use { white-space: nowrap; }
-  .carrying .use form { display: inline-block; }
-  .carrying .use button { font-size: 11px; padding: 2px 8px; }
-  /* What it would do, beside the button that would do it. */
-  .carrying .use .gain { margin-left: 8px; color: var(--value); font-size: 11.5px; }
-  .carrying .use .short { color: var(--faint); font-size: 11.5px; }
+  /*
+   * The pack. Three columns on a rail that is two hundred pixels wide, which is the whole
+   * constraint: the name takes what is left, the count and the button take exactly what
+   * they need, and nothing wraps.
+   */
+  .carrying { width: 100%; border-collapse: collapse; table-layout: auto; }
+  .carrying tr { border-bottom: 1px solid var(--rule); }
+  .carrying tr:last-child { border-bottom: 0; }
+  .carrying td { padding: 7px 0; vertical-align: middle; }
+  .carrying .name { color: var(--prose); font-size: 13px; line-height: 1.25; }
+  .carrying .qty {
+    width: 1%;
+    padding-left: 10px;
+    color: var(--dim);
+    font-family: var(--numer);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    text-align: right;
+  }
+  .carrying .use { width: 1%; padding-left: 10px; white-space: nowrap; text-align: right; }
+  .carrying .use form { display: inline-block; margin: 0; }
+  .carrying .use button {
+    appearance: none;
+    background: none;
+    border: 1px solid var(--edge);
+    color: var(--prose);
+    font: inherit;
+    font-size: 10.5px;
+    font-variant-caps: all-small-caps;
+    letter-spacing: .14em;
+    padding: 1px 7px;
+    cursor: pointer;
+  }
+  .carrying .use button:hover { border-color: var(--oxide); color: var(--bone); }
+  /* The prose line in the note, which is the only place a description is shown at all. */
+  .carrying .note .what { display: block; color: var(--prose); max-width: 30ch; }
 
   .tabs { display: flex; align-items: center; gap: 4px; }
   .tab {
@@ -4355,20 +4385,61 @@ function inventoryBody(inventory) {
    */
   const rows = inventory
     .map((item) => {
+      /*
+       * Three columns and no fourth. The effect used to be printed beside the button, which
+       * on a rail two hundred pixels wide pushed "-0.4 rads" off the edge of the panel and
+       * wrapped every two-word name onto a second line. It is in the note now, where there
+       * is room for it and for the rest of what the row has never said.
+       */
       const action = item.use
         ? `<form method="post" action="/use">
              <input type="hidden" name="slug" value="${escape(item.slug)}">
              <button type="submit">Use</button>
-           </form>
-           <span class="gain">${escape(item.use.effect)}</span>`
-        : item.idle
-          ? `<span class="short">${escape(item.idle)}</span>`
-          : '';
+           </form>`
+        : '';
 
-      return `<tr>
-        <td><span class="name">${escape(item.name)}</span></td>
-        <td class="right"><span class="cost">×${item.qty}</span></td>
-        <td class="right use">${action}</td>
+      /*
+       * What it is, what it does, and — when it does nothing right now — why not.
+       *
+       * The pack has listed a Plate Vest as a name and a count since gear shipped while
+       * `equipmentOf` read its potency on every trip, so this is the first time the block
+       * says what any of it is for. `worth` is what the thing is worth in the abstract; the
+       * button's own figure is capped by how hurt they happen to be, and "+0.4 health" says
+       * nothing about the ration.
+       */
+      const note = `<span class="note">
+        <span class="stat-head">${escape(item.name)}</span>
+        ${item.description ? `<span class="what">${escape(item.description)}</span>` : ''}
+        <span class="stat-row"><span class="k">${escape(item.kind)}</span><span class="v">${escape(
+          item.worth ?? '',
+        )}</span></span>
+        ${
+          item.idle
+            ? `<span class="stat-row"><span class="k">not now</span><span class="v">${escape(
+                item.idle,
+              )}</span></span>`
+            : ''
+        }
+        ${/*
+          * And what taking it *now* would actually do, when that is less than the thing is
+          * worth. A Rad-X is worth thirty rads and a survivor carrying one rad would spend
+          * the whole tablet to scrub it — which is the player's call to make, but only if
+          * the page tells them. Shown solely when the two differ, so the ordinary case is
+          * not two rows saying one number.
+          */ ''}
+        ${
+          item.use && item.use.effect !== item.worth
+            ? `<span class="stat-row"><span class="k">right now</span><span class="v">${escape(
+                item.use.effect,
+              )}</span></span>`
+            : ''
+        }
+      </span>`;
+
+      return `<tr class="noted">
+        <td class="name">${escape(item.name)}</td>
+        <td class="qty">×${item.qty}</td>
+        <td class="use">${action}${note}</td>
       </tr>`;
     })
     .join('');
