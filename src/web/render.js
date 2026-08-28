@@ -359,6 +359,38 @@ const STYLE = `
    * and the level sits between the name and the effect so the eye reads "scavenging, 3,
    * and here is what 3 does" in one pass.
    */
+  /*
+   * The survivor block's two tabs. Which one shows is decided by an attribute on <body>,
+   * the same way the five views are — see PANE_CSS. Condition is the default, so it is
+   * selected by the *absence* of the attribute as well as by its own value; a body that has
+   * never been clicked and one clicked back to condition must look the same.
+   */
+  .tabs { display: flex; gap: 2px; margin: 10px 0 12px; border-bottom: 1px solid var(--rule); }
+  .tab {
+    appearance: none;
+    background: none;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    padding: 4px 10px 6px;
+    font: inherit;
+    font-size: 12px;
+    font-variant-caps: all-small-caps;
+    letter-spacing: .14em;
+    color: var(--faint);
+    cursor: pointer;
+  }
+  .tab:hover { color: var(--prose); }
+
+  body:not([data-survivor-tab="skills"]) .tabbed[data-tab="skills"],
+  body[data-survivor-tab="skills"] .tabbed[data-tab="condition"] { display: none; }
+
+  body:not([data-survivor-tab="skills"]) .tab[data-survivortab="condition"],
+  body[data-survivor-tab="skills"] .tab[data-survivortab="skills"] {
+    color: var(--bone);
+    border-bottom-color: var(--oxide);
+  }
+
   .skills { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
   .skill { display: grid; gap: 3px; }
   .skill-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
@@ -2220,6 +2252,19 @@ export const TIMERS = `
   let since = Date.now();
   let busy = false;
 
+  /*
+   * The tab buttons carry aria-selected, and CSS cannot write it. Re-applied on every scan
+   * because a swap replaces the buttons with a fresh pair that know nothing about which tab
+   * is open — the body attribute is the one copy of that, and this is the only thing that
+   * has to be told about it twice.
+   */
+  const syncTabs = () => {
+    const open = document.body.dataset.survivorTab === 'skills' ? 'skills' : 'condition';
+    for (const el of document.querySelectorAll('[data-survivortab]')) {
+      el.setAttribute('aria-selected', String(el.dataset.survivortab === open));
+    }
+  };
+
   // Re-read after every swap, so the future-only rule holds per render rather than
   // once per page.
   const scan = () => {
@@ -2247,8 +2292,19 @@ export const TIMERS = `
         if (here && [...el.options].some((o) => o.value === here)) el.value = here;
       } catch (e) {}
     }
+    syncTabs();
     since = Date.now();
   };
+
+  document.addEventListener('click', (event) => {
+    const tab = event.target.closest ? event.target.closest('[data-survivortab]') : null;
+    if (!tab) return;
+    // Condition is the default and is stored as the absence of the attribute, so the two
+    // ways of being on it stay one state rather than two.
+    if (tab.dataset.survivortab === 'skills') document.body.dataset.survivorTab = 'skills';
+    else delete document.body.dataset.survivorTab;
+    syncTabs();
+  });
 
   const apply = (html) => {
     const doc = new DOMParser().parseFromString(html, 'text/html');
@@ -3310,6 +3366,28 @@ function renderSurvivor(survivor, strain, vitals) {
   const who = skillStats(survivor.skills);
 
   /*
+   * Two tabs, and the switch lives on <body> rather than in here.
+   *
+   * That is the same trick `PANES` uses one level up, for the same reason and one more.
+   * The reason: a grouping expressed in CSS from outside leaves the markup it groups
+   * untouched, so nothing in the block has to know it is in a tab. The extra one: this
+   * section is swapped in place whenever the survivor changes, and any state held inside it
+   * — a checked radio, an `.on` class, an open details — is destroyed by that swap. A
+   * player watching the skills tab would be thrown back to the gauges every time a timer
+   * fired. The body attribute is outside the swapped region and survives it.
+   *
+   * Which also means the active tab must be styled from the body attribute rather than
+   * from a class the server wrote, because after a swap the server's class is a snapshot of
+   * whichever tab was open when the page was first drawn.
+   */
+  const tabs = `<div class="tabs" role="tablist" aria-label="Survivor">
+      <button type="button" class="tab" data-survivortab="condition"
+              role="tab" aria-controls="survivor-condition">Condition</button>
+      <button type="button" class="tab" data-survivortab="skills"
+              role="tab" aria-controls="survivor-skills">Skills</button>
+    </div>`;
+
+  /*
    * Number first, bar second — and the bar is the reason this is not a table.
    *
    * Three figures in a two-column table are three facts you have to compare by reading.
@@ -3334,17 +3412,22 @@ function renderSurvivor(survivor, strain, vitals) {
   return block(
     'Survivor',
     `<div class="who-name">${escape(survivor.name ?? 'Survivor')}</div>
-     ${who}
-     <div class="gauges">
-       ${gauge('Health', survivor.health, 100, said.health)}
-       ${gauge('Hunger', survivor.hunger, 100, said.hunger)}
-       ${gauge(
-         'Radiation',
-         survivor.radiation,
-         strain?.threshold ?? 100,
-         said.radiation,
-         strainNote(strain),
-       )}
+     ${tabs}
+     <div class="tabbed" id="survivor-condition" data-tab="condition" role="tabpanel">
+       <div class="gauges">
+         ${gauge('Health', survivor.health, 100, said.health)}
+         ${gauge('Hunger', survivor.hunger, 100, said.hunger)}
+         ${gauge(
+           'Radiation',
+           survivor.radiation,
+           strain?.threshold ?? 100,
+           said.radiation,
+           strainNote(strain),
+         )}
+       </div>
+     </div>
+     <div class="tabbed" id="survivor-skills" data-tab="skills" role="tabpanel">
+       ${who}
      </div>`,
   );
 }

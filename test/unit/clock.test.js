@@ -62,3 +62,47 @@ test('an elapsed or nonsense duration reads as now rather than as a negative', (
   }
   assert.equal(asTheBrowserGetsIt()(-5), 'now', 'and the browser agrees');
 });
+
+test('the client script is syntactically valid JavaScript', () => {
+  /*
+   * It lives in a template literal, so `node --check` on render.js proves only that the
+   * *string* is well formed. A syntax error inside it ships a page whose timers, in-place
+   * swaps, note popups and tab switch all silently do nothing, with both suites green —
+   * the same shape as the backtick-in-a-CSS-comment fault the stylesheet lint exists for.
+   *
+   * `new Function` compiles the body without running it, which is exactly the check wanted:
+   * the script talks to `document` and `window` and must not be executed here.
+   */
+  assert.doesNotThrow(() => new Function(TIMERS), 'TIMERS must parse');
+});
+
+test('nothing in the client script is referenced before it exists', () => {
+  /*
+   * `scan` calls `syncTabs`, which is declared after it — legal, because `scan` is only
+   * *called* later, and fatal if that order ever changes. A temporal dead zone has caught
+   * this project twice, both times in code a passing suite had already run past.
+   *
+   * Checked structurally rather than by executing: every `const name = ` in the script must
+   * appear before the line that calls `name()` at the top level of the IIFE.
+   */
+  const lines = TIMERS.split(String.fromCharCode(10));
+  const declaredAt = new Map();
+  lines.forEach((line, i) => {
+    const m = /^\s*(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=/.exec(line);
+    if (m && !declaredAt.has(m[1])) declaredAt.set(m[1], i);
+  });
+
+  /*
+   * A call indented exactly two spaces is at the top level of the IIFE and runs the
+   * moment the script loads. Anything deeper is inside a function body and runs later,
+   * by which time every declaration in the file exists — `drop` is declared after the
+   * handler that calls it and is perfectly safe.
+   */
+  lines.forEach((line, i) => {
+    const m = /^ {2}([A-Za-z_$][\w$]*)\(\);\s*$/.exec(line);
+    if (!m) return;
+    const at = declaredAt.get(m[1]);
+    if (at === undefined) return;
+    assert.ok(at < i, `${m[1]}() is called on line ${i + 1} but declared on line ${at + 1}`);
+  });
+});
