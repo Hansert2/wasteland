@@ -3964,13 +3964,34 @@ function renderExpeditions(view) {
      * send anybody and then the block that replaces it never said it again, so a trip
      * in progress was eight hours of numbers about a name.
      */
-    // No elapsed figure here. The strip above already carries a clock, and two spans of
-    // the same trip measured from opposite ends is one reading too many — the one worth
-    // having is the one you can act on, which is when they are back. Health leads
-    // instead, which is the figure a check-in is actually looking for.
+    /*
+     * No elapsed figure here. The strip above already carries a clock, and two spans of the
+     * same trip measured from opposite ends is one reading too many — the one worth having
+     * is the one you can act on, which is when they are back.
+     *
+     * Both figures are what the *trip* has done, not where the survivor stands. They used to
+     * disagree about that: rads was already the dose this trip had given them and health was
+     * an absolute, so one cell was a delta and its neighbour was a level, in the same row,
+     * with no way to tell which was which.
+     *
+     * Damage rather than health is what makes them agree, and it is now the honest half.
+     * Health out there used to be computed here because the tick had not applied anything
+     * yet; since the trip settles across its hours the survivor's health is real and live in
+     * their own block. So this block reports the trip and that block reports the person,
+     * which is what each is for.
+     *
+     * A dash when nothing has happened yet, the convention the stores set: a zero is four
+     * characters of precision saying nothing occurred.
+     */
     const cells = [
-      { tag: 'health', value: n(trip.health, 0), tone: trip.damage > 0 ? 'hurt' : '' },
-      { tag: 'rads', value: n(trip.radiation) },
+      {
+        // Literal characters, not entities: these values go through `escape` on the way out,
+        // so an `&mdash;` here arrives on the page as the six letters of one.
+        tag: 'damage',
+        value: trip.damage > 0 ? `−${n(trip.damage, 0)}` : '—',
+        tone: trip.damage > 0 ? 'hurt' : '',
+      },
+      { tag: 'rads', value: trip.radiation > 0 ? `+${n(trip.radiation)}` : '—' },
     ];
 
     // One cell per kind carried, and a single dash when the pack is still empty. The

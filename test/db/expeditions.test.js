@@ -321,9 +321,17 @@ test('the report on a trip in flight agrees with the trip that lands', async () 
   //
   // The dose is what this measures, because it is the outcome the sky scales hardest.
   await withRollback(async (client) => {
+    /*
+     * A dose large enough to out-run the decay that is scrubbing it.
+     *
+     * At 20 rads over 20 hours the walk also decays 0.8/h, so 16 of them are gone by the
+     * gate and the survivor can arrive at zero — which made the accrual assertion below read
+     * `0 > 0` and fail, on a test whose start instant is `Date.now()` and whose sun therefore
+     * differs every run. It was flaky from the moment it was written and passed on luck.
+     */
     const { settlementId, slug } = await setup(client, {
       travelHours: 20,
-      radiation: 20,
+      radiation: 60,
       loot: { scrap: [10, 10] },
     });
 
