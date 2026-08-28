@@ -35,7 +35,7 @@ import {
 } from '../game/moments.js';
 import { openWithin, planFor } from '../game/planning.js';
 import { directionFor } from '../game/direction.js';
-import { WANDERERS, radThresholdFor, wandererFor } from '../game/wanderers.js';
+import { radThresholdFor, skillsOf, wandererFor } from '../game/wanderers.js';
 import { stateAt, timelineOf } from '../game/timeline.js';
 import { CONFIG } from '../game/constants.js';
 import { radDamagePerHourAt } from '../game/tick.js';
@@ -1251,11 +1251,19 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
       ? {
           ...state.survivor,
           name: survivorRow[0]?.name,
-          // What this one is, matched back from the content by name. Not stored on the
-          // character: the skills are, and they are what the simulation reads — this is
-          // only the sentence that explains them, and a row that cached it would be a
-          // second copy of a string to keep in step.
-          knownFor: WANDERERS.find((w) => w.name === survivorRow[0]?.name)?.knownFor ?? null,
+          /*
+           * What their two numbers buy, as figures.
+           *
+           * This was `knownFor` — a sentence matched back from the content by name, saying
+           * things like "comes back heavy, and should not linger where the counter climbs".
+           * It gave the sign of both skills and the size of neither, which is the half a
+           * player cannot act on: ×1.3 and ×0.7 read as the same sentence, and so do a dose
+           * that bites at 45 and one that bites at 75.
+           *
+           * Derived in `wanderers.js` from the same functions the simulation reads, so the
+           * page cannot advertise a haul the roll does not pay.
+           */
+          skills: skillsOf(state.survivor, CONFIG.radThreshold),
         }
       : null,
     /**
@@ -1271,7 +1279,13 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
      */
     arriving: state.survivor
       ? null
-      : wandererFor(settlements[0].caravan_seed, Number(fallen[0].n)),
+      : (() => {
+          // The same figures the survivor block shows, so what the gate promises is what
+          // the camp delivers. `skillsOf` takes either shape: a wanderer spec carries
+          // `scavenging`/`medicine`, a character row carries `skill_*`.
+          const who = wandererFor(settlements[0].caravan_seed, Number(fallen[0].n));
+          return { ...who, skills: skillsOf(who, CONFIG.radThreshold) };
+        })(),
     // What those numbers are doing to them. Null with nobody in the camp, because a
     // camp with no survivor has no strain, only an empty chair.
     strain: state.survivor ? strainOf(state.survivor, radDecayPerHour) : null,

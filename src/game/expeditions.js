@@ -1,7 +1,7 @@
 import { makeRandom, intBetween, chance, mix } from './random.js';
 import { equipmentOf } from './equipment.js';
 import { EFFECTS_SALT, momentsFor } from './moments.js';
-import { ORDINARY } from './wanderers.js';
+import { ORDINARY, scavengingMultiplier } from './wanderers.js';
 import { standingOf } from './factions.js';
 import { stateAt, timelineOf } from './timeline.js';
 
@@ -460,11 +460,7 @@ function rollLoot(random, region, survivor, sky, log) {
    * Floored well above zero: a survivor is competent, and a trip that comes home with
    * almost nothing is a different kind of game.
    */
-  const level = Number(survivor.skillScavenging);
-  const skill = Math.max(
-    0.5,
-    1 + ((Number.isFinite(level) ? level : ORDINARY) - ORDINARY) * 0.1,
-  );
+  const skill = scavengingMultiplier(survivor.skillScavenging);
 
   for (const [kind, [min, max]] of Object.entries(region.loot ?? {})) {
     const amount = Math.round(intBetween(random, min, max) * skill * sky.loot);

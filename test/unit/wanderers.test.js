@@ -2,7 +2,14 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { CONFIG } from '../../src/game/constants.js';
-import { ORDINARY, WANDERERS, radThresholdFor, wandererFor } from '../../src/game/wanderers.js';
+import {
+  ORDINARY,
+  WANDERERS,
+  radThresholdFor,
+  scavengingMultiplier,
+  skillsOf,
+  wandererFor,
+} from '../../src/game/wanderers.js';
 
 const mean = (values) => values.reduce((a, b) => a + b, 0) / values.length;
 
@@ -79,14 +86,54 @@ test('every wanderer reads like the rest of the game', () => {
     assert.match(w.arrival, /\.$/, `${w.name}: arrival is prose`);
     assert.equal(w.arrival.split('. ').length, 2, `${w.name}: two sentences, statement then turn`);
     assert.doesNotMatch(w.arrival, /\d/, `${w.name}: no numbers with authority`);
-    assert.doesNotMatch(w.knownFor, /\d/, `${w.name}: knownFor prices nothing`);
-    assert.ok(w.knownFor.length > 0 && w.knownFor[0] === w.knownFor[0].toLowerCase());
+    assert.equal(w.knownFor, undefined, `${w.name}: the prose no longer prices anything`);
   }
+});
+
+test('what a wanderer buys is priced in figures, and priced once', () => {
+  /*
+   * `knownFor` used to carry the mechanical claim as prose, and prose cannot carry a
+   * magnitude: one sentence covered a haul at x1.3 and one at x0.7, and a dose biting at 45
+   * read exactly like one biting at 75. The figures replaced it.
+   *
+   * What matters is that they are the *same* figures the simulation uses. `skillsOf` calls
+   * `scavengingMultiplier` and `radThresholdFor` rather than restating either, so this
+   * asserts against those functions — a page that recomputed the curve could advertise a
+   * haul the roll does not pay.
+   */
+  for (const w of WANDERERS) {
+    const rows = skillsOf(w, 60);
+    assert.equal(rows.length, 2, `${w.name}: both numbers are priced`);
+
+    const scavenging = rows.find((r) => r.name === 'scavenging');
+    const medicine = rows.find((r) => r.name === 'medicine');
+
+    assert.equal(
+      scavenging.multiplier,
+      Number(scavengingMultiplier(w.scavenging).toFixed(2)),
+      `${w.name}: the haul shown is the haul rolled`,
+    );
+    assert.equal(
+      medicine.bitesAt,
+      radThresholdFor(60, w.medicine),
+      `${w.name}: the threshold shown is the threshold the tick burns at`,
+    );
+  }
+});
+
+test('the spread the sentence was hiding is a real spread', () => {
+  // If these ever collapse toward each other the figures stop being worth printing, and
+  // the sentence was right after all. Measured 2026-08-28: x0.7 to x1.3, and 45 to 75.
+  const hauls = WANDERERS.map((w) => scavengingMultiplier(w.scavenging));
+  const bites = WANDERERS.map((w) => radThresholdFor(60, w.medicine));
+
+  assert.ok(Math.max(...hauls) / Math.min(...hauls) >= 1.5, 'haul spans a real range');
+  assert.ok(Math.max(...bites) - Math.min(...bites) >= 20, 'so does the dose');
 });
 
 test('the keys and names are unique, because both are looked up by', () => {
   assert.equal(new Set(WANDERERS.map((w) => w.key)).size, WANDERERS.length);
-  // viewCamp matches knownFor back from the character row by name, so two wanderers
+  // viewCamp matches a survivor back from the character row by name, so two wanderers
   // sharing one would quietly describe the wrong person.
   assert.equal(new Set(WANDERERS.map((w) => w.name)).size, WANDERERS.length);
 });

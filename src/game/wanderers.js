@@ -50,6 +50,17 @@
  */
 export const ORDINARY = 4;
 
+/*
+ * Each wanderer used to carry a `knownFor` line as well — "comes back heavy, and should not
+ * linger where the counter climbs" — and it is gone rather than merely unrendered.
+ *
+ * It was the mechanical claim written as prose, and prose cannot carry a magnitude: the
+ * same sentence covered a haul at x1.3 and one at x0.7, and a dose biting at 45 read like
+ * one biting at 75. `skillsOf` prints the figures instead. The `arrival` lines stay and are
+ * untouched, because those are the person rather than the numbers, and that distinction is
+ * the reason only one of the two was replaced.
+ */
+
 /**
  * Seven of them, and every one is strong in one axis and poor in the other.
  *
@@ -79,7 +90,6 @@ export const WANDERERS = [
     arrival:
       'She came in reading a counter she had built herself out of two others. She has ' +
       'been further into the hot ground than anyone who talks about it.',
-    knownFor: 'reads the ground, and comes back from places that count high',
   },
   {
     key: 'the_stripper',
@@ -89,7 +99,6 @@ export const WANDERERS = [
     arrival:
       'He arrived with a pack that did not match his condition, and gave no account of ' +
       'either. Whatever he walks past, he has already priced.',
-    knownFor: 'comes back heavy, and should not linger where the counter climbs',
   },
   {
     key: 'the_orderly',
@@ -100,7 +109,6 @@ export const WANDERERS = [
       'They kept a camp of eleven alive for a winter and will not be drawn on the ' +
       'twelfth. The kit on their belt is arranged the way people arrange things they ' +
       'reach for in the dark.',
-    knownFor: 'makes a dose go further than it should',
   },
   {
     key: 'the_lister',
@@ -110,7 +118,6 @@ export const WANDERERS = [
     arrival:
       'She walked up the road with an inventory of it, written small and folded twice. ' +
       'The last four entries are places she is not going back to.',
-    knownFor: 'knows what is worth carrying, and takes the dose that comes with it',
   },
   {
     key: 'the_quiet_one',
@@ -120,7 +127,6 @@ export const WANDERERS = [
     arrival:
       'She was the last one out of a holding two valleys over and did not hurry. She ' +
       'has done every job in a camp and has opinions about most of them.',
-    knownFor: 'careful with a dose, and unhurried about a haul',
   },
   {
     key: 'the_hauler',
@@ -130,7 +136,6 @@ export const WANDERERS = [
     arrival:
       'He came up the road under more than he should have been carrying and put it down ' +
       'without comment. He has been paid in salvage his whole life and counts in it.',
-    knownFor: 'carries more than looks reasonable, and stops short of the hot ground',
   },
   {
     key: 'the_walker',
@@ -140,7 +145,6 @@ export const WANDERERS = [
     arrival:
       'He has been between camps long enough that nobody asks which one was his. He is ' +
       'good at all of it and remarkable at none, which is why he is still here.',
-    knownFor: 'nothing in particular, which is its own kind of survival',
   },
 ];
 
@@ -177,4 +181,63 @@ export function wandererFor(seed, index) {
  */
 export function radThresholdFor(base, medicine) {
   return Number(base) + ((Number(medicine) || ORDINARY) - ORDINARY) * 5;
+}
+
+/**
+ * What a level of scavenging multiplies a haul by.
+ *
+ * Lifted out of `rollLoot` so the page and the roll read the same curve. It was inline
+ * there, and a display that recomputed it would have been a second copy free to drift from
+ * the one the simulation actually uses — which is the failure this whole file exists to
+ * avoid for names and now avoids for numbers.
+ *
+ * Floored well above zero: a survivor is competent, and a trip that comes home with almost
+ * nothing is a different kind of game.
+ */
+export function scavengingMultiplier(level) {
+  const value = Number(level);
+  return Math.max(0.5, 1 + ((Number.isFinite(value) ? value : ORDINARY) - ORDINARY) * 0.1);
+}
+
+/**
+ * What a survivor's two numbers buy, as figures rather than as a sentence.
+ *
+ * `knownFor` said "comes back heavy, and should not linger where the counter climbs",
+ * which gives a player the *sign* of both skills and the size of neither. Whether that is a
+ * tenth more haul or a third of it, and whether the dose bites fifteen rads early or five,
+ * were the two things the sentence could not say and the two the decision turns on.
+ *
+ * Derived here rather than in the page because the same pair describes a survivor standing
+ * in the camp and a wanderer still at the gate, and two renderings of one pair is how the
+ * gate comes to promise something the camp does not deliver.
+ *
+ * The arithmetic is called rather than restated: `scavengingMultiplier` is what `rollLoot`
+ * uses and `radThresholdFor` is what the tick uses.
+ */
+export function skillsOf(survivor, radThreshold) {
+  const scavenging = Number(survivor?.skillScavenging ?? survivor?.scavenging);
+  const medicine = Number(survivor?.skillMedicine ?? survivor?.medicine);
+
+  const rows = [];
+
+  if (Number.isFinite(scavenging)) {
+    rows.push({
+      name: 'scavenging',
+      level: scavenging,
+      ordinary: ORDINARY,
+      // Trimmed: x1.3 rather than x1.30, but x0.95 kept whole.
+      multiplier: Number(scavengingMultiplier(scavenging).toFixed(2)),
+    });
+  }
+
+  if (Number.isFinite(medicine)) {
+    rows.push({
+      name: 'medicine',
+      level: medicine,
+      ordinary: ORDINARY,
+      bitesAt: Math.round(radThresholdFor(radThreshold, medicine)),
+    });
+  }
+
+  return rows;
 }

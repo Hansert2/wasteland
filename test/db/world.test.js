@@ -5,6 +5,7 @@ import { pool } from '../../src/db/pool.js';
 import { loadWorld } from '../../src/db/world.js';
 import { advanceSettlement } from '../../src/services/advance-settlement.js';
 import { viewCamp } from '../../src/services/view-camp.js';
+import { raiseSuccessor } from '../../src/services/settlement-lifecycle.js';
 import { campPage } from '../../src/web/render.js';
 import { STRUCTURES } from '../../src/game/structures.js';
 import { STEPS } from '../../src/game/direction.js';
@@ -1024,5 +1025,38 @@ test('a camp that has been held before is never started over', async () => {
     assert.ok(!html.includes('towers still stand'), 'so it does not begin again');
     assert.match(html, /The camp stands empty/, 'it gets the empty-camp block instead');
     assert.match(html, /spoiled/, 'and is told what that history cost it');
+  });
+});
+
+test('the gate and the camp price the same person the same way', async () => {
+  /*
+   * The figures are shown twice — once for the wanderer standing at the gate, once for the
+   * survivor holding the camp — and they are the same two numbers about the same person.
+   * Two renderings of one pair is how the gate comes to advertise a haul the camp does not
+   * deliver, so both read `skillsOf` and this pins that they agree.
+   */
+  await withRollback(async (client) => {
+    const { settlementId, characterId } = await seed(client);
+    await client.query('delete from characters where id = $1', [characterId]);
+
+    const atTheGate = await viewCamp(client, settlementId, T0 + hours(1));
+    assert.ok(atTheGate.arriving, 'somebody is at the gate');
+    assert.equal(atTheGate.arriving.skills.length, 2, 'priced in two figures');
+
+    await raiseSuccessor(client, settlementId, { now: T0 + hours(1) });
+    const inTheCamp = await viewCamp(client, settlementId, T0 + hours(2));
+
+    assert.equal(inTheCamp.survivor.name, atTheGate.arriving.name, 'the same person came in');
+    assert.deepEqual(
+      inTheCamp.survivor.skills,
+      atTheGate.arriving.skills,
+      'and is worth exactly what the gate said they were',
+    );
+
+    // And the page prints them, rather than the sentence that used to stand in for them.
+    const html = campPage(inTheCamp, {});
+    assert.match(html, /class="skills"/, 'as figures');
+    assert.match(html, /haul &times;/, 'naming what the haul is multiplied by');
+    assert.match(html, /the dose bites at \d+/, 'and where the dose starts to cost');
   });
 });

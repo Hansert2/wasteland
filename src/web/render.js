@@ -354,6 +354,22 @@ const STYLE = `
   .opening .opening-turn { color: var(--dim); }
   .opening form { margin-top: 8px; }
 
+  /*
+   * A survivor's two figures. A list rather than a table: two rows do not need a header,
+   * and the level sits between the name and the effect so the eye reads "scavenging, 3,
+   * and here is what 3 does" in one pass.
+   */
+  .skills { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+  .skill { display: flex; align-items: baseline; gap: 8px; font-size: 12.5px; }
+  .skill .k { color: var(--dim); letter-spacing: .1em;
+              font-variant-caps: all-small-caps; min-width: 6.5rem; }
+  .skill .lvl { font-family: var(--numer); color: var(--bone);
+                font-variant-numeric: tabular-nums; min-width: 1ch; }
+  .skill .v { color: var(--quiet); }
+  /* Against an ordinary survivor, not against zero. Oxide is the page's "this costs you". */
+  .skill.up .lvl { color: var(--value); }
+  .skill.down .lvl { color: var(--oxide-light); }
+
   .store { position: relative; }
   /*
    * Positioned against the cell, not against the rate span it hangs off. The strip has room
@@ -1893,6 +1909,45 @@ function placePicker(place) {
   </details>`;
 }
 
+/**
+ * What a survivor's two numbers buy, as figures.
+ *
+ * This replaced a sentence, and the sentence had a stated reason: "it is a sentence about a
+ * person, and prefixing it with a field name turns them into a record." That reason was
+ * right about the arrival prose and wrong about this. The arrival is still prose and still
+ * carries the person; what this shows is the two multipliers the trip actually turns on,
+ * and "comes back heavy" cannot tell a player whether heavy is a tenth or a third.
+ *
+ * The measured spread the sentence was flattening: haul runs ×0.7 to ×1.3, and the dose
+ * bites anywhere between 45 and 75. Both ends read as the same phrase.
+ *
+ * Coloured against an ordinary survivor rather than against zero, because a level means
+ * nothing on its own — 3 is only low next to the 4 that buys nothing either way.
+ */
+function skillStats(skills) {
+  if (!skills || skills.length === 0) return '';
+
+  const row = (skill) => {
+    const effect =
+      skill.name === 'scavenging'
+        ? `haul &times;${skill.multiplier}`
+        : `the dose bites at ${skill.bitesAt}`;
+
+    // Better or worse than ordinary, or neither. `up` and `down` are the page's existing
+    // pair; an ordinary level takes neither and stays the colour of plain text.
+    const lean =
+      skill.level > skill.ordinary ? ' up' : skill.level < skill.ordinary ? ' down' : '';
+
+    return `<li class="skill${lean}">
+      <span class="k">${escape(skill.name)}</span>
+      <span class="lvl">${escape(String(skill.level))}</span>
+      <span class="v">${effect}</span>
+    </li>`;
+  };
+
+  return `<ul class="skills">${skills.map(row).join('')}</ul>`;
+}
+
 const round2 = (value) => Math.round(value * 100) / 100;
 
 /** A world-clock reading, zero-padded: 18:38. */
@@ -2579,7 +2634,7 @@ function openingPage(view) {
   const gate = arriving
     ? `<p><strong>${escape(arriving.name)}</strong> is at the gate.
          ${escape(arriving.arrival)}</p>
-       <p class="known">Known for: ${escape(arriving.knownFor)}.</p>`
+       ${skillStats(arriving.skills)}`
     : `<p>Somebody will come along the road before the day is out.</p>`;
 
   return layout(
@@ -3175,14 +3230,14 @@ function strainNote(strain) {
 }
 
 function renderSurvivor(survivor, strain, vitals) {
-  // What this one is, under how they are doing. Without it the skills are two hidden
-  // multipliers and the arrival prose was a thing the player read once and never saw
-  // the consequences of — which is the failure the whole feature exists to avoid.
-  // Under the name and in prose, not in a "known for:" label. It is a sentence about a
-  // person, and prefixing it with a field name turns them into a record.
-  const who = survivor.knownFor
-    ? `<p class="known">${escape(survivor.knownFor)}.</p>`
-    : '';
+  /*
+   * What this one is, under how they are doing — as figures now rather than as a sentence.
+   *
+   * The sentence said the skills were there and refused to say how much: "careful with a
+   * dose, and unhurried about a haul" is the same phrase at ×0.9 as at ×0.7. The two
+   * numbers decide where this survivor can profitably be sent, so the page prints them.
+   */
+  const who = skillStats(survivor.skills);
 
   /*
    * Number first, bar second — and the bar is the reason this is not a table.
@@ -3400,7 +3455,7 @@ function renderNoSurvivor(everHeld, arriving) {
   const atTheGate = arriving
     ? `<p><strong>${escape(arriving.name)}</strong> is at the gate.
          ${escape(arriving.arrival)}</p>
-       <p><small>Known for: ${escape(arriving.knownFor)}.</small></p>`
+       ${skillStats(arriving.skills)}`
     : '';
 
   // The one lit control on the page, and the only thing there is to do. Nothing else on
