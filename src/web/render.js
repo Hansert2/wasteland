@@ -338,6 +338,22 @@ const STYLE = `
    * off the side of the page. The rule above gives it the z-index it needs to sit over the
    * track below it.
    */
+  /*
+   * The opening. Narrow measure and a lot of air, because it is the only screen in the game
+   * that is read rather than scanned — everything else is a control panel and is laid out
+   * like one.
+   */
+  .opening { min-height: 100vh; display: flex; align-items: center; justify-content: center;
+             padding: 40px 20px; }
+  .opening-in { max-width: 34rem; display: grid; gap: 20px; }
+  .opening-name { font-variant-caps: all-small-caps; letter-spacing: .2em;
+                  color: var(--bone); font-size: 20px; font-weight: 400; margin: 0; }
+  .opening p { margin: 0; color: var(--prose); line-height: 1.65; }
+  .opening .known { color: var(--dim); font-size: 13px; }
+  /* The turn before the button: the one line that says what the button is for. */
+  .opening .opening-turn { color: var(--dim); }
+  .opening form { margin-top: 8px; }
+
   .store { position: relative; }
   /*
    * Positioned against the cell, not against the rate span it hangs off. The strip has room
@@ -2527,7 +2543,87 @@ function shell(view, pane, { error, inner }) {
   </div>`;
 }
 
+/**
+ * The first screen, and the only one that is not the camp.
+ *
+ * A camp nobody has ever held used to render the whole page: five view tabs, the stores,
+ * eleven panels each saying a different version of "nothing yet", the full recipe list with
+ * every recipe locked — and then, around line seventy-eight of a hundred and fifty, the one
+ * thing there is to do. A player who did not already know the game had no way to find it,
+ * and nothing anywhere said where they were or who this was.
+ *
+ * So the empty camp gets its own page instead of a block on a busy one. Three beats and a
+ * button: what this place is, what this camp is, who is at the gate.
+ *
+ * ### What it deliberately does not say
+ *
+ * It does not say what happened. `docs/LORE.md` §6 lists that among the load-bearing
+ * absences — "not a body count, not a date, not a cause with a name" — and §7 ends with the
+ * rule that protects the others: *if a line explains the world, cut it.* An opening screen
+ * is exactly where that rule is hardest to keep and most worth keeping, because an opening
+ * screen is where every other game explains itself.
+ *
+ * So the world arrives as leavings rather than as history. The towers are still standing
+ * and still strung and have not carried anything in a long time; that is the whole of it,
+ * and it tells a player what kind of place this is without telling them one fact about it.
+ * Two sentences, statement then turn, no proper nouns, no numbers with authority — the four
+ * rules of §1, applied to the one screen that most wants to break them.
+ *
+ * It also carries no tutorial. The camp explains itself in place, every block already says
+ * what it costs and what it lacks, and a page of instructions in front of that would be a
+ * worse copy of it.
+ */
+function openingPage(view) {
+  const arriving = view.arriving;
+
+  const gate = arriving
+    ? `<p><strong>${escape(arriving.name)}</strong> is at the gate.
+         ${escape(arriving.arrival)}</p>
+       <p class="known">Known for: ${escape(arriving.knownFor)}.</p>`
+    : `<p>Somebody will come along the road before the day is out.</p>`;
+
+  return layout(
+    view.name,
+    `<div class="opening">
+      <div class="opening-in">
+        ${/*
+          * The camp's name, and the mark. The same two things the rail leads with, because
+          * this is the same camp and a player should recognise the header when the rail
+          * appears a click later.
+          */ ''}
+        <h1 class="opening-name">${escape(view.name)}</h1>
+
+        <p>The towers still stand, and the lines are still strung between them.
+           They have not carried anything in a long time.</p>
+
+        <p>What is left is what was sealed, and what nobody has reached yet.
+           This camp is four walls, a garden, and enough water to start.</p>
+
+        ${gate}
+
+        <p class="opening-turn">Nothing here happens until somebody is standing in it.</p>
+
+        ${/*
+          * Outside any `section()`, so it navigates rather than posting in place — the same
+          * rule the way out follows. There is no page to swap into yet.
+          */ ''}
+        <form method="post" action="/successor">
+          <button type="submit" class="fill">Let them stay</button>
+        </form>
+      </div>
+    </div>`,
+  );
+}
+
 export function campPage(view, { error, pane = 'camp' } = {}) {
+  /*
+   * A camp nobody has ever held is not the camp page with a block in it — it is a different
+   * screen, and branching here rather than at the route is what makes that unbypassable.
+   * Every view lands on it, a bookmark lands on it, and the moment somebody is standing in
+   * the camp it is gone for good.
+   */
+  if (!view.survivor && view.fallenCount === 0) return openingPage(view);
+
   return layout(
     view.name,
     shell(view, pane, {

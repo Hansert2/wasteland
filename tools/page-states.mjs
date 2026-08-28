@@ -81,9 +81,30 @@ function seedWithEarlyWindow(region) {
 export async function buildStates(client, now = Date.now()) {
   const states = {};
 
-  // 1. Nobody has taken the camp on. A wanderer is at the gate with two sentences.
+  /*
+   * 1. Nobody has taken the camp on. Two different screens live here and both are wanted.
+   *
+   * A camp nobody has *ever* held gets the opening — its own page, no rail, no stores — so
+   * it is captured under its own name and left out of the block contract, which is a
+   * contract about the camp page and would otherwise report every block on it as missing.
+   *
+   * A camp that has been held and stands empty still gets the full page with the
+   * empty-camp block in it, and that is the state the contract wants: every block present,
+   * the stores still climbing, and nobody home.
+   */
   {
     const id = await camp(client, now);
+    states['opening'] = campPage(await viewCamp(client, id, now));
+  }
+
+  {
+    const id = await camp(client, now);
+    await raiseSuccessor(client, id, { now });
+    await client.query(
+      `update characters set died_at = $2, cause_of_death = 'the dose'
+        where settlement_id = $1 and died_at is null`,
+      [id, new Date(now)],
+    );
     states['empty-camp'] = campPage(await viewCamp(client, id, now));
   }
 

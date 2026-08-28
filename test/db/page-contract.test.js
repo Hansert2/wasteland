@@ -51,6 +51,7 @@ test('a page with a deadline on it is a page the script can swap', async () => {
   // throws the whole page away and reloads it — which on the camp page would mean losing
   // scroll position and any view state every time a build finished.
   for (const [name, html] of Object.entries(STATES)) {
+    if (name === 'opening') continue; // its own page, with its own contract below
     const sections = [...html.matchAll(/<section id="(s-[a-z]+)">/g)].map((m) => m[1]);
     const deadlines = [...html.matchAll(/data-until="\d+"/g)].length;
 
@@ -73,6 +74,7 @@ test('the camp page renders every block, including the ones with nothing to say'
   ];
 
   for (const [name, html] of Object.entries(STATES)) {
+    if (name === 'opening') continue; // its own page, with its own contract below
     if (name === 'graveyard') continue;
     for (const id of always) {
       assert.ok(html.includes(`<section id="${id}">`), `${name}: ${id} is missing entirely`);
@@ -86,6 +88,7 @@ test('every deadline on the page is a live countdown, not rendered text', async 
   let armed = 0;
 
   for (const [name, html] of Object.entries(STATES)) {
+    if (name === 'opening') continue; // its own page, with its own contract below
     for (const match of html.matchAll(/data-until="(\d+)"/g)) {
       armed += 1;
       const at = Number(match[1]);
@@ -112,6 +115,7 @@ test('a trip with a window still ahead arms a timer nothing can see', async () =
 
 test('every store carries the three attributes that let it climb between loads', async () => {
   for (const [name, html] of Object.entries(STATES)) {
+    if (name === 'opening') continue; // its own page, with its own contract below
     if (name === 'graveyard') continue;
 
     const amounts = [...html.matchAll(/data-amount="[^"]*"/g)].length;
@@ -143,6 +147,7 @@ test('nothing interpolated into the page escapes its quotes', async () => {
   // escape() on the way to an attribute. A redesign that adds an attribute carrying
   // content without it produces markup that breaks on a wanderer called Nim.
   for (const [name, html] of Object.entries(STATES)) {
+    if (name === 'opening') continue; // its own page, with its own contract below
     const attrs = [...html.matchAll(/\s[a-z-]+="([^"]*)"/g)].map((m) => m[1]);
     for (const value of attrs) {
       assert.ok(!value.includes('<'), `${name}: a raw < inside an attribute`);
@@ -291,6 +296,7 @@ test('every gauge says what its number counts, in a place the note script can fi
    * renders a page that looks perfectly correct and explains nothing.
    */
   for (const [name, html] of Object.entries(STATES)) {
+    if (name === 'opening') continue; // its own page, with its own contract below
     // Cut on the opening tag rather than matching a balanced one: a gauge holds nested
     // divs, and a regex that walks them is a second parser to get wrong.
     const gauges = html.split('<div class="gauge ').slice(1);
@@ -336,6 +342,7 @@ test('every plate the page asks for is a file that exists', async () => {
 
   let asked = 0;
   for (const [name, html] of Object.entries(STATES)) {
+    if (name === 'opening') continue; // its own page, with its own contract below
     for (const match of html.matchAll(wanted)) {
       const file = match[1] ?? match[2];
       asked += 1;

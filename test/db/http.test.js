@@ -108,12 +108,22 @@ test('registering founds a camp and logs you straight into it', async () => {
 
   const html = await camp.text();
   assert.match(html, /Testcamp/, 'the camp is yours');
-  assert.match(html, /Stores/, 'and it is a real camp');
 
-  // The account owns the camp and never a person, so nobody is in it yet — and the
-  // page asks who is moving in rather than inventing someone.
-  assert.match(html, /camp stands empty/i);
-  assert.match(html, /Let them stay/);
+  /*
+   * And it lands on the opening rather than on the camp, because nobody has ever held it.
+   * The camp page is a hundred and fifty lines with the one available decision three
+   * quarters of the way down it; a player arriving for the first time gets the three
+   * sentences and the button instead.
+   */
+  assert.match(html, /towers still stand/, 'what this place is');
+  assert.match(html, /four walls, a garden/, 'what this camp is');
+  assert.match(html, /is at the gate/, 'who is outside it');
+  assert.match(html, /Let them stay/, 'and the one thing to do');
+
+  // Structure, not words: the page inlines its whole stylesheet, so a prose match hits the
+  // CSS comments and asserts nothing about what was rendered.
+  assert.doesNotMatch(html, /class="rail"/, 'no rail: there is nowhere to go yet');
+  assert.doesNotMatch(html, /data-amount=/, 'and no stores in front of the one decision');
   assert.doesNotMatch(html, /spoiled or been taken/, 'nothing has gone to ruin yet');
 });
 

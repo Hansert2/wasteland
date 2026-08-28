@@ -952,3 +952,77 @@ test('a price the camp cannot meet says what it is short by, and offers no butto
     );
   });
 });
+
+test('a camp nobody has ever held opens on its own page', async () => {
+  /*
+   * A brand-new camp used to render the whole thing: five view tabs, the stores, eleven
+   * panels each saying a different version of "nothing yet", the full recipe list with every
+   * recipe locked — and the one thing there was to do sat around line seventy-eight of a
+   * hundred and fifty. Measured before the change: 154 lines of text, and nothing anywhere
+   * saying where the player was or who this person at the gate is.
+   */
+  await withRollback(async (client) => {
+    const { settlementId, characterId } = await seed(client);
+    // Nobody has ever stood here: no survivor, and no grave either.
+    await client.query('delete from characters where id = $1', [characterId]);
+
+    const view = await viewCamp(client, settlementId, T0 + hours(1));
+    const html = campPage(view, {});
+
+    assert.equal(view.fallenCount, 0, 'a camp with no history');
+
+    // The screen is its own screen, not the camp page with a block on it.
+    assert.ok(!html.includes('class="rail"'), 'no rail: there is nowhere to go yet');
+    assert.ok(!html.includes('Machine Shop'), 'no locked recipe list in front of one decision');
+    assert.match(html, /towers still stand/, 'what this place is');
+    assert.match(html, /four walls, a garden/, 'what this camp is');
+    assert.match(html, /is at the gate/, 'who is outside it');
+    assert.match(html, /action="\/successor"/, 'and the one thing to do about it');
+
+    /*
+     * The rule `docs/LORE.md` §7 calls the one that protects the others: if a line explains
+     * the world, cut it. §6 lists what happened among the load-bearing absences — not a body
+     * count, not a date, not a cause with a name — and an opening screen is exactly where
+     * that gets broken, because an opening screen is where every other game explains itself.
+     */
+    // Script and style first: the page inlines its whole stylesheet, and a bare tag-strip
+    // would be measuring CSS rather than prose.
+    const text = html
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/g, ' ')
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/g, ' ')
+      .replace(/<[^>]+>/g, ' ');
+    for (const forbidden of [/\bwar\b/i, /\bbombs?\b/i, /\bnuclear\b/i, /\bapocalypse\b/i, /\b(19|20)\d\d\b/]) {
+      assert.ok(!forbidden.test(text), `the opening explains nothing: ${forbidden}`);
+    }
+
+    // And it is short. The bound is generous; what is asserted is the order of magnitude.
+    const words = text.split(/\s+/).filter(Boolean).length;
+    assert.ok(words < 200, `the opening stays short, got ${words} words`);
+  });
+});
+
+test('a camp that has been held before is never started over', async () => {
+  /*
+   * The half that would rot. A camp whose survivor died is empty in exactly the same way a
+   * new one is, and sending it back to the opening would be telling a player none of their
+   * history happened — no graveyard, no spoiled stores, and a stranger introduced as though
+   * they were the first.
+   */
+  await withRollback(async (client) => {
+    const { settlementId, characterId } = await seed(client);
+    // A death needs a cause as well as a date: `characters_death_is_complete` refuses half
+    // of one, which is the schema making sure the graveyard can always say what happened.
+    await client.query(
+      'update characters set died_at = $2, cause_of_death = $3 where id = $1',
+      [characterId, new Date(T0 + hours(2)), 'the dose'],
+    );
+
+    const view = await viewCamp(client, settlementId, T0 + hours(3));
+    const html = campPage(view, {});
+
+    assert.ok(view.fallenCount > 0, 'the camp has a history');
+    assert.ok(!html.includes('towers still stand'), 'so it does not begin again');
+    assert.match(html, /The camp stands empty/, 'it gets the empty-camp block instead');
+    assert.match(html, /spoiled/, 'and is told what that history cost it');
+  });
+});
