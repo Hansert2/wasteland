@@ -364,6 +364,8 @@ const STYLE = `
   .skill-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
   .skill .val { font-family: var(--numer); color: var(--bone); font-size: 12px;
                 font-variant-numeric: tabular-nums; }
+  /* The scale, quieter than the level it qualifies: "1 / 7" should read as one figure. */
+  .skill .val .of { color: var(--faint); }
   .skill small { color: var(--quiet); }
 
   /*
@@ -1943,23 +1945,23 @@ function skillStats(skills) {
 
   const row = (skill) => {
     /*
-     * Both read as a label, a figure and its unit, which is the point of the pair: a
-     * multiplier for what comes home, and rads for what it cost to fetch.
+     * Label and figure, in the vocabulary a stat block uses.
      *
-     * The dose is signed from the survivor's side rather than the arithmetic's. `relief` is
-     * what the tick *subtracts*, so a relief of +15 is a dose counted fifteen rads lighter
-     * and prints as -15 — the direction a player reads it in. An ordinary survivor gets a
-     * plain zero and no sign, because there is nothing to lean either way.
+     * This read "haul x0.7" and "dose -15 rads" under a note explaining that four buys
+     * nothing and this one is never below x0.5, which was three sentences pretending to be
+     * a table. A player reading a stat wants the name of the thing and the number, and
+     * `rad resist` carries its own meaning where `dose -15` needed a paragraph to say it
+     * was a subtraction and not a threshold.
      */
+    const signed = (value) => `${value < 0 ? '&minus;' : '+'}${Math.abs(value)}`;
+
     const effect =
       skill.name === 'scavenging'
-        ? `haul &times;${skill.multiplier}`
-        : `dose ${
-            skill.relief > 0 ? '&minus;' : skill.relief < 0 ? '+' : '&plusmn;'
-          }${Math.abs(skill.relief)} rads`;
+        ? `loot &times;${skill.multiplier}`
+        : `rad resist ${signed(skill.relief)}`;
 
-    // Better or worse than ordinary, or neither. `up` and `down` are the page's existing
-    // pair; an ordinary level takes neither and stays the colour of plain text.
+    // Better or worse than baseline, or neither. `up` and `down` are the page's existing
+    // pair; a baseline level takes neither and stays the colour of plain text.
     const lean =
       skill.level > skill.ordinary ? ' up' : skill.level < skill.ordinary ? ' down' : '';
 
@@ -1968,10 +1970,10 @@ function skillStats(skills) {
      * beside it.
      *
      * Health is continuous and runs to a hundred, so a proportional fill reads true. A
-     * skill is a small integer where the *middle* is the neutral point: drawn as a fill,
-     * an ordinary survivor would show a bar four-sevenths full, which reads as "somewhat
-     * good" when the honest reading is "buys nothing either way". Discrete marks say what
-     * the number is, and a tick under the fourth says where nothing begins.
+     * skill is a small integer where the *middle* is the neutral point: drawn as a fill, a
+     * baseline survivor would show a bar four-sevenths full, which reads as "somewhat good"
+     * when the honest reading is "no bonus either way". Discrete marks say what the number
+     * is, and a tick under the fourth says where the bonus starts.
      */
     const pips = Array.from({ length: skill.max }, (_, i) => {
       const at = i + 1;
@@ -1981,56 +1983,48 @@ function skillStats(skills) {
     }).join('');
 
     /*
-     * And what the scale is, on hover, in the idiom the three gauges already use.
+     * The breakdown, on hover, in the idiom the three gauges already use.
      *
-     * A level is the one figure on this block that cannot be read on its own: 3 means
-     * nothing without knowing the scale runs to seven and that four is the level which
-     * buys nothing. The pips show that shape and the note gives it in words, which is the
-     * same division of labour the gauges settled on — the track for the shape, the note
-     * for the scale and what moves it.
-     *
-     * The step sizes come off the skill rather than out of this file, so the sentence "each
-     * point is worth ten percent" cannot drift from the function that applies it.
+     * Rows are a name and a number and nothing else. The figures come off the skill rather
+     * than out of this file, so "per level +10%" cannot drift from the function that
+     * applies it.
      */
     const note =
       skill.name === 'scavenging'
-        ? stats(`1 – ${skill.max} · ${skill.ordinary} buys nothing`, [
-            ['multiplies', 'what a trip brings home'],
-            ['each point', `${Math.round(skill.perPoint * 100)}% of the haul`],
-            ['this one', `×${skill.multiplier}`],
-            ['never below', `×${skill.floor}`],
+        ? stats(`level ${skill.level} / ${skill.max}`, [
+            ['loot', `×${skill.multiplier}`],
+            ['per level', `+${Math.round(skill.perPoint * 100)}%`],
+            ['baseline', `${skill.ordinary}`],
+            ['minimum', `×${skill.floor}`],
           ])
-        : stats(`1 – ${skill.max} · ${skill.ordinary} buys nothing`, [
-            ['shifts', 'the dose the tick counts'],
-            ['each point', `${skill.perPoint} rads`],
-            [
-              'this one',
-              skill.relief === 0
-                ? 'no shift'
-                : `${Math.abs(skill.relief)} rads ${skill.relief > 0 ? 'lighter' : 'heavier'}`,
-            ],
-            // The row that stops this reading as a threshold, and matches what the
-            // radiation gauge says two blocks down.
-            ['costs health', 'at every dose'],
+        : stats(`level ${skill.level} / ${skill.max}`, [
+            ['rad resist', signedText(skill.relief)],
+            ['per level', `+${skill.perPoint}`],
+            ['baseline', `${skill.ordinary}`],
           ]);
 
     return `<li class="skill noted${lean}">
       <div class="skill-top">
         <span class="tag">${escape(skill.name)}</span>
-        <span class="val">${escape(String(skill.level))}</span>
+        <span class="val">${skill.level} <span class="of">/ ${skill.max}</span></span>
       </div>
       ${/*
         * One label for the whole bar. The pips are decorative marks a screen reader would
         * otherwise walk through one at a time, saying nothing each time.
         */ ''}
       <div class="pips" role="img"
-           aria-label="${escape(skill.name)} ${skill.level} of ${skill.max}, ${skill.ordinary} buys nothing">${pips}</div>
+           aria-label="${escape(skill.name)} level ${skill.level} of ${skill.max}, baseline ${skill.ordinary}">${pips}</div>
       <small>${effect}</small>
       ${note}
     </li>`;
   };
 
   return `<ul class="skills">${skills.map(row).join('')}</ul>`;
+}
+
+/** A signed figure for a stat row, where the minus is a real minus sign. */
+function signedText(value) {
+  return `${value < 0 ? '\u2212' : '+'}${Math.abs(value)}`;
 }
 
 const round2 = (value) => Math.round(value * 100) / 100;
