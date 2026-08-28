@@ -46,10 +46,26 @@
  */
 const PANES = {
   camp: ['raid', 'sky', 'forecast', 'events', 'direction', 'structures', 'caravan', 'roster'],
-  survivor: ['survivor', 'inventory', 'expedition', 'workshop', 'forecast'],
+  survivor: ['survivor', 'expedition', 'workshop', 'forecast'],
   road: ['road'],
   trade: ['caravan', 'post', 'standings'],
 };
+
+/**
+ * The survivor block's tabs, in order. The first is the default.
+ *
+ * One list, and the buttons, the panel-switching CSS and the selected-tab styling are all
+ * generated from it — the same rule `PANES` follows a few lines down, and for the same
+ * reason. A tab added to a hand-written pair of CSS rules is a tab that renders, never
+ * hides, and shows its panel underneath whichever one is open.
+ */
+const SURVIVOR_TABS = [
+  ['condition', 'Condition'],
+  ['skills', 'Skills'],
+  ['carrying', 'Carrying'],
+];
+
+const DEFAULT_SURVIVOR_TAB = SURVIVOR_TABS[0][0];
 
 /** Rail order, and the label each view answers to. `records` is the graveyard page. */
 const RAIL = [
@@ -79,6 +95,34 @@ const PANE_CSS = Object.entries(PANES)
     return `  ${selectors} { display: block; }`;
   })
   .join('\n');
+
+/**
+ * Which survivor panel shows, and which tab is lit, generated from `SURVIVOR_TABS`.
+ *
+ * Hidden by default and revealed by name, rather than the reverse: a panel whose tab is not
+ * in the list should disappear, not linger on top of the one that is. The default tab is
+ * matched twice — once for a body that has never been clicked and carries no attribute, and
+ * once for its own value — so returning to it is the same state as never having left.
+ */
+const SURVIVOR_TAB_CSS = [
+  '  .tabbed { display: none; }',
+  ...SURVIVOR_TABS.map(([id]) => {
+    const shown =
+      id === DEFAULT_SURVIVOR_TAB
+        ? `  body:not([data-survivor-tab]) .tabbed[data-tab="${id}"],\n` +
+          `  body[data-survivor-tab="${id}"] .tabbed[data-tab="${id}"]`
+        : `  body[data-survivor-tab="${id}"] .tabbed[data-tab="${id}"]`;
+    return `${shown} { display: block; }`;
+  }),
+  ...SURVIVOR_TABS.map(([id]) => {
+    const lit =
+      id === DEFAULT_SURVIVOR_TAB
+        ? `  body:not([data-survivor-tab]) .tab[data-survivortab="${id}"],\n` +
+          `  body[data-survivor-tab="${id}"] .tab[data-survivortab="${id}"]`
+        : `  body[data-survivor-tab="${id}"] .tab[data-survivortab="${id}"]`;
+    return `${lit} { color: var(--bone); border-bottom-color: var(--oxide); }`;
+  }),
+].join('\n');
 
 const STYLE = `
   :root {
@@ -370,6 +414,10 @@ const STYLE = `
    * the body they switch. No rule of their own: the strip already has a bottom border, and
    * the selected tab marks itself against it.
    */
+  /* A tab that opens onto an empty pack still says so: a blank panel reads as a failure. */
+  .none { color: var(--faint); margin: 0; }
+  .carrying { width: 100%; }
+
   .tabs { display: flex; align-items: center; gap: 4px; }
   .tab {
     appearance: none;
@@ -390,14 +438,7 @@ const STYLE = `
   }
   .tab:hover { color: var(--prose); }
 
-  body:not([data-survivor-tab="skills"]) .tabbed[data-tab="skills"],
-  body[data-survivor-tab="skills"] .tabbed[data-tab="condition"] { display: none; }
-
-  body:not([data-survivor-tab="skills"]) .tab[data-survivortab="condition"],
-  body[data-survivor-tab="skills"] .tab[data-survivortab="skills"] {
-    color: var(--bone);
-    border-bottom-color: var(--oxide);
-  }
+${SURVIVOR_TAB_CSS}
 
   .skills { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
   .skill { display: grid; gap: 3px; }
@@ -723,7 +764,6 @@ ${PANE_CSS}
   }
   /* Paired, the log keeps its rule but gives up the negative margin that closes it into
      the run above — it is standing beside something now, not stacked under it. */
-  body[data-pane="camp"] .lane-pair #s-inventory,
   body[data-pane="camp"] .lane-pair:not(:has(#s-events .block)) #s-events { margin: 0; }
   @media (max-width: 760px) {
     body[data-pane="camp"] .lane-pair { display: contents; }
@@ -2268,8 +2308,11 @@ export const TIMERS = `
    * has to be told about it twice.
    */
   const syncTabs = () => {
-    const open = document.body.dataset.survivorTab === 'skills' ? 'skills' : 'condition';
-    for (const el of document.querySelectorAll('[data-survivortab]')) {
+    const tabs = [...document.querySelectorAll('[data-survivortab]')];
+    if (tabs.length === 0) return;
+    // No attribute means the first tab, which is what the stylesheet also assumes.
+    const open = document.body.dataset.survivorTab || tabs[0].dataset.survivortab;
+    for (const el of tabs) {
       el.setAttribute('aria-selected', String(el.dataset.survivortab === open));
     }
   };
@@ -2308,10 +2351,10 @@ export const TIMERS = `
   document.addEventListener('click', (event) => {
     const tab = event.target.closest ? event.target.closest('[data-survivortab]') : null;
     if (!tab) return;
-    // Condition is the default and is stored as the absence of the attribute, so the two
-    // ways of being on it stay one state rather than two.
-    if (tab.dataset.survivortab === 'skills') document.body.dataset.survivorTab = 'skills';
-    else delete document.body.dataset.survivorTab;
+    // Always written, whichever tab it is. Storing the default as the absence of the
+    // attribute meant the handler had to know which one that was, and a third tab was
+    // enough to make it wrong.
+    document.body.dataset.survivorTab = tab.dataset.survivortab;
     syncTabs();
   });
 
@@ -2867,10 +2910,9 @@ export function campPage(view, { error, pane = 'camp' } = {}) {
       ${section(
         'survivor',
         view.survivor
-          ? renderSurvivor(view.survivor, view.strain, view.vitals)
+          ? renderSurvivor(view.survivor, view.strain, view.vitals, view.inventory)
           : renderNoSurvivor(view.fallenCount > 0, view.arriving),
       )}
-      ${section('inventory', renderInventory(view.inventory))}
     </div>
 
     ${section(
@@ -3364,7 +3406,7 @@ function strainNote(strain) {
   return '';
 }
 
-function renderSurvivor(survivor, strain, vitals) {
+function renderSurvivor(survivor, strain, vitals, inventory) {
   /*
    * What this one is, under how they are doing — as figures now rather than as a sentence.
    *
@@ -3389,12 +3431,11 @@ function renderSurvivor(survivor, strain, vitals) {
    * from a class the server wrote, because after a swap the server's class is a snapshot of
    * whichever tab was open when the page was first drawn.
    */
-  const tabs = `<span class="tabs" role="tablist" aria-label="Survivor">
-      <button type="button" class="tab" data-survivortab="condition"
-              role="tab" aria-controls="survivor-condition">Condition</button>
-      <button type="button" class="tab" data-survivortab="skills"
-              role="tab" aria-controls="survivor-skills">Skills</button>
-    </span>`;
+  const tabs = `<span class="tabs" role="tablist" aria-label="Survivor">${SURVIVOR_TABS.map(
+    ([id, label]) =>
+      `<button type="button" class="tab" data-survivortab="${id}"
+               role="tab" aria-controls="survivor-${id}">${label}</button>`,
+  ).join('')}</span>`;
 
   /*
    * Number first, bar second — and the bar is the reason this is not a table.
@@ -3436,6 +3477,9 @@ function renderSurvivor(survivor, strain, vitals) {
      </div>
      <div class="tabbed" id="survivor-skills" data-tab="skills" role="tabpanel">
        ${who}
+     </div>
+     <div class="tabbed" id="survivor-carrying" data-tab="carrying" role="tabpanel">
+       ${inventoryBody(inventory)}
      </div>`,
     /*
      * The tabs ride in the label strip, opposite the block's name — the slot `dayNav`
@@ -4244,8 +4288,21 @@ function renderRoad(road) {
     </div>`;
 }
 
-function renderInventory(inventory) {
-  if (!inventory || inventory.length === 0) return quiet('Carrying', NOTHING.inventory);
+/**
+ * What they are carrying, as the contents of a tab rather than a block of its own.
+ *
+ * It was `Carrying`, a bordered box under the survivor, and it is the same three facts
+ * about the same person — so it is a third tab beside Condition and Skills rather than a
+ * second box saying their name a different way.
+ *
+ * Returns a body and no label: the tab is the label. An empty pack still says so in words,
+ * because a tab that opens onto nothing reads as a page that failed to load.
+ */
+function inventoryBody(inventory) {
+  if (!inventory || inventory.length === 0) {
+    return `<p class="none">${NOTHING.inventory}</p>`;
+  }
+
   const rows = inventory
     .map(
       (item) => `<tr>
@@ -4254,7 +4311,8 @@ function renderInventory(inventory) {
       </tr>`,
     )
     .join('');
-  return block('Carrying', `<table>${rows}</table>`, { flush: true });
+
+  return `<table class="carrying">${rows}</table>`;
 }
 
 /**

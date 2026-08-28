@@ -69,7 +69,7 @@ test('the camp page renders every block, including the ones with nothing to say'
   // nowhere to appear and simply never shows up until the player reloads.
   const always = [
     's-head', 's-error', 's-moment', 's-raid', 's-sky', 's-events', 's-survivor',
-    's-inventory', 's-direction', 's-expedition', 's-stores', 's-structures', 's-road',
+    's-direction', 's-expedition', 's-stores', 's-structures', 's-road',
     's-workshop', 's-caravan', 's-post', 's-standings', 's-roster',
   ];
 
@@ -351,4 +351,49 @@ test('every plate the page asks for is a file that exists', async () => {
   }
 
   assert.ok(asked > 0, 'no page asks for a plate at all, which cannot be right');
+});
+
+test('every survivor tab has a panel, a rule that hides it, and a rule that shows it', () => {
+  /*
+   * Written after a near miss. The tabs began as a hand-written pair of CSS rules naming
+   * `skills` and treating everything else as the default; adding Carrying as a third tab
+   * left it with no rule of its own, which meant it never hid — it rendered permanently
+   * underneath whichever panel was open — and clicking it fell through to Condition.
+   *
+   * Both suites were green through that, because nothing here executes CSS. So this checks
+   * the generated stylesheet against the generated markup: for every tab button on the page
+   * there must be a panel, a selector that reveals that panel, and a selector that lights
+   * that button. `.tabbed { display: none }` supplies the hiding for all of them at once.
+   */
+  for (const [name, html] of Object.entries(STATES)) {
+    if (name === 'opening' || name === 'graveyard') continue;
+
+    const tabs = [...html.matchAll(/data-survivortab="([a-z]+)"[^>]*role="tab"/g)].map((m) => m[1]);
+    if (tabs.length === 0) continue; // a camp with nobody in it has no survivor block
+
+    assert.ok(
+      html.includes('.tabbed { display: none; }'),
+      `${name}: nothing hides the panels`,
+    );
+
+    for (const tab of tabs) {
+      assert.ok(
+        html.includes(`class="tabbed" id="survivor-${tab}" data-tab="${tab}"`),
+        `${name}: the ${tab} tab has no panel`,
+      );
+      assert.ok(
+        html.includes(`body[data-survivor-tab="${tab}"] .tabbed[data-tab="${tab}"]`),
+        `${name}: nothing reveals the ${tab} panel`,
+      );
+      assert.ok(
+        html.includes(`body[data-survivor-tab="${tab}"] .tab[data-survivortab="${tab}"]`),
+        `${name}: nothing lights the ${tab} tab`,
+      );
+    }
+
+    // And exactly one of them is the default, shown to a body that has never been clicked.
+    const defaults = [...html.matchAll(/body:not\(\[data-survivor-tab\]\) \.tabbed\[data-tab="([a-z]+)"\]/g)];
+    assert.equal(defaults.length, 1, `${name}: there must be one default tab`);
+    assert.equal(defaults[0][1], tabs[0], `${name}: the default is the first tab`);
+  }
 });
