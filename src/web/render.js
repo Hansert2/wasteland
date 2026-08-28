@@ -359,16 +359,30 @@ const STYLE = `
    * and the level sits between the name and the effect so the eye reads "scavenging, 3,
    * and here is what 3 does" in one pass.
    */
-  .skills { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
-  .skill { display: flex; align-items: baseline; gap: 8px; font-size: 12.5px; }
-  .skill .k { color: var(--dim); letter-spacing: .1em;
-              font-variant-caps: all-small-caps; min-width: 6.5rem; }
-  .skill .lvl { font-family: var(--numer); color: var(--bone);
-                font-variant-numeric: tabular-nums; min-width: 1ch; }
-  .skill .v { color: var(--quiet); }
+  .skills { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+  .skill { display: grid; gap: 3px; }
+  .skill-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .skill .val { font-family: var(--numer); color: var(--bone); font-size: 12px;
+                font-variant-numeric: tabular-nums; }
+  .skill small { color: var(--quiet); }
+
+  /*
+   * Seven marks, not a fill. The gauges beside this are continuous and run to a hundred, so
+   * a proportional track reads true; a skill is a small integer whose middle is the neutral
+   * point, and a four-sevenths-full bar would read as "somewhat good" where the honest
+   * reading is "buys nothing either way".
+   */
+  .pips { display: flex; gap: 3px; align-items: flex-end; }
+  .pip { flex: 1 1 0; height: 6px; background: var(--rule); position: relative; }
+  .pip.on { background: var(--dim); }
+  /* Where nothing begins. Marked whether or not it is reached, since that is the point. */
+  .pip.ord::after { content: ''; position: absolute; left: 0; right: 0; bottom: -4px;
+                    height: 1px; background: var(--edge); }
   /* Against an ordinary survivor, not against zero. Oxide is the page's "this costs you". */
-  .skill.up .lvl { color: var(--value); }
-  .skill.down .lvl { color: var(--oxide-light); }
+  .skill.up .pip.on { background: var(--value); }
+  .skill.up .val { color: var(--value); }
+  .skill.down .pip.on { background: var(--oxide-light); }
+  .skill.down .val { color: var(--oxide-light); }
 
   .store { position: relative; }
   /*
@@ -1928,20 +1942,54 @@ function skillStats(skills) {
   if (!skills || skills.length === 0) return '';
 
   const row = (skill) => {
+    /*
+     * Both read as a label and a figure, which is the whole point of the pair: a multiplier
+     * for what comes home, an offset for what it cost to fetch.
+     *
+     * Signed from the survivor's side rather than the arithmetic's. `relief` is what the
+     * tick *subtracts*, so a relief of +15 is a dose that counts fifteen lighter and prints
+     * as -15 — the direction a player reads it in. An ordinary survivor gets a plain zero
+     * rather than a sign, because there is nothing to lean either way.
+     */
     const effect =
       skill.name === 'scavenging'
         ? `haul &times;${skill.multiplier}`
-        : `the dose bites at ${skill.bitesAt}`;
+        : `dose ${skill.relief > 0 ? '&minus;' : skill.relief < 0 ? '+' : '&plusmn;'}${Math.abs(skill.relief)}`;
 
     // Better or worse than ordinary, or neither. `up` and `down` are the page's existing
     // pair; an ordinary level takes neither and stays the colour of plain text.
     const lean =
       skill.level > skill.ordinary ? ' up' : skill.level < skill.ordinary ? ' down' : '';
 
+    /*
+     * Pips rather than a filled track, which is the whole reason this is not the gauge
+     * beside it.
+     *
+     * Health is continuous and runs to a hundred, so a proportional fill reads true. A
+     * skill is a small integer where the *middle* is the neutral point: drawn as a fill,
+     * an ordinary survivor would show a bar four-sevenths full, which reads as "somewhat
+     * good" when the honest reading is "buys nothing either way". Seven discrete marks
+     * say what the number is, and a tick under the fourth says where nothing begins.
+     */
+    const pips = Array.from({ length: skill.max }, (_, i) => {
+      const at = i + 1;
+      const on = at <= skill.level ? ' on' : '';
+      const ord = at === skill.ordinary ? ' ord' : '';
+      return `<i class="pip${on}${ord}"></i>`;
+    }).join('');
+
     return `<li class="skill${lean}">
-      <span class="k">${escape(skill.name)}</span>
-      <span class="lvl">${escape(String(skill.level))}</span>
-      <span class="v">${effect}</span>
+      <div class="skill-top">
+        <span class="tag">${escape(skill.name)}</span>
+        <span class="val">${escape(String(skill.level))}</span>
+      </div>
+      ${/*
+        * One label for the whole bar. Seven pips are seven elements a screen reader would
+        * otherwise walk through one at a time, saying nothing each time.
+        */ ''}
+      <div class="pips" role="img"
+           aria-label="${escape(skill.name)} ${skill.level} of ${skill.max}, ordinary is ${skill.ordinary}">${pips}</div>
+      <small>${effect}</small>
     </li>`;
   };
 

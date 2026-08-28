@@ -114,9 +114,9 @@ test('what a wanderer buys is priced in figures, and priced once', () => {
       `${w.name}: the haul shown is the haul rolled`,
     );
     assert.equal(
-      medicine.bitesAt,
-      radThresholdFor(60, w.medicine),
-      `${w.name}: the threshold shown is the threshold the tick burns at`,
+      medicine.relief,
+      radThresholdFor(60, w.medicine) - 60,
+      `${w.name}: the relief shown is the relief the tick subtracts`,
     );
   }
 });

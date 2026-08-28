@@ -1057,6 +1057,6 @@ test('the gate and the camp price the same person the same way', async () => {
     const html = campPage(inTheCamp, {});
     assert.match(html, /class="skills"/, 'as figures');
     assert.match(html, /haul &times;/, 'naming what the haul is multiplied by');
-    assert.match(html, /the dose bites at \d+/, 'and where the dose starts to cost');
+    assert.match(html, /dose (&minus;|\+|&plusmn;)\d+/, 'and what it does to the dose');
   });
 });

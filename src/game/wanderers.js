@@ -214,6 +214,19 @@ export function scavengingMultiplier(level) {
  * The arithmetic is called rather than restated: `scavengingMultiplier` is what `rollLoot`
  * uses and `radThresholdFor` is what the tick uses.
  */
+/**
+ * The top of the skill scale, read off the pool rather than declared.
+ *
+ * The column is only `check (>= 0)`, so the schema has no ceiling to offer and a hardcoded
+ * seven in the page would be a second definition of the roster's shape — free to disagree
+ * with it the first time a wanderer is added. Derived, so adding an eight-point wanderer
+ * widens every bar on the page and nothing has to be told twice.
+ */
+export const SKILL_CEILING = WANDERERS.reduce(
+  (top, w) => Math.max(top, w.scavenging, w.medicine),
+  ORDINARY,
+);
+
 export function skillsOf(survivor, radThreshold) {
   const scavenging = Number(survivor?.skillScavenging ?? survivor?.scavenging);
   const medicine = Number(survivor?.skillMedicine ?? survivor?.medicine);
@@ -225,6 +238,10 @@ export function skillsOf(survivor, radThreshold) {
       name: 'scavenging',
       level: scavenging,
       ordinary: ORDINARY,
+      // `max` and not a constant in the page: a survivor above the pool's ceiling is not a
+      // state the schema forbids, and a bar that could not draw them would be the page
+      // deciding what the simulation is allowed to contain.
+      max: Math.max(SKILL_CEILING, scavenging),
       // Trimmed: x1.3 rather than x1.30, but x0.95 kept whole.
       multiplier: Number(scavengingMultiplier(scavenging).toFixed(2)),
     });
@@ -235,7 +252,20 @@ export function skillsOf(survivor, radThreshold) {
       name: 'medicine',
       level: medicine,
       ordinary: ORDINARY,
-      bitesAt: Math.round(radThresholdFor(radThreshold, medicine)),
+      max: Math.max(SKILL_CEILING, medicine),
+      /*
+       * How many points of dose this survivor simply does not feel — positive for relief,
+       * negative for a survivor who feels it worse.
+       *
+       * Not a threshold, which is what this used to be called. Since the radiation curve
+       * landed there is no line to cross: damage is `(rads/100)^4` and every dose costs
+       * something, which is what the vitals panel means by "costs health · at every dose".
+       * Calling it "the dose bites at 45" described a cliff that no longer exists.
+       *
+       * It is the exact quantity `effectiveRads` subtracts in the tick, named the same way,
+       * so the page and the simulation are talking about one number.
+       */
+      relief: Math.round(radThresholdFor(radThreshold, medicine) - radThreshold),
     });
   }
 
