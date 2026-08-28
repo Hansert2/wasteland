@@ -4163,14 +4163,20 @@ function rateBreakdown(r) {
   // Only when the sky is actually doing something. A row reading "weather x1" is a line of
   // text that says nothing, on a panel small enough that every line has to earn its place.
   if (b.weather !== 1 && b.gross !== 0) {
-    rows.push([`weather &times;${n(b.weather)}`, weathered - b.gross]);
+    rows.push([`weather &times;${rate(b.weather)}`, weathered - b.gross]);
   }
 
   if (b.eaten !== 0) rows.push(['the camp', -b.eaten]);
 
   if (rows.length === 0) return '';
 
-  const signed = (v) => `${v > 0 ? '+' : v < 0 ? '&minus;' : ''}${n(Math.abs(v))}/h`;
+  /*
+   * `rate` and not `n`: this panel is the one place that claims to do the arithmetic, so it
+   * has to print the real numbers rather than the display-rounded ones. At one decimal the
+   * survivor drew &minus;0.8/h here and &minus;0.75/h in the vitals panel — the same constant,
+   * contradicting itself across two blocks — and a blight at x0.35 printed as x0.4.
+   */
+  const signed = (v) => `${v > 0 ? '+' : v < 0 ? '&minus;' : ''}${rate(Math.abs(v))}/h`;
 
   const body = rows
     .map(
@@ -4193,16 +4199,25 @@ function rateBreakdown(r) {
 function renderResources(resources) {
   const cells = resources
     .map((r) => {
-      // Oxide only when the store is draining, which is the one thing this table can
-      // tell you that you would otherwise find out by running out. A zero rate is a
-      // dash rather than "+0.0/h": nothing is happening, and a figure that says so in
-      // four characters of precision looks like something is.
-      const rate =
+      /*
+       * Oxide only when the store is draining, which is the one thing this table can tell
+       * you that you would otherwise find out by running out. A zero rate is a dash rather
+       * than "+0.0/h": nothing is happening, and a figure that says so in four characters
+       * of precision looks like something is.
+       *
+       * `rate` and not `n`, so this prints the same quantity the same way the panel below
+       * it and the survivor panel do. At one decimal a purifier netting 1.75 read as +1.8
+       * here and 1.75 inside its own breakdown, which is the page disagreeing with itself
+       * about a number it is in the middle of explaining.
+       */
+      // Not named `rate`: that is the module-level formatter this line calls, and a local
+      // const of the same name shadows it into its own temporal dead zone.
+      const rateCell =
         r.ratePerHour === 0
           ? '<span class="rate none">&mdash;</span>'
           : `<span class="rate${r.ratePerHour < 0 ? ' down' : ''}">${
               r.ratePerHour > 0 ? '+' : ''
-            }${n(r.ratePerHour)}/h</span>`;
+            }${rate(r.ratePerHour)}/h</span>`;
 
       // A zero store shows an empty track rather than no track. The four cells are the
       // same shape whatever is in them, or the eye has to re-find the layout each time.
@@ -4216,8 +4231,8 @@ function renderResources(resources) {
       const figure = panel
         ? `<span class="costs" tabindex="0" role="button"
                  aria-label="What makes up the ${escape(r.kind.replace(/_/g, ' '))} rate"
-           >${rate}${panel}</span>`
-        : rate;
+           >${rateCell}${panel}</span>`
+        : rateCell;
 
       return `<div class="store">
         <div class="store-top"><span class="tag">${escape(r.kind)}</span>${figure}</div>

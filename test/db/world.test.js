@@ -578,6 +578,55 @@ test('the structure line and the stores line differ by exactly the survivor', as
   });
 });
 
+test('every panel that prints what the survivor drinks prints the same number', async () => {
+  /*
+   * Found by the user 2026-08-28: the survivor panel said the camp draws 0.75 water an hour
+   * and the stores panel said 0.8. One constant, `CONFIG.waterPerHour`, rendered through two
+   * formatters — `rate` keeps two decimals and strips trailing zeros, `n` rounds to one.
+   *
+   * It is only a rounding, and that is exactly why it is worth a test: a page explaining its
+   * own arithmetic cannot afford to state the same quantity two ways, because the reader has
+   * no way to tell a rounding from a second, different number. The same slip printed a
+   * blight of x0.35 as x0.4.
+   *
+   * Asserted against the rendered HTML rather than the view, because the view was never
+   * wrong — both panels read the same field, and the disagreement was entirely in how the
+   * two were printed.
+   */
+  await withRollback(async (client) => {
+    const { settlementId } = await seed(client);
+    const view = await viewCamp(client, settlementId, T0 + hours(1));
+    const html = campPage(view, { view: 'survivor' });
+
+    for (const [kind, expected] of [
+      ['food', CONFIG.foodPerHour],
+      ['water', CONFIG.waterPerHour],
+    ]) {
+      // What the survivor panel states the survivor draws.
+      const drawn = new RegExp(`>${kind} drawn</span><span[^>]*>([\\d.]+)/h<`).exec(html);
+      assert.ok(drawn, `the survivor panel names what ${kind} is drawn`);
+
+      // What the stores breakdown subtracts, in the row labelled for the camp. Sliced from
+      // the heading rather than matched with one expression across the whole panel: the
+      // rows are sibling spans, so a non-greedy match to `</span></span>` stops at the
+      // first row and silently reads the wrong number.
+      const head = html.indexOf(`<span class="costs-head">${kind} an hour</span>`);
+      assert.ok(head > -1, `the ${kind} store carries a breakdown`);
+      const panel = html.slice(head, head + 600);
+
+      const taken = /the camp<\/span><span class="num">&minus;([\d.]+)\/h</.exec(panel);
+      assert.ok(taken, `the ${kind} breakdown subtracts the camp`);
+
+      assert.equal(
+        drawn[1],
+        taken[1],
+        `${kind}: survivor panel prints ${drawn[1]}, stores panel prints ${taken[1]}`,
+      );
+      assert.equal(Number(drawn[1]), expected, `and both print the real ${kind} constant`);
+    }
+  });
+});
+
 test('the camp keeps its own hour, and the weather keeps the world', async () => {
   /*
    * World time was UTC for everybody until 2026-08-27, on the grounds that every camp is
