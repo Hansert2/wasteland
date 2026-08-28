@@ -2992,6 +2992,98 @@ an argument for having left it, and it is not a strong enough argument to have l
 the plan's own note stands: a schema describing a system nothing implements reads, to
 anyone planning against it, as a system that is nearly there.
 
+## Phase 11 — the trip as it happens
+
+*Against: a trip you can watch and cannot touch.*
+
+Designed and built 2026-08-28, from the user's question: should a trip's health, dose and
+hunger land as they happen rather than at the gate, so that consumables mean something?
+
+### Four fifths of it was already true
+
+The premise needed checking before the design, and most of it did not need building.
+
+    hunger, and food and water drawn        real time     tick.js
+    radiation decay                         real time     camp-only filtration
+    health regen and starvation damage      real time
+    death out there, at the hour it happens  yes          tick.js, and long-standing
+    the trip's own hazard and dose          at the gate   the only part that waited
+
+**Field death was never new.** A survivor who starved mid-trip has always died at that hour,
+the expedition has always gone to `lost`, the haul has always been forfeit, and the graveyard
+has always recorded it. A trip that killed its survivor already forfeited the haul too. So
+this was never "add death out there" — it was **let the trip's own two effects be the cause,
+at the hour they happen.**
+
+### What made it safe
+
+`timeline.js` was written to attribute an outcome across the hours for *reporting*, and its
+header declined to be authoritative. The contract it already guaranteed is what made the
+promotion safe:
+
+> `stateAt` is monotone in `hours` and exact at the end.
+
+So the per-slice deltas over a whole trip sum to precisely the outcome that was rolled. The
+change decides **when**, never **how much**, and no roll moved.
+
+### The cost the module was guarding, measured
+
+Its stated reason was that a survivor who dies out there stops eating hours earlier, changing
+what an unattended trip costs a camp. True, small, and it runs the cheap way: the hazard
+falls on average at 52% of the trip, so on an eighteen-hour run death moves from hour 18 to
+hour 9.4 and the camp stops feeding a mouth 8.6 hours early — **4.3 food and 6.5 water**,
+against a camp at its cap throwing food away hourly.
+
+### What it actually did, which was not what it was for
+
+`fuel-balance.mjs` run on both sides of the change, same seeds, same database:
+
+    player          region              fuel/day        idle        change
+    attentive       Coastal Wreckage    19.4 -> 19.4    0% -> 0%     +0.0
+                    The Deep Zone       13.7 -> 13.6   41% -> 40%    -0.1
+                    The Waterworks      14.4 -> 14.3   45% -> 44%    -0.1
+                    Harrow End          19.0 -> 20.2   28% -> 22%    +1.2
+    twice a day     Coastal Wreckage    19.4 -> 19.4    0% -> 0%     +0.0
+                    The Deep Zone       12.7 -> 13.6    4% ->  3%    +0.9
+                    The Waterworks      13.5 -> 14.5    5% ->  5%    +1.0
+                    Harrow End          15.7 -> 18.4    2% ->  0%    +2.7
+
+**Coastal Wreckage does not move at all**, which is the control: danger 4 doses nobody, so
+there is nothing to accrue. Every hot region gains, and the casual player gains most.
+
+The mechanism is the one the design predicted. The dose arrives earlier, so it *decays*
+earlier, so a survivor is cool enough to send again sooner. Idleness is the whole of it.
+
+> **This partly fixes the game's largest measured balance problem, and changes no constant to
+> do it.** Harrow End at 20.2 now out-earns Coastal Wreckage at 19.4 for an attentive player,
+> where before it lost 19.0 to 19.4. The danger-5 inversion is closed at the top of the
+> ladder. For a twice-a-day player it narrows from a gap of 3.7 to a gap of 1.0 and is not
+> closed; the Deep Zone remains far behind at 13.6, as the weakest danger 5 always was.
+
+That is worth being explicit about, because it was not the goal. The phase was asked for so
+that consumables would matter. The inversion was caused by idleness, accrual reduces
+idleness, and the fix fell out — which is a good outcome and an accident.
+
+Deaths were `0/5` on every row before and after: the tool sends healthy survivors, and a
+healthy survivor still cannot be killed by hazard alone. **Accrual is more lethal only to a
+survivor who leaves hurt**, because the damage now lands against the health they have at that
+hour rather than the health they would have finished the trip with. That is the decision the
+player made when they dispatched, and it was previously invisible.
+
+### What is left
+
+The half this was asked for: **a moment option that spends a consumable.** The pack is the
+survivor's — `inventory_items.character_id`, carried with them, lost with them — so there is
+no schema and no fiction to accept. `AXES` already contains `health` and `radiation`, moments
+already land at an hour, and healing already knows which hour it happened at. What remains is
+an option kind that requires an item and spends it.
+
+### One thing to know at deploy
+
+A trip already in flight when this ships accrues only from the first tick after the deploy.
+The hours before that are never settled, so those trips are slightly less damaging than they
+should be. One-off, bounded by the length of a trip, and not worth a migration to fix.
+
 ## Dead time, and telling the player which loop they are in — 2026-08-21
 
 Played: founded a camp, spent the opening scrap, sent someone to Coastal Wreckage for
