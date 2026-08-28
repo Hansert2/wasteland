@@ -137,3 +137,32 @@ test('the keys and names are unique, because both are looked up by', () => {
   // sharing one would quietly describe the wrong person.
   assert.equal(new Set(WANDERERS.map((w) => w.name)).size, WANDERERS.length);
 });
+
+test('the scale a skill is explained on is the scale it is applied on', () => {
+  /*
+   * The hover note says "each point is 10% of the haul" and "each point is 5 rads", and
+   * those sentences are only true because they are read off the same constants the
+   * functions use. Carried on the row rather than written into the page, so a balance pass
+   * that retunes either cannot leave the explanation behind describing the old game.
+   */
+  const rows = skillsOf({ scavenging: 7, medicine: 1 }, 60);
+  const scavenging = rows.find((r) => r.name === 'scavenging');
+  const medicine = rows.find((r) => r.name === 'medicine');
+
+  // A point is worth what the note claims: one level up is exactly one step. Compared with
+  // a tolerance because 1.1 - 1.0 is 0.10000000000000009 in binary floating point, which is
+  // the multiplier being right rather than the assertion being loose.
+  assert.ok(
+    Math.abs(scavengingMultiplier(5) - scavengingMultiplier(4) - scavenging.perPoint) < 1e-9,
+    'a point of scavenging is worth what the note says',
+  );
+  assert.equal(
+    radThresholdFor(60, 5) - radThresholdFor(60, 4),
+    medicine.perPoint,
+    'and so is a point of medicine',
+  );
+
+  // And the floor is the floor: far enough below ordinary that the curve would go under it.
+  assert.equal(scavengingMultiplier(-100), scavenging.floor, 'the haul never goes below it');
+  assert.equal(scavengingMultiplier(ORDINARY), 1, 'and ordinary is exactly no change');
+});

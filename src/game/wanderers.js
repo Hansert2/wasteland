@@ -180,7 +180,7 @@ export function wandererFor(seed, index) {
  * trip rolls exactly as it always did and only what the dose costs at home moves.
  */
 export function radThresholdFor(base, medicine) {
-  return Number(base) + ((Number(medicine) || ORDINARY) - ORDINARY) * 5;
+  return Number(base) + ((Number(medicine) || ORDINARY) - ORDINARY) * RADS_PER_POINT;
 }
 
 /**
@@ -194,9 +194,21 @@ export function radThresholdFor(base, medicine) {
  * Floored well above zero: a survivor is competent, and a trip that comes home with almost
  * nothing is a different kind of game.
  */
+/** What one point of scavenging is worth, as a share of the haul. */
+export const HAUL_PER_POINT = 0.1;
+
+/** The worst a haul can be scaled to, however low the level. */
+export const HAUL_FLOOR = 0.5;
+
+/** What one point of medicine is worth, in points of dose the survivor does not feel. */
+export const RADS_PER_POINT = 5;
+
 export function scavengingMultiplier(level) {
   const value = Number(level);
-  return Math.max(0.5, 1 + ((Number.isFinite(value) ? value : ORDINARY) - ORDINARY) * 0.1);
+  return Math.max(
+    HAUL_FLOOR,
+    1 + ((Number.isFinite(value) ? value : ORDINARY) - ORDINARY) * HAUL_PER_POINT,
+  );
 }
 
 /**
@@ -244,6 +256,10 @@ export function skillsOf(survivor, radThreshold) {
       max: Math.max(SKILL_CEILING, scavenging),
       // Trimmed: x1.3 rather than x1.30, but x0.95 kept whole.
       multiplier: Number(scavengingMultiplier(scavenging).toFixed(2)),
+      // What a point is worth, so the page can say what the scale means rather than
+      // hardcoding a second copy of it beside the function that applies it.
+      perPoint: HAUL_PER_POINT,
+      floor: HAUL_FLOOR,
     });
   }
 
@@ -266,6 +282,7 @@ export function skillsOf(survivor, radThreshold) {
        * so the page and the simulation are talking about one number.
        */
       relief: Math.round(radThresholdFor(radThreshold, medicine) - radThreshold),
+      perPoint: RADS_PER_POINT,
     });
   }
 

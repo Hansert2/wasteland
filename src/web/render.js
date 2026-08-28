@@ -1943,18 +1943,20 @@ function skillStats(skills) {
 
   const row = (skill) => {
     /*
-     * Both read as a label and a figure, which is the whole point of the pair: a multiplier
-     * for what comes home, an offset for what it cost to fetch.
+     * Both read as a label, a figure and its unit, which is the point of the pair: a
+     * multiplier for what comes home, and rads for what it cost to fetch.
      *
-     * Signed from the survivor's side rather than the arithmetic's. `relief` is what the
-     * tick *subtracts*, so a relief of +15 is a dose that counts fifteen lighter and prints
-     * as -15 — the direction a player reads it in. An ordinary survivor gets a plain zero
-     * rather than a sign, because there is nothing to lean either way.
+     * The dose is signed from the survivor's side rather than the arithmetic's. `relief` is
+     * what the tick *subtracts*, so a relief of +15 is a dose counted fifteen rads lighter
+     * and prints as -15 — the direction a player reads it in. An ordinary survivor gets a
+     * plain zero and no sign, because there is nothing to lean either way.
      */
     const effect =
       skill.name === 'scavenging'
         ? `haul &times;${skill.multiplier}`
-        : `dose ${skill.relief > 0 ? '&minus;' : skill.relief < 0 ? '+' : '&plusmn;'}${Math.abs(skill.relief)}`;
+        : `dose ${
+            skill.relief > 0 ? '&minus;' : skill.relief < 0 ? '+' : '&plusmn;'
+          }${Math.abs(skill.relief)} rads`;
 
     // Better or worse than ordinary, or neither. `up` and `down` are the page's existing
     // pair; an ordinary level takes neither and stays the colour of plain text.
@@ -1968,8 +1970,8 @@ function skillStats(skills) {
      * Health is continuous and runs to a hundred, so a proportional fill reads true. A
      * skill is a small integer where the *middle* is the neutral point: drawn as a fill,
      * an ordinary survivor would show a bar four-sevenths full, which reads as "somewhat
-     * good" when the honest reading is "buys nothing either way". Seven discrete marks
-     * say what the number is, and a tick under the fourth says where nothing begins.
+     * good" when the honest reading is "buys nothing either way". Discrete marks say what
+     * the number is, and a tick under the fourth says where nothing begins.
      */
     const pips = Array.from({ length: skill.max }, (_, i) => {
       const at = i + 1;
@@ -1978,18 +1980,53 @@ function skillStats(skills) {
       return `<i class="pip${on}${ord}"></i>`;
     }).join('');
 
-    return `<li class="skill${lean}">
+    /*
+     * And what the scale is, on hover, in the idiom the three gauges already use.
+     *
+     * A level is the one figure on this block that cannot be read on its own: 3 means
+     * nothing without knowing the scale runs to seven and that four is the level which
+     * buys nothing. The pips show that shape and the note gives it in words, which is the
+     * same division of labour the gauges settled on — the track for the shape, the note
+     * for the scale and what moves it.
+     *
+     * The step sizes come off the skill rather than out of this file, so the sentence "each
+     * point is worth ten percent" cannot drift from the function that applies it.
+     */
+    const note =
+      skill.name === 'scavenging'
+        ? stats(`1 – ${skill.max} · ${skill.ordinary} buys nothing`, [
+            ['multiplies', 'what a trip brings home'],
+            ['each point', `${Math.round(skill.perPoint * 100)}% of the haul`],
+            ['this one', `×${skill.multiplier}`],
+            ['never below', `×${skill.floor}`],
+          ])
+        : stats(`1 – ${skill.max} · ${skill.ordinary} buys nothing`, [
+            ['shifts', 'the dose the tick counts'],
+            ['each point', `${skill.perPoint} rads`],
+            [
+              'this one',
+              skill.relief === 0
+                ? 'no shift'
+                : `${Math.abs(skill.relief)} rads ${skill.relief > 0 ? 'lighter' : 'heavier'}`,
+            ],
+            // The row that stops this reading as a threshold, and matches what the
+            // radiation gauge says two blocks down.
+            ['costs health', 'at every dose'],
+          ]);
+
+    return `<li class="skill noted${lean}">
       <div class="skill-top">
         <span class="tag">${escape(skill.name)}</span>
         <span class="val">${escape(String(skill.level))}</span>
       </div>
       ${/*
-        * One label for the whole bar. Seven pips are seven elements a screen reader would
+        * One label for the whole bar. The pips are decorative marks a screen reader would
         * otherwise walk through one at a time, saying nothing each time.
         */ ''}
       <div class="pips" role="img"
-           aria-label="${escape(skill.name)} ${skill.level} of ${skill.max}, ordinary is ${skill.ordinary}">${pips}</div>
+           aria-label="${escape(skill.name)} ${skill.level} of ${skill.max}, ${skill.ordinary} buys nothing">${pips}</div>
       <small>${effect}</small>
+      ${note}
     </li>`;
   };
 
