@@ -365,18 +365,26 @@ const STYLE = `
    * selected by the *absence* of the attribute as well as by its own value; a body that has
    * never been clicked and one clicked back to condition must look the same.
    */
-  .tabs { display: flex; gap: 2px; margin: 10px 0 12px; border-bottom: 1px solid var(--rule); }
+  /*
+   * In the label strip, so the tabs sit on the bar that names the block rather than inside
+   * the body they switch. No rule of their own: the strip already has a bottom border, and
+   * the selected tab marks itself against it.
+   */
+  .tabs { display: flex; align-items: center; gap: 4px; }
   .tab {
     appearance: none;
     background: none;
     border: 0;
+    /* Under the word rather than pulled down onto the strip's own border: aligning to that
+       needs a magic offset that tracks the strip's padding, and the mark belongs to the tab
+       either way. */
     border-bottom: 2px solid transparent;
-    margin-bottom: -1px;
-    padding: 4px 10px 6px;
+    padding: 2px 4px 3px;
     font: inherit;
-    font-size: 12px;
+    font-size: 11px;
     font-variant-caps: all-small-caps;
-    letter-spacing: .14em;
+    letter-spacing: .16em;
+    text-transform: uppercase;
     color: var(--faint);
     cursor: pointer;
   }
@@ -779,7 +787,8 @@ ${PANE_CSS}
   }
   /* Only a strip that has an aside becomes a row, so every other block's label keeps the
      exact box it has always had. */
-  .block > h2:has(.f-nav) {
+  .block > h2:has(.f-nav),
+  .block > h2:has(.tabs) {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -3380,12 +3389,12 @@ function renderSurvivor(survivor, strain, vitals) {
    * from a class the server wrote, because after a swap the server's class is a snapshot of
    * whichever tab was open when the page was first drawn.
    */
-  const tabs = `<div class="tabs" role="tablist" aria-label="Survivor">
+  const tabs = `<span class="tabs" role="tablist" aria-label="Survivor">
       <button type="button" class="tab" data-survivortab="condition"
               role="tab" aria-controls="survivor-condition">Condition</button>
       <button type="button" class="tab" data-survivortab="skills"
               role="tab" aria-controls="survivor-skills">Skills</button>
-    </div>`;
+    </span>`;
 
   /*
    * Number first, bar second — and the bar is the reason this is not a table.
@@ -3412,7 +3421,6 @@ function renderSurvivor(survivor, strain, vitals) {
   return block(
     'Survivor',
     `<div class="who-name">${escape(survivor.name ?? 'Survivor')}</div>
-     ${tabs}
      <div class="tabbed" id="survivor-condition" data-tab="condition" role="tabpanel">
        <div class="gauges">
          ${gauge('Health', survivor.health, 100, said.health)}
@@ -3429,6 +3437,20 @@ function renderSurvivor(survivor, strain, vitals) {
      <div class="tabbed" id="survivor-skills" data-tab="skills" role="tabpanel">
        ${who}
      </div>`,
+    /*
+     * The tabs ride in the label strip, opposite the block's name — the slot `dayNav`
+     * already uses on the glass.
+     *
+     * It is the right place for the same reason it was there: the strip is a full-width bar
+     * carrying the name of the whole block, and a control that switches the whole block
+     * belongs on it rather than in the body it is switching. In the body it sat between the
+     * survivor's name and their figures, which put a control in the middle of the thing it
+     * was meant to be framing.
+     *
+     * Phrasing content only — a `span` of `button`s, as `dayNav` is a `span` of links —
+     * because the strip is an `h2` and an `h2` may not contain a `div`.
+     */
+    { aside: tabs },
   );
 }
 
