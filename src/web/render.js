@@ -1438,7 +1438,7 @@ ${PANE_CSS}
 
   /* ---- gauges ---- */
 
-  .gauges { display: flex; flex-direction: column; gap: 13px; margin-top: 18px; }
+  .gauges { display: flex; flex-direction: column; gap: 13px; }
   .gauge-top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
   .gauge-top .tag { letter-spacing: .14em; color: var(--dim); }
   .gauge-top .val { font-family: var(--numer); font-size: 16px; line-height: 1;
@@ -1466,6 +1466,16 @@ ${PANE_CSS}
                  white-space: nowrap; }
   .who-name { display: block; font-family: var(--label); font-weight: 700; font-size: 22px;
               line-height: 1.1; color: var(--bone); }
+  /*
+   * The gap under the survivor's name belongs to the panel, not to whatever happens to be
+   * first inside it.
+   *
+   * It used to be a margin-top on .gauges, which is Condition's first child and nothing
+   * else's — so the name sat 18px above the gauges, hard against the skill bars, and hard
+   * against the line about an empty pack. Three tabs, three different gaps, for no reason a
+   * player could see. Held here, every tab opens the same distance below the name.
+   */
+  .tabbed { margin-top: 18px; }
   .known { margin: 7px 0 0; font-size: 15.5px; line-height: 1.55; color: var(--dim); }
 
   /* ---- controls ---- */
