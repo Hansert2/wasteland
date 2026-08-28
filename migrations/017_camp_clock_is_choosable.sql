@@ -38,21 +38,29 @@ comment on column expeditions.clock_offset_minutes is
 comment on column expeditions.solar_noon_minutes is
   'Where the sun sat against that clock at departure. Frozen for the same reason.';
 
--- When the camp last moved its clock, so the page can refuse to move it again too soon.
+-- When the camp was placed, which is a thing that happens once.
 --
--- A timestamp rather than a counter: "once a day" wants to know when, not how many, and a
--- counter would need resetting by something and there is nothing here to reset it. Null
--- means never moved, which is every camp founded so far and is not the same as "moved long
--- ago" only in that the page has nothing to say about it.
+-- This began as a cooldown stamp for a once-a-day limit, and the limit turned out to be
+-- answering a question nobody had. A camp is a *place*, and founding is when a place gets
+-- one: registration reads the browser's zone and derives both numbers with nobody asked
+-- anything, so a camp founded today is already placed and has no use for a control.
 --
--- Why limit it at all, now that the schema makes it safe: the sky is meant to be a property
--- of the camp rather than a dial. A player idly flipping zones to see the strip redraw is
--- not doing anything harmful, but they are being invited to treat the world as a setting,
--- and a day is long enough to make the choice feel like one.
+-- What is left is the hole underneath. Every camp founded before this was derived stands on
+-- Greenwich and the idealised sky with no way to say otherwise, and so does a camp whose zone
+-- was not in the curated table. Those need placing once, and then never again.
+--
+-- So: **null means this camp was never actually placed**, and that is the only thing the
+-- column is asked. The page offers the control to exactly those camps and to nobody else,
+-- which makes it self-liquidating — it leaves the game as the last unplaced camp is placed,
+-- rather than sitting on the strip for ever offering to re-answer a settled question.
+--
+-- Not a rate limit, then, and deliberately not: a rate limit rations an exploit rather than
+-- closing one, and the closing is done above by freezing the sky onto the trip.
 
 alter table settlements
   add column clock_changed_at timestamptz;
 
 comment on column settlements.clock_changed_at is
-  'When the camp last set its own timezone. Null means never. Read only to rate-limit the '
-  'change; nothing in the simulation looks at it.';
+  'When this camp was placed: stamped at founding when the zone was known, or when the camp '
+  'later set it by hand. Null means never placed, and is the only condition under which the '
+  'page offers to place it. Nothing in the simulation reads it.';

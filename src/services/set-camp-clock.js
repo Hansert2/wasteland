@@ -9,14 +9,20 @@ import { solarNoonFor, offsetForZone, ZONE_LONGITUDE } from '../game/zones.js';
  * along with the clock face and leaves it in the wrong place against the sky. So this takes
  * a zone — a place — and derives both, rather than taking either number directly.
  *
+ * **Once, and only for a camp that was never placed.** Founding already does this: the
+ * browser's zone is read at registration and both numbers derived, with nobody asked
+ * anything. So this exists for the camps that hole was dug under — those founded before the
+ * derivation, and those whose zone was not in the curated table. Both stand on Greenwich and
+ * the idealised sky with no way to say otherwise, and both need saying once.
+ *
+ * That makes the control self-liquidating: it leaves the game as the last unplaced camp is
+ * placed, rather than sitting on the strip offering to re-answer a settled question.
+ *
  * Nothing here guards the simulation. A trip freezes the sky it left under onto its own row
  * at dispatch (migration `017`), so a clock moved mid-trip cannot reach a survivor already
- * out. That is deliberate: a rate limit is a bad security control, because it does not stop
- * an exploit so much as ration it.
+ * out — which is what closes the exploit. A limit on how often the clock may move would only
+ * ever have rationed it.
  */
-
-/** How long a camp must live with its clock before moving it again. */
-export const CLOCK_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 
 /**
  * The zones a camp may choose, sorted by their sun rather than their name.
@@ -36,13 +42,11 @@ export function choosableZones() {
 }
 
 /**
- * How long until this camp may move its clock again, in ms. Zero when it may do so now.
+ * Whether this camp has ever been placed — founded with a zone the table knew, or placed by
+ * hand since. An unplaced camp is the only one the page offers the control to.
  */
-export function cooldownLeft(changedAt, now) {
-  if (changedAt === null || changedAt === undefined) return 0;
-  const last = changedAt instanceof Date ? changedAt.getTime() : Number(changedAt);
-  if (!Number.isFinite(last)) return 0;
-  return Math.max(0, last + CLOCK_COOLDOWN_MS - now);
+export function isPlaced(changedAt) {
+  return changedAt !== null && changedAt !== undefined;
 }
 
 /**
@@ -74,14 +78,8 @@ export async function setCampClock(client, settlementId, { zone, now = Date.now(
   );
   if (rows.length === 0) throw new InputError('No such camp.');
 
-  const left = cooldownLeft(rows[0].clock_changed_at, now);
-  if (left > 0) {
-    const hours = Math.ceil(left / (60 * 60 * 1000));
-    throw new InputError(
-      hours === 1
-        ? 'The camp has only just set its clock. Try again in an hour.'
-        : `The camp has only just set its clock. Try again in ${hours} hours.`,
-    );
+  if (isPlaced(rows[0].clock_changed_at)) {
+    throw new InputError('This camp already knows where it stands.');
   }
 
   await client.query(

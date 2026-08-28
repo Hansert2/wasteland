@@ -93,14 +93,27 @@ export async function foundSettlement(client, {
    */
   const noon = solarNoonFor(zone, offset);
 
+  /*
+   * Stamped only when the derivation actually worked — see migration 017.
+   *
+   * The column asks one question: was this camp ever placed. A camp founded from a zone the
+   * table knows is placed, here, and never needs the control on the camp page. A camp whose
+   * zone was unlisted or missing is standing on the idealised sky by default rather than by
+   * anyone's choice, so it stays null and is offered the control once.
+   *
+   * Stamping unconditionally would be the easy mistake: it would mark every camp placed
+   * including the ones that were not, and close the only door out of the default.
+   */
+  const placedAt = noon === null ? null : new Date(now);
+
   const { rows: settlements } = await client.query(
     `insert into settlements (player_id, name, founded_at, last_tick_at,
-                              clock_offset_minutes, solar_noon_minutes)
-     values ($1, $2, $3, $3, $4, coalesce($5, 720)) returning id`,
+                              clock_offset_minutes, solar_noon_minutes, clock_changed_at)
+     values ($1, $2, $3, $3, $4, coalesce($5, 720), $6) returning id`,
     // The camp's own hour, so dark outside and dark in the game are the same dark. Taken
     // from the browser that founded it and defaulted to Greenwich, which is what every
     // camp founded before migration 015 has.
-    [playerId, camp, new Date(now), offset, noon],
+    [playerId, camp, new Date(now), offset, noon, placedAt],
   );
   const settlementId = settlements[0].id;
 

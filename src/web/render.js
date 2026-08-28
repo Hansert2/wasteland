@@ -1826,45 +1826,34 @@ function hourBar(hour, place) {
 }
 
 /**
- * Where the camp says it is.
+ * Where this camp stands, asked once and then never again.
  *
- * Free at every tier, unlike the hour beside it. The clock and the glass sell precision —
- * the exact minute, the temperature — and this is not precision, it is the camp knowing
- * where it stands. A player whose sky is eight hours out from their window has a broken
- * game rather than an un-upgraded one, and there is nothing to sell them there.
+ * `null` for a camp that was placed at founding, which is every camp founded since the
+ * browser's zone started being read — so for almost everybody this renders nothing at all
+ * and the strip is exactly as it was. It appears only for a camp standing on the idealised
+ * sky by default rather than by choice, and it appears there once.
  *
- * Collapsed, because it is read once and then never again. The strip is glanced at every
- * visit and this is set on the first one.
+ * The summary says what is wrong rather than what the control is, because a camp in that
+ * state has no other way of finding out: Greenwich and noon at 12:00 sharp is a coherent
+ * sky, almost certainly not the player's, and indistinguishable on the strip from a
+ * correct one.
  */
 function placePicker(place) {
   if (!place) return '';
 
-  const hours = Math.ceil(place.cooldownLeft / (60 * 60 * 1000));
-  const body =
-    place.cooldownLeft > 0
-      ? `<span class="soft">Set recently. The camp can move again in
-           ${hours === 1 ? 'an hour' : `${hours} hours`}.</span>`
-      : `<form class="place-form" method="post" action="/clock">
-           <select name="zone" data-zonepick aria-label="Where this camp is">
-             ${place.zones
-               .map((z) => `<option value="${escape(z.zone)}">${escape(z.label)}</option>`)
-               .join('')}
-           </select>
-           <button type="submit">Set</button>
-         </form>
-         <span class="soft">Moves the clock and the sun together. Once a day.</span>`;
-
-  /*
-   * The summary says what is wrong rather than what the control is, when something is.
-   * A camp that has never set this is standing on the idealised sky — noon at 12:00 sharp,
-   * Greenwich — which is a coherent sky and almost certainly not the player's, and the
-   * strip has no other way of admitting that.
-   */
-  const summary = place.everSet ? 'Where we are' : 'Where we are — not set';
-
   return `<details class="place">
-    <summary>${escape(summary)}</summary>
-    <div class="place-in">${body}</div>
+    <summary>Where we are — not set</summary>
+    <div class="place-in">
+      <form class="place-form" method="post" action="/clock">
+        <select name="zone" data-zonepick aria-label="Where this camp is">
+          ${place.zones
+            .map((z) => `<option value="${escape(z.zone)}">${escape(z.label)}</option>`)
+            .join('')}
+        </select>
+        <button type="submit">Set</button>
+      </form>
+      <span class="soft">Sets the clock and the sun together, once.</span>
+    </div>
   </details>`;
 }
 

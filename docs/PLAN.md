@@ -2012,9 +2012,33 @@ what made anyone look.**
 So migration `017` puts the sky on the trip, beside `departed_at` and `seed`: a trip replays
 under the sky it left beneath, whatever the camp does afterwards. `reportOn` reads the same
 frozen pair, because `travelFactors` being one function stops the two composing the sky
-differently only if they are handed the same arguments. The daily limit then goes back to
-being what it was meant as — the sky is a property of the camp rather than a dial — and
-`clock_changed_at` carries it.
+differently only if they are handed the same arguments.
+
+#### And then the limit turned out to be answering a question nobody had
+
+**Proposed by the user 2026-08-28: "maybe the timezone can only be set once during sign up
+and creation of the camp."** Which is already what happens — registration reads the browser's
+zone and derives both numbers with nothing asked and no UI shown. A camp founded today is set
+once, at founding, exactly as described.
+
+That reframes what the control is. **It is not a second way to set the sky; it is the only way
+for camps the derivation came too late for** — those founded before it existed, and those
+whose zone the curated table does not list. Both stand on Greenwich and the idealised sky by
+default rather than by choice, and neither can say otherwise.
+
+So it is offered to exactly those camps, once, and to nobody else. `clock_changed_at` stops
+being a cooldown stamp and becomes one fact: **was this camp ever actually placed.** Founding
+stamps it when the derivation succeeded and leaves it null when it did not — stamping
+unconditionally would be the easy mistake, marking every camp placed including the ones only
+sitting on the default, and closing the one door out of it.
+
+> **The control removes itself from the game as the last unplaced camp is placed.** A setting
+> that exists to repair a specific historical gap should disappear when the gap is closed,
+> rather than sitting on the strip for ever offering to re-answer a settled question.
+
+The daily limit is gone with it, and its absence costs nothing: what closed the exploit was
+freezing the sky onto the trip, never the limit. A rate limit rations an exploit rather than
+closing one, so once the schema does the closing there is nothing left for it to do.
 
 **The form takes a place and nothing else.** An offset sent alongside the zone would be a
 second fact the player could set independently, and the two are not independent: a camp
@@ -2024,12 +2048,13 @@ our winter — and then stores it, which keeps `015`'s fixed-offset choice intac
 prefers the same derivation and falls back to the browser's reported offset only when the
 zone is one the table does not list.
 
-**Free at every tier**, unlike the hour beside it. The clock and the glass sell precision;
-this is not precision, it is the camp knowing where it stands. A player whose sky is eight
-hours out from their window has a broken game rather than an un-upgraded one, and there is
-nothing to sell them there. The summary says *not set* until it has been, because the
-idealised sky is coherent, almost certainly not the player's, and otherwise indistinguishable
-from a correct one.
+**Free at every tier** when it is shown at all, unlike the hour beside it. The clock and the
+glass sell precision; this is not precision, it is the camp knowing where it stands. A player
+whose sky is eight hours out from their window has a broken game rather than an un-upgraded
+one, and there is nothing to sell them there. The summary reads *not set* rather than naming
+the control, because a camp in that state has no other way of finding out: Greenwich with noon
+at 12:00 sharp is a coherent sky, almost certainly not the player's, and indistinguishable on
+the strip from a correct one.
 
 **How it hid.** `loadWorld` never selected either clock column, so the tick ran on Greenwich
 and noon while the page ran on the camp's own — and both suites stayed green, because a

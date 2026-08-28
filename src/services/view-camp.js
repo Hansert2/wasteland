@@ -1,5 +1,5 @@
 import { advanceSettlement } from './advance-settlement.js';
-import { choosableZones, cooldownLeft } from './set-camp-clock.js';
+import { choosableZones, isPlaced } from './set-camp-clock.js';
 import {
   WORLD_EVENTS,
   activeAt,
@@ -1145,22 +1145,28 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
      */
     hour: hourStrip(state, now, fitted, clock, noon),
     /**
-     * Where the camp says it is, and whether it may say so again yet.
+     * Where the camp stands — offered once, to a camp that was never actually placed, and
+     * `null` for everybody else.
      *
-     * Free at every tier, unlike the hour itself. The clock and the glass sell *precision*
-     * — the exact hour, the temperature — and this is not precision, it is the camp
-     * knowing where it stands. A player whose sky is eight hours out from their window has
-     * a broken game rather than an un-upgraded one, and there is nothing to sell them
+     * Founding places a camp already: registration reads the browser's zone and derives
+     * both numbers without asking anything. So this is not a setting, it is a repair, and
+     * it is offered to exactly the camps that need repairing — those founded before the
+     * derivation existed, and those whose zone the table did not list. Both are standing on
+     * the idealised sky by default rather than by choice.
+     *
+     * Which makes the control self-liquidating: it leaves the game as the last unplaced
+     * camp is placed, instead of sitting on the strip for ever offering to re-answer a
+     * settled question.
+     *
+     * Free at every tier when it is offered at all. The clock and the glass sell
+     * *precision* — the exact hour, the temperature — and this is not precision, it is the
+     * camp knowing where it stands. A player whose sky is eight hours out from their window
+     * has a broken game rather than an un-upgraded one, and there is nothing to sell them
      * there.
      */
-    place: {
-      zones: choosableZones(),
-      cooldownLeft: cooldownLeft(settlements[0].clock_changed_at, now),
-      // Never set: worth saying, because every camp founded before migration 016 is
-      // standing on the idealised sky and has no way of knowing that from the strip.
-      everSet: settlements[0].clock_changed_at !== null,
-      offset: clock,
-    },
+    place: isPlaced(settlements[0].clock_changed_at)
+      ? null
+      : { zones: choosableZones(), offset: clock },
     /**
      * The week ahead, and the whole of what the glass is worth its fuel for.
      *

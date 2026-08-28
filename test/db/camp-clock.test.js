@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 
 import { pool } from '../../src/db/pool.js';
 import { loadWorld } from '../../src/db/world.js';
-import { setCampClock, cooldownLeft, CLOCK_COOLDOWN_MS } from '../../src/services/set-camp-clock.js';
+import { setCampClock, isPlaced } from '../../src/services/set-camp-clock.js';
+import { foundSettlement } from '../../src/services/settlement-lifecycle.js';
 import { dispatchExpedition } from '../../src/services/dispatch-expedition.js';
 
 const HOUR = 60 * 60 * 1000;
@@ -83,7 +84,7 @@ test('setting the camp clock moves the hour and the sun together', async () => {
     );
     assert.equal(rows[0].clock_offset_minutes, 120);
     assert.equal(rows[0].solar_noon_minutes, 820);
-    assert.ok(rows[0].clock_changed_at, 'and the camp remembers when it moved');
+    assert.ok(rows[0].clock_changed_at, 'and the camp is now placed');
   });
 });
 
@@ -102,7 +103,8 @@ test('the offset is derived from the place, not accepted from the caller', async
     });
     assert.equal(summer.offsetMinutes, 120, 'August is CEST');
 
-    // Past the cooldown, so the second move is allowed on its own merits.
+    // Unplaced again, so the second call is judged on its zone rather than refused for
+    // having happened at all. What is under test is the derivation, not the once-only rule.
     await client.query('update settlements set clock_changed_at = null where id = $1', [
       settlementId,
     ]);
@@ -116,7 +118,12 @@ test('the offset is derived from the place, not accepted from the caller', async
   });
 });
 
-test('a camp may not move its clock twice in a day', async () => {
+test('a camp is placed once, and cannot be placed again', async () => {
+  /*
+   * Not a cooldown. A camp is a place, and founding is when a place gets one — the control
+   * exists only to repair camps founded before anything was derived. Once repaired there is
+   * nothing left for it to do, which is what makes it leave the game.
+   */
   await withRollback(async (client) => {
     const { settlementId } = await seed(client);
     const now = Date.UTC(2026, 7, 28, 12);
@@ -125,8 +132,17 @@ test('a camp may not move its clock twice in a day', async () => {
 
     await assert.rejects(
       () => setCampClock(client, settlementId, { zone: 'Asia/Tokyo', now: now + HOUR }),
-      /only just set its clock/,
-      'an hour later is too soon',
+      /already knows where it stands/,
+      'an hour later',
+    );
+    await assert.rejects(
+      () =>
+        setCampClock(client, settlementId, {
+          zone: 'Asia/Tokyo',
+          now: now + 400 * 24 * HOUR,
+        }),
+      /already knows where it stands/,
+      'and a year later, because it is not a wait',
     );
 
     // And the refusal is a refusal, not a partial write.
@@ -135,12 +151,63 @@ test('a camp may not move its clock twice in a day', async () => {
       [settlementId],
     );
     assert.equal(rows[0].clock_offset_minutes, 120, 'still Amsterdam');
+  });
+});
 
-    const later = await setCampClock(client, settlementId, {
-      zone: 'Asia/Tokyo',
-      now: now + CLOCK_COOLDOWN_MS + 1000,
+test('founding places a camp, so it is never offered the control', async () => {
+  /*
+   * The half that makes this self-liquidating. A camp founded from a zone the table knows
+   * needs no repair, and is stamped at founding so the page never offers one.
+   */
+  await withRollback(async (client) => {
+    const { settlementId } = await foundSettlement(client, {
+      email: uniq() + '@example.test',
+      password: 'correct horse battery staple',
+      settlementName: 'Placed',
+      zone: 'Europe/Amsterdam',
+      clockOffset: 120,
+      now: Date.UTC(2026, 7, 28, 12),
     });
-    assert.equal(later.offsetMinutes, 540, 'a day later it moves');
+
+    const { rows } = await client.query(
+      'select clock_changed_at from settlements where id = $1',
+      [settlementId],
+    );
+    assert.ok(isPlaced(rows[0].clock_changed_at), 'placed at founding');
+
+    await assert.rejects(
+      () => setCampClock(client, settlementId, { zone: 'Asia/Tokyo' }),
+      /already knows where it stands/,
+    );
+  });
+});
+
+test('founding without a zone it knows leaves the camp unplaced, and repairable', async () => {
+  /*
+   * The easy mistake here would be stamping unconditionally: it would mark every camp
+   * placed including the ones only sitting on the default, and close the one door out of it.
+   * A camp whose zone was unlisted is on the idealised sky by accident rather than by
+   * choice, and must still be able to say where it is.
+   */
+  await withRollback(async (client) => {
+    const { settlementId } = await foundSettlement(client, {
+      email: uniq() + '@example.test',
+      password: 'correct horse battery staple',
+      settlementName: 'Adrift',
+      zone: 'Antarctica/Troll',
+      clockOffset: 0,
+      now: Date.UTC(2026, 7, 28, 12),
+    });
+
+    const { rows } = await client.query(
+      'select solar_noon_minutes, clock_changed_at from settlements where id = $1',
+      [settlementId],
+    );
+    assert.equal(rows[0].solar_noon_minutes, 720, 'on the idealised sky');
+    assert.equal(rows[0].clock_changed_at, null, 'and not placed, so still repairable');
+
+    const fixed = await setCampClock(client, settlementId, { zone: 'Europe/Oslo' });
+    assert.ok(fixed.solarNoonMinutes !== 720, 'and a real sky once it says where it is');
   });
 });
 
@@ -174,7 +241,12 @@ test('moving the clock cannot change a trip already out there', async () => {
     assert.equal(before.expedition.clockOffset, 120, 'the trip carries the sky it left under');
     assert.equal(before.expedition.solarNoon, 820 / 60);
 
-    // The camp moves half a world away while the survivor is still walking.
+    /*
+     * The camp moves half a world away while the survivor is still walking. Placing is a
+     * once-only act now, so this reaches past it deliberately — what is under test is the
+     * frozen sky, and that has to hold against anything that moves the clock at all,
+     * including a hand at the database.
+     */
     await client.query('update settlements set clock_changed_at = null where id = $1', [
       settlementId,
     ]);
@@ -204,8 +276,8 @@ test('a place the camp cannot find the sun from is refused', async () => {
       );
     }
 
-    // Refused without touching the camp, including its cooldown — a rejected attempt must
-    // not spend the day's one move.
+    // Refused without touching the camp, including its placed stamp — a rejected attempt
+    // must not spend the one chance the camp has to say where it is.
     const { rows } = await client.query(
       'select clock_offset_minutes, clock_changed_at from settlements where id = $1',
       [settlementId],
@@ -215,10 +287,9 @@ test('a place the camp cannot find the sun from is refused', async () => {
   });
 });
 
-test('the cooldown counts from when the clock moved', () => {
-  const now = Date.UTC(2026, 7, 28, 12);
-  assert.equal(cooldownLeft(null, now), 0, 'never moved, so free to move');
-  assert.equal(cooldownLeft(new Date(now), now), CLOCK_COOLDOWN_MS, 'just moved');
-  assert.equal(cooldownLeft(new Date(now - CLOCK_COOLDOWN_MS), now), 0, 'a full day ago');
-  assert.equal(cooldownLeft(new Date(now - 2 * CLOCK_COOLDOWN_MS), now), 0, 'longer still');
+test('placed is a fact about the camp, not a date to compare', () => {
+  assert.equal(isPlaced(null), false, 'never placed');
+  assert.equal(isPlaced(undefined), false);
+  assert.equal(isPlaced(new Date(Date.UTC(2026, 7, 28))), true);
+  assert.equal(isPlaced(new Date(0)), true, 'however long ago it was');
 });
