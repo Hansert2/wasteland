@@ -150,12 +150,21 @@ export function createApp() {
       Math.min(840, Math.trunc(Number(req.body.clockOffset)) || 0),
     );
 
+    /*
+     * And where the sun sits against it, which the offset cannot say — Amsterdam and
+     * Athens share UTC+2 and their solar noons are seventy-five minutes apart. Passed
+     * raw; `zones.js` validates the shape and answers `null` for anything it does not
+     * recognise, which lands the camp on the idealised sky rather than a wrong one.
+     */
+    const zone = String(req.body.timeZone ?? '').slice(0, 64);
+
     const { playerId } = await withTransaction((client) =>
       foundSettlement(client, {
         email: req.body.email,
         password: req.body.password,
         settlementName: req.body.settlementName,
         clockOffset,
+        zone,
         now: Date.now(),
       }),
     );

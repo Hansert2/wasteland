@@ -2260,6 +2260,17 @@ export function landingPage({ error, signUp = false } = {}) {
                 * keeps summer's offset, which is an hour of drift and no discontinuity.
                 */ ''}
               <input type="hidden" name="clockOffset" id="clock-offset">
+              ${/*
+                * And the zone the offset came from, which is a different fact. The offset
+                * says what time it is here; only the zone says where the sun sits against
+                * that — see zones.js. Amsterdam and Athens are both UTC+2 in summer and
+                * their solar noons are seventy-five minutes apart, so no arithmetic on the
+                * offset alone could have got both right.
+                *
+                * Also filled by script and also harmless without it: an unrecognised or
+                * missing zone leaves the camp on the idealised sky, sun at 12:00 sharp.
+                */ ''}
+              <input type="hidden" name="timeZone" id="time-zone">
               <button type="submit">Begin</button>
             </form>
             <script>
@@ -2267,6 +2278,12 @@ export function landingPage({ error, signUp = false } = {}) {
               // browser two hours east reports -120 and the camp wants +120.
               document.getElementById('clock-offset').value =
                 -new Date().getTimezoneOffset();
+              // Wrapped: resolvedOptions().timeZone is everywhere now, but a browser that
+              // lacked it should still be able to found a camp.
+              try {
+                document.getElementById('time-zone').value =
+                  Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+              } catch (e) {}
             </script>
           </div>
         </div>

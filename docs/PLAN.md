@@ -1930,10 +1930,58 @@ a balance constant — day length is a loot multiplier — and it is chosen rath
 inherited. A camp that wanted a real latitude would change that number, and would have to
 re-run `daylight-balance.mjs` afterwards.
 
+#### And then derived, because it is not a number anyone knows
+
+**Asked for by the user 2026-08-28: "can we make it so the sunrise and sunset is based on
+the camp time?"** The column shipped and the player had to set it by hand, which is one
+number too many and a number nobody knows about themselves — "how far are you from your
+timezone's meridian" is not a question a person can answer about where they live.
+
+The camp's *clock* cannot answer it, which is worth stating because it is the obvious thing
+to reach for and it is the same conflation a second time. An offset is quantised to whole
+zones with summer time folded in, so it has already thrown longitude away. **Amsterdam and
+Athens are both UTC+2 in August and their solar noons are 13:40 and 12:25** — seventy-five
+minutes apart on an identical clock, so no arithmetic on the offset could get both right.
+
+The camp's *zone* does answer it, and the browser has been able to say it all along:
+
+    Intl.DateTimeFormat().resolvedOptions().timeZone   // "Europe/Amsterdam"
+
+No permission, universal support, and a zone is a place with a longitude. One degree is
+four minutes of time and the offset already carries the meridian the clock was cut from, so
+the whole derivation collapses to one line:
+
+    solar noon = 720 + offsetMinutes − 4 × longitude
+
+`src/game/zones.js` holds a curated table of about a hundred zones — the set a real player
+is plausibly in, short enough to read in a diff — and `foundSettlement` derives the column
+once and stores it. **An unlisted zone returns `null` and the camp keeps 720**, which is a
+correct sky rather than a wrong one; adding a row is the whole fix. Vendoring IANA's full
+`zone1970.tab` was the alternative and was rejected as ~350 rows nobody reads.
+
+**Balance-neutral, and that is a property rather than a hope.** `sunAt` computes
+`sunrise = noon − hours/2`, and `hours` comes from `daylightHoursAt`, which never sees
+`noon`. Solar noon sets the day's *phase*; only `DAYLIGHT_SWING_HOURS` sets its *length*.
+So no loot multiplier moves and `daylight-balance.mjs` did not need re-running — and
+`test/unit/zones.test.js` pins it, so if day length ever becomes a function of longitude the
+suite says so rather than the fuel figures quietly going stale.
+
+**Derived once and stored**, like the offset and for the same reason: a camp must not change
+its sky because the player travelled, or an expedition would stop replaying. Summer time is
+folded in and then frozen for both, so the two drift together and the sun stays where it was
+against the camp's own clock — freezing one and not the other would be worse than freezing
+neither.
+
+**Left out: the equation of time**, which swings true solar noon ±16 minutes across the year
+and is why a sundial and a clock disagree in November. Including it would make solar noon a
+function of the date rather than a property of the camp, and the column is a property of the
+camp on purpose. The error is under a minute at the equinoxes and always smaller than the
+one this fixed.
+
 **Why the default stays 720.** Noon is the idealised world and is correct for a camp on its
-meridian; it is also the only value that needs no knowledge the game does not have. A camp
-that wants its sky to match a real window sets its own, and nothing else in the game reads
-the column.
+meridian; it is also the only value that needs no knowledge the game does not have. Camps
+founded before this keep it, because there is nothing to derive their zone from after the
+fact.
 
 **How it hid.** `loadWorld` never selected either clock column, so the tick ran on Greenwich
 and noon while the page ran on the camp's own — and both suites stayed green, because a

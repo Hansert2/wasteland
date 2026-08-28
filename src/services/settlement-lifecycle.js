@@ -2,6 +2,7 @@ import { hashPassword, MIN_PASSWORD_LENGTH } from '../auth/passwords.js';
 import { UPGRADES, storageCap } from '../game/structures.js';
 import { InputError } from '../errors.js';
 import { wandererFor } from '../game/wanderers.js';
+import { solarNoonFor } from '../game/zones.js';
 
 export { InputError };
 
@@ -42,6 +43,7 @@ export async function foundSettlement(client, {
   password,
   settlementName,
   clockOffset = 0,
+  zone = '',
   now = Date.now(),
 }) {
   const cleanEmail = String(email ?? '').trim().toLowerCase();
@@ -67,13 +69,26 @@ export async function foundSettlement(client, {
     throw error;
   }
 
+  const offset = Math.max(-840, Math.min(840, Math.trunc(clockOffset) || 0));
+
+  /*
+   * Where the sun sits against that clock, derived from the browser's zone rather than
+   * asked for — see `zones.js`. `null` for a zone nobody listed, and then the column keeps
+   * its 720 default, which is the idealised sky every camp had before migration 016.
+   *
+   * Derived once and stored, like the offset and for the same reason: a camp must not
+   * change its sky because the player travelled, or an expedition would stop replaying.
+   */
+  const noon = solarNoonFor(zone, offset);
+
   const { rows: settlements } = await client.query(
-    `insert into settlements (player_id, name, founded_at, last_tick_at, clock_offset_minutes)
-     values ($1, $2, $3, $3, $4) returning id`,
+    `insert into settlements (player_id, name, founded_at, last_tick_at,
+                              clock_offset_minutes, solar_noon_minutes)
+     values ($1, $2, $3, $3, $4, coalesce($5, 720)) returning id`,
     // The camp's own hour, so dark outside and dark in the game are the same dark. Taken
     // from the browser that founded it and defaulted to Greenwich, which is what every
     // camp founded before migration 015 has.
-    [playerId, camp, new Date(now), Math.max(-840, Math.min(840, Math.trunc(clockOffset) || 0))],
+    [playerId, camp, new Date(now), offset, noon],
   );
   const settlementId = settlements[0].id;
 

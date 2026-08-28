@@ -245,3 +245,72 @@ test('the stored session row is not the token itself', async () => {
 test.after(async () => {
   await pool.end();
 });
+
+test('a camp is founded with the sun its browser implied, not with a number it asked for', async () => {
+  /*
+   * Migration 016 gave the camp a solar noon and left the player to set it, which is a
+   * number nobody knows about themselves. It comes from the browser's zone instead.
+   *
+   * This asserts the wiring end to end because the last two bugs in this area were both
+   * wiring: `loadWorld` never selected the column, and a `Number(x) ?? 720` that could
+   * never fire. Both suites stayed green through both, because a default is quiet. So the
+   * assertion here is deliberately that a *non*-default value survives the round trip.
+   */
+  await withRollback(async (client) => {
+    const amsterdam = await foundSettlement(
+      client,
+      newAccount({ clockOffset: 120, zone: 'Europe/Amsterdam' }),
+    );
+    const athens = await foundSettlement(
+      client,
+      newAccount({ clockOffset: 120, zone: 'Europe/Athens' }),
+    );
+
+    const sunOf = async (settlementId) => {
+      const { rows } = await client.query(
+        'select clock_offset_minutes, solar_noon_minutes from settlements where id = $1',
+        [settlementId],
+      );
+      return rows[0];
+    };
+
+    const a = await sunOf(amsterdam.settlementId);
+    const b = await sunOf(athens.settlementId);
+
+    assert.equal(a.solar_noon_minutes, 820, 'Amsterdam keeps its sun at 13:40');
+    assert.equal(b.solar_noon_minutes, 745, 'Athens keeps its own at 12:25');
+    assert.equal(a.clock_offset_minutes, b.clock_offset_minutes, 'on an identical clock');
+
+    // And the tick sees it, which is the half that was missing last time.
+    const world = await loadWorld(client, amsterdam.settlementId);
+    assert.equal(world.settlement.solarNoon, 820 / 60);
+  });
+});
+
+test('a camp founded without a zone stands on the idealised sky', async () => {
+  /*
+   * A browser too old for `Intl.DateTimeFormat().resolvedOptions()`, a zone nobody
+   * listed, or a form posted with scripting off. None of these should refuse the camp or
+   * guess at it: the default is noon at 12:00, which is the sky the game had before any
+   * of this and is a correct sky rather than a wrong one.
+   */
+  await withRollback(async (client) => {
+    const cases = [
+      ['no zone at all', {}],
+      ['a zone nobody listed', { zone: 'Antarctica/Troll' }],
+      ['something that is not a zone', { zone: '; drop table settlements' }],
+    ];
+
+    for (const [what, overrides] of cases) {
+      const { settlementId } = await foundSettlement(
+        client,
+        newAccount({ clockOffset: 120, ...overrides }),
+      );
+      const { rows } = await client.query(
+        'select solar_noon_minutes from settlements where id = $1',
+        [settlementId],
+      );
+      assert.equal(rows[0].solar_noon_minutes, 720, what);
+    }
+  });
+});
