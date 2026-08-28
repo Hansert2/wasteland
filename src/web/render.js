@@ -292,7 +292,7 @@ const STYLE = `
    * not offer, which is the failure the honesty pass exists to prevent — a cost a player
    * cannot find is a cost they cannot plan around.
    */
-  .hourbar .costs { position: relative; cursor: help; }
+  .costs { position: relative; cursor: help; }
   .hourbar .costs .band { border-bottom: 1px dotted var(--edge); }
 
   /*
@@ -303,8 +303,9 @@ const STYLE = `
    * somewhere a phone could never reach. Hidden by visibility rather than by display, so
    * the panel keeps its box and does not reflow the strip when it opens.
    */
-  .hourbar .costs-panel {
+  .costs-panel {
     position: absolute;
+    z-index: 5;
     left: 0;
     top: calc(100% + 8px);
     visibility: hidden;
@@ -319,17 +320,36 @@ const STYLE = `
     text-align: left;
     transition: opacity .12s ease;
   }
-  .hourbar .costs:hover .costs-panel,
-  .hourbar .costs:focus-within .costs-panel,
-  .hourbar .costs:focus .costs-panel { visibility: visible; opacity: 1; }
+  .costs:hover .costs-panel,
+  .costs:focus-within .costs-panel,
+  .costs:focus .costs-panel { visibility: visible; opacity: 1; }
 
-  .hourbar .costs-head {
+  .costs-head {
     display: block;
     font-variant-caps: all-small-caps;
     letter-spacing: .16em;
     color: var(--quiet);
   }
-  .hourbar .cost-row { display: flex; gap: 8px; align-items: baseline; }
+  .cost-row { display: flex; gap: 8px; align-items: baseline; }
+
+  /*
+   * The stores' own copy of it. Narrower and pinned to the left edge because these sit in
+   * the rail, which is a couple of hundred pixels wide — the strip's 300px panel would hang
+   * off the side of the page. The rule above gives it the z-index it needs to sit over the
+   * track below it.
+   */
+  .store { position: relative; }
+  /*
+   * Positioned against the cell, not against the rate span it hangs off. The strip has room
+   * to anchor a panel to its trigger; the rail is a couple of hundred pixels wide, and a
+   * fixed-width panel hung off a short number at the right-hand edge would leave the page.
+   * Spanning the cell means it cannot, at any rail width.
+   */
+  .store .costs { position: static; }
+  .store .costs-panel { min-width: 0; width: auto; left: 0; right: 0; top: calc(100% + 4px); }
+  .store .cost-row { justify-content: space-between; gap: 10px; }
+  .store .cost-row.net { border-top: 1px solid var(--rule); padding-top: 5px; }
+  .store .cost-row .num { font-variant-numeric: tabular-nums; }
   .hourbar .cost-row .tag { min-width: 74px; flex: none; }
   .hourbar .cost-row.together { border-top: 1px solid var(--rule); padding-top: 6px; }
   /* No tag, so no column to indent past: the figures start where the heading does. */
@@ -344,7 +364,7 @@ const STYLE = `
 
   @media (max-width: 640px) {
     .hourbar-in { gap: 6px 16px; padding: 8px 14px; font-size: 12px; }
-    .hourbar .costs-panel { min-width: 0; width: min(88vw, 260px); }
+    .costs-panel { min-width: 0; width: min(88vw, 260px); }
   }
 
   .shell {
@@ -4118,6 +4138,58 @@ function describeStanding(standing) {
  * the survivor eats. A negative one is shown rather than hidden, because a store
  * quietly draining is the single most useful thing this table can tell you.
  */
+/**
+ * What the rate above is made of, on hover, focus and tap.
+ *
+ * The structure list advertises a *building* — `perLevel × level`, no weather, nobody
+ * eating — because that is what the upgrade decision turns on. This line reports a *camp*.
+ * Both are right and they differ by exactly the survivor, which reads as the page
+ * contradicting itself until the sum is taken apart.
+ *
+ * Returns nothing at all when there is nothing to explain: a store with no producer and no
+ * consumer is its own explanation, and a panel saying so would be a panel about nothing.
+ */
+function rateBreakdown(r) {
+  const b = r.breakdown;
+  if (!b) return '';
+
+  const weathered = b.gross * b.weather;
+  const rows = [];
+
+  if (b.gross !== 0) {
+    rows.push([escape(String(b.from ?? 'produced').replace(/_/g, ' ')), b.gross]);
+  }
+
+  // Only when the sky is actually doing something. A row reading "weather x1" is a line of
+  // text that says nothing, on a panel small enough that every line has to earn its place.
+  if (b.weather !== 1 && b.gross !== 0) {
+    rows.push([`weather &times;${n(b.weather)}`, weathered - b.gross]);
+  }
+
+  if (b.eaten !== 0) rows.push(['the camp', -b.eaten]);
+
+  if (rows.length === 0) return '';
+
+  const signed = (v) => `${v > 0 ? '+' : v < 0 ? '&minus;' : ''}${n(Math.abs(v))}/h`;
+
+  const body = rows
+    .map(
+      ([label, value]) =>
+        `<span class="cost-row"><span class="tag">${label}</span><span class="num">${signed(
+          value,
+        )}</span></span>`,
+    )
+    .join('');
+
+  return `<span class="costs-panel">
+    <span class="costs-head">${escape(r.kind.replace(/_/g, ' '))} an hour</span>
+    ${body}
+    <span class="cost-row net"><span class="tag">net</span><span class="num">${signed(
+      r.ratePerHour,
+    )}</span></span>
+  </span>`;
+}
+
 function renderResources(resources) {
   const cells = resources
     .map((r) => {
@@ -4134,8 +4206,21 @@ function renderResources(resources) {
 
       // A zero store shows an empty track rather than no track. The four cells are the
       // same shape whatever is in them, or the eye has to re-find the layout each time.
+      /*
+       * The trigger wraps the rate rather than the whole cell, so the thing you point at is
+       * the number you are asking about. Focusable and role="button" for the same reason
+       * the strip's panel is: a phone has no hover, and an explanation only reachable by
+       * hovering is one half the players cannot read.
+       */
+      const panel = rateBreakdown(r);
+      const figure = panel
+        ? `<span class="costs" tabindex="0" role="button"
+                 aria-label="What makes up the ${escape(r.kind.replace(/_/g, ' '))} rate"
+           >${rate}${panel}</span>`
+        : rate;
+
       return `<div class="store">
-        <div class="store-top"><span class="tag">${escape(r.kind)}</span>${rate}</div>
+        <div class="store-top"><span class="tag">${escape(r.kind)}</span>${figure}</div>
         <div class="store-fig"><span data-amount="${r.amount}" data-rate="${r.ratePerHour}"
                 data-cap="${r.cap}">${n(r.amount, STORE_DECIMALS)}</span><span
                 class="cap"> / ${n(r.cap, 0)}</span></div>

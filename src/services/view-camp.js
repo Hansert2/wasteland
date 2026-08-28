@@ -299,6 +299,18 @@ function roughLight(now, lit, clock = 0, noon = DEFAULT_SOLAR_NOON) {
   return 'hours yet before dark';
 }
 
+/**
+ * Which structure makes this resource, or null for one nothing makes.
+ *
+ * Read off the specs rather than kept as a second list: a table mapping food to the garden
+ * would be a copy of `produces`, and the copy is what goes stale when a structure changes
+ * what it makes.
+ */
+function producerOf(kind) {
+  const found = Object.entries(STRUCTURES).find(([, spec]) => spec.produces === kind);
+  return found ? found[0] : null;
+}
+
 function reportOn(row, state, now) {
   if (!row) return null;
 
@@ -1282,6 +1294,29 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
       cap: r.cap,
       ratePerHour:
         (rates[kind] ?? 0) * (weatherFactors[kind] ?? 1) - (eats[kind] ?? 0),
+      /**
+       * The three numbers the rate above is made of.
+       *
+       * The structure list advertises what a *building* produces — `perLevel × level`,
+       * with no weather in it and nobody eating — because that is the figure the upgrade
+       * decision turns on. This line reports what the *camp* does. Both are right and they
+       * disagree by exactly the survivor, which reads as a contradiction until somebody
+       * takes the sum apart. So the page takes it apart.
+       *
+       * It matters more than the half a unit suggests. During a blight the garden goes on
+       * advertising its fair-weather rating while the stores fall, and then the gap is
+       * several units rather than 0.5 — the same confusion with a much larger number in
+       * it.
+       *
+       * Sent as parts rather than as sentences: the arithmetic belongs here beside the
+       * arithmetic it explains, and the words belong in the renderer.
+       */
+      breakdown: {
+        from: producerOf(kind),
+        gross: rates[kind] ?? 0,
+        weather: weatherFactors[kind] ?? 1,
+        eaten: eats[kind] ?? 0,
+      },
     })),
   };
 }

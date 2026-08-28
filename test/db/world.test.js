@@ -508,6 +508,76 @@ test('the page burns at the threshold the tick burns at, not at the constant', a
   });
 });
 
+test('the stores panel takes the rate apart without changing it', async () => {
+  /*
+   * The structure list advertises a building — `perLevel × level`, no weather, nobody
+   * eating — and the stores line reports a camp. Both are right and they differ by exactly
+   * the survivor, which reads as the page contradicting itself. The hover panel exists to
+   * show the subtraction.
+   *
+   * So the one thing it must never do is disagree with the figure it is explaining. A
+   * breakdown that sums to something other than the printed rate would be worse than no
+   * breakdown at all, because it would look like an answer.
+   */
+  await withRollback(async (client) => {
+    const { settlementId } = await seed(client);
+    const view = await viewCamp(client, settlementId, T0 + hours(1));
+
+    let checkedProducer = false;
+    let checkedEater = false;
+
+    for (const r of view.resources) {
+      const b = r.breakdown;
+      assert.ok(b, `${r.kind} carries its parts`);
+
+      // The sum, in the same order the panel prints it.
+      const summed = b.gross * b.weather - b.eaten;
+      assert.ok(
+        Math.abs(summed - r.ratePerHour) < 1e-9,
+        `${r.kind}: panel sums to ${summed}, line prints ${r.ratePerHour}`,
+      );
+
+      if (b.gross !== 0) {
+        // Named off the specs rather than a second table, so it cannot go stale when a
+        // structure changes what it makes.
+        assert.ok(b.from, `${r.kind} names what produces it`);
+        assert.equal(STRUCTURES[b.from].produces, r.kind);
+        checkedProducer = true;
+      }
+      if (b.eaten !== 0) checkedEater = true;
+    }
+
+    assert.ok(checkedProducer, 'at least one store is produced by something');
+    assert.ok(checkedEater, 'and at least one is eaten, or the panel proves nothing');
+  });
+});
+
+test('the structure line and the stores line differ by exactly the survivor', async () => {
+  /*
+   * The question a player actually asks: the garden says +4.2 food/h and the stockpile says
+   * +3.7/h. Pinned as a relationship rather than as two numbers, so it stays true when the
+   * rates are tuned — and so that if the two ever drift apart for some *other* reason, this
+   * says so rather than the player working it out from a screenshot.
+   */
+  await withRollback(async (client) => {
+    const { settlementId } = await seed(client);
+    const view = await viewCamp(client, settlementId, T0 + hours(1));
+
+    const garden = view.structures.find((st) => st.kind === 'garden');
+    const food = view.resources.find((r) => r.kind === 'food');
+
+    // What the building advertises, read off the string the page prints.
+    const advertised = Number(/\+([\d.]+)/.exec(garden.effect)[1]);
+
+    assert.equal(food.breakdown.gross, advertised, 'the panel starts from what is advertised');
+    assert.equal(food.breakdown.eaten, CONFIG.foodPerHour, 'and subtracts one mouth');
+    assert.ok(
+      Math.abs(advertised - CONFIG.foodPerHour - food.ratePerHour) < 1e-9,
+      'which is the whole of the difference between the two lines',
+    );
+  });
+});
+
 test('the camp keeps its own hour, and the weather keeps the world', async () => {
   /*
    * World time was UTC for everybody until 2026-08-27, on the grounds that every camp is
