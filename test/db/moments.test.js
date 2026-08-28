@@ -101,6 +101,19 @@ async function give(client, settlementId, slug, qty = 1) {
   );
 }
 
+/** What the living survivor is carrying, by slug. */
+async function pack(client, settlementId) {
+  const { rows } = await client.query(
+    `select i.slug, ii.qty
+       from inventory_items ii
+       join items i on i.id = ii.item_id
+       join characters c on c.id = ii.character_id
+      where c.settlement_id = $1 and c.died_at is null and ii.qty > 0`,
+    [settlementId],
+  );
+  return new Map(rows.map((row) => [row.slug, Number(row.qty)]));
+}
+
 async function returnsAt(client, expeditionId) {
   const { rows } = await client.query('select returns_at from expeditions where id = $1', [
     expeditionId,
@@ -173,6 +186,81 @@ test('an option the pack cannot pay for says so instead of offering a button', a
       labels.some((label) => label.includes('rads')),
       `the dose still says what it does: ${labels.join(' / ')}`,
     );
+  });
+});
+
+test('spending an option takes exactly one thing, in the preference order', async () => {
+  /*
+   * The half of the price nothing was checking. The page has been gating the offer since
+   * moments were written, and `answerMoment` has been calling `spendOne` since — but no
+   * test had ever watched an item leave a pack, so the whole exchange was an assumption.
+   *
+   * `consumes` is a preference order rather than a shopping list: one is enough, the first
+   * one held is the one taken, and the other is left alone.
+   */
+  await withRollback(async (client) => {
+    const { settlementId } = await setup(client);
+    const departed = Date.now();
+    await sendFixed(client, settlementId, 'the_deep_zone', departed);
+
+    await give(client, settlementId, 'rad_scrubber');
+    await give(client, settlementId, 'rad_x');
+
+    const inside = departed + hours(5);
+    const view = await viewCamp(client, settlementId, inside);
+    const dose = view.expedition.moment.options.find((option) => option.consumes);
+    assert.equal(dose.missing, false, 'the pack can pay');
+
+    await answerMoment(
+      client,
+      settlementId,
+      { index: view.expedition.moment.index, option: dose.key },
+      inside,
+    );
+
+    const held = await pack(client, settlementId);
+    assert.equal(held.get('rad_scrubber'), undefined, 'the first choice was spent');
+    assert.equal(held.get('rad_x'), 1, 'and the second was left in the pack');
+  });
+});
+
+test('an option cannot be paid for out of an empty pack', async () => {
+  /*
+   * The page hides this option when there is nothing to pay with, and the page is a render
+   * of a moment ago: a survivor can eat the last ration in one tab and answer with it in
+   * another. `answerMoment` re-checks, which is the only check that can be trusted, and
+   * this is what proves it does.
+   *
+   * The refusal has to be total. A half-applied answer — recorded but unpaid — would be the
+   * dose for free, which is the exploit this guard exists to close.
+   */
+  await withRollback(async (client) => {
+    const { settlementId } = await setup(client);
+    const departed = Date.now();
+    await sendFixed(client, settlementId, 'the_deep_zone', departed);
+
+    const inside = departed + hours(5);
+    const view = await viewCamp(client, settlementId, inside);
+    const dose = view.expedition.moment.options.find((option) => option.consumes);
+    assert.equal(dose.missing, true, 'nothing in the pack to pay with');
+
+    await assert.rejects(
+      () =>
+        answerMoment(
+          client,
+          settlementId,
+          { index: view.expedition.moment.index, option: dose.key },
+          inside,
+        ),
+      /nothing like that in the pack/,
+      'and the answer is refused rather than taken on credit',
+    );
+
+    // Nothing was recorded, so the moment is still open and still answerable — with the
+    // free options, which were never the problem.
+    const after = await viewCamp(client, settlementId, inside);
+    assert.ok(after.expedition.moment, 'the moment is still standing');
+    assert.equal(after.expedition.moment.index, view.expedition.moment.index);
   });
 });
 
