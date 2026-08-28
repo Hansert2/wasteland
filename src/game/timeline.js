@@ -13,12 +13,25 @@
  * module existed — roll for roll — and the distribution in time is simply never
  * observed on a trip nobody attends.
  *
- * **This is a reporting projection, not a simulation.** A hazard placed at hour eleven
- * is *reported* as having happened at hour eleven and is still *applied* at
- * `returns_at`, exactly as it is today. Nothing here decides when anybody dies. Making
- * the timeline authoritative would mean a survivor who dies out there stops eating
- * hours earlier than they currently do, which would quietly change what an unattended
- * trip costs a camp — the one thing all of this is arranged to prevent.
+ * **This became authoritative on 2026-08-28.** A hazard placed at hour eleven is applied
+ * at hour eleven: the tick settles a trip's damage, dose and healing across its hours
+ * rather than at `returns_at`, and a survivor who runs out of health out there dies of
+ * what happened to them, at the hour it happened.
+ *
+ * The cost this module was written to avoid turned out to be worth measuring rather than
+ * fearing. A survivor who dies mid-trip stops eating hours earlier than they used to, which
+ * does change what an unattended trip costs a camp — by 4.3 food and 6.5 water on an
+ * eighteen-hour run, against a camp sitting at its cap and throwing food away hourly. And
+ * it runs the cheap way.
+ *
+ * What is *not* new is death out there: a survivor who starved mid-trip has always died at
+ * that hour (`tick.js`), the expedition has always gone to `lost`, and a trip that killed
+ * its survivor has always forfeited the haul. This only lets the trip's own two effects be
+ * the cause, at the hour they happen.
+ *
+ * The safety is the contract below: `stateAt` is monotone in `hours` and exact at the end,
+ * so what accrues over a whole trip is exactly the outcome that was rolled. Nothing here
+ * adds randomness or changes a total; it decides when.
  */
 import { makeRandom, mix } from './random.js';
 
@@ -78,6 +91,17 @@ export function timelineOf({ outcome, travelHours, seed }) {
     jitter,
     radiation: Number(outcome.radiation ?? 0),
     hazard: damage > 0 ? { damage, cause: outcome.cause ?? null, atHour: hazardHour } : null,
+    /*
+     * What they ate out there and when. Sorted, because `stateAt` is a running total and a
+     * running total over an unsorted list is only right at the end.
+     *
+     * Drawn from nothing: the hours are the moments' own. Every other field here is placed
+     * by the generator, and a new draw inserted anywhere shifts the hazard and every find
+     * after it, on every trip in flight.
+     */
+    heals: [...(outcome.heals ?? [])]
+      .map((heal) => ({ atHour: Number(heal.atHour) || 0, amount: Number(heal.amount) || 0 }))
+      .sort((a, b) => a.atHour - b.atHour),
     finds: (outcome.finds ?? []).map((find) => ({
       slug: find.slug,
       qty: find.qty,
@@ -109,12 +133,18 @@ export function stateAt(timeline, hours) {
 
   const hazardReached = timeline.hazard !== null && elapsed >= timeline.hazard.atHour;
 
+  // Everything eaten by this hour. The tick applies healing before damage within a slice,
+  // so a ration at hour six is already in them when a hazard at hour nine lands.
+  const healed = (timeline.heals ?? [])
+    .filter((heal) => elapsed >= heal.atHour)
+    .reduce((sum, heal) => sum + heal.amount, 0);
+
   return {
     hours: elapsed,
     carrying,
     // One decimal, as the roll itself is, so the last step lands on the exact total.
     radiation: Math.round(timeline.radiation * p * 10) / 10,
-    // Reported, not applied. The tick still settles this at returns_at.
+    healed,
     damage: hazardReached ? timeline.hazard.damage : 0,
     cause: hazardReached ? timeline.hazard.cause : null,
     finds: timeline.finds

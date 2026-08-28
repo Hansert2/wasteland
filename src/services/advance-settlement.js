@@ -1,6 +1,7 @@
 import { applyTick } from '../game/tick.js';
 import { loadWorld, saveWorld, grantItems } from '../db/world.js';
-import { ensureWorldEvents, loadWorldEvents } from '../db/world-events.js';
+import { WORLD_SEED, ensureWorldEvents, loadWorldEvents } from '../db/world-events.js';
+import { deriveEventsBetween } from '../game/world-events.js';
 
 /**
  * Bring a settlement up to date: load, simulate, write back.
@@ -40,7 +41,26 @@ export async function advanceSettlement(client, settlementId, now) {
   const from = Math.min(state.lastTickAt, state.expedition?.departedAt ?? Infinity);
 
   await ensureWorldEvents(client, from, now);
-  state.worldEvents = await loadWorldEvents(client, from, now);
+  const recorded = await loadWorldEvents(client, from, now);
+
+  /*
+   * And forward to the end of a trip in flight, derived rather than recorded.
+   *
+   * The tick now settles a trip's damage and dose across its hours instead of at the gate,
+   * and to know what a whole trip is worth it has to integrate the whole trip's sky —
+   * including the part that has not happened yet. Weather is a pure function of WORLD_SEED
+   * and the slot number, so those hours are knowable without being stored, which is the
+   * same derivation `reportOn` has used to preview a trip since the glass was fitted.
+   *
+   * Not persisted, deliberately. `ensureWorldEvents` writes the past because the past must
+   * agree between camps forever; the future needs no such promise, and writing it would
+   * commit the world to weather no player has yet lived through.
+   */
+  const until = state.expedition?.status === 'active' ? state.expedition.returnsAt : now;
+  const ahead =
+    until > now ? deriveEventsBetween(WORLD_SEED, now, until).filter((e) => e.startsAt >= now) : [];
+
+  state.worldEvents = [...recorded, ...ahead];
 
   const { state: advanced, events } = applyTick(state, now);
   await saveWorld(client, advanced);

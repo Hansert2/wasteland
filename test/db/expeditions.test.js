@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
+import { CONFIG } from '../../src/game/constants.js';
 import { pool } from '../../src/db/pool.js';
 import { loadWorld } from '../../src/db/world.js';
 import { advanceSettlement } from '../../src/services/advance-settlement.js';
@@ -348,10 +349,37 @@ test('the report on a trip in flight agrees with the trip that lands', async () 
       'and they came back',
     );
 
-    const actualDose = Number(after.survivor.radiation) - Number(before.survivor.radiation);
+    /*
+     * Measured across the whole trip rather than across the instant it ends.
+     *
+     * The dose used to land in one step at `returns_at`, so the delta over the final
+     * instant was the whole of it. It accrues across the hours now, so that delta is very
+     * nearly nothing and the old measurement would pass only by measuring nothing.
+     *
+     * What is still exactly true is the invariant this test exists for: the page's
+     * prediction and the tick's settlement integrate the same sky. So the survivor's dose at
+     * the gate is the prediction less whatever decayed on the way — which is bounded, and
+     * bounded tightly enough to catch a disagreement.
+     */
+    const carried = Number(after.survivor.radiation);
+    const decayed = CONFIG.radDecayPerHour * 20;
+
     assert.ok(
-      Math.abs(actualDose - predictedDose) < 0.05,
-      `the page said ${predictedDose} rads and the trip delivered ${actualDose}`,
+      carried <= predictedDose + 0.05,
+      `the page said ${predictedDose} rads and the trip delivered more: ${carried}`,
+    );
+    assert.ok(
+      carried >= predictedDose - decayed - 0.05,
+      `the page said ${predictedDose} rads and only ${carried} arrived, ` +
+        `which is more than the ${decayed} the walk could have scrubbed`,
+    );
+
+    // And it did arrive gradually rather than all at once: `before` is one instant short of
+    // the gate and already carries nearly the whole dose. This is the half that would fail
+    // if the tick went back to settling at `returns_at`.
+    assert.ok(
+      Number(before.survivor.radiation) > carried * 0.9,
+      'the dose accrued across the trip rather than landing at the gate',
     );
   });
 });

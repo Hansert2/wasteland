@@ -1,5 +1,6 @@
 import { CONFIG } from './constants.js';
 import { resolveExpedition } from './expeditions.js';
+import { stateAt, timelineOf } from './timeline.js';
 import {
   FACTIONS,
   caravanVisit,
@@ -91,18 +92,146 @@ export function applyTick(state, now, config = CONFIG) {
     next.settlement.nextCaravanAt = next.lastTickAt + visit.gapHours * HOUR_MS;
   }
 
+  // Resolved before the walk and not inside it: every slice asks the same trip the same
+  // question, and asking it once is what guarantees they all get the same answer.
+  const flight = flightOf(next);
+
   let cursor = next.lastTickAt;
   while (cursor < now) {
     // Slices are cut exactly at pending event timestamps (build completions,
     // expedition returns), so a rate change lands at its true hour and the result
     // cannot depend on how the interval happens to be divided.
     const at = Math.min(cursor + config.stepMs, now, nextEventAfter(next, cursor));
-    advance(next, cursor, at, events, config);
+    advance(next, cursor, at, events, config, flight);
     cursor = at;
   }
 
   next.lastTickAt = now;
   return { state: next, events };
+}
+
+/**
+ * The trip in flight, resolved once for the whole walk.
+ *
+ * A trip's damage, dose and healing are settled across its hours now rather than at the
+ * gate, which means every slice needs to know what the whole trip is worth. Resolved once
+ * and carried, because `resolveExpedition` is not cheap and because resolving it per slice
+ * would invite the two answers to differ.
+ *
+ * The totals are deterministic — the seed, the region, the survivor's skills and a sky that
+ * is a pure function of the world seed — so this is the same outcome the gate would have
+ * computed, worked out earlier. `travelFactors` integrates the *whole* trip, which is why
+ * `advanceSettlement` now derives the weather forward to `returns_at`: without those hours
+ * the integral would run short and a trip would be worth less the earlier it was asked
+ * about.
+ *
+ * Null when nobody is out.
+ */
+function flightOf(state) {
+  const expedition = state.expedition;
+  if (!expedition || expedition.status !== 'active' || !state.survivor) return null;
+
+  /*
+   * Both ends and a region, or there is nothing to settle across.
+   *
+   * `integrateFactors` refuses a missing `departedAt` rather than quietly treating it as
+   * zero, which is right and which this has to answer for: the walk asks about the trip on
+   * every slice now, where the gate only asked on the one slice a trip came home. A row
+   * that cannot be resolved is simply not accrued — it is not a real row, because
+   * `loadWorld` supplies all three.
+   */
+  if (
+    !Number.isFinite(expedition.departedAt) ||
+    !Number.isFinite(expedition.returnsAt) ||
+    typeof expedition.region !== 'object'
+  ) {
+    return null;
+  }
+
+  const outcome = resolveExpedition({
+    region: expedition.region,
+    survivor: state.survivor,
+    seed: expedition.seed,
+    weather: travelFactors(
+      state.worldEvents,
+      expedition.departedAt,
+      expedition.returnsAt,
+      expedition.clockOffset ?? state.settlement.clockOffset ?? 0,
+      expedition.solarNoon ?? state.settlement.solarNoon ?? 12,
+    ),
+    choices: expedition.choices,
+    standings: state.settlement.standings,
+  });
+
+  /*
+   * The timeline spans the trip the survivor is actually walking, measured off the two
+   * timestamps the accrual is measured against, rather than off the region's advertised
+   * length.
+   *
+   * They agree in production — `returns_at` is `now + travel_hours` at dispatch — and when
+   * they do not, elapsed hours and the timeline's total are two different clocks. A region
+   * with no `travelHours` at all spans zero hours, and a zero-length timeline reports the
+   * entire trip as already over at elapsed zero: the first reading equals the last, every
+   * delta is nothing, and a trip settles for exactly none of what it rolled.
+   */
+  const travelHours = (expedition.returnsAt - expedition.departedAt) / HOUR_MS;
+
+  return {
+    outcome,
+    timeline: timelineOf({ outcome, travelHours, seed: expedition.seed }),
+  };
+}
+
+/**
+ * What the trip did to them between two instants.
+ *
+ * The whole of the change: a hazard at hour eleven lands at hour eleven, the dose creeps up
+ * across the walk, and a ration eaten at hour six is in them before either. `stateAt` is
+ * monotone and exact at the end, so the deltas over a whole trip sum to precisely the
+ * outcome that was rolled — this decides *when*, never *how much*.
+ *
+ * Healing before damage inside the slice, which is the rule the gate used to get for free by
+ * applying both at once.
+ */
+function accrueTrip(state, from, at, events, config, flight) {
+  if (!flight || !state.survivor?.alive) return;
+
+  const expedition = state.expedition;
+  if (!expedition || expedition.status !== 'active') return;
+
+  const survivor = state.survivor;
+  const was = stateAt(flight.timeline, (from - expedition.departedAt) / HOUR_MS);
+  const is = stateAt(flight.timeline, (at - expedition.departedAt) / HOUR_MS);
+
+  const healed = is.healed - was.healed;
+  if (healed > 0) survivor.health = clamp(survivor.health + healed, 0, 100);
+
+  const dose = is.radiation - was.radiation;
+  if (dose > 0) survivor.radiation = clamp(survivor.radiation + dose, 0, 100);
+
+  const damage = is.damage - was.damage;
+  if (damage <= 0) return;
+
+  survivor.health = clamp(survivor.health - damage, 0, 100);
+
+  /*
+   * And if that was the end of them, they die of what happened out there rather than of
+   * whatever the camp's food happened to be that hour — which is why the cause travels with
+   * the hazard on the timeline.
+   *
+   * `kill` marks the expedition lost and forfeits the haul, exactly as it has since a
+   * survivor could starve mid-trip. The log goes with the event so the camp learns what
+   * happened up to the hour it stopped.
+   */
+  if (survivor.health <= 0) {
+    events.push({
+      at,
+      type: 'expedition_lost',
+      expeditionId: expedition.id,
+      log: flight.outcome.log,
+    });
+    kill(state, at, is.cause ?? flight.outcome.cause ?? 'the road', events);
+  }
 }
 
 /** The earliest scheduled event strictly after `cursor`, or Infinity. */
@@ -150,7 +279,7 @@ function nextEventAfter(state, cursor) {
 }
 
 /** One simulation slice, applied in a fixed order. */
-function advance(state, from, at, events, config) {
+function advance(state, from, at, events, config, flight) {
   const hours = (at - from) / HOUR_MS;
 
   // What the sky is doing across this slice, sampled at its start. Slices are cut at
@@ -169,10 +298,14 @@ function advance(state, from, at, events, config) {
   // from that hour rather than from the next one.
   raid(state, at, events);
 
+  // What the road did to them in this slice, before they can walk in the gate with it.
+  // The slice ending exactly at `returns_at` is what makes the last instalment land in full.
+  accrueTrip(state, from, at, events, config, flight);
+
   // Coming home happens before the hour's hunger is applied, so a survivor who
   // returns carrying food is fed by it rather than starving on the doorstep.
   if (isDueBack(state, at)) {
-    returnExpedition(state, at, events);
+    returnExpedition(state, at, events, flight);
   }
 
   if (state.survivor?.alive) {
@@ -422,50 +555,37 @@ function isDueBack(state, at) {
  * dispatch, so this is deterministic: replaying the same interval replays the same
  * trip rather than re-rolling it.
  */
-function returnExpedition(state, at, events) {
+function returnExpedition(state, at, events, flight) {
   const expedition = state.expedition;
   const survivor = state.survivor;
 
-  // What the world did across the whole trip, not what it was doing at the hour they got
-  // back: the sky and the sun both integrated between departure and return. See
-  // `travelFactors`, which is one function precisely so that this and `reportOn` cannot
-  // compose the same two things differently.
-  //
-  // `departedAt` rather than `at` less the region's travel hours: the same instant, and
-  // the stored one cannot drift from the row the trip was dispatched with.
-  const outcome = resolveExpedition({
-    region: expedition.region,
-    survivor,
-    seed: expedition.seed,
-    weather: travelFactors(
-      state.worldEvents,
-      expedition.departedAt,
-      at,
-      // The sky the trip left under, not the one the camp is standing in now. A camp can
-      // set its own timezone, and without this a player could send somebody out at dusk,
-      // move the clock, and have the whole trip integrated as though it went at dawn.
-      // `??` and not `||`: an offset of 0 is Greenwich, which is a real clock.
-      expedition.clockOffset ?? state.settlement.clockOffset ?? 0,
-      expedition.solarNoon ?? state.settlement.solarNoon ?? 12,
-    ),
-    // Whatever the player answered while they were out. An empty list is the trip
-    // exactly as it would have resolved before any of this existed.
-    choices: expedition.choices,
-    // Only a parley reads these, and only for the crew whose fire it was.
-    standings: state.settlement.standings,
-  });
+  /*
+   * The outcome was resolved before the walk began — see `flightOf` — and settled across the
+   * hours by `accrueTrip`. The gate no longer rolls anything; it hands over the haul and
+   * writes the log.
+   *
+   * Resolving here as well would be two answers to one question, and the sky is integrated
+   * over the whole trip either way, so they would agree only for as long as nobody edited
+   * one of them.
+   */
+  const settled = flight ?? flightOf(state);
+  const outcome = settled ? settled.outcome : null;
+  if (!outcome) return;
 
   expedition.resolvedAt = at;
   expedition.log = outcome.log;
 
-  // Dying out there means nothing comes home — not the survivor, and not the haul.
-  if (outcome.died) {
-    expedition.status = 'lost';
-    events.push({ at, type: 'expedition_lost', expeditionId: expedition.id, log: outcome.log });
-    kill(state, at, outcome.cause, events);
-    return;
-  }
-
+  /*
+   * No death check here any more. A trip that kills its survivor kills them at the hour it
+   * happens, in `accrueTrip`, and `kill` marks the expedition lost — so anybody still alive
+   * on the doorstep walked the whole way and is home.
+   *
+   * `outcome.died` still exists and is still what the log's last line was written from; it
+   * is now a statement about the roll rather than a decision about the survivor. The two can
+   * differ, and where they do the walk is right: it settled the damage against the health
+   * they actually had at that hour, rather than against the health they would have finished
+   * the trip with.
+   */
   expedition.status = 'returned';
 
   for (const [kind, amount] of Object.entries(outcome.loot)) {
@@ -475,12 +595,15 @@ function returnExpedition(state, at, events) {
     resource.amount = clamp(resource.amount + amount, 0, resource.cap);
   }
 
-  survivor.radiation = clamp(survivor.radiation + outcome.radiation, 0, 100);
-  // Healing before damage: a ration eaten at hour six was eaten before whatever
-  // happened at hour eleven, and settling them the other way round would let the same
-  // trip kill a survivor who ate in time.
-  survivor.health = clamp(survivor.health + (outcome.healed ?? 0), 0, 100);
-  survivor.health = clamp(survivor.health - outcome.damage, 0, 100);
+  /*
+   * The dose, the damage and whatever they ate are already in them: each landed in the slice
+   * it belonged to, and the last instalment landed in the slice that ends here, because the
+   * walk cuts a slice exactly at `returns_at`.
+   *
+   * Healing before damage still holds, and now holds for a better reason — a ration eaten at
+   * hour six was applied at hour six, four hours before the thing at hour ten, rather than
+   * being sorted into the right order at the gate.
+   */
 
   // Items are granted by the caller: the tick has no idea what an item id is, and
   // resolving a slug is a database concern.

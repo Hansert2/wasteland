@@ -41,7 +41,7 @@ export function resolveExpedition({ region, survivor, seed, weather, choices, st
   const { damage, cause } = rollHazard(random, region, equipment, log);
 
   const trip = applyChoices(
-    { loot, finds, radiation, damage, cause, healed: 0, log },
+    { loot, finds, radiation, damage, cause, healed: 0, heals: [], log },
     { region, survivor, seed, choices, standings },
   );
 
@@ -68,6 +68,8 @@ export function resolveExpedition({ region, survivor, seed, weather, choices, st
     radiation: trip.radiation,
     damage: trip.damage,
     healed: trip.healed,
+    // Each helping and its hour, so the timeline can put them where they happened.
+    heals: trip.heals ?? [],
     died,
     cause: died ? trip.cause : null,
     log: trip.log,
@@ -156,6 +158,17 @@ function attend(trip, moments, answered, { region, survivor, seed, standings }) 
     if (option.radiationFactor) shelter(trip, timeline, at, option.radiationFactor);
     if (option.heals) {
       trip.healed += option.heals;
+      /*
+       * And when, which the total cannot say.
+       *
+       * The tick settles a trip's damage across its hours rather than at the gate, so
+       * "healing before damage" — a ration eaten at hour six was eaten before whatever hurt
+       * them — stops holding for free and has to be a fact about the clock. The hour is the
+       * moment's own, not a fresh draw: `timelineOf` derives from a generator whose draw
+       * *order* is its derivation, and taking one more from it would move every hazard on
+       * every trip in flight.
+       */
+      trip.heals.push({ atHour: moment.atHour, amount: option.heals });
       trip.log.push('They ate, and walked better for it.');
     }
     if (option.findChance) {
