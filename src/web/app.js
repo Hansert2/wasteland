@@ -19,6 +19,7 @@ import { dispatchExpedition } from '../services/dispatch-expedition.js';
 import { startBuild } from '../services/start-build.js';
 import { startCraft } from '../services/start-craft.js';
 import { setCampClock } from '../services/set-camp-clock.js';
+import { useItem } from '../services/use-item.js';
 import { startUpgrade } from '../services/start-upgrade.js';
 import { commitToRoad } from '../services/commit-to-road.js';
 import { tradeWithCaravan } from '../services/trade.js';
@@ -365,6 +366,25 @@ export function createApp() {
       const now = Date.now();
       await advanceSettlement(client, settlementId, now);
       await commitToRoad(client, settlementId, req.body.fuel, now);
+    });
+
+    res.redirect(backToCamp(req));
+  });
+
+  app.post('/use', requireAuth, async (req, res) => {
+    await withTransaction(async (client) => {
+      const settlementId = await settlementIdForPlayer(client, req.playerId);
+      if (!settlementId) throw new InputError('This account has no camp.');
+
+      /*
+       * Advance first, as every spend does. It matters more here than most: the gauges this
+       * acts on are the two the tick moves every slice, and a trip in flight is adding to
+       * one of them as the page sits there. Taking a tablet against the dose the page was
+       * drawn with would scrub a number that had already moved.
+       */
+      const now = Date.now();
+      await advanceSettlement(client, settlementId, now);
+      await useItem(client, settlementId, req.body.slug);
     });
 
     res.redirect(backToCamp(req));

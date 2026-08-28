@@ -417,6 +417,12 @@ const STYLE = `
   /* A tab that opens onto an empty pack still says so: a blank panel reads as a failure. */
   .none { color: var(--faint); margin: 0; }
   .carrying { width: 100%; }
+  .carrying .use { white-space: nowrap; }
+  .carrying .use form { display: inline-block; }
+  .carrying .use button { font-size: 11px; padding: 2px 8px; }
+  /* What it would do, beside the button that would do it. */
+  .carrying .use .gain { margin-left: 8px; color: var(--value); font-size: 11.5px; }
+  .carrying .use .short { color: var(--faint); font-size: 11.5px; }
 
   .tabs { display: flex; align-items: center; gap: 4px; }
   .tab {
@@ -4334,13 +4340,37 @@ function inventoryBody(inventory) {
     return `<p class="none">${NOTHING.inventory}</p>`;
   }
 
+  /*
+   * A third column, and it is the only thing in this block that does anything.
+   *
+   * Until now a consumable could only be spent when a moment offered it: a long trip, an
+   * open window, somebody else's hour. The pack is where a player looks for a thing they
+   * own, so the verb belongs here.
+   *
+   * A row that cannot be used keeps its column empty rather than losing the column — the
+   * shape of the table is what lets the eye find the quantity without reading the names —
+   * and a row that *could* be used but would do nothing says why instead of offering a
+   * button. That is the bench's rule and the moment's rule: an option you cannot take must
+   * never look identical to one you can.
+   */
   const rows = inventory
-    .map(
-      (item) => `<tr>
+    .map((item) => {
+      const action = item.use
+        ? `<form method="post" action="/use">
+             <input type="hidden" name="slug" value="${escape(item.slug)}">
+             <button type="submit">Use</button>
+           </form>
+           <span class="gain">${escape(item.use.effect)}</span>`
+        : item.idle
+          ? `<span class="short">${escape(item.idle)}</span>`
+          : '';
+
+      return `<tr>
         <td><span class="name">${escape(item.name)}</span></td>
         <td class="right"><span class="cost">×${item.qty}</span></td>
-      </tr>`,
-    )
+        <td class="right use">${action}</td>
+      </tr>`;
+    })
     .join('');
 
   return `<table class="carrying">${rows}</table>`;

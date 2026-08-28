@@ -651,8 +651,8 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
     [settlementId],
   );
 
-  const { rows: inventory } = await client.query(
-    `select i.slug, i.name, i.kind, ii.qty
+  const { rows: inventoryRows } = await client.query(
+    `select i.slug, i.name, i.kind, i.potency, ii.qty
        from inventory_items ii
        join items i on i.id = ii.item_id
        join characters c on c.id = ii.character_id
@@ -660,6 +660,42 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
       order by i.name`,
     [settlementId],
   );
+
+  /*
+   * What each thing in the pack would do, and whether taking it now would do anything.
+   *
+   * A weapon and a coil of parts are carried rather than taken, so they say nothing; a
+   * ration at full health and a tablet on a clean survivor would be a crafted item spent on
+   * moving a gauge that is already at its best, so they say why not rather than offering a
+   * button. Same shape as a moment option the pack cannot pay for, and as a recipe the
+   * workshop is not deep enough for: the row stays, and it says what it wants.
+   *
+   * The service refuses all three cases again. This decides what the page offers; that
+   * decides what actually happens, because the page is a render of a moment ago.
+   */
+  const inventory = inventoryRows.map((row) => {
+    const points = Number(row.potency) * 0.5;
+    const health = Number(state.survivor?.health ?? 0);
+    const dose = Number(state.survivor?.radiation ?? 0);
+
+    if (row.kind === 'ration') {
+      return {
+        ...row,
+        use: health >= 100 ? null : { effect: `+${Math.round(Math.min(points, 100 - health) * 10) / 10} health` },
+        idle: health >= 100 ? 'nothing to mend' : null,
+      };
+    }
+
+    if (row.kind === 'antirad') {
+      return {
+        ...row,
+        use: dose <= 0 ? null : { effect: `−${Math.round(Math.min(points, dose) * 10) / 10} rads` },
+        idle: dose <= 0 ? 'no dose to scrub' : null,
+      };
+    }
+
+    return { ...row, use: null, idle: null };
+  });
 
   const { rows: upgradeRows } = await client.query(
     'select kind, upgrade, completes_at, installed_at from structure_upgrades where settlement_id = $1',
