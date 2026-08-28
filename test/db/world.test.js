@@ -1056,7 +1056,13 @@ test('the gate and the camp price the same person the same way', async () => {
     // And the page prints them, rather than the sentence that used to stand in for them.
     const html = campPage(inTheCamp, {});
     assert.match(html, /class="skills"/, 'as figures');
-    assert.match(html, /loot &times;[\d.]+/, 'what the loot is multiplied by');
-    assert.match(html, /rad resist (&minus;|\+)\d+/, 'and how much of the dose does not count');
+    // In the hover note now, not restated under the bar: the line there said "loot x0.7"
+    // directly above a panel opening with "loot x0.7".
+    assert.match(html, /loot<\/span><span class="v">×[\d.]+/, 'what the loot is multiplied by');
+    assert.match(
+      html,
+      /rad resist<\/span><span class="v">(−|\+)\d+/,
+      'and how much of the dose does not count',
+    );
   });
 });

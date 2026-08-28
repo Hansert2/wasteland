@@ -366,7 +366,6 @@ const STYLE = `
                 font-variant-numeric: tabular-nums; }
   /* The scale, quieter than the level it qualifies: "1 / 7" should read as one figure. */
   .skill .val .of { color: var(--faint); }
-  .skill small { color: var(--quiet); }
 
   /*
    * Seven marks, not a fill. The gauges beside this are continuous and run to a hundred, so
@@ -1944,22 +1943,6 @@ function skillStats(skills) {
   if (!skills || skills.length === 0) return '';
 
   const row = (skill) => {
-    /*
-     * Label and figure, in the vocabulary a stat block uses.
-     *
-     * This read "haul x0.7" and "dose -15 rads" under a note explaining that four buys
-     * nothing and this one is never below x0.5, which was three sentences pretending to be
-     * a table. A player reading a stat wants the name of the thing and the number, and
-     * `rad resist` carries its own meaning where `dose -15` needed a paragraph to say it
-     * was a subtraction and not a threshold.
-     */
-    const signed = (value) => `${value < 0 ? '&minus;' : '+'}${Math.abs(value)}`;
-
-    const effect =
-      skill.name === 'scavenging'
-        ? `loot &times;${skill.multiplier}`
-        : `rad resist ${signed(skill.relief)}`;
-
     // Better or worse than baseline, or neither. `up` and `down` are the page's existing
     // pair; a baseline level takes neither and stays the colour of plain text.
     const lean =
@@ -2014,7 +1997,15 @@ function skillStats(skills) {
         */ ''}
       <div class="pips" role="img"
            aria-label="${escape(skill.name)} level ${skill.level} of ${skill.max}, baseline ${skill.ordinary}">${pips}</div>
-      <small>${effect}</small>
+      ${/*
+        * No line under the bar restating the first row of the note.
+        *
+        * It read "loot x0.7" directly above a panel whose opening row is "loot x0.7", which
+        * is the block answering a question twice. The three gauges beside this settled the
+        * shape already: a label, a figure and a track, and everything else on hover. On a
+        * touch screen the note is not hidden in the first place, so nothing is lost where
+        * there is no hover to depend on.
+        */ ''}
       ${note}
     </li>`;
   };
