@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { pool } from '../../src/db/pool.js';
-import { loadWorld } from '../../src/db/world.js';
+import { loadWorld, saveWorld } from '../../src/db/world.js';
 import { advanceSettlement } from '../../src/services/advance-settlement.js';
 import { viewCamp } from '../../src/services/view-camp.js';
 import { raiseSuccessor } from '../../src/services/settlement-lifecycle.js';
@@ -1064,5 +1064,38 @@ test('the gate and the camp price the same person the same way', async () => {
       /rad resist<\/span><span class="v">(−|\+)\d+/,
       'and how much of the dose does not count',
     );
+  });
+});
+
+test('the camp is loaded as a roster, and saved as one', async () => {
+  /*
+   * The first step of Phases 7 and 10, and deliberately a step that changes nothing: the
+   * camp is described as a list of the living rather than as "the survivor, singular", and
+   * the list is one person long. `characters_one_living_idx` still refuses a second row, so
+   * this is the same camp said differently.
+   *
+   * Worth a test now rather than when the roster grows, because the two failures it guards
+   * are both silent. A load that built the roster from a second query would drift from the
+   * survivor it is meant to contain; a save that wrote `state.survivor` and ignored the
+   * rest would persist the first of a roster and drop everybody else — which surfaces days
+   * later as a survivor whose dose resets on every page load.
+   */
+  await withRollback(async (client) => {
+    const { settlementId } = await seed(client);
+
+    const state = await loadWorld(client, settlementId);
+    assert.ok(Array.isArray(state.survivors), 'the camp is a list of the living');
+    assert.equal(state.survivors.length, 1, 'one person long, for now');
+    assert.equal(state.survivors[0], state.survivor, 'and it is the same person, not a copy');
+
+    // The save walks the roster. Moved through it rather than through `state.survivor`, so
+    // a write that only ever saw the singular would leave this unchanged.
+    state.survivors[0].radiation = 41;
+    state.survivors[0].hunger = 12;
+    await saveWorld(client, state);
+
+    const again = await loadWorld(client, settlementId);
+    assert.equal(Number(again.survivor.radiation), 41, 'what the roster carried was written');
+    assert.equal(Number(again.survivor.hunger), 12);
   });
 });

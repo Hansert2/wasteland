@@ -67,17 +67,30 @@ export async function loadWorld(client, settlementId) {
     };
   }
 
-  // "The living survivor", singular — the partial unique index guarantees at most one.
+  /*
+   * Everybody alive in this camp, in the order they arrived.
+   *
+   * Read as a list rather than as "the living survivor, singular" — which is what it was,
+   * and what `characters_one_living_idx` still enforces. The list is the shape Phase 7 and
+   * Phase 10 need and it is exactly one person long today, so this is the same camp
+   * described differently: the index is untouched, nothing creates a second row, and every
+   * figure the game produces is unchanged.
+   *
+   * Ordered by birth so the roster has a stable order to be shown and walked in. `id` would
+   * do the same job by accident; `born_at` says why.
+   */
   const { rows: characters } = await client.query(
     `select id, health, hunger, radiation, born_at, skill_scavenging, skill_medicine
        from characters
-      where settlement_id = $1 and died_at is null`,
+      where settlement_id = $1 and died_at is null
+      order by born_at, id`,
     [settlementId],
   );
   const character = characters[0];
 
   let survivor = null;
   let expedition = null;
+  const survivors = [];
 
   if (character) {
     const { rows: inventory } = await client.query(
@@ -112,6 +125,17 @@ export async function loadWorld(client, settlementId) {
         qty: row.qty,
       })),
     };
+
+    /*
+     * The roster, which is one person long today.
+     *
+     * `survivor` stays as the person the whole game is written against, and this is the
+     * list it will become. Built here rather than mapped from the rows, so there is one
+     * construction of a survivor and not two to keep in step — the second was always going
+     * to be where a skill or a pack quietly stopped being loaded for everybody but the
+     * first person.
+     */
+    survivors.push(survivor);
 
     // The region travels with the expedition because resolution is pure: the tick
     // must be able to roll an outcome without reaching back into the database.
@@ -237,6 +261,11 @@ export async function loadWorld(client, settlementId) {
       upgrades: upgradeRows.filter((row) => row.installed_at !== null).map((row) => row.upgrade),
     },
     survivor,
+    /*
+     * Everyone alive, in arrival order. Exactly `[survivor]` today — Phases 7 and 10 are
+     * what make it longer, and `characters_one_living_idx` still refuses a second row.
+     */
+    survivors,
     expedition,
     craft: order
       ? {
@@ -300,8 +329,21 @@ export async function saveWorld(client, state) {
     );
   }
 
-  const survivor = state.survivor;
-  if (survivor) {
+  /*
+   * Everybody, not just the first.
+   *
+   * `state.survivors` is one person long today and `state.survivor` is that person, so this
+   * writes exactly what it wrote before. Written as a walk anyway, because the alternative
+   * is a save that silently persists the first of a roster and drops the rest — which is
+   * the kind of fault that shows up as a survivor whose dose resets every page load, days
+   * after the change that caused it.
+   *
+   * Falls back to `[state.survivor]` for a state built by hand: the tick is a pure function
+   * over whatever it is handed, and a good deal of it is handed fixtures.
+   */
+  const roster = state.survivors ?? (state.survivor ? [state.survivor] : []);
+
+  for (const survivor of roster) {
     // Setting died_at is what retires the character: the partial unique index stops
     // matching them, so the next load returns no survivor and the camp ticks on alone.
     await client.query(
