@@ -306,6 +306,75 @@ export const MOMENTS = {
     ],
   },
 
+  /*
+   * Two more places where the dose is something to spend rather than something to suffer.
+   *
+   * `the_hot_room` was the only moment that could raise a dose, and it reaches the bunkers,
+   * the coast and the Deep Zone — which left the two hottest regions in the game, the
+   * Waterworks and Harrow End, with no way to trade radiation for anything at all. Their
+   * dose was a tax and never a decision.
+   *
+   * Both follow the hot room's shape rather than inventing one: a default that walks past,
+   * a full commitment that pays well and costs a great deal of dose, and a hurried version
+   * that takes a little of each. Three options, one axis, and the deciding number is how
+   * much of the counter the player is willing to spend.
+   */
+  the_settling_tanks: {
+    axis: 'radiation',
+    title: 'The settling tanks',
+    regions: ['the_waterworks'],
+    scene:
+      'Six open tanks in a row, and the fifth never drained. What is left in it has gone the colour of weak tea and lies perfectly still, and the walkway over it is stacked with the tooling somebody was using on the day they stopped.',
+    prose: 'Everything worth taking is on the walkway, and the walkway is over the tank.',
+    options: [
+      { key: 'around', verb: 'default', label: 'Go round', detail: 'they walk on' },
+      {
+        key: 'clear',
+        verb: 'press_on',
+        label: 'Clear the walkway',
+        detail: 'all of it, and a long time stood over the tank',
+        lootFactor: 1.32,
+        radiationFactor: 2.2,
+      },
+      {
+        key: 'reach',
+        verb: 'press_on',
+        label: 'Take what is in reach',
+        detail: 'the near end only, and less of the water under them',
+        lootFactor: 1.1,
+        radiationFactor: 1.3,
+      },
+    ],
+  },
+
+  the_last_gallery: {
+    axis: 'radiation',
+    title: 'The last gallery',
+    regions: ['harrow_end'],
+    scene:
+      'The gallery runs on past where the lamps were strung, and the air in it is dry and still and tastes of nothing. Two hundred paces in, the counter stops keeping time and simply holds a note.',
+    prose: 'Nobody has been this far along it. That is why there is anything left.',
+    options: [
+      { key: 'turn', verb: 'default', label: 'Turn back at the lamps', detail: 'they walk on' },
+      {
+        key: 'far',
+        verb: 'press_on',
+        label: 'Go to the end of it',
+        detail: 'whatever is down there, and every step of it counting',
+        lootFactor: 1.4,
+        radiationFactor: 2.4,
+      },
+      {
+        key: 'near',
+        verb: 'press_on',
+        label: 'As far as the lamps reach',
+        detail: 'what the last crew left, and a reading they can walk off',
+        lootFactor: 1.15,
+        radiationFactor: 1.35,
+      },
+    ],
+  },
+
   the_hot_room: {
     axis: 'radiation',
     title: 'The hot room',

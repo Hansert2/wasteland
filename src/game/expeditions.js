@@ -155,7 +155,7 @@ function attend(trip, moments, answered, { region, survivor, seed, standings }) 
 
     if (option.dropsCarried) spill(trip, at, option.dropsCarried);
     if (option.lootFactor) pressOn(trip, timeline, at, option.lootFactor);
-    if (option.radiationFactor) shelter(trip, timeline, at, option.radiationFactor);
+    if (option.radiationFactor) dose(trip, timeline, at, option.radiationFactor);
     if (option.heals) {
       trip.healed += option.heals;
       /*
@@ -311,12 +311,30 @@ function pressOn(trip, timeline, at, factor) {
 }
 
 /** Scale only the dose they had not taken yet. What is in them is in them. */
-function shelter(trip, timeline, at, factor) {
+function dose(trip, timeline, at, factor) {
   const remaining = timeline.radiation - at.radiation;
   if (remaining <= 0) return;
 
+  const before = trip.radiation;
   trip.radiation = Math.round((at.radiation + remaining * factor) * 10) / 10;
-  trip.log.push(`They sat out the worst of it — ${trip.radiation} rads instead of ${timeline.radiation}.`);
+
+  /*
+   * Narrated by direction, because this is called for both.
+   *
+   * It was written for sitting out a wind and said so unconditionally — so a player who
+   * stripped the hot room, at `radiationFactor: 2.1`, was told "they sat out the worst of
+   * it" beside a number twice what they would have taken. The one line in the log about
+   * the choice they had just made described the opposite choice.
+   *
+   * Only the moments' own factors reach here and only one radiation moment can occur per
+   * trip — the axis rule in `moments.js` — so `before` is the trip's rolled dose and the
+   * comparison is the honest one.
+   */
+  if (trip.radiation < before) {
+    trip.log.push(`They sat out the worst of it — ${trip.radiation} rads instead of ${before}.`);
+  } else if (trip.radiation > before) {
+    trip.log.push(`The counter climbed for it — ${trip.radiation} rads instead of ${before}.`);
+  }
 }
 
 /**
