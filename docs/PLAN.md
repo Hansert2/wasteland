@@ -2691,6 +2691,88 @@ bench time**, since uptime is the currency this phase actually trades in. Re-run
    player. Show the split and the direction; do not rank the rows.
 5. **Night moments changing what a seed means.** §5. Droppable without touching the rest.
 
+## Phase 7 — the roster, and the bed that decides it
+
+*Designed 2026-08-30, with the user, after four mechanisms were weighed.*
+
+Phase 10 says stamina and the roster ship together or not at all, and the user's own note
+adds the constraint that decides everything here: **idleness is per survivor, and what
+matters is whether the *camp* is idle.** Two people alternating means somebody is always
+available — so the second survivor has to arrive in the first day or two, or every new camp
+plays the version that does not work.
+
+### The four ways in, and why beds won
+
+**A moment that yields a survivor** was the first proposal and does not survive contact.
+Moments occur only on trips of four hours and over — the Fence Line and the Service Road have
+no interior — so a new camp must reach the Ruined City before one exists. Forcing "the *next*
+moment is an encounter" also overrides `momentsFor`, which derives the schedule from the seed
+and allows one axis per trip, so trips would stop replaying.
+
+> **The fatal objection is the shape rather than the plumbing: it makes the second survivor a
+> reward for going out, and the second survivor exists so that you can go out when the first
+> one cannot.** Under Phase 10 the failure state is one exhausted person and an idle camp —
+> exactly when a trip is not available to fix it.
+
+**A scheduled morning arrival** was the second and is much stronger. It needs no dispatch, and
+it reuses two things already built: the gate block from the empty camp, and armed timers, so
+it appears without a reload. And *8 a.m.* means something now — migrations `015` and `016`
+gave the camp its own clock, so you check in over breakfast and somebody is there. Its
+weakness is that the condition offered was shelter level 2, which **a new camp already starts
+at**, so it is an unconditional script wearing a gate.
+
+**The caravan** brings someone. First visit is 30–84 hours out by construction, so it lands
+inside the window; it needs no new scheduling and is the best of the four thematically. But
+it couples the roster to a system a player can ignore, and 84 hours is outside the window at
+the top of its range.
+
+**Beds** win, and take the morning arrival as their arrival beat.
+
+### Beds
+
+**A bed is a fitting in the shelter that can be built more than once, capped by shelter
+level.** The roster holds `1 + installed beds`: the first survivor needs no bed, so a camp
+with one bed can hold two people.
+
+**Priced in scrap, which the fuel rule permits rather than forbids.** Fuel buys capabilities
+and scrap buys structure, and a bed is a physical thing built into a shelter rather than an
+instrument. It is also the only workable answer: **none of the regions a new camp can reach
+return any fuel at all** — the Fence Line, the Service Road, the Ruined City and the Farmland
+are scrap, food and water — so a fuel-priced bed could not be bought inside the window this
+phase exists to hit.
+
+The intended first day, which is the whole test of the design:
+
+    found the camp                       10 scrap
+    send somebody to the Service Road     6-14 scrap back, under an hour
+    build a bed                           ~12 scrap
+    the next morning at eight             somebody is at the gate
+
+**The cap is `floor(shelter level / 2)`**, so a camp starts able to hold two and grows by
+building. Shelter has bought nothing but storage since it was written; this gives it the
+second job it has always been short of, and it puts the cost of a bigger roster exactly where
+Phase 10 wants it — one more mouth against the same garden.
+
+### Schema
+
+`structure_upgrades` is `UNIQUE (settlement_id, upgrade)`, which is what makes every fitting
+once-only. Beds need an **`ordinal`**, defaulting to 1, with the key becoming
+`(settlement_id, upgrade, ordinal)`. Every existing fitting keeps ordinal 1 and stays
+once-only because `upgradesFor` will not offer it a second time; nothing else about the
+fitting model changes.
+
+`characters_one_living_idx` — `UNIQUE (settlement_id) WHERE died_at IS NULL` — is what
+enforces one survivor, and it goes in the same migration. It is deliberately *not* dropped
+before the code can handle two people: `loadWorld` already reads a roster
+(`ba86abc`) and says so, and the index is what has been keeping that list honest at length
+one while the rest is built.
+
+### What this does not decide
+
+**Which survivor a verb belongs to.** Dispatch, crafting and using an item all take "the
+survivor" today, across 26 call sites. That is the next piece of work and it is where the
+roster stops being a refactor and starts being a game.
+
 ## Phase 10 — stamina, and what a survivor's day is worth
 
 *Against: one survivor, and nothing to decide about them.*
