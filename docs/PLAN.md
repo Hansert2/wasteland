@@ -2767,6 +2767,36 @@ before the code can handle two people: `loadWorld` already reads a roster
 (`ba86abc`) and says so, and the index is what has been keeping that list honest at length
 one while the rest is built.
 
+### Whose hands, decided 2026-08-30
+
+Nearly every verb already demands living hands and none of them names whose, and Phase 10's
+first decision — *it depletes from everything: travel, construction, crafting* — cannot be
+charged until they do.
+
+**Work belongs to a named person.** Building and crafting occupy somebody and cost them
+stamina. This is the only thing that makes the roster's justification true: *survivor-hours
+are scarce and must be allocated*. The original justification — more hands, more verbs — was
+measured false on 2026-08-19 and is not coming back.
+
+**The player picks, for everything.** Not only dispatch. A chooser on every build row and
+every recipe was offered as the cost and accepted, on the grounds that it is the truest
+reading of "what did this person spend the day on" — the camp assigning quietly would make
+the roster something to watch rather than something to run, which is the *queue discipline
+with a gauge attached* outcome Phase 10 names as the failure.
+
+> **The cost to watch, recorded so it is a known trade and not a surprise:** the structures
+> list and the bench are already dense, and this adds a selector to every row of both. If it
+> reads badly at three survivors it is the layout that should move, not the decision.
+
+**One block per person, stacked.** Each survivor keeps the block they have now, with its
+Condition / Skills / Carrying tabs. Simplest to build and nothing new to learn; a roster
+strip with a single detail block was the alternative and was declined.
+
+> The known limit: a shelter 8 camp holds five people, which is five blocks of three gauges
+> in a narrow rail. **Revisit at the roster size that actually hurts rather than in advance**
+> — the roster is two for a long time, and a strip can be introduced later without changing
+> anything about how work is assigned.
+
 ### What this does not decide
 
 **Which survivor a verb belongs to.** Dispatch, crafting and using an item all take "the

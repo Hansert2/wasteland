@@ -123,7 +123,27 @@ test('every upgrade is fitted to a structure that exists', () => {
   for (const [slug, spec] of Object.entries(UPGRADES)) {
     assert.ok(STRUCTURES[spec.kind], `${slug} is fitted to an unknown structure`);
     assert.ok(spec.summary, `${slug} has no summary`);
-    assert.ok(spec.fuel > 0, `${slug} is not priced in fuel`);
+
+    /*
+     * Priced in exactly one currency, and which one says what the fitting is.
+     *
+     * Fuel buys a capability and scrap buys structure. Every instrument is fuel — a clock, a
+     * glass, a radio — and a bed is scrap, because it is a thing built into a shelter rather
+     * than an instrument bolted to one. This used to read `spec.fuel > 0` for everything,
+     * which was the rule and the only fitting in one line; the bed is what separated them.
+     *
+     * Exactly one, because a fitting priced in both would be a structure level wearing a
+     * fitting's clothes, and the two tracks stop meaning different things.
+     */
+    const priced = ['fuel', 'scrap'].filter((kind) => (spec[kind] ?? 0) > 0);
+    assert.equal(priced.length, 1, `${slug} is priced in ${priced.join(' and ') || 'nothing'}`);
+
+    // And a repeatable fitting says how its ceiling is reached; a once-only one has none.
+    if (spec.repeats) {
+      assert.ok(spec.perLevels > 0, `${slug} repeats but nothing caps it`);
+    } else {
+      assert.equal(spec.perLevels, undefined, `${slug} does not repeat and needs no ceiling`);
+    }
     assert.ok(
       upgradesFor(spec.kind).some((branch) => branch.slug === slug),
       `${slug} is not offered by the structure it is fitted to`,

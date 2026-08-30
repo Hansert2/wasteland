@@ -107,6 +107,38 @@ export const UPGRADES = {
     craftHoursMultiplier: 2 / 3,
     summary: 'Powered tools at the bench: every craft takes a third less time.',
   },
+  /*
+   * A bed, which is the only fitting there can be more than one of.
+   *
+   * Every other fitting is an instrument: one clock, one glass, one radio, and a second of
+   * any of them would buy nothing. A bed is capacity, and a shelter should hold as many as
+   * its level allows — so `repeats` is what tells `upgradesFor` to keep offering it and
+   * `perLevels` is what stops it.
+   *
+   * **Scrap, where every other fitting is fuel.** The rule is that fuel buys capabilities
+   * and scrap buys structure, and a bed is a thing built into a shelter rather than an
+   * instrument bolted to one. It is also the only workable price: no region a new camp can
+   * reach returns any fuel at all — the Fence Line, the Service Road, the Ruined City and
+   * the Farmland are scrap, food and water — so a fuel-priced bed could not be bought inside
+   * the first day or two, which is the window the roster exists to hit.
+   *
+   * Twelve scrap sits just above a level of shelter at 10 and just under the 13 the next one
+   * costs, which is the trade it is meant to be: another pair of hands, or a bigger store.
+   */
+  bed: {
+    slug: 'bed',
+    kind: 'shelter',
+    name: 'A Bed',
+    scrap: 12,
+    hours: 0.5,
+    requiresLevel: 2,
+    // One more bed for every two levels of shelter. A camp starts at level 2 and so starts
+    // able to build its first, which is what puts the second survivor inside the window.
+    perLevels: 2,
+    repeats: true,
+    summary: 'Somewhere for one more person to sleep. The camp can hold one more than it has beds.',
+  },
+
   clock: {
     kind: 'shelter',
     name: 'The Clock',
@@ -281,6 +313,25 @@ export function storageCap(structures) {
  *
  * @returns {string} empty when the structure contributes nothing at that level
  */
+/**
+ * How many of a fitting a structure at this level may hold.
+ *
+ * One for anything that does not repeat, which is every instrument: a second clock tells the
+ * same hour. `perLevels` is what a bed counts in — one more for every two levels of shelter,
+ * so a camp at the starting level 2 may build its first and a shelter 8 camp may hold four.
+ */
+export function fittingsAllowed(slug, level) {
+  const spec = UPGRADES[slug];
+  if (!spec) return 0;
+  if (!spec.repeats) return Number(level) >= spec.requiresLevel ? 1 : 0;
+  return Math.max(0, Math.floor(Number(level) / spec.perLevels));
+}
+
+/** The most people a camp with this shelter can hold: the first needs no bed. */
+export function bedsToRoster(beds) {
+  return 1 + Math.max(0, Number(beds) || 0);
+}
+
 export function structureEffect(kind, level) {
   const spec = STRUCTURES[kind];
   if (!spec || level < 0) return '';

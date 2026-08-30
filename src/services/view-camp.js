@@ -47,6 +47,7 @@ import {
   STRUCTURES,
   UPGRADES,
   campDefence,
+  fittingsAllowed,
   campWealth,
   productionRates,
   structureEffect,
@@ -739,6 +740,14 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
   const fitted = new Set(
     upgradeRows.filter((row) => row.installed_at !== null).map((row) => row.upgrade),
   );
+
+  // How many of each are standing, which is the question a bed asks where an instrument
+  // asks whether it is there at all.
+  const installedCounts = new Map();
+  for (const row of upgradeRows) {
+    if (row.installed_at === null) continue;
+    installedCounts.set(row.upgrade, (installedCounts.get(row.upgrade) ?? 0) + 1);
+  }
   const beingFitted = upgradeRows.find((row) => row.installed_at === null) ?? null;
 
   /*
@@ -1279,12 +1288,37 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
       summary: STRUCTURES[s.kind]?.summary ?? '',
       // The fuel branches this structure has, in declaration order. A list because the
       // watchtower has two: the radio and the glass are both things the tower learns.
-      upgrades: upgradesFor(s.kind).map((branch) => ({
-        ...branch,
-        fitted: fitted.has(branch.slug),
-        shortBy: shortfall(purse, pack, { fuel: branch.fuel }),
-        fittingUntil: beingFitted?.upgrade === branch.slug ? beingFitted.completes_at : null,
-      })),
+      upgrades: upgradesFor(s.kind).map((branch) => {
+        /*
+         * How many of this fitting stand here, and how many this structure may hold.
+         *
+         * `fitted` is a Set of slugs and stays one, because the clock, the glass, the radio
+         * and filtration are all asked "is it there at all" and that is the right question
+         * for an instrument. It is the wrong question for a bed: the first one would mark
+         * beds fitted for ever and the second could never be offered.
+         */
+        const standing = installedCounts.get(branch.slug) ?? 0;
+        const allowed = fittingsAllowed(branch.slug, Number(s.level));
+
+        /*
+         * And priced in its own currency. This read `{ fuel: branch.fuel }`, which for a
+         * scrap-priced bed passes `{ fuel: undefined }` and reports no shortfall whatever
+         * the camp holds — so an unaffordable bed would have shown a button and refused
+         * after the click, which is the exact fault this field was added to remove.
+         */
+        const price = (branch.fuel ?? 0) > 0 ? { fuel: branch.fuel } : { scrap: branch.scrap };
+
+        return {
+          ...branch,
+          // No room for another, whether because one instrument is enough or because the
+          // shelter is not deep enough for a fourth bed.
+          fitted: standing >= allowed,
+          standing,
+          allowed,
+          shortBy: shortfall(purse, pack, price),
+          fittingUntil: beingFitted?.upgrade === branch.slug ? beingFitted.completes_at : null,
+        };
+      }),
     })),
     // Builds and fittings share one crew, so either one occupies the queue.
     buildInFlight: structures.some((s) => s.build_completes_at !== null) || beingFitted !== null,

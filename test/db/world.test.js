@@ -918,18 +918,30 @@ test('a price the camp cannot meet says what it is short by, and offers no butto
 
     const view = await viewCamp(client, settlementId);
 
-    // A fitting priced in fuel, against a camp that has ten. `upgrades` is a list: a
-    // structure can carry more than one branch, so the first unfitted one anywhere will
-    // do rather than the branch of some particular structure.
-    const branch = view.structures
-      .flatMap((s) => s.upgrades ?? [])
-      .find((u) => !u.fitted);
-    assert.ok(branch, 'some structure has an unfitted branch');
+    /*
+     * A fitting priced in *fuel*, against a camp that has ten.
+     *
+     * "The first unfitted branch anywhere" used to be enough, because every fitting was
+     * priced in fuel. The bed is not — it is scrap, and this camp has four hundred — so the
+     * first branch is now an affordable one and the shortfall this test is about is two
+     * rows further down. Named by its currency rather than by its position.
+     */
+    const branches = view.structures.flatMap((s) => s.upgrades ?? []).filter((u) => !u.fitted);
+    const branch = branches.find((u) => (u.fuel ?? 0) > 0);
+    assert.ok(branch, 'some structure has an unfitted branch priced in fuel');
     assert.match(
       branch.shortBy,
       /needs \d+ more fuel/,
       `expected a shortfall, got ${branch.shortBy}`,
     );
+
+    // And the scrap-priced one, on a camp with four hundred of it, is affordable and says
+    // nothing — which is the discrimination this guard is for, now visible inside the
+    // fittings rather than only between them and the builds.
+    const scrapBranch = branches.find((u) => (u.scrap ?? 0) > 0);
+    if (scrapBranch) {
+      assert.equal(scrapBranch.shortBy, null, `${scrapBranch.slug} is affordable here`);
+    }
 
     // Scrap is plentiful, so the builds themselves are affordable — the guard has to
     // discriminate rather than simply refusing everything.

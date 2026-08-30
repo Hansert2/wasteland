@@ -344,3 +344,70 @@ test('unknown upgrades are refused', async () => {
 test.after(async () => {
   await pool.end();
 });
+
+test('a bed is the one fitting there can be more than one of', async () => {
+  /*
+   * Every other fitting is an instrument and one is enough: a second clock tells the same
+   * hour. A bed is capacity, so the shelter's level is a ceiling rather than a gate, and
+   * three things that were true of every fitting stop being true of this one.
+   *
+   * It is also priced in scrap where they are priced in fuel — no region a new camp can
+   * reach returns any fuel, so a fuel-priced bed could not be bought inside the first day
+   * or two, which is the window the roster exists to hit.
+   */
+  await withRollback(async (client) => {
+    const settlementId = await setup(client);
+    const T0 = Date.now();
+
+    // A founded camp starts at shelter 2, which is the level that holds the first bed.
+    await client.query(
+      "update resources set amount = 40 where settlement_id = $1 and kind = 'scrap'",
+      [settlementId],
+    );
+
+    const scrapOf = async () => {
+      const { rows } = await client.query(
+        "select amount from resources where settlement_id = $1 and kind = 'scrap'",
+        [settlementId],
+      );
+      return Number(rows[0].amount);
+    };
+
+    // Paid in scrap, not fuel, and read before the camp is advanced — the workshop makes
+    // scrap, so any elapsed hour puts production between the price and the balance.
+    const before = await scrapOf();
+    await startUpgrade(client, settlementId, 'bed', T0);
+    assert.equal(await scrapOf(), before - 12, 'twelve scrap for a bed, paid up front');
+
+    const fuelBefore = await fuelOf(client, settlementId);
+    await advanceSettlement(client, settlementId, T0 + hours(2));
+    assert.equal(await fuelOf(client, settlementId), fuelBefore, 'and no fuel at all');
+
+    // A shelter at 2 holds one, and says so rather than saying it is already fitted.
+    await assert.rejects(
+      () => startUpgrade(client, settlementId, 'bed', T0 + hours(2)),
+      /holds 1 of those/,
+      'the refusal names the ceiling',
+    );
+
+    // Deepen the shelter and the ceiling rises with it.
+    await client.query(
+      "update camp_structures set level = 4 where settlement_id = $1 and kind = 'shelter'",
+      [settlementId],
+    );
+    await startUpgrade(client, settlementId, 'bed', T0 + hours(3));
+    await advanceSettlement(client, settlementId, T0 + hours(5));
+
+    const { rows: beds } = await client.query(
+      `select ordinal from structure_upgrades
+        where settlement_id = $1 and upgrade = 'bed' and installed_at is not null
+        order by ordinal`,
+      [settlementId],
+    );
+    assert.deepEqual(
+      beds.map((row) => row.ordinal),
+      [1, 2],
+      'two beds, numbered — the unique key is on the ordinal, so a reused one is refused',
+    );
+  });
+});

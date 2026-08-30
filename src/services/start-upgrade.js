@@ -1,4 +1,4 @@
-import { UPGRADES } from '../game/structures.js';
+import { UPGRADES, fittingsAllowed } from '../game/structures.js';
 import { InputError } from '../errors.js';
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -29,13 +29,11 @@ export async function startUpgrade(client, settlementId, upgradeSlug, now = Date
   if (living.length === 0) throw new InputError('There is nobody here to fit it.');
 
   const { rows: existing } = await client.query(
-    'select upgrade, installed_at from structure_upgrades where settlement_id = $1',
+    'select upgrade, ordinal, installed_at from structure_upgrades where settlement_id = $1',
     [settlementId],
   );
 
-  if (existing.some((row) => row.upgrade === slug && row.installed_at !== null)) {
-    throw new InputError(`The ${spec.name.toLowerCase()} is already fitted.`);
-  }
+  const standing = existing.filter((row) => row.upgrade === slug && row.installed_at !== null);
 
   const fitting = existing.find((row) => row.installed_at === null);
   if (fitting) {
@@ -55,28 +53,67 @@ export async function startUpgrade(client, settlementId, upgradeSlug, now = Date
   }
 
   const host = structures.find((s) => s.kind === spec.kind);
-  if (Number(host?.level ?? 0) < spec.requiresLevel) {
+  const level = Number(host?.level ?? 0);
+
+  if (level < spec.requiresLevel) {
     const name = spec.kind.replaceAll('_', ' ');
     throw new InputError(`That needs a ${name} at level ${spec.requiresLevel}.`);
   }
 
-  // Conditional update rather than read-then-write: the row refuses to go negative
-  // even if a concurrent request slipped past the settlement lock somehow.
+  /*
+   * How many the structure may hold, which for everything but a bed is one.
+   *
+   * This was "is it already fitted", and for an instrument that is the same question — a
+   * second clock tells the same hour. A bed is capacity, so the ceiling is what the shelter
+   * allows and the refusal has to name it rather than say the thing is already there.
+   */
+  const allowed = fittingsAllowed(slug, level);
+  if (standing.length >= allowed) {
+    const name = spec.kind.replaceAll('_', ' ');
+    throw new InputError(
+      spec.repeats
+        ? `A ${name} at level ${level} holds ${allowed} of those. A deeper one holds more.`
+        : `The ${spec.name.toLowerCase()} is already fitted.`,
+    );
+  }
+
+  /*
+   * Paid in whatever the fitting is priced in, which is fuel for an instrument and scrap for
+   * a bed. Conditional update rather than read-then-write: the row refuses to go negative
+   * even if a concurrent request slipped past the settlement lock somehow.
+   */
+  const currency = (spec.fuel ?? 0) > 0 ? 'fuel' : 'scrap';
+  const price = spec[currency];
+
   const { rowCount } = await client.query(
-    `update resources set amount = amount - $2
-      where settlement_id = $1 and kind = 'fuel' and amount >= $2`,
-    [settlementId, spec.fuel],
+    `update resources set amount = amount - $3
+      where settlement_id = $1 and kind = $2 and amount >= $3`,
+    [settlementId, currency, price],
   );
   if (rowCount === 0) {
-    throw new InputError(`Not enough fuel — that needs ${spec.fuel}, and only trips bring it in.`);
+    throw new InputError(
+      currency === 'fuel'
+        ? `Not enough fuel — that needs ${price}, and only trips bring it in.`
+        : `Not enough scrap — that needs ${price}.`,
+    );
   }
 
   const completesAt = new Date(now + spec.hours * HOUR_MS);
 
   const { rows } = await client.query(
-    `insert into structure_upgrades (settlement_id, kind, upgrade, started_at, completes_at)
-     values ($1, $2, $3, $4, $5) returning id`,
-    [settlementId, spec.kind, slug, new Date(now), completesAt],
+    `insert into structure_upgrades (settlement_id, kind, upgrade, ordinal, started_at, completes_at)
+     values ($1, $2, $3, $4, $5, $6) returning id`,
+    // The next one along, counting everything of this kind whether standing or in flight —
+    // the unique key is on the ordinal, so reusing one would be refused by the database
+    // rather than quietly overwriting a bed somebody is already sleeping in.
+    [
+      settlementId,
+      spec.kind,
+      slug,
+      existing.filter((row) => row.upgrade === slug).length + 1,
+      new Date(now),
+      completesAt,
+    ],
   );
 
   return { upgradeId: rows[0].id, name: spec.name, completesAt };
