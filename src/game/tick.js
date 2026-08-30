@@ -654,18 +654,26 @@ function simulateSurvivor(state, hours, at, events, config) {
     0,
     100,
   );
-  // Filtration multiplies this, but only for somebody actually standing in the camp.
-  // The filter is bolted to the water purifier; it does not follow anyone into the
-  // Deep Zone.
-  //
-  // This is load-bearing rather than flavour. An 18-hour trip doses 25 rads, and
-  // filtration left running while away scrubs 36 of them — so a survivor came home
-  // cleaner than they left, radiation stopped being a constraint at all, and going
-  // out recklessly became safer than waiting. Keeping it to the camp means the
-  // upgrade shortens the wait without deleting it.
+  /*
+   * A dose decays in the camp and not on the road.
+   *
+   * Filtration was already camp-only, and load-bearing for it: an 18-hour trip doses 25
+   * rads and filtration left running while away scrubs 36 of them, so a survivor came home
+   * cleaner than they left and going out recklessly became safer than waiting.
+   *
+   * The *base* rate had the same fault at a smaller size, and it was invisible because the
+   * dispatch table never showed what actually arrived. Measured 2026-08-30: at 0.8/h a
+   * twelve-hour walk scrubbed 9.6 rads against Coastal Wreckage's listed 4, so four regions
+   * advertised a dose and delivered a mean of nothing — Millrace 1 → 0.0, Bunkers 2 → 0.0,
+   * Coastal 4 → 0.1, Sixteen Wells 6 → 0.8. The listed number was not a number.
+   *
+   * So the road does not scrub. What a region says it doses is what it doses, and the
+   * region figures were divided down to keep the net exactly where it was — see the note in
+   * `seed.js`. A survivor recovers where there is water and shelter to recover in.
+   */
   const inCamp = state.expedition?.status !== 'active';
   const radDecay =
-    config.radDecayPerHour * (inCamp ? radDecayMultiplier(state.settlement.upgrades) : 1);
+    config.radDecayPerHour * (inCamp ? radDecayMultiplier(state.settlement.upgrades) : 0);
   survivor.radiation = clamp(survivor.radiation - radDecay * hours, 0, 100);
 
   let delta = healthDelta(survivor, hours, config);

@@ -598,8 +598,17 @@ test('filtration stays in the camp and does not follow anyone into the wasteland
   });
   away.settlement.upgrades = ['filtration'];
 
+  /*
+   * Fifty, not forty-two. The filter never followed them, and since 2026-08-30 the base
+   * rate does not either — the road scrubs nothing at all, because a walk that quietly
+   * removed 0.8 an hour was what made four regions advertise a dose and deliver none.
+   *
+   * Which makes the property this test is about stronger rather than weaker: with the
+   * filter following, the trip would come home cleaner than it left; with nothing
+   * following, what a region doses is what arrives.
+   */
   const { state } = applyTick(away, T0 + hours(10));
-  close(state.survivor.radiation, 42, 'the base 0.8/h, as though nothing were fitted');
+  close(state.survivor.radiation, 50, 'nothing scrubs out there, fitted or not');
 });
 
 test('a fitting finishing mid-interval changes the rate from its exact hour', () => {
@@ -896,4 +905,45 @@ test('a raid event names the crew it answers to', () => {
 
 test('now must actually be a number', () => {
   assert.throws(() => applyTick(makeState(), new Date(T0)), TypeError);
+});
+
+test('a dose decays in the camp and not on the road', () => {
+  /*
+   * The walk used to scrub 0.8 rads an hour, which was invisible because nothing showed
+   * what a trip actually delivered. Measured 2026-08-30: a twelve-hour trip removed 9.6
+   * against Coastal Wreckage's listed 4, so four regions advertised a dose and delivered a
+   * mean of nothing. The listed number was not a number.
+   *
+   * This is the invariant that keeps it honest, and it is the whole of the change: away,
+   * nothing is scrubbed; home, it is. A survivor recovers where there is water and shelter
+   * to recover in.
+   */
+  const carrying = { health: 100, hunger: 0, radiation: 60 };
+
+  // Out there, on a region that doses nobody, so the only thing that could move the
+  // number is decay.
+  const away = applyTick(
+    makeState({
+      survivor: carrying,
+      expedition: {
+        id: 'exp_1',
+        status: 'active',
+        departedAt: T0,
+        returnsAt: T0 + hours(40),
+        seed: 7,
+        region: { ...REGION, radiationPerTrip: 0, travelHours: 40 },
+        resolvedAt: null,
+        log: null,
+      },
+    }),
+    T0 + hours(12),
+  );
+  assert.equal(Number(away.state.survivor.radiation), 60, 'the road scrubs nothing');
+
+  // Standing in it, the same twelve hours take 0.8 an hour off.
+  const home = applyTick(makeState({ survivor: carrying }), T0 + hours(12));
+  assert.ok(
+    Math.abs(Number(home.state.survivor.radiation) - (60 - CONFIG.radDecayPerHour * 12)) < 1e-6,
+    `the camp scrubs, got ${home.state.survivor.radiation}`,
+  );
 });

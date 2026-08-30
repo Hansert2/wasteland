@@ -3133,6 +3133,58 @@ A trip already in flight when this ships accrues only from the first tick after 
 The hours before that are never settled, so those trips are slightly less damaging than they
 should be. One-off, bounded by the length of a trip, and not worth a migration to fix.
 
+## The dispatch table was quoting a dose it did not charge — 2026-08-30
+
+Asked by the user: should a higher dose be acquired when away? The answer was no, and
+finding out why turned up something worse than the question.
+
+**Four regions advertised a dose and delivered a mean of nothing.** Radiation decayed at
+0.8/h while a survivor walked, so a twelve-hour trip scrubbed 9.6 rads against Coastal
+Wreckage's listed 4. Measured over 24 departures each:
+
+    region                listed   arrived
+    The Millrace               1       0.0
+    Underground Bunkers        2       0.0
+    Coastal Wreckage           4       0.1
+    Sixteen Wells              6       0.8
+    Irradiated Farmland        8       5.3
+    The Deep Zone             25      19.9
+
+The listed number was not a number. A player reading "danger 4, costs radiation" came home
+clean, every time.
+
+**Raising the doses was measured first and rejected.** Simply stopping the decay costs a
+third of the whole fuel economy — every region falls, and Harrow End falls hardest at −8.4,
+so Coastal at 14.3 out-earns it at 11.8 and the danger-5 inversion re-opens wider than it
+was before Phase 11 closed it. **The erosion was, accidentally, what was holding the
+inversion shut.**
+
+So: the road stops scrubbing, and the region figures come down to keep the game exactly
+where it was.
+
+    region                was   now      fuel/day        idle
+    Irradiated Farmland     8     2
+    The Millrace            1     0
+    Underground Bunkers     2     0    13.0 -> 13.0    0% ->  0%
+    Coastal Wreckage        4     0    19.4 -> 19.4    0% ->  0%
+    Sixteen Wells           6     1     8.2 ->  7.9    0% ->  5%
+    The Deep Zone          25    10    13.6 -> 14.1   40% -> 39%
+    The Waterworks         30    13    14.3 -> 14.7   44% -> 43%
+    Harrow End             28     7    20.2 -> 20.1   22% -> 23%
+
+Harrow End still beats Coastal, so the inversion stays closed. Every region now delivers
+between 104% and 123% of what it lists, and the excess is the sky — rad storms and the sun —
+which is the design and is visible in the forecast.
+
+> **The tuning was done by measurement because the arithmetic was wrong.** Dividing each
+> dose by its observed sky factor was tried first and missed by two to three fuel a day: those
+> factors were measured across spreads of 0 to 47 rads and were mostly noise. Two runs of
+> `fuel-balance.mjs` found the numbers that the algebra could not.
+
+**Coastal, the Millrace and the Bunkers now carry a zero**, which is what `docs/LORE.md` §2
+has always said — the farmland and the Deep Zone are hot, and they are the only places that
+are. The table had been claiming something the world already disagreed with.
+
 ## Dead time, and telling the player which loop they are in — 2026-08-21
 
 Played: founded a camp, spent the opening scrap, sent someone to Coastal Wreckage for

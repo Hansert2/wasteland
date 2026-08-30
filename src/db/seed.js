@@ -124,6 +124,34 @@ const RECIPES = [
  * hours are the real cost: the Deep Zone pays well, but it is most of a day during
  * which nobody is at the camp and nobody is scavenging anything else.
  */
+/*
+ * A note on `radiation_per_trip`, rewritten 2026-08-30.
+ *
+ * These used to be doses the walk itself scrubbed away. At 0.8 rads an hour a twelve-hour
+ * trip removed 9.6 against Coastal Wreckage's listed 4, so four regions advertised a dose
+ * and delivered a mean of nothing: Millrace 1 -> 0.0, Bunkers 2 -> 0.0, Coastal 4 -> 0.1,
+ * Sixteen Wells 6 -> 0.8. The listed number was not a number.
+ *
+ * The road no longer scrubs (see `tick.js`), so what a region says is what it doses. The
+ * figures came down to keep the game exactly where it was, and they were tuned by
+ * measurement rather than by arithmetic — dividing by the observed sky factor was tried
+ * first and missed, because that factor was measured across a spread of 0 to 47 rads and
+ * was mostly noise. `fuel-balance.mjs`, before and after:
+ *
+ *     region                baseline   after   idle before -> after
+ *     Underground Bunkers     13.0     13.0        0% ->  0%
+ *     Coastal Wreckage        19.4     19.4        0% ->  0%
+ *     Sixteen Wells            8.2      7.9        0% ->  5%
+ *     The Deep Zone           13.6     14.1       40% -> 39%
+ *     The Waterworks          14.3     14.7       44% -> 43%
+ *     Harrow End              20.2     20.1       22% -> 23%
+ *
+ * Harrow End still out-earns Coastal Wreckage, so the danger-5 inversion stays closed.
+ *
+ * Coastal, the Millrace and the Bunkers now carry a zero, which is the truth and is what
+ * `docs/LORE.md` section 2 already said: the farmland and the Deep Zone are hot, and they
+ * are the only places that are.
+ */
 const REGIONS = [
   /**
    * The two short ones exist because time was never what made the early game slow —
@@ -169,7 +197,7 @@ const REGIONS = [
     travel_hours: 6,
     loot: { food: [6, 18], water: [2, 8], scrap: [0, 4] },
     finds: [{ slug: 'rad_x', chance: 0.15, qty: [1, 1] }],
-    radiation_per_trip: 8,
+    radiation_per_trip: 2,
     description: 'Things still grow here. That is the problem.',
   },
   {
@@ -183,7 +211,7 @@ const REGIONS = [
       { slug: 'tinned_stew', chance: 0.3, qty: [1, 2] },
       { slug: 'scavenged_parts', chance: 0.3, qty: [1, 1] },
     ],
-    radiation_per_trip: 2,
+    radiation_per_trip: 0,
     description: 'Sealed for a reason. Sealed things keep well.',
   },
   {
@@ -196,7 +224,7 @@ const REGIONS = [
       { slug: 'tinned_stew', chance: 0.35, qty: [1, 3] },
       { slug: 'scavenged_parts', chance: 0.4, qty: [1, 2] },
     ],
-    radiation_per_trip: 4,
+    radiation_per_trip: 0,
     description: 'Hulls the size of buildings, and whatever lives in them now.',
   },
   {
@@ -209,7 +237,7 @@ const REGIONS = [
       { slug: 'rad_x', chance: 0.4, qty: [1, 3] },
       { slug: 'scavenged_parts', chance: 0.55, qty: [2, 3] },
     ],
-    radiation_per_trip: 25,
+    radiation_per_trip: 10,
     description: 'Nobody agrees on what is down there. Few go twice.',
   },
 
@@ -236,7 +264,7 @@ const REGIONS = [
       { slug: 'preserved_meal', chance: 0.25, qty: [1, 2] },
       { slug: 'scavenged_parts', chance: 0.3, qty: [1, 1] },
     ],
-    radiation_per_trip: 1,
+    radiation_per_trip: 0,
     description: 'The wheel still turns. Somebody kept it turning for a long time.',
   },
   {
@@ -251,7 +279,7 @@ const REGIONS = [
       { slug: 'tinned_stew', chance: 0.3, qty: [1, 2] },
       { slug: 'rad_x', chance: 0.25, qty: [1, 1] },
     ],
-    radiation_per_trip: 6,
+    radiation_per_trip: 1,
     description: 'Sixteen shafts, and the water in them has never seen the sky.',
   },
   {
@@ -265,7 +293,7 @@ const REGIONS = [
       { slug: 'rad_x', chance: 0.45, qty: [1, 3] },
       { slug: 'scavenged_parts', chance: 0.5, qty: [2, 3] },
     ],
-    radiation_per_trip: 30,
+    radiation_per_trip: 13,
     description: 'Pumps the size of houses, and something still drawing power to them.',
   },
   {
@@ -279,7 +307,7 @@ const REGIONS = [
       { slug: 'scavenged_parts', chance: 0.6, qty: [2, 4] },
       { slug: 'rad_x', chance: 0.4, qty: [2, 3] },
     ],
-    radiation_per_trip: 28,
+    radiation_per_trip: 7,
     description: 'The far end of the road, and the reason there is a road.',
   },
 ];
