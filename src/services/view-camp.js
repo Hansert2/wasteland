@@ -1,5 +1,6 @@
 import { advanceSettlement } from './advance-settlement.js';
 import { choosableZones, isPlaced } from './set-camp-clock.js';
+import { POTENCY_TO_POINTS } from './use-item.js';
 import {
   WORLD_EVENTS,
   activeAt,
@@ -674,7 +675,9 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
    * decides what actually happens, because the page is a render of a moment ago.
    */
   const inventory = inventoryRows.map((row) => {
-    const points = Number(row.potency) * 0.5;
+    // The constant `useItem` applies, not a copy of it: the page must not advertise a
+    // dose the service would not deliver.
+    const points = Number(row.potency) * POTENCY_TO_POINTS;
     const health = Number(state.survivor?.health ?? 0);
     const dose = Number(state.survivor?.radiation ?? 0);
 
@@ -710,11 +713,20 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
      * 60% and a weapon at 50% — so a second vest is not twice the vest, and the figure
      * shown is the one that would actually apply.
      */
+    /*
+     * Gear reads its potency straight, the way `equipment.js` does — `capped()` there is
+     * `potency / 100`, so a spear at 25 avoids 25% of hazards.
+     *
+     * This was written as `points * 2`, which equalled potency only because the consumable
+     * constant happened to be 0.5. Retuning the tablets halved the spear, which is two
+     * unrelated numbers tied together by an arithmetic coincidence.
+     */
+    const potency = Number(row.potency);
     if (row.kind === 'armour') {
-      return { ...row, use: null, idle: null, worth: `blunts ${Math.min(60, points * 2)}% of damage` };
+      return { ...row, use: null, idle: null, worth: `blunts ${Math.min(60, potency)}% of damage` };
     }
     if (row.kind === 'weapon') {
-      return { ...row, use: null, idle: null, worth: `avoids ${Math.min(50, points * 2)}% of hazards` };
+      return { ...row, use: null, idle: null, worth: `avoids ${Math.min(50, potency)}% of hazards` };
     }
 
     return { ...row, use: null, idle: null, worth: 'used at the bench' };

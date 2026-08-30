@@ -12,25 +12,35 @@ import { InputError } from '../errors.js';
  *
  * The moment is the better deal and stays the better deal. `radiationFactor: 0.1` on a
  * moment takes ninety percent of the dose the rest of the trip would have given; taking the
- * same tablets from here takes half their potency off the dose already carried. A moment is
- * a good price at an hour somebody else picks. This is a worse price at an hour you pick.
+ * same tablets from here takes a quarter of their potency off the dose already carried. A
+ * moment is a good price at an hour somebody else picks. This is a worse price at an hour
+ * you pick.
  *
- * ### The numbers, which are provisional
+ * ### The numbers, and what measured them
  *
- * Anchored rather than invented: the ration moment heals a flat 32 and the note beside it
- * records that as measured — "18 was worth less than the ration it burned; 32 is about a
- * meal". Half of potency puts a Preserved Meal at 35 and a Tinned Stew at 40, either side of
- * a number that was already tuned against real trips.
- *
- * The antirad half has no such anchor. Half of potency is 22 and 30 rads against a Deep Zone
- * trip that doses 25, which is the right order of magnitude and nothing more than that. It
- * wants measuring against `fuel-balance.mjs` before it is believed, for the same reason
- * everything else in this game does: a survivor who can scrub the dose on demand is a
- * survivor who idles less, and idling is what the whole fuel economy turns on.
+ * A quarter of potency, which `fuel-balance.mjs` chose rather than an argument — see the
+ * note on `POTENCY_TO_POINTS`. It is one constant for both kinds, so a Preserved Meal mends
+ * 17 where the ration *moment* heals a measured 32: the moment stays the better deal there
+ * too, which is the same shape as the tablets and wanted no separate tuning.
  */
 
-/** What a point of potency is worth, in points of the gauge it acts on. */
-const POTENCY_TO_POINTS = 0.5;
+/**
+ * What a point of potency is worth, in points of the gauge it acts on.
+ *
+ * Was 0.5, which `fuel-balance.mjs` measured on 2026-08-30 as far too strong: a Rad
+ * Scrubber worth 22.5 rads took idleness to zero on every hot region and paid back three to
+ * five fuel a day net of its own cost, so taking one was never a decision. That is the
+ * failure `tick.js` already names about filtration — radiation stops being a constraint at
+ * all, and going out recklessly becomes safer than waiting.
+ *
+ * Break-even measured at about 12 rads. A quarter puts a Rad Scrubber at 11 and a Rad-X at
+ * 15, straddling it: the crafted tablet is marginal on the Deep Zone and worth it on Harrow
+ * End, which is a decision that depends on where you are going.
+ *
+ * Exported because the balance tool reads it. A tool holding its own copy of a number it is
+ * measuring is a tool that agrees with itself.
+ */
+export const POTENCY_TO_POINTS = 0.25;
 
 /** The kinds that can be used at all. Everything else is worn, or is raw material. */
 const CONSUMABLE = new Set(['ration', 'antirad']);

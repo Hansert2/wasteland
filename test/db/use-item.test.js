@@ -81,18 +81,20 @@ async function pack(client, characterId) {
 
 test('a ration mends, and is gone', async () => {
   /*
-   * Half of potency, which is anchored rather than invented: the ration moment heals a flat
-   * 32 and the note beside it records that as measured against real trips. A Preserved Meal
-   * at potency 70 lands on 35, either side of a number that was already tuned.
+   * A quarter of potency, which `fuel-balance.mjs` chose rather than an argument: at a half
+   * a Rad Scrubber took idleness to zero on every hot region and paid for itself three times
+   * over, so taking one was never a decision. One constant serves both kinds, so a Preserved
+   * Meal at potency 70 mends 17.5 — and the ration *moment*, at a measured flat 32, stays
+   * the better deal, which is the same shape the tablets have.
    */
   await withRollback(async (client) => {
     const { settlementId, characterId } = await seed(client, { health: 60 });
     await give(client, characterId, 'preserved_meal');
 
     const used = await useItem(client, settlementId, 'preserved_meal');
-    assert.equal(used.health, 35, 'half of potency, in health');
+    assert.equal(used.health, 17.5, 'a quarter of potency, in health');
 
-    assert.deepEqual(await condition(client, settlementId), { health: 95, radiation: 0 });
+    assert.deepEqual(await condition(client, settlementId), { health: 77.5, radiation: 0 });
     assert.equal((await pack(client, characterId)).get('preserved_meal'), undefined, 'eaten');
   });
 });
@@ -102,7 +104,7 @@ test('an antirad scrubs, and cannot take more than is there', async () => {
     const { settlementId, characterId } = await seed(client, { radiation: 10 });
     await give(client, characterId, 'rad_scrubber');
 
-    // A scrubber is worth 22.5 rads and there are only 10 to take.
+    // A scrubber is worth 11.25 rads and there are only 10 to take.
     const used = await useItem(client, settlementId, 'rad_scrubber');
     assert.equal(used.radiation, -10, 'it scrubs what is there and stops');
 
@@ -169,8 +171,8 @@ test('the pack says what each thing would do, and what it would not', async () =
     const offered = await viewCamp(client, settlementId, T0 + 60 * 60 * 1000);
     const by = new Map(offered.inventory.map((item) => [item.slug, item]));
 
-    assert.equal(by.get('preserved_meal').use.effect, '+35 health');
-    assert.equal(by.get('rad_scrubber').use.effect, '−22.5 rads');
+    assert.equal(by.get('preserved_meal').use.effect, '+17.5 health');
+    assert.equal(by.get('rad_scrubber').use.effect, '−11.3 rads');
     assert.equal(by.get('scrap_spear').use, null, 'a spear is carried, not taken');
     assert.equal(by.get('scrap_spear').idle, null, 'and is not idle either — it is worn');
 
@@ -180,7 +182,7 @@ test('the pack says what each thing would do, and what it would not', async () =
      * trip; both gear figures are capped, so what is shown is what would actually apply.
      */
     assert.equal(by.get('scrap_spear').worth, 'avoids 25% of hazards');
-    assert.equal(by.get('preserved_meal').worth, '+35 health', 'what the ration is worth');
+    assert.equal(by.get('preserved_meal').worth, '+17.5 health', 'what the ration is worth');
     assert.ok(by.get('preserved_meal').description, 'and every item has its own line');
 
     // Mended and clean, the same two things have nothing to offer and say so.
@@ -218,7 +220,7 @@ test('a thing worth more than the moment says so', async () => {
     const { radiation } = await condition(client, settlementId);
     assert.ok(radiation > 0 && radiation < 1, `a trace of a dose, not ${radiation}`);
 
-    assert.equal(tablet.worth, '−30 rads', 'what a Rad-X is worth');
+    assert.equal(tablet.worth, '−15 rads', 'what a Rad-X is worth');
     assert.equal(
       tablet.use.effect,
       `−${Math.round(radiation * 10) / 10} rads`,

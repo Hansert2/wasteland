@@ -3070,9 +3070,58 @@ survivor who leaves hurt**, because the damage now lands against the health they
 hour rather than the health they would have finished the trip with. That is the decision the
 player made when they dispatched, and it was previously invisible.
 
+### The tablet, measured
+
+`useItem` shipped at half of potency — a Rad Scrubber worth 22.5 rads — with a note saying
+the number had no anchor and wanted measuring. It did. `fuel-balance.mjs` gained a
+`+ scrubbing` policy on 2026-08-30: a player who spends ten fuel and fifteen scrap on a
+tablet rather than standing still, net of what the tablet cost.
+
+    region                attentive   + scrubbing   change
+    Underground Bunkers     13.0         13.0        +0.0
+    Coastal Wreckage        19.4         19.4        +0.0
+    Sixteen Wells            8.2          8.2        +0.0
+    The Deep Zone           13.6         17.2        +3.6
+    The Waterworks          14.3         19.0        +4.7
+    Harrow End              20.2         23.0        +2.8
+
+**Idleness went to zero on every hot region.** The three cold ones do not move, which is the
+control: nothing to scrub. That is precisely the failure `tick.js` already names about
+filtration — *radiation stopped being a constraint at all, and going out recklessly became
+safer than waiting* — and it was reachable for ten fuel.
+
+Swept to find where it stops paying:
+
+    a tablet worth   The Deep Zone      Harrow End
+      22.5 rads      17.2  (+3.6)       23.0  (+2.8)
+      12   rads      12.7  (−0.9)       21.3  (+1.1)
+       8   rads       7.7  (−5.9)       19.5  (−0.7)
+       5   rads       2.1  (−11.5)      15.9  (−4.3)
+
+Break-even is about twelve. `POTENCY_TO_POINTS` is **0.25**, which puts a Rad Scrubber at
+11.3 and a Rad-X at 15, straddling it — and the measured result is a decision rather than an
+answer:
+
+    The Deep Zone    13.6 -> 11.9   (−1.7, loses)
+    The Waterworks   14.3 -> 12.7   (−1.6, loses)
+    Harrow End       20.2 -> 21.1   (+0.9, pays)
+
+> **What the tool cannot see, and the reason the number is not pushed lower.** It measures
+> fuel a day and nothing else. A tablet's other job is pulling somebody back from a dose that
+> would have killed them, and deaths were `0/5` on every row of every run — so the survival
+> value of a scrubber is entirely absent from these figures. A number that is marginal on
+> throughput and valuable as insurance is the right place to stop.
+
+Two copies of that constant were found while wiring it. The tool held its own, and so did
+`view-camp`, which is how a page comes to advertise a dose the service will not deliver; both
+read `POTENCY_TO_POINTS` now. And the pack's gear line was written as `points * 2`, which
+equalled potency only because the constant happened to be 0.5 — retuning the tablets halved
+the Scrap Spear. Gear reads its potency straight, the way `equipment.js` does.
+
 ### What is left
 
-The half this was asked for: **a moment option that spends a consumable.** The pack is the
+Nothing from this phase. The half it was asked for — **a moment option that spends a
+consumable** — The pack is the
 survivor's — `inventory_items.character_id`, carried with them, lost with them — so there is
 no schema and no fiction to accept. `AXES` already contains `health` and `radiation`, moments
 already land at an hour, and healing already knows which hour it happened at. What remains is

@@ -29,6 +29,7 @@
  */
 import { pool } from '../src/db/pool.js';
 import { applyTick } from '../src/game/tick.js';
+import { POTENCY_TO_POINTS } from '../src/services/use-item.js';
 import { resolveExpedition } from '../src/game/expeditions.js';
 import { CONFIG } from '../src/game/constants.js';
 import { LINKS, linkCost, roadCost } from '../src/game/road.js';
@@ -46,6 +47,16 @@ const { rows } = await pool.query(
   `select slug, name, danger, travel_hours, loot, finds, radiation_per_trip
      from regions order by danger, travel_hours`,
 );
+
+// The tablet, as the game has it: what the bench charges and what taking one is worth.
+const { rows: scrubberItemRows } = await pool.query(
+  "select potency from items where slug = 'rad_scrubber'",
+);
+const { rows: scrubberRecipeRows } = await pool.query(
+  "select costs from recipes where slug = 'rad_scrubber'",
+);
+const scrubberItem = scrubberItemRows[0];
+const scrubberRecipe = scrubberRecipeRows[0];
 
 /** The shape `resolveExpedition` and the tick both want. */
 const regions = rows.map((row) => ({
@@ -143,7 +154,35 @@ function camp() {
  * survivor on day nine did not earn sixty days of fuel, and averaging over the restart
  * would quietly hide the region that keeps doing it.
  */
-function play(region, { goAt = 20, checkInsPerDay = null, upgrades = [], seed0 = 1, nightly = false, holdHours = 24 } = {}) {
+/**
+ * What a Rad Scrubber costs at the bench, and what taking one is worth.
+ *
+ * The question this measures is exact: does spending ten fuel to remove 22.5 rads buy back
+ * more than ten fuel of reduced idleness? Idleness is what the whole fuel economy turns on,
+ * and a survivor who can scrub on demand waits less — so the tablet is either a way of
+ * turning fuel into trips at a profit, or it is a way of burning fuel to feel busy.
+ *
+ * Deliberately generous to the scrubber, so that a negative result is decisive:
+ *
+ *   - The scavenged part each one needs is ignored. Parts come off trips and would
+ *     sometimes be the binding constraint, so a real player crafts fewer of these.
+ *   - Workshop 4 and the 0.3 hours at the bench are ignored: the camp here is one shape for
+ *     every run, and giving this policy a workshop the others do not have would measure the
+ *     workshop instead of the tablet.
+ *
+ * If it still does not pay under those terms, it does not pay.
+ */
+const SCRUBBER = {
+  // The bench price, from `recipes`.
+  fuel: Number(scrubberRecipe?.costs?.fuel ?? 10),
+  scrap: Number(scrubberRecipe?.costs?.scrap ?? 15),
+  // What taking one is worth, from the item's own potency and the constant `useItem`
+  // applies. Retuning either is measured here without this file being told — a tool
+  // carrying its own copy of the number it is measuring is a tool that agrees with itself.
+  rads: Number(scrubberItem?.potency ?? 0) * POTENCY_TO_POINTS,
+};
+
+function play(region, { goAt = 20, checkInsPerDay = null, upgrades = [], seed0 = 1, nightly = false, holdHours = 24, scrubbing = false } = {}) {
   let state = camp();
   state.settlement.upgrades = upgrades;
 
@@ -159,6 +198,9 @@ function play(region, { goAt = 20, checkInsPerDay = null, upgrades = [], seed0 =
   let waiting = 0;
   let out = 0;
   let gained = 0;
+  // Fuel that went into tablets. Subtracted at the end, because `gained` only ever counts
+  // the balance going up and would otherwise report the spend as free.
+  let burned = 0;
 
   const gap = checkInsPerDay ? Math.round(24 / checkInsPerDay) : 1;
   let hour = 0;
@@ -176,7 +218,7 @@ function play(region, { goAt = 20, checkInsPerDay = null, upgrades = [], seed0 =
         waiting,
         out,
         diedOnDay: (state.survivor.diedAt - T0) / (24 * HOUR),
-        perDay: gained / ((now - T0) / (24 * HOUR)),
+        perDay: (gained - burned) / ((now - T0) / (24 * HOUR)),
       };
     }
 
@@ -205,6 +247,27 @@ function play(region, { goAt = 20, checkInsPerDay = null, upgrades = [], seed0 =
      * saved, so this takes any departure at least half in the dark and gives up after a
      * day of looking.
      */
+    /*
+     * Take a tablet rather than wait, when the camp can pay for one.
+     *
+     * Only while there is something to wait *for*: above the threshold the player would
+     * otherwise be standing still, and below it the dose is not what is holding them. That
+     * is the same policy a player would follow from the Carrying tab, which is the point.
+     */
+    if (
+      scrubbing &&
+      state.survivor?.alive &&
+      state.expedition?.status !== 'active' &&
+      state.survivor.radiation > goAt &&
+      state.settlement.resources.fuel.amount >= SCRUBBER.fuel &&
+      state.settlement.resources.scrap.amount >= SCRUBBER.scrap
+    ) {
+      state.settlement.resources.fuel.amount -= SCRUBBER.fuel;
+      state.settlement.resources.scrap.amount -= SCRUBBER.scrap;
+      state.survivor.radiation = Math.max(0, state.survivor.radiation - SCRUBBER.rads);
+      burned += SCRUBBER.fuel;
+    }
+
     if (nightly && state.survivor.radiation <= goAt) {
       const lit = daylightFraction(now, now + region.travelHours * HOUR);
       if (lit > 0.5 && held < holdHours) {
@@ -237,7 +300,7 @@ function play(region, { goAt = 20, checkInsPerDay = null, upgrades = [], seed0 =
     waiting,
     out,
     diedOnDay: null,
-    perDay: gained / DAYS,
+    perDay: (gained - burned) / DAYS,
   };
 }
 
@@ -293,6 +356,7 @@ for (const region of paysFuel) {
     ['+ filtration', { checkInsPerDay: null, upgrades: ['filtration'] }],
     ['waits <= 3h  ', { checkInsPerDay: null, nightly: true, holdHours: 3 }],
     ['waits <= 24h ', { checkInsPerDay: null, nightly: true, holdHours: 24 }],
+    ['+ scrubbing ', { checkInsPerDay: null, scrubbing: true }],
   ]) {
     const a = average(region, opts);
     if (label.trim() === 'attentive') sustained.set(region.slug, a.perDay);
