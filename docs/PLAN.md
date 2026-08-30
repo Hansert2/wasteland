@@ -2931,7 +2931,42 @@ that is no longer dormant simply out-argues it.
 That is the first table read the other way round, and it is one finding rather than two:
 **two gauges contest when they are the same shape and the same size.**
 
-#### The cost, and the tension left open
+#### Re-measured 2026-08-30, after the trip started settling across its hours
+
+Phase 11 changed idleness, and idleness is the number every figure below was tuned against,
+so `stamina-sensitivity.mjs` was run again before any of this was built on.
+
+    shape        contested          survivor idle
+                 was  ->  now       was  ->  now
+    gentle       47%  ->  47%       48%  ->  39%
+    moderate     47%  ->  46%       51%  ->  50%
+    steep        45%  ->  45%       61%  ->  60%
+    brutal       45%  ->  45%       72%  ->  63%
+
+**The central claim is untouched.** Nearly half of all dispatches are contested at every
+shape, which was the whole argument — a continuous gauge always has something to say, and
+two gauges contest when they are the same shape and the same size.
+
+**The stated cost got cheaper.** "Buying the contest costs a fifth of the playtime" was
+written against 72% idle at brutal and 48% at gentle; the band is now 63% and 39%. The dose
+arrives earlier, decays earlier, and people wait less.
+
+**But the tuning conclusion below is wrong now, and this is the correction.** It says to look
+between steep and brutal. Brutal has flipped:
+
+    brutal        healthiest wrong   rested wrong
+    was                 62%               38%      stamina was the better heuristic
+    now                 43%               57%      health is
+
+Steep is unchanged at 36/64. So steep and brutal have converged, and brutal no longer buys
+the extra contest it used to — it costs more idleness for the same 45%. **The range to look
+in is steep, and not past it.**
+
+> **A note on the instrument itself.** Its first table still models radiation as a threshold,
+> which the game stopped having on 2026-08-27. Half its output describes a game that does not
+> exist and will be read as current by whoever picks this up. Cut it when Phase 10 is built.
+
+### The cost, and the tension left open
 
 `survivor idle` runs 48% to 72%. Two qualifications before that number is used for
 anything: recovery here waits for health *as well as* for the dose, which the threshold
