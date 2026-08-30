@@ -378,7 +378,19 @@ export const MOMENTS = {
   the_hot_room: {
     axis: 'radiation',
     title: 'The hot room',
-    regions: ['underground_bunkers', 'coastal_wreckage', 'the_deep_zone'],
+    /*
+     * The Deep Zone only, since 2026-08-30.
+     *
+     * It listed the bunkers and the coast as well, and both of those now dose nobody — so
+     * radiationFactor 2.1 multiplied a zero and the room charged nothing at all for a 1.28x
+     * haul. Measured: +0.6 fuel a day at the bunkers and +0.9 at the coast, free.
+     *
+     * A cost written as a multiplier can only be paid by a region with something to
+     * multiply. It is also what docs/LORE.md section 2 already said — the farmland and the
+     * Deep Zone are hot and they are the only places that are — so a room whose counter
+     * holds a flat tone was never coherent on a coast the world calls clean.
+     */
+    regions: ['the_deep_zone'],
     scene:
       'Shelving from floor to ceiling, and none of it stripped: cable, tooling, sealed cases still stacked the way somebody left them on the last ordinary day. Between the doorway and the first shelf the dosimeter goes from ticking to a flat tone.',
     prose: 'A room worth stripping, and the counter will not settle while they stand in it.',

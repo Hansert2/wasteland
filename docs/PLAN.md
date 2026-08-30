@@ -3181,6 +3181,31 @@ which is the design and is visible in the forecast.
 > factors were measured across spreads of 0 to 47 rads and were mostly noise. Two runs of
 > `fuel-balance.mjs` found the numbers that the algebra could not.
 
+### And what the dose is worth when it is spent on purpose
+
+`fuel-balance.mjs` could not answer a moment — every moment resolved unattended there — so
+the options that trade dose for haul were unmeasured content. It answers them now, by policy
+rather than by option key: *greedy* takes the steepest dose-for-loot option a trip offers,
+*careful* takes the shallowest.
+
+    region            never answers   greedy   careful
+    The Deep Zone         14.1         13.4     14.2
+    The Waterworks        14.7         14.3     14.8
+    Harrow End            20.1         20.1     20.4
+
+**Greedy loses or breaks even; careful is worth about a fifth of a fuel a day.** That is a
+priced decision rather than a right answer, and it is the shape wanted: the big trade buys
+haul *now* at the cost of trips later, which the tool cannot value because it measures a
+steady state and never an urgency. A player two hundred fuel short of a road link is not
+playing for the steady state.
+
+**It also caught a free lunch this file had just created.** `the_hot_room` listed the bunkers
+and the coast, and the dose rewrite above set both regions to zero — so `radiationFactor: 2.1`
+multiplied nothing and the room paid a 1.28× haul for no cost at all: +0.6 fuel a day at the
+bunkers, +0.9 at the coast. **A cost written as a multiplier can only be paid by a region with
+something to multiply.** The room is Deep Zone only now, which is also the coherent reading:
+a counter holding a flat tone on a coast the world calls clean was never right.
+
 **Coastal, the Millrace and the Bunkers now carry a zero**, which is what `docs/LORE.md` §2
 has always said — the farmland and the Deep Zone are hot, and they are the only places that
 are. The table had been claiming something the world already disagreed with.

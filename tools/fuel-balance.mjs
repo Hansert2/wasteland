@@ -30,6 +30,7 @@
 import { pool } from '../src/db/pool.js';
 import { applyTick } from '../src/game/tick.js';
 import { POTENCY_TO_POINTS } from '../src/services/use-item.js';
+import { momentsFor } from '../src/game/moments.js';
 import { resolveExpedition } from '../src/game/expeditions.js';
 import { CONFIG } from '../src/game/constants.js';
 import { LINKS, linkCost, roadCost } from '../src/game/road.js';
@@ -182,7 +183,7 @@ const SCRUBBER = {
   rads: Number(scrubberItem?.potency ?? 0) * POTENCY_TO_POINTS,
 };
 
-function play(region, { goAt = 20, checkInsPerDay = null, upgrades = [], seed0 = 1, nightly = false, holdHours = 24, scrubbing = false } = {}) {
+function play(region, { goAt = 20, checkInsPerDay = null, upgrades = [], seed0 = 1, nightly = false, holdHours = 24, scrubbing = false, answers = null } = {}) {
   let state = camp();
   state.settlement.upgrades = upgrades;
 
@@ -279,15 +280,45 @@ function play(region, { goAt = 20, checkInsPerDay = null, upgrades = [], seed0 =
     }
 
     if (state.survivor.radiation <= goAt) {
+      const trip = seed++;
+
+      /*
+       * The answers, decided at dispatch because that is when the seed is fixed.
+       *
+       * A moment's schedule and its options are a pure function of the region and the trip
+       * seed, so a policy can be written down in advance and the tick will meet exactly the
+       * moments it was written against. Nothing here reaches into the trip: these are the
+       * same `{ index, key, option }` rows the route records when a player presses a button.
+       *
+       * `answers` names a policy rather than an option, because the option keys differ per
+       * moment — the hot room's is `strip`, the tanks' is `clear`, the gallery's is `far`.
+       * What they share is the shape: pay dose, take haul.
+       */
+      const choices =
+        answers === null
+          ? []
+          : momentsFor(region, trip).flatMap((moment) => {
+              const taken = moment.options.filter(
+                (option) => (option.radiationFactor ?? 1) > 1 && (option.lootFactor ?? 1) > 1,
+              );
+              if (taken.length === 0) return [];
+
+              // Steepest first, so `greedy` takes the whole trade and `careful` the small one.
+              taken.sort((a, b) => b.radiationFactor - a.radiationFactor);
+              const option = answers === 'greedy' ? taken[0] : taken[taken.length - 1];
+              return [{ index: moment.index, key: moment.key, option: option.key }];
+            });
+
       state.expedition = {
-        id: `e${seed}`,
+        id: `e${trip}`,
         status: 'active',
         departedAt: now,
         returnsAt: now + region.travelHours * HOUR,
-        seed: seed++,
+        seed: trip,
         region,
         resolvedAt: null,
         log: null,
+        choices,
       };
     } else {
       waiting += 1;
@@ -357,6 +388,8 @@ for (const region of paysFuel) {
     ['waits <= 3h  ', { checkInsPerDay: null, nightly: true, holdHours: 3 }],
     ['waits <= 24h ', { checkInsPerDay: null, nightly: true, holdHours: 24 }],
     ['+ scrubbing ', { checkInsPerDay: null, scrubbing: true }],
+    ['buys the dose', { checkInsPerDay: null, answers: 'greedy' }],
+    ['buys a little', { checkInsPerDay: null, answers: 'careful' }],
   ]) {
     const a = average(region, opts);
     if (label.trim() === 'attentive') sustained.set(region.slug, a.perDay);
