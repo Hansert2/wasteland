@@ -82,6 +82,9 @@ const SHAPES = [
   ['moderate', { cost: 3.0, regen: 1.5 }],
   ['steep   ', { cost: 4.5, regen: 1.0 }],
   ['brutal  ', { cost: 6.0, regen: 0.75 }],
+  // Derived rather than guessed: 100 / 26h, the longest walk on the map (Harrow End). At
+  // anything dearer a rested survivor cannot reach the far end of the world at all.
+  ['reach   ', { cost: 3.8, regen: 1.0 }],
 ];
 
 const { rows } = await pool.query(

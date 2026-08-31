@@ -1,6 +1,16 @@
 import { newSeed } from '../game/random.js';
 import { InputError } from '../errors.js';
 import { occupations, mustBeFree } from './who-is-free.js';
+import { CONFIG } from '../game/constants.js';
+
+/** "45m", "6h", "6h 30m" — the same reading the dispatch table gives the same number. */
+function formatHours(hours) {
+  const total = Math.round(hours * 60);
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  if (h === 0) return `${m}m`;
+  return m === 0 ? `${h}h` : `${h}h ${m}m`;
+}
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -24,7 +34,8 @@ export async function dispatchExpedition(
   who = null,
 ) {
   const { rows: characters } = await client.query(
-    'select id, name from characters where settlement_id = $1 and died_at is null order by born_at, id',
+    `select id, name, stamina from characters
+      where settlement_id = $1 and died_at is null order by born_at, id`,
     [settlementId],
   );
   if (characters.length === 0) throw new InputError('There is nobody here to send.');
@@ -73,6 +84,32 @@ export async function dispatchExpedition(
     if (link.length === 0) {
       throw new InputError(`There is no road to ${region.name} yet.`);
     }
+  }
+
+  /*
+   * And whether they have a day's walk in them, which is the whole of what stamina gates.
+   *
+   * A gauge matters if it decides what you may do next — that is the finding Phase 10 rests
+   * on, and it is why health gates nothing: the game guarantees a healthy survivor cannot
+   * die on a trip, so sixty health and a hundred permit exactly the same moves. Radiation
+   * gates, and now this does.
+   *
+   * The refusal is "not enough for *this* trip" rather than a floor, because the cost is a
+   * rate: the Fence Line is ten minutes and the Deep Zone is most of a day. Somebody too
+   * tired for the far place is not too tired to walk to the wire, which is the decision the
+   * gauge exists to create — where a flat threshold would only ever say "wait".
+   *
+   * Checked here rather than only hidden on the page for the reason written above the road
+   * check: the page is a render of a moment ago and a form is whatever was posted to it.
+   */
+  const needed = CONFIG.staminaPerHourWorked * Number(region.travel_hours);
+  const held = Number(character.stamina);
+  if (held < needed) {
+    const spare = Math.floor(held / CONFIG.staminaPerHourWorked);
+    throw new InputError(
+      `${character.name ?? 'They'} has about ${spare}h of walking left and ${region.name} ` +
+        `is ${formatHours(Number(region.travel_hours))} out. Let them rest.`,
+    );
   }
 
   const returnsAt = new Date(now + region.travel_hours * HOUR_MS);

@@ -615,6 +615,38 @@ function isDueBack(state, expedition, at) {
  * trip means the trip is theirs — which is most of what the tick is tested against.
  */
 /**
+ * What this survivor is spending the hour on, or null if the hour is theirs.
+ *
+ * Phase 10 charges stamina for work and pays it back for rest, so the tick has to know
+ * which of the two an hour was. It is the same question `who-is-free.js` answers for the
+ * services, off the same three columns — but that one runs a query and this one may not:
+ * `applyTick` is a pure function of the state it is handed. So `loadWorld` carries the
+ * owners in, and this reads them.
+ *
+ * A job with no owner occupies nobody and therefore costs nobody, which is the reading
+ * migration 019 wrote down: those rows were started when there was one pair of hands and
+ * nobody needed naming, and inventing a worker for them would be inventing a fact.
+ *
+ * Every one of these is a slice boundary in `nextEventAfter` — a build's completion, a
+ * trip's return, a craft's, a fitting's — so within one slice a survivor is working for
+ * the whole of it or none of it, and charging the whole slice is exact rather than nearly.
+ */
+function workingAt(state, survivor) {
+  if (tripOf(state, survivor) !== null) return 'away';
+
+  for (const structure of state.settlement.structures ?? []) {
+    if (structure.buildCompletesAt != null && structure.builtBy === survivor.id) return 'building';
+  }
+  if (state.fitting?.installedAt == null && state.fitting?.fittedBy === survivor.id) {
+    return 'fitting';
+  }
+  if (state.craft?.status === 'active' && state.craft?.craftedBy === survivor.id) {
+    return 'crafting';
+  }
+  return null;
+}
+
+/**
  * The trip this survivor is on, or null if they are standing in the camp.
  *
  * The inverse of `walkerOf`, and it exists because the thing it replaces was wrong. That
@@ -739,10 +771,38 @@ function accrueResources(state, hours, factors = {}) {
 
 function simulateSurvivor(state, survivor, hours, at, events, config) {
 
-  // Draw rations from storage. Partial supply gives partial relief, so a camp running
-  // a small deficit degrades gradually instead of falling off a cliff.
+  /*
+   * What this hour was, which decides whether stamina is spent or paid back.
+   *
+   * Read before the rations, because a survivor recovering eats several times what a
+   * survivor idling eats and the draw has to know that before it takes it.
+   */
+  const working = workingAt(state, survivor);
+  const stamina = Number.isFinite(survivor.stamina) ? survivor.stamina : 100;
+  const recovering = working === null && stamina < 100;
+
+  /*
+   * Draw rations from storage. Partial supply gives partial relief, so a camp running
+   * a small deficit degrades gradually instead of falling off a cliff.
+   *
+   * **Recovery drinks, and this is the load-bearing part of Phase 10.** Food is not a
+   * constraint in this game — every camp measured sits at its storage cap throwing food
+   * away hourly, and a garden outgrows a mouth at level two — so a recovery priced at any
+   * ordinary rate costs nothing and stamina would be scenery for a third time. At six times
+   * a mouth the store notices, and a shelter's cap quietly becomes a reserve of working
+   * hours: production limits labour, and labour builds production.
+   *
+   * It scales the *demand* rather than subtracting separately, so the partial-supply
+   * arithmetic that was already here does the rest of the work. A camp that cannot meet the
+   * larger draw feeds the survivor a smaller fraction of it, and the fraction is what both
+   * hunger and the recovery below are then scaled by — a hungry camp recovers slowly, and a
+   * camp with nothing recovers not at all. That last is what keeps the 36-to-72-hour
+   * starvation window intact: on empty stores the fraction is zero either way, so a
+   * recovering survivor starves at exactly the rate they always did.
+   */
+  const appetite = recovering ? config.staminaRecoveryFoodMultiplier : 1;
   const fedFraction = Math.min(
-    draw(state.settlement.resources.food, config.foodPerHour * hours),
+    draw(state.settlement.resources.food, config.foodPerHour * appetite * hours),
     draw(state.settlement.resources.water, config.waterPerHour * hours),
   );
 
@@ -774,6 +834,40 @@ function simulateSurvivor(state, survivor, hours, at, events, config) {
   const radDecay =
     config.radDecayPerHour * (inCamp ? radDecayMultiplier(state.settlement.upgrades) : 0);
   survivor.radiation = clamp(survivor.radiation - radDecay * hours, 0, 100);
+
+  /*
+   * Stamina: spent by working, paid back by resting, and it never blocks healing.
+   *
+   * Spent at a flat rate by every kind of work — travelling, building, fitting, the bench —
+   * because the question it asks is "what did this person spend the day on", which is the
+   * one question the game has never asked. Deliberately *not* spent by danger, which is
+   * radiation's job, nor by the passage of time, which is nobody's. Two gauges doing one
+   * job means the player only ever meets the tighter of them.
+   *
+   * Paid back passively rather than only through scheduled sleep. A player away for three
+   * days would otherwise come back to a survivor who had been exhausted for sixty hours and
+   * done nothing, which is the punish-a-weekend-away failure the starvation window exists
+   * to prevent. Sleep is an accelerator, and it is a later commit.
+   *
+   * The taper is the decision of 2026-08-31. `regenHungerCeiling` is a real gate — health
+   * regenerates only below it — so a recovery that pushed hunger past it would stop an
+   * injured survivor healing, and the thing keeping them hurt would be the thing meant to
+   * make them useful. Recovery yields instead: full rate until five points short of the
+   * ceiling, nothing at it. The tension is kept, the trap is not.
+   */
+  const roomToEat = clamp(
+    (config.regenHungerCeiling - survivor.hunger) / config.staminaRecoveryHungerTaper,
+    0,
+    1,
+  );
+  survivor.stamina = clamp(
+    stamina +
+      (working === null
+        ? config.staminaRegenPerHour * hours * roomToEat * fedFraction
+        : -config.staminaPerHourWorked * hours),
+    0,
+    100,
+  );
 
   let delta = healthDelta(survivor, hours, config);
 

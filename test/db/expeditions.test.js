@@ -244,7 +244,24 @@ test('a survivor who starves while away is not brought home by the tick', async 
       `update camp_structures set level = 0 where settlement_id = $1 and kind in ('garden','water_purifier')`,
       [settlementId],
     );
-    await dispatchExpedition(client, settlementId, slug, now);
+    /*
+     * Put them on the road directly rather than through `dispatchExpedition`.
+     *
+     * This is a two-hundred-hour walk, chosen so the founder starves long before it would
+     * end — and since Phase 10, stamina refuses a trip a survivor cannot finish, so the
+     * service will not start one. That refusal is correct and is tested where it belongs;
+     * this test is about the *tick*, and specifically about what it does with a trip that
+     * outlives its walker. The row is what the tick reads, so the row is what it gets.
+     */
+    const { rows: who } = await client.query(
+      'select id from characters where settlement_id = $1 and died_at is null',
+      [settlementId],
+    );
+    await client.query(
+      `insert into expeditions (character_id, region_id, departed_at, returns_at, seed, status)
+       select $1, r.id, $2, $3, 4242, 'active' from regions r where r.slug = $4`,
+      [who[0].id, new Date(now), new Date(now + hours(200)), slug],
+    );
 
     const { events } = await advanceSettlement(client, settlementId, now + hours(24 * 10));
 

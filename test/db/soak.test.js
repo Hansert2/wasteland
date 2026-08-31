@@ -7,6 +7,7 @@ import { advanceSettlement } from '../../src/services/advance-settlement.js';
 import { dispatchExpedition } from '../../src/services/dispatch-expedition.js';
 import { answerMoment } from '../../src/services/answer-moment.js';
 import { momentsFor, isOpen } from '../../src/game/moments.js';
+import { CONFIG } from '../../src/game/constants.js';
 import { startBuild } from '../../src/services/start-build.js';
 import { startCraft } from '../../src/services/start-craft.js';
 import { startUpgrade } from '../../src/services/start-upgrade.js';
@@ -309,6 +310,52 @@ async function checkInvariants(client, settlementId, now, label) {
   return road.reduce((total, row) => total + Number(row.fuel), 0);
 }
 
+/**
+ * The trip they asked for, or the longest shorter one their stamina actually covers.
+ *
+ * Not named `affordable`: the build step a hundred lines down already binds that to a
+ * structure, and a local const shadows a module function silently.
+ *
+ * Phase 10 arriving in the automaton. Stamina refuses a walk a survivor cannot finish, so a
+ * robot that always asks for the Deep Zone is a robot that is refused most of the time —
+ * `attempt` swallows it, the check-in passes, and ninety days answer no moments at all.
+ * That is exactly what the first run after the gate landed did: 458 dispatches and 0
+ * moments, every long walk declined and only the fence line getting through.
+ *
+ * A player does not stand at the gate asking for a walk they cannot make, so this does not
+ * either. `hoursBy` comes from the regions table rather than a list in here, because a
+ * restated travel time that drifted from the seed would show up as the moment count quietly
+ * falling rather than as anything failing.
+ */
+function asFarAsTheyCanGo(person, wanted, hoursBy) {
+  const legs = Number(person.stamina ?? 100) / CONFIG.staminaPerHourWorked;
+  if ((hoursBy.get(wanted) ?? 0) <= legs) return wanted;
+
+  /*
+   * Out of reach, so they rest — which is the refusal's own advice, and it has to be the
+   * policy rather than "go somewhere nearer instead".
+   *
+   * Two wrong versions before this one, and both are worth keeping written down because
+   * they are the two ways a robot misreads a budget.
+   *
+   * The first fell back to the longest region in `regions` that fitted, which at a full
+   * gauge is Harrow End — twenty-six hours, behind a road link a young camp has not built.
+   * Every one of those was refused, `attempt` swallowed it, and the run read as a camp that
+   * never went anywhere.
+   *
+   * The second fell back to the longest *known* trip that fitted, and that is the
+   * interesting failure: it ratchets. Spending the last of a gauge on a four-hour errand is
+   * spending exactly what an eighteen-hour walk needed, so the long trip is never affordable
+   * again and the camp does short errands forever. 781 dispatches in ninety days and not one
+   * of them long enough to have an interior. **Greedy dispatch starves you of long trips**,
+   * which is a finding about the mechanic and not only about this automaton.
+   *
+   * So: if the walk they want is out of reach, they wait for it. The rotation walker always
+   * has the fence line in reach and keeps moving; the long-trip walkers bank their hours.
+   */
+  return null;
+}
+
 test('ninety days of attentive play holds every invariant at every check-in', async () => {
   // Committed outside the rollback, deliberately. The soak holds its transaction for
   // seconds, and world_events inserts left uncommitted hold speculative unique-index
@@ -319,6 +366,10 @@ test('ninety days of attentive play holds every invariant at every check-in', as
 
   await withRollback(async (client) => {
     const settlementId = await foundPinned(client, T0);
+
+    // How far every place is, once, so the automaton can price a walk before asking.
+    const { rows: regionRows } = await client.query('select slug, travel_hours from regions');
+    const hoursBy = new Map(regionRows.map((row) => [row.slug, Number(row.travel_hours)]));
 
     // The itinerary: safe and short while green, hot and long once equipped.
     const rotation = [
@@ -508,12 +559,28 @@ test('ninety days of attentive play holds every invariant at every check-in', as
          * what it is measuring.
          */
         const long = ['ruined_city', 'underground_bunkers', 'the_deep_zone'];
-        const region =
+        const wanted =
           person.radiation > 40 || person.health < 50
             ? 'the_fence_line'
             : nth === 0
               ? rotation[checkin % rotation.length]
               : long[(checkin + nth) % long.length];
+
+        /*
+         * And only as far as they have the legs for, which is Phase 10 arriving in here.
+         *
+         * Stamina refuses a trip a survivor cannot finish, so an automaton that always asks
+         * for the Deep Zone is an automaton that is refused most of the time — `attempt`
+         * swallows it, the check-in passes, and ninety days answer no moments at all. That
+         * is what happened the first run after the gate landed: 458 dispatches, 0 moments,
+         * because every long walk was declined and only the fence line ever got through.
+         *
+         * A player does not stand at the gate asking for a walk they cannot make. They take
+         * the longest one they can, so this does too — which keeps the soak measuring
+         * moments rather than measuring the refusal.
+         */
+        const region = asFarAsTheyCanGo(person, wanted, hoursBy);
+        if (region === null) continue; // banking hours for the walk they actually want
 
         if (await attempt(() => dispatchExpedition(client, settlementId, region, now, person.id))) {
           await pinExpeditionSeed(client, settlementId, checkin);

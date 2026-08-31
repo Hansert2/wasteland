@@ -42,7 +42,7 @@ export async function loadWorld(client, settlementId) {
   // nothing but order. That makes a state comparison intermittently false, which is
   // an unpleasant way to spend an afternoon.
   const { rows: structureRows } = await client.query(
-    `select id, kind, level, build_completes_at
+    `select id, kind, level, build_completes_at, built_by
        from camp_structures where settlement_id = $1 order by kind`,
     [settlementId],
   );
@@ -51,6 +51,19 @@ export async function loadWorld(client, settlementId) {
     kind: row.kind,
     level: row.level,
     buildCompletesAt: row.build_completes_at?.getTime() ?? null,
+    /*
+     * Whose hands, carried into the simulation because Phase 10 charges them.
+     *
+     * `occupations` answers the same question for the services, from the same column, but
+     * it is a query and `applyTick` may not make one — it is a pure function of the state
+     * it is handed. So the state has to carry it, and this is the load-bearing half of
+     * migration 019: the column existed to refuse a second job, and it turns out to be
+     * what tells the tick which survivor spent the hour working.
+     *
+     * Null is a job nobody owns, from before work belonged to anybody. It occupies nobody
+     * and so it costs nobody stamina, which is the same reading `who-is-free.js` takes.
+     */
+    builtBy: row.built_by === null ? null : Number(row.built_by),
   }));
   const rates = productionRates(structures);
 
@@ -80,7 +93,7 @@ export async function loadWorld(client, settlementId) {
    * do the same job by accident; `born_at` says why.
    */
   const { rows: characters } = await client.query(
-    `select id, name, health, hunger, radiation, born_at, skill_scavenging, skill_medicine
+    `select id, name, health, hunger, radiation, stamina, born_at, skill_scavenging, skill_medicine
        from characters
       where settlement_id = $1 and died_at is null
       order by born_at, id`,
@@ -135,6 +148,16 @@ export async function loadWorld(client, settlementId) {
       health: person.health,
       hunger: person.hunger,
       radiation: person.radiation,
+      /*
+       * Read at last, on 2026-08-31, by Phase 10.
+       *
+       * The column has been on `characters` since migration `001` and nothing had ever
+       * selected it — three phases proposed dropping it. It survives because the roster
+       * gave it the thing it was always missing: with one survivor "what did this person
+       * spend the day on" has one answer, so stamina removed verbs rather than creating a
+       * choice. With two it is an allocation.
+       */
+      stamina: Number(person.stamina),
       skillScavenging: person.skill_scavenging,
       // Read by the tick, not by any generator: medicine moves where a dose starts
       // costing the survivor and never what a trip rolled. See `radThresholdFor`.
@@ -263,7 +286,7 @@ export async function loadWorld(client, settlementId) {
   // for. The output travels with the order for the same reason the region travels
   // with an expedition: the tick resolves it without reaching back into the database.
   const { rows: crafting } = await client.query(
-    `select co.id, co.status, co.completes_at, rec.name, rec.output_qty, i.slug
+    `select co.id, co.status, co.completes_at, co.crafted_by, rec.name, rec.output_qty, i.slug
        from craft_orders co
        join recipes rec on rec.id = co.recipe_id
        join items i on i.id = rec.output_item_id
@@ -276,7 +299,7 @@ export async function loadWorld(client, settlementId) {
   // null installed_at is still being fitted, and the partial unique index guarantees
   // there is at most one. What each upgrade *does* lives in code, not here.
   const { rows: upgradeRows } = await client.query(
-    `select id, kind, upgrade, completes_at, installed_at
+    `select id, kind, upgrade, completes_at, installed_at, fitted_by
        from structure_upgrades where settlement_id = $1 order by upgrade`,
     [settlementId],
   );
@@ -343,6 +366,8 @@ export async function loadWorld(client, settlementId) {
           completesAt: order.completes_at.getTime(),
           resolvedAt: null,
           name: order.name,
+          // As `builtBy` on a structure, and for the same reason.
+          craftedBy: order.crafted_by === null ? null : Number(order.crafted_by),
           output: { slug: order.slug, qty: order.output_qty },
         }
       : null,
@@ -353,6 +378,8 @@ export async function loadWorld(client, settlementId) {
           upgrade: pending.upgrade,
           name: UPGRADES[pending.upgrade]?.name ?? pending.upgrade,
           completesAt: pending.completes_at.getTime(),
+          // As `builtBy` on a structure, and for the same reason.
+          fittedBy: pending.fitted_by === null ? null : Number(pending.fitted_by),
           installedAt: null,
         }
       : null,
@@ -417,14 +444,18 @@ export async function saveWorld(client, state) {
     // matching them, so the next load returns no survivor and the camp ticks on alone.
     await client.query(
       `update characters
-          set health = $2, hunger = $3, radiation = $4,
-              died_at = $5, cause_of_death = $6
+          set health = $2, hunger = $3, radiation = $4, stamina = $5,
+              died_at = $6, cause_of_death = $7
         where id = $1`,
       [
         survivor.id,
         survivor.health,
         survivor.hunger,
         survivor.radiation,
+        // Clamped on the way out as well as in the simulation: the column carries a check
+        // constraint between 0 and 100, and a rounding error at either end would fail the
+        // write rather than the arithmetic, which is a bad place to find out.
+        Math.max(0, Math.min(100, Number(survivor.stamina))),
         survivor.diedAt === null ? null : new Date(survivor.diedAt),
         survivor.causeOfDeath ?? null,
       ],

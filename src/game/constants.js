@@ -88,4 +88,91 @@ export const CONFIG = {
    * tests that pinned the old behaviour name it.
    */
   regenRadCeiling: 20,
+
+  /* ---- stamina: what a survivor's day is worth ---------------------------------- */
+
+  /*
+   * Phase 10, and the shape was chosen by measurement rather than by taste.
+   *
+   * `tools/stamina-sensitivity.mjs` reads four candidate shapes over eight dosing regions
+   * and four thousand states each, and asks the only question that decides whether a
+   * second gauge is a mechanic at all: **does it ever make the right answer "send the
+   * tired one anyway"?** In the states where the healthiest survivor and the most rested
+   * one are different people — 45% of dispatches — neither single-gauge policy is right
+   * often enough to be a rule.
+   *
+   *     shape        contested   healthiest wrong   rested wrong   survivor idle
+   *     gentle             47%                 9%            91%             39%
+   *     moderate           46%                15%            85%             50%
+   *     steep              45%                36%            64%             60%
+   *     brutal             45%                43%            57%             63%
+   *
+   * Gentle loses at 91%: a radiation that is no longer a threshold simply out-argues it.
+   * Brutal costs three more points of idleness than steep and buys nothing — it was the
+   * better shape until Phase 11 settled trips across their hours, and re-measuring on
+   * 2026-08-30 flipped it. **Steep, and not past it.**
+   *
+   * ### Why 3.8 rather than steep's 4.5, measured 2026-08-31
+   *
+   * Steep makes a region unreachable. Harrow End is a 26-hour walk, so at 4.5 it costs 117
+   * of a hundred-point gauge and no survivor can ever be sent — and Harrow End is the
+   * danger-5 region the balance work of 2026-08-27 lifted to 20.2 fuel/day, the best earner
+   * on the map. A constant that deletes content is the wrong constant however well it
+   * measures on the axis it was chosen for.
+   *
+   * So the cost is **derived from the map instead of picked from the table**: a hundred
+   * points divided by the longest walk in `regions`, which is the rule "a rested survivor
+   * can reach anywhere in the world, once". Re-measured at that value it is steep in
+   * everything but name, and slightly cheaper:
+   *
+   *     shape        contested   healthiest wrong   rested wrong   survivor idle
+   *     steep              45%                36%            64%             60%
+   *     3.8 (this)         44%                37%            63%             58%
+   *
+   * **If a longer region is ever added this number has to move with it**, or that region
+   * ships unreachable and nothing will say so. That is a real coupling and it is the honest
+   * one: the scale of a day's walking is a fact about how far the places are.
+   *
+   * The units are points of a hundred, per hour of work or of rest.
+   */
+  staminaPerHourWorked: 3.8,
+  staminaRegenPerHour: 1,
+
+  /*
+   * What recovery drinks, and this is the load-bearing number.
+   *
+   * Food is not a constraint in this game — measured 2026-08-27, every camp sits at its
+   * storage cap throwing food away hourly, and a garden outgrows a mouth at level two. So
+   * "recovery costs food" at any ordinary rate costs *nothing*, and stamina would be
+   * scenery for a third time. It has to drink several times what a survivor eats before
+   * the store notices.
+   *
+   *     garden   grows   2 mouths   one recovering   total draw
+   *       L2       1.2        1.0            +3.0          4.0   store falls
+   *       L6       3.6        1.0            +3.0          4.0   about even
+   *       L8       4.8        1.0            +3.0          4.0   store climbs
+   *
+   * Which is the loop the game does not otherwise have: **production limits labour, and
+   * labour builds production.** The garden has had one interesting level and seven
+   * decorative ones; this gives it a track, and it quietly makes a shelter's storage cap
+   * into a reserve of working hours.
+   */
+  staminaRecoveryFoodMultiplier: 6,
+
+  /*
+   * Recovery makes a survivor hungry, and yields to healing rather than blocking it.
+   *
+   * Resting hard is work of a kind and it should show on the same gauge eating does. But
+   * `regenHungerCeiling` is a real gate — health regenerates only below 25 — so a recovery
+   * that pushed hunger past it would stop an injured survivor healing, and the thing
+   * keeping them hurt would be the thing meant to make them useful. The plan flagged that
+   * as "either a tension worth having or an accident that makes injury unrecoverable, and
+   * it has to be chosen rather than discovered".
+   *
+   * Chosen 2026-08-31: recovery tapers to nothing as hunger approaches the ceiling. The
+   * tension is kept — a hungry camp recovers slowly — and the trap is not: healing always
+   * wins the room, because a gauge that can lock a survivor out of healing is a bug with a
+   * design document.
+   */
+  staminaRecoveryHungerTaper: 5,
 };
