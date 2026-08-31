@@ -2797,6 +2797,22 @@ strip with a single detail block was the alternative and was declined.
 > — the roster is two for a long time, and a strip can be introduced later without changing
 > anything about how work is assigned.
 
+### Two people out at once, decided 2026-08-31
+
+**The dispatch table stays single, with a chooser per row.** It lists eleven regions, so one
+table per survivor is thirty-three rows of identical region data for a camp of three. That is
+settled by arithmetic rather than taste, and it is the same shape the build and craft rows
+take.
+
+**A trip is reported inside its own survivor's block.** Vera's block says where Vera is,
+which follows from stacked blocks: the alternative puts a person's condition and their trip
+in two different stacks and makes "what is Vera doing" a question you answer twice.
+
+**Contact stays one block, showing the window that shuts soonest and naming whose it is.** A
+moment is the one thing on the page carrying a deadline, and that block's existing rule is
+that the deadline goes first. Others queue behind it with their time named. One box per open
+moment was the alternative and was declined: three alarm boxes at once is the page shouting.
+
 ### What this does not decide
 
 **Which survivor a verb belongs to.** Dispatch, crafting and using an item all take "the

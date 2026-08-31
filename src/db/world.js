@@ -206,6 +206,9 @@ export async function loadWorld(client, settlementId) {
       expedition = {
         id: row.id,
         status: row.status,
+        // Whose trip it is. Null before the roster existed, and the tick reads it so that a
+        // death at home does not forfeit somebody else's haul.
+        characterId: row.character_id,
         // Carried because the sky is integrated across the trip rather than sampled at
         // its end, and an integral needs both ends. Derivable from `returnsAt` less
         // `travelHours`, and selected anyway: deriving a stored column is how the two

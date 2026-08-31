@@ -947,3 +947,47 @@ test('a dose decays in the camp and not on the road', () => {
     `the camp scrubs, got ${home.state.survivor.radiation}`,
   );
 });
+
+test('one survivor dying does not forfeit the trip of another', () => {
+  /*
+   * `kill` read "the expedition" and marked it lost, which was right while a camp had one
+   * survivor and so at most one trip. With a roster it is a haul belonging to somebody who
+   * is halfway to Harrow End, forfeited because a different person starved at home.
+   *
+   * The trip carries whose it is now, and `kill` only takes its own.
+   */
+  /*
+   * Killed by the dose rather than by hunger, which took a first attempt to see: an away
+   * survivor still eats from the camp's stores, so emptying them starves the traveller too
+   * and the trip is forfeit for the honest reason. Radiation is carried by the person.
+   */
+  const away = { id: 41, alive: true, health: 100, hunger: 0, radiation: 0, bornAt: T0 };
+  const home = { id: 42, alive: true, health: 4, hunger: 0, radiation: 96, bornAt: T0 };
+
+  const state = makeState({ survivor: home });
+  state.survivors = [home, away];
+  state.expedition = {
+    id: 'exp_1',
+    status: 'active',
+    characterId: away.id,
+    departedAt: T0,
+    returnsAt: T0 + days(4),
+    seed: 3,
+    region: { ...REGION, travelHours: 96 },
+    resolvedAt: null,
+    log: null,
+  };
+
+  const { state: after, events } = applyTick(state, T0 + days(3));
+
+  assert.equal(after.survivors.find((one) => one.id === away.id).alive, true, 'the walker lives');
+
+  assert.equal(after.survivors.find((one) => one.id === home.id).alive, false, 'the one at home died');
+  assert.ok(events.some((e) => e.type === 'survivor_died'), 'and it was recorded');
+  assert.equal(after.expedition.status, 'active', 'the trip is still walking');
+  assert.equal(
+    events.filter((e) => e.type === 'expedition_lost').length,
+    0,
+    'nobody else lost their haul for it',
+  );
+});

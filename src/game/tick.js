@@ -194,12 +194,29 @@ function flightOf(state) {
  * applying both at once.
  */
 function accrueTrip(state, from, at, events, config, flight) {
-  if (!flight || !state.survivor?.alive) return;
+  if (!flight) return;
 
   const expedition = state.expedition;
   if (!expedition || expedition.status !== 'active') return;
 
-  const survivor = state.survivor;
+  /*
+   * The person actually walking, not the first name in the camp.
+   *
+   * This read `state.survivor`, which was the same person while a camp held one. With a
+   * roster it charged a trip's hazard and dose to whoever happened to be listed first — so
+   * somebody standing in the camp took the damage from a trip they were not on, and if it
+   * killed them the walker's haul was forfeit as well.
+   *
+   * `characterId` is null on a state built by hand, and a fixture with one survivor and one
+   * trip means the trip is theirs.
+   */
+  const roster = state.survivors ?? (state.survivor ? [state.survivor] : []);
+  const survivor =
+    expedition.characterId == null
+      ? state.survivor
+      : roster.find((one) => one.id === expedition.characterId);
+
+  if (!survivor?.alive) return;
   const was = stateAt(flight.timeline, (from - expedition.departedAt) / HOUR_MS);
   const is = stateAt(flight.timeline, (at - expedition.departedAt) / HOUR_MS);
 
@@ -230,7 +247,7 @@ function accrueTrip(state, from, at, events, config, flight) {
       expeditionId: expedition.id,
       log: flight.outcome.log,
     });
-    kill(state, at, is.cause ?? flight.outcome.cause ?? 'the road', events);
+    kill(state, survivor, at, is.cause ?? flight.outcome.cause ?? 'the road', events);
   }
 }
 
@@ -308,8 +325,21 @@ function advance(state, from, at, events, config, flight) {
     returnExpedition(state, at, events, flight);
   }
 
-  if (state.survivor?.alive) {
-    simulateSurvivor(state, hours, at, events, config);
+  /*
+   * Everybody in the camp, not the first of them.
+   *
+   * `simulateSurvivor` read `state.survivor` and is handed the person now, because with a
+   * roster the question is who this hour happened to. The order is arrival order, which
+   * matters for one thing only and matters a great deal for it: the stores are drawn down as
+   * the walk goes, so on a camp that cannot feed everybody the earlier arrivals eat and the
+   * later ones go short, rather than everybody starving equally.
+   *
+   * That is a decision rather than an accident of iteration, and it is the kinder of the
+   * two: a camp one ration short loses nobody, where an even split starves the whole roster
+   * at once.
+   */
+  for (const person of state.survivors ?? (state.survivor ? [state.survivor] : [])) {
+    if (person.alive) simulateSurvivor(state, person, hours, at, events, config);
   }
 
   // Last, because delivery is the one part of crafting that needs hands, and whether
@@ -619,7 +649,7 @@ function returnExpedition(state, at, events, flight) {
   });
 
   if (survivor.health <= 0) {
-    kill(state, at, outcome.cause ?? 'injuries', events);
+    kill(state, survivor, at, outcome.cause ?? 'injuries', events);
   }
 }
 
@@ -637,8 +667,7 @@ function accrueResources(state, hours, factors = {}) {
   }
 }
 
-function simulateSurvivor(state, hours, at, events, config) {
-  const survivor = state.survivor;
+function simulateSurvivor(state, survivor, hours, at, events, config) {
 
   // Draw rations from storage. Partial supply gives partial relief, so a camp running
   // a small deficit degrades gradually instead of falling off a cliff.
@@ -689,7 +718,7 @@ function simulateSurvivor(state, hours, at, events, config) {
   survivor.health = clamp(survivor.health + delta, 0, 100);
 
   if (survivor.health <= 0) {
-    kill(state, at, causeOf(survivor, config), events);
+    kill(state, survivor, at, causeOf(survivor, config), events);
   }
 }
 
@@ -809,8 +838,7 @@ function rescue(survivor, at, events, config) {
   return true;
 }
 
-function kill(state, at, cause, events) {
-  const survivor = state.survivor;
+function kill(state, survivor, at, cause, events) {
   survivor.alive = false;
   survivor.health = 0;
   survivor.diedAt = at;
@@ -818,7 +846,21 @@ function kill(state, at, cause, events) {
 
   // An expedition in flight has nobody to come home. Loot and story beats are forfeit;
   // the settlement never learns what happened out there.
-  if (state.expedition && state.expedition.status === 'active') {
+  /*
+   * Their trip, and only theirs.
+   *
+   * This read "the expedition" because a camp had one survivor and so at most one trip. With
+   * a roster it has to be the dead person's own, or one survivor dying at home would forfeit
+   * the haul of another who is halfway to Harrow End.
+   *
+   * `characterId` is null on a state built by hand, and a fixture with one survivor and one
+   * trip means the trip is theirs — so an unowned expedition still belongs to whoever died.
+   */
+  const theirs =
+    state.expedition &&
+    (state.expedition.characterId == null || state.expedition.characterId === survivor.id);
+
+  if (theirs && state.expedition.status === 'active') {
     state.expedition.status = 'lost';
     // A resolved expedition must record when — the schema refuses the row otherwise.
     state.expedition.resolvedAt = at;
