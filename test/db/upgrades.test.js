@@ -769,11 +769,20 @@ test('the stores line counts every mouth in the camp, and what recovery draws', 
     const solo = drawOf(one, 'water');
     assert.ok(solo > 0, 'a camp of one draws something');
 
-    await client.query(
+    /*
+     * Held by id, not by name.
+     *
+     * The first version updated `where name = 'Odd'`, and the camp's founder is named from
+     * the wanderer pool — which on this seed is also Odd. Both rows were set resting and the
+     * draw came back at twice what the assertion expected. A game that picks the names is a
+     * game where a name is not a key.
+     */
+    const { rows: added } = await client.query(
       `insert into characters (settlement_id, name, born_at, health, radiation, stamina)
-       values ($1, 'Odd', now(), 100, 0, 100)`,
+       values ($1, 'Odd', now(), 100, 0, 100) returning id`,
       [settlementId],
     );
+    const odd = added[0].id;
     const two = await viewCamp(client, settlementId);
     assert.equal(drawOf(two, 'water'), solo * 2, 'two mouths draw twice as much water');
     assert.equal(
@@ -790,10 +799,7 @@ test('the stores line counts every mouth in the camp, and what recovery draws', 
      * labour capacity the way the garden is, rather than the structure you build so nobody
      * dies of thirst.
      */
-    await client.query(
-      "update characters set stamina = 40 where settlement_id = $1 and name = 'Odd'",
-      [settlementId],
-    );
+    await client.query('update characters set stamina = 40 where id = $1', [odd]);
     const resting = await viewCamp(client, settlementId);
     const extra = CONFIG.staminaRecoveryRationMultiplier - 1;
 

@@ -567,8 +567,15 @@ function strainOf(survivor, decayPerHour) {
  * exactly the complaint: a cost you can derive is a cost most people will not derive, and
  * recovery's price on the stores was real and invisible from the day it shipped.
  *
- * Each is `{ sign, tag, note }`: a glyph for the gauge's own line, a word for a device with
- * no hover to give, and a sentence for the popup. An empty list is the ordinary case rather
+ * Each is `{ sign, tag, head, rows }`: a glyph for the gauge's own line, a word for a device
+ * with no hover to give, and — where a sentence used to be — a heading and a column of
+ * figures, which is the house style for anything a popup has to explain.
+ *
+ * The sentences were the last prose left in a panel that had already given them up. "Paying
+ * back stamina is work of a kind, and they eat for it — 3 food and 4.5 water an hour out of
+ * the stores, against 0.5 and 0.8 for somebody idle" carries four numbers and makes the
+ * reader dig each of them out of a clause. The same four in a column are read at a glance
+ * and compared down the page, which is what a player is doing with them. An empty list is the ordinary case rather
  * than a missing one — nothing is added for a survivor standing in the camp being fed,
  * because "nothing unusual" is not news, and a gauge nothing is doing anything to says so
  * by having no sign beside it.
@@ -588,96 +595,139 @@ function strainOf(survivor, decayPerHour) {
  *     =  held level           +  a fitting acting     (diamond)
  *     o  drawing on stores    !  the stores cannot    (disc / hollow disc)
  */
-function driversFor(person, { working, resting, fedShort, radScrubbing, strain, config }) {
-  const perHour = (value) => `${Math.round(Number(value) * 10) / 10}`;
+function driversFor(person, {
+  working,
+  resting,
+  fedShort,
+  radScrubbing,
+  radDecayPerHour,
+  strain,
+  config,
+}) {
+  const n1 = (value) => `${Math.round(Number(value) * 10) / 10}`;
+  const perHour = (value, mark = '') => `${mark}${n1(value)}/h`;
+  const hours = (value) => {
+    const h = Math.max(0, Math.round(Number(value)));
+    return h >= 24 ? `${Math.floor(h / 24)}d ${h % 24}h` : `${h}h`;
+  };
 
   const health = [];
   if (person.hunger >= config.regenHungerCeiling) {
     health.push({
       sign: '■',
       tag: 'too hungry to heal',
-      note: `Health only mends below ${config.regenHungerCeiling} hunger, and they are at ${perHour(person.hunger)}.`,
+      head: 'healing is stopped',
+      rows: [
+        ['hunger now', n1(person.hunger)],
+        ['heals below', n1(config.regenHungerCeiling)],
+        ['would heal', perHour(config.regenPerHour, '+')],
+        ['fed, hunger', perHour(config.hungerFallPerHour, '−')],
+      ],
     });
   }
   if (strain?.state === 'burning') {
     health.push({
       sign: '▼',
-      tag: `the dose −${perHour(strain.damagePerHour)}/h`,
-      note: 'The radiation they are carrying costs more health than rest gives back.',
+      tag: `the dose −${n1(strain.damagePerHour)}/h`,
+      head: 'the dose outpaces rest',
+      rows: [
+        ['losing', perHour(strain.damagePerHour, '−')],
+        ['rest gives', perHour(strain.fullHealing, '+')],
+        ['gains again', `under ${n1(strain.tipping)} rads`],
+        ['that is', hours(strain.hoursToSafe)],
+        ['clear in', hours(strain.hoursToMending)],
+      ],
     });
   } else if (strain?.state === 'stalled') {
     health.push({
       sign: '=',
       tag: 'the dose cancels rest',
-      note: 'The dose is taking about what rest gives back, so health is standing still.',
+      head: 'health is standing still',
+      rows: [
+        ['rest gives', perHour(strain.fullHealing, '+')],
+        ['the dose takes', perHour(strain.fullHealing, '−')],
+        ['net', perHour(0)],
+        ['clear in', hours(strain.hoursToMending)],
+      ],
     });
   }
 
   const hunger = [];
   if (resting) {
+    const draw = config.staminaRecoveryRationMultiplier;
     hunger.push({
-      // The mark says what, the hover says how much — so not a bare multiplier, which is a
-      // figure with nothing to say what it multiplies.
       sign: '●',
       tag: 'resting, eating for it',
-      note:
-        `Paying back stamina is work of a kind, and they eat for it — ` +
-        `${perHour(config.foodPerHour * config.staminaRecoveryRationMultiplier)} food and ` +
-        `${perHour(config.waterPerHour * config.staminaRecoveryRationMultiplier)} water an hour ` +
-        `out of the stores, against ${perHour(config.foodPerHour)} and ${perHour(config.waterPerHour)} for somebody idle.`,
+      head: 'recovery draws rations',
+      rows: [
+        ['food', perHour(config.foodPerHour * draw)],
+        ['water', perHour(config.waterPerHour * draw)],
+        ['idle would be', `${n1(config.foodPerHour)} · ${n1(config.waterPerHour)}`],
+        ['buys', perHour(config.staminaRegenPerHour, '+')],
+      ],
     });
   }
   if (fedShort) {
     hunger.push({
       sign: '○',
       tag: 'the stores are short',
-      note: 'The camp cannot meet what this survivor is drawing, so hunger is climbing.',
+      head: 'hunger is climbing',
+      rows: [
+        ['now', n1(person.hunger)],
+        ['unfed', perHour(config.hungerRisePerHour, '+')],
+        ['fed', perHour(config.hungerFallPerHour, '−')],
+        ['starves at', n1(config.starvationThreshold)],
+      ],
     });
   }
 
-  /*
-   * A mark is something acting on the gauge, and only that.
-   *
-   * There was one here reading "nothing comes off out there" for a survivor on the road,
-   * and it is the wrong kind of thing to say: it announces a *non*-effect. Nothing is
-   * touching their dose, which is precisely the state an empty mark strip already
-   * describes — so the mark was a label whose whole content was the absence of a label.
-   *
-   * It was also the second copy of a fact the page already carries. Where they are is on
-   * the same row, under their name, on a photograph of the place. A reader who has taken
-   * that in does not need telling again that the camp's filter is not with them.
-   *
-   * The rule this leaves: a mark names a thing doing something to the number. If the number
-   * is simply sitting still, the strip is empty and that is the whole report.
-   */
   const radiation = [];
   if (working !== 'away' && radScrubbing) {
     radiation.push({
       sign: '◆',
       tag: 'filtration',
-      note: 'The filter on the purifier scrubs the camp, so a dose comes off faster than it would.',
+      head: 'the filter is running',
+      rows: [
+        ['in camp', perHour(radDecayPerHour, '−')],
+        ['without it', perHour(config.radDecayPerHour, '−')],
+        ['on the road', 'nothing'],
+      ],
     });
   }
 
   const stamina = [];
   if (working !== null) {
-    const doing = { away: 'out there', building: 'building', fitting: 'fitting', crafting: 'at the bench' };
+    const doing = {
+      away: 'out there',
+      building: 'building',
+      fitting: 'fitting',
+      crafting: 'at the bench',
+    };
     stamina.push({
       sign: '▼',
-      tag: `${doing[working] ?? working} −${perHour(config.staminaPerHourWorked)}/h`,
-      note:
-        'Every kind of work spends it at the same rate — walking, building, the bench. ' +
-        'Danger does not: that is what radiation is for.',
+      tag: `${doing[working] ?? working} −${n1(config.staminaPerHourWorked)}/h`,
+      head: doing[working] ?? working,
+      rows: [
+        ['any work', perHour(config.staminaPerHourWorked, '−')],
+        ['danger', 'costs none'],
+        ['resting', perHour(config.staminaRegenPerHour, '+')],
+        ['has', n1(person.stamina)],
+      ],
     });
   } else if (resting) {
     const slowed = person.hunger > config.regenHungerCeiling - config.staminaRecoveryHungerTaper;
+    const draw = config.staminaRecoveryRationMultiplier;
     stamina.push({
       sign: slowed ? '△' : '▲',
-      tag: slowed ? 'resting, slowed' : `resting +${perHour(config.staminaRegenPerHour)}/h`,
-      note: slowed
-        ? 'Recovery slows as hunger nears the line where healing stops, so it can never be ' +
-          'the reason somebody stays injured. Feed them and it picks up.'
-        : 'It comes back on its own. Nothing has to be scheduled for it.',
+      tag: slowed ? 'resting, slowed' : `resting +${n1(config.staminaRegenPerHour)}/h`,
+      head: slowed ? 'resting, and slowed' : 'resting',
+      rows: [
+        ['gains', perHour(config.staminaRegenPerHour, '+')],
+        ['draws', `${n1(config.foodPerHour * draw)} · ${n1(config.waterPerHour * draw)}/h`],
+        ['slows from', `${n1(config.regenHungerCeiling - config.staminaRecoveryHungerTaper)} hunger`],
+        ['stops at', `${n1(config.regenHungerCeiling)}`],
+        ['has', n1(person.stamina)],
+      ],
     });
   }
 
@@ -1730,6 +1780,7 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
           resting: workingAt(state, person) === null && Number(person.stamina) < 100,
           fedShort: Number(person.hunger) > 0,
           radScrubbing: fitted.has('filtration'),
+          radDecayPerHour,
           strain: strainOf(person, radDecayPerHour),
           config: CONFIG,
         }),

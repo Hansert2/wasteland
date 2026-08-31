@@ -4035,7 +4035,7 @@ function renderSurvivor(survivor, strain, vitals, inventory, chosen, panelId) {
             (one) =>
               `<span class="sign noted" aria-label="${escape(one.tag)}">${escape(
                 one.sign ?? '•',
-              )}<span class="note">${escape(one.note)}</span></span>`,
+              )}${stats(one.head, one.rows)}</span>`,
           )
           .join('')}</span>`;
 
@@ -4045,9 +4045,7 @@ function renderSurvivor(survivor, strain, vitals, inventory, chosen, panelId) {
       : `<div class="drivers">${list
           .map(
             (one) =>
-              `<span class="driver noted">${escape(one.tag)}<span class="note">${escape(
-                one.note,
-              )}</span></span>`,
+              `<span class="driver noted">${escape(one.tag)}${stats(one.head, one.rows)}</span>`,
           )
           .join('')}</div>`;
 
@@ -4318,7 +4316,25 @@ function gaugeNotes(strain, vitals) {
 }
 
 /**
- * A scale and a column of rates, which is what all three of these are.
+ * A heading and a column of figures. **This is the house style for anything a popup
+ * explains**, and the rule is worth stating rather than leaving to be noticed.
+ *
+ * > A number belongs in a row. Prose is for what a number cannot say.
+ *
+ * Concretely: a popup opens with a heading, may carry **one** short line for the thing a
+ * figure cannot carry — what a place is like, what a structure is for — and everything
+ * measurable after that is `[key, value]`. Not a sentence with figures embedded in it.
+ *
+ * The reason is what the reader is doing. "Paying back stamina is work of a kind, and they
+ * eat for it — 3 food and 4.5 water an hour out of the stores, against 0.5 and 0.8 for
+ * somebody idle" holds four numbers and makes each of them a small excavation. The same
+ * four in a column are read at a glance, and — the part that matters on a roster — they
+ * line up with the same four on the survivor underneath. A player comparing two people is
+ * doing arithmetic, and prose is the one format that cannot be scanned down a page.
+ *
+ * It is also what the game is. Every other surface here already gave up prose for figures:
+ * the gauges, the skills, the trip readout, the dispatch table. A popup that still writes
+ * paragraphs is the last place reading like documentation instead of like a game.
  *
  * One element, whether it is read inline on a phone, announced by a screen reader in
  * document order, or lifted into the note that follows the cursor — the script clones
@@ -5446,9 +5462,44 @@ function oneFittingIn(structure, upgrade, buildInFlight, someoneAlive, who = '')
    * Its own price and button ride in the same inset rather than in the table's cost and
    * action columns, for the same reason — those columns belong to the level track.
    */
+  /*
+   * The fitting's popup, as figures — the house style stated on `stats`.
+   *
+   * It was the summary and nothing else: one sentence, and every number about the thing
+   * living somewhere else on the row or not on the page at all. What it needs to hold a
+   * decision is what it costs, how long it takes, what it wants first and — for the one
+   * fitting there can be more than one of — how many are standing.
+   *
+   * The summary stays, as the one line of prose the rule allows: "somewhere for one more
+   * person to sleep" is what a bed is *for*, and no row of figures says it.
+   */
+  const costLabel =
+    (upgrade.fuel ?? 0) > 0 ? `${upgrade.fuel} fuel` : `${upgrade.scrap} scrap`;
+  const rows = [
+    ['costs', costLabel],
+    ['takes', duration(upgrade.hours)],
+    ['needs', `${structure.kind.replaceAll('_', ' ')} ${upgrade.requiresLevel}`],
+  ];
+  // Only where more than one can stand, which is the bed and nothing else. "1 of 1" on an
+  // instrument is a row that exists to have a row.
+  if (upgrade.allowed > 1 || upgrade.standing > 0) {
+    rows.push(['standing', `${upgrade.standing} of ${upgrade.allowed}`]);
+  }
+
   const inset = (tail) => `<span class="fitting noted">
       <span class="tag">${escape(upgrade.name)}</span>
-      <span class="note">${escape(upgrade.summary)}</span>
+      <span class="note">
+        <span class="stat-head">${escape(upgrade.name)}</span>
+        <span class="what">${escape(upgrade.summary)}</span>
+        ${rows
+          .map(
+            ([key, value]) =>
+              `<span class="stat-row"><span class="k">${escape(key)}</span><span class="v">${escape(
+                value,
+              )}</span></span>`,
+          )
+          .join('')}
+      </span>
       <span>${tail}</span>
     </span>`;
 
@@ -5486,9 +5537,7 @@ function oneFittingIn(structure, upgrade, buildInFlight, someoneAlive, who = '')
    * so the one scrap-priced fitting in the game advertised "undefined fuel, 30m". The view
    * already had to learn this same distinction for `shortBy`; the label never did.
    */
-  const priced =
-    (upgrade.fuel ?? 0) > 0 ? `${upgrade.fuel} fuel` : `${upgrade.scrap} scrap`;
-  const cost = `<span class="cost">${escape(`${priced}, ${duration(upgrade.hours)}`)}</span>`;
+  const cost = `<span class="cost">${escape(`${costLabel}, ${duration(upgrade.hours)}`)}</span>`;
 
   if (upgrade.shortBy) {
     return inset(`${cost} <span class="short">${escape(upgrade.shortBy)}</span>`);
