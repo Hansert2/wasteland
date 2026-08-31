@@ -438,15 +438,23 @@ export async function saveWorld(client, state) {
     }
   }
 
-  const expedition = state.expedition;
-  if (expedition && expedition.status !== 'active') {
+  /*
+   * Every trip the walk settled, not the first of them.
+   *
+   * This wrote `state.expedition` alone, which was the same thing while a camp ran one trip.
+   * With two it left the second one `active` in the table for ever — so a survivor who died
+   * on it stayed out there, the row was reloaded on the next tick, and the camp accumulated
+   * trips nobody was on. The soak found it at nine trips for two people.
+   */
+  for (const trip of state.expeditions ?? (state.expedition ? [state.expedition] : [])) {
+    if (!trip || trip.status === 'active') continue;
     await client.query(
       'update expeditions set status = $2, resolved_at = $3, log = $4 where id = $1',
       [
-        expedition.id,
-        expedition.status,
-        new Date(expedition.resolvedAt),
-        expedition.log ? JSON.stringify(expedition.log) : null,
+        trip.id,
+        trip.status,
+        new Date(trip.resolvedAt),
+        trip.log ? JSON.stringify(trip.log) : null,
       ],
     );
   }

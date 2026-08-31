@@ -1,5 +1,6 @@
 import { newSeed } from '../game/random.js';
 import { InputError } from '../errors.js';
+import { occupations, mustBeFree } from './who-is-free.js';
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -11,19 +12,45 @@ const HOUR_MS = 60 * 60 * 1000;
  * return to the page for days and the result has to be derived from elapsed time
  * like everything else.
  */
-export async function dispatchExpedition(client, settlementId, regionSlug, now = Date.now()) {
+/**
+ * @param {string|number} [who] which survivor goes. Omitted means the first who is free,
+ *   which is what every caller written before the roster meant by "the survivor".
+ */
+export async function dispatchExpedition(
+  client,
+  settlementId,
+  regionSlug,
+  now = Date.now(),
+  who = null,
+) {
   const { rows: characters } = await client.query(
-    'select id from characters where settlement_id = $1 and died_at is null',
+    'select id, name from characters where settlement_id = $1 and died_at is null order by born_at, id',
     [settlementId],
   );
-  const character = characters[0];
-  if (!character) throw new InputError('There is nobody here to send.');
+  if (characters.length === 0) throw new InputError('There is nobody here to send.');
 
-  const { rows: active } = await client.query(
-    `select id from expeditions where character_id = $1 and status = 'active'`,
-    [character.id],
-  );
-  if (active.length > 0) throw new InputError('They are already out there.');
+  /*
+   * Who goes, and whether they can.
+   *
+   * A survivor who is building cannot leave, and two who are both free can both go — so
+   * being busy is a fact about the person rather than about the camp. This refused a second
+   * trip by asking whether *this* character was already out, which was the same question
+   * while a camp held one person and is the wrong one now: it would have let somebody walk
+   * out of a half-built shelter.
+   *
+   * Named rather than picked when the caller says so. Without a name it takes the first free
+   * survivor, which is what "the survivor" meant everywhere this was called from before the
+   * roster existed and keeps those callers honest.
+   */
+  const busy = await occupations(client, settlementId, now);
+
+  const character =
+    who == null
+      ? characters.find((one) => !busy.has(Number(one.id))) ?? characters[0]
+      : characters.find((one) => String(one.id) === String(who));
+
+  if (!character) throw new InputError('Nobody here answers to that.');
+  mustBeFree(busy, character, 'go anywhere');
 
   const { rows: regions } = await client.query(
     'select id, name, travel_hours, requires_link from regions where slug = $1',

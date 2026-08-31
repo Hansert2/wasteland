@@ -1,5 +1,6 @@
 import { STRUCTURES, UPGRADES, upgradeCost } from '../game/structures.js';
 import { InputError } from '../errors.js';
+import { occupations, mustBeFree } from './who-is-free.js';
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -19,10 +20,11 @@ export async function startBuild(client, settlementId, kind, now = Date.now()) {
 
   // Starting work needs hands, even though finishing does not.
   const { rows: living } = await client.query(
-    'select id from characters where settlement_id = $1 and died_at is null',
+    'select id, name from characters where settlement_id = $1 and died_at is null order by born_at, id',
     [settlementId],
   );
   if (living.length === 0) throw new InputError('There is nobody here to build.');
+
 
   const { rows: structures } = await client.query(
     'select id, kind, level, build_completes_at from camp_structures where settlement_id = $1',
@@ -33,6 +35,20 @@ export async function startBuild(client, settlementId, kind, now = Date.now()) {
   if (inFlight) {
     throw new InputError(`The ${inFlight.kind.replaceAll('_', ' ')} is already being worked on.`);
   }
+
+  /*
+   * And whose hands, because a build occupies them: a survivor who is building cannot
+   * dispatch. The first free one, which is what "there is somebody here" meant before the
+   * roster — the page will name them once it has a chooser on the row.
+   *
+   * **After the camp-wide check, not before it.** A camp still runs one build at a time and
+   * that rule has its own reason — choosing what to build next is the game. Asking who is
+   * free first would answer a different question and replace that refusal's message with a
+   * vaguer one, on a camp of one where both are true.
+   */
+  const busy = await occupations(client, settlementId, now);
+  const builder = living.find((one) => !busy.has(Number(one.id)));
+  if (!builder) throw new InputError('Everybody here is already busy with something.');
 
   // Builds and upgrade fittings share one queue: it is one crew, and choosing what
   // they work on next is the game. `startUpgrade` refuses in the other direction.
@@ -63,10 +79,11 @@ export async function startBuild(client, settlementId, kind, now = Date.now()) {
   }
 
   const completesAt = new Date(now + cost.hours * HOUR_MS);
-  await client.query('update camp_structures set build_completes_at = $2 where id = $1', [
-    target.id,
-    completesAt,
-  ]);
+  // And who is raising it, so they cannot walk out of a half-built shelter.
+  await client.query(
+    'update camp_structures set build_completes_at = $2, built_by = $3 where id = $1',
+    [target.id, completesAt, builder.id],
+  );
 
   return { kind, toLevel: target.level + 1, completesAt, cost };
 }

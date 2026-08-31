@@ -897,15 +897,18 @@ function kill(state, survivor, at, cause, events) {
    * `characterId` is null on a state built by hand, and a fixture with one survivor and one
    * trip means the trip is theirs — so an unowned expedition still belongs to whoever died.
    */
-  const theirs =
-    state.expedition &&
-    (state.expedition.characterId == null || state.expedition.characterId === survivor.id);
+  const inFlight = state.expeditions ?? (state.expedition ? [state.expedition] : []);
+  const theirs = inFlight.find(
+    (trip) =>
+      trip.status === 'active' &&
+      (trip.characterId == null || trip.characterId === survivor.id),
+  );
 
-  if (theirs && state.expedition.status === 'active') {
-    state.expedition.status = 'lost';
+  if (theirs) {
+    theirs.status = 'lost';
     // A resolved expedition must record when — the schema refuses the row otherwise.
-    state.expedition.resolvedAt = at;
-    events.push({ at, type: 'expedition_lost', expeditionId: state.expedition.id });
+    theirs.resolvedAt = at;
+    events.push({ at, type: 'expedition_lost', expeditionId: theirs.id });
   }
 
   // A craft in flight is deliberately *not* cancelled here. The workshop is a bench

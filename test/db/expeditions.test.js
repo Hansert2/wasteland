@@ -122,9 +122,14 @@ test('the survivor cannot be in two places at once', async () => {
     const { settlementId, slug } = await setup(client);
     await dispatchExpedition(client, settlementId, slug);
 
+    /*
+     * Still refused, and the refusal names them now: "Vera is out there and cannot go
+     * anywhere." Being busy became a fact about a person rather than about the camp, so
+     * "somebody is already out there" is not a message a camp of three can act on.
+     */
     await assert.rejects(
       dispatchExpedition(client, settlementId, slug),
-      (error) => error instanceof InputError && /already out there/i.test(error.message),
+      (error) => error instanceof InputError && /is out there and cannot go/i.test(error.message),
     );
   });
 });

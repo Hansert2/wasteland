@@ -10,9 +10,10 @@ import { momentsFor, isOpen } from '../../src/game/moments.js';
 import { startBuild } from '../../src/services/start-build.js';
 import { startCraft } from '../../src/services/start-craft.js';
 import { startUpgrade } from '../../src/services/start-upgrade.js';
+import { takeInWanderer } from '../../src/services/take-in-wanderer.js';
 import { tradeWithCaravan } from '../../src/services/trade.js';
 import { foundSettlement, raiseSuccessor } from '../../src/services/settlement-lifecycle.js';
-import { UPGRADES, upgradeCost } from '../../src/game/structures.js';
+import { UPGRADES, bedsToRoster, fittingsAllowed, upgradeCost } from '../../src/game/structures.js';
 import { commitToRoad } from '../../src/services/commit-to-road.js';
 import { LINKS, linkCost } from '../../src/game/road.js';
 import { ensureWorldEvents } from '../../src/db/world-events.js';
@@ -122,24 +123,35 @@ async function answerOpenMoment(client, settlementId, now, checkin) {
       where c.settlement_id = $1 and c.died_at is null and e.status = 'active'`,
     [settlementId],
   );
-  const trip = rows[0];
-  if (!trip) return false;
+  /*
+   * Every trip in the field, not the first row back.
+   *
+   * This took `rows[0]`, which was the only trip while a camp held one survivor. With two
+   * people out it watched one of them and ignored whatever the other was walking into, so
+   * ninety days answered a single moment — the run looked quiet because half of it was not
+   * being looked at.
+   */
+  for (const trip of rows) {
+    const travelHours = Number(trip.travel_hours);
+    const elapsed = (now - trip.departed_at.getTime()) / 3600000;
+    const answered = new Set((trip.choices ?? []).map((choice) => Number(choice.index)));
 
-  const travelHours = Number(trip.travel_hours);
-  const elapsed = (now - trip.departed_at.getTime()) / 3600000;
-  const answered = new Set((trip.choices ?? []).map((choice) => Number(choice.index)));
+    const open = momentsFor({ slug: trip.slug, travelHours }, Number(trip.seed)).find(
+      (moment) => !answered.has(moment.index) && isOpen(moment, elapsed),
+    );
+    if (!open) continue;
 
-  const open = momentsFor({ slug: trip.slug, travelHours }, Number(trip.seed)).find(
-    (moment) => !answered.has(moment.index) && isOpen(moment, elapsed),
-  );
-  if (!open) return false;
+    // The refusal that does happen here is spending from an empty pack, which is a
+    // player clicking a button that says no — the same thing `attempt` exists for.
+    const option = open.options[checkin % open.options.length];
+    if (await attempt(() =>
+      answerMoment(client, settlementId, { index: open.index, option: option.key }, now),
+    )) {
+      return true;
+    }
+  }
 
-  // The refusal that does happen here is spending from an empty pack, which is a
-  // player clicking a button that says no — the same thing `attempt` exists for.
-  const option = open.options[checkin % open.options.length];
-  return attempt(() =>
-    answerMoment(client, settlementId, { index: open.index, option: option.key }, now),
-  );
+  return false;
 }
 
 async function checkInvariants(client, settlementId, now, label) {
@@ -165,8 +177,35 @@ async function checkInvariants(client, settlementId, now, label) {
     }
     if (c.died_at) assert.ok(c.cause_of_death, `${label}: a corpse with no cause`);
   }
+  /*
+   * The camp never holds more people than it has room for.
+   *
+   * This asserted at most one, which was the rule until migration `018` dropped
+   * `characters_one_living_idx`. The invariant underneath it was never "one" — it was that
+   * a camp cannot hold more than it can house, and the beds are what say how many. A bed in
+   * a room a succession knocked down does not count, which is the same ceiling
+   * `takeInWanderer` refuses against.
+   */
   const living = chars.filter((c) => !c.died_at);
-  assert.ok(living.length <= 1, `${label}: ${living.length} survivors alive at once`);
+
+  const { rows: bedRows } = await client.query(
+    `select count(*)::int as n from structure_upgrades
+      where settlement_id = $1 and upgrade = 'bed' and installed_at is not null`,
+    [settlementId],
+  );
+  const { rows: shelterRows } = await client.query(
+    "select level from camp_structures where settlement_id = $1 and kind = 'shelter'",
+    [settlementId],
+  );
+  const beds = Math.min(
+    bedRows[0].n,
+    fittingsAllowed('bed', Number(shelterRows[0]?.level ?? 0)),
+  );
+
+  assert.ok(
+    living.length <= bedsToRoster(beds),
+    `${label}: ${living.length} alive with room for ${bedsToRoster(beds)}`,
+  );
 
   const { rows: standings } = await client.query(
     'select faction, standing from faction_standing where settlement_id = $1',
@@ -211,8 +250,29 @@ async function checkInvariants(client, settlementId, now, label) {
        (select count(*)::int from structure_upgrades where settlement_id = $1 and installed_at is null) as fittings`,
     [settlementId],
   );
-  assert.ok(active[0].expeditions <= 1 && active[0].crafts <= 1 && active[0].fittings <= 1,
-    `${label}: queues over capacity`);
+  /*
+   * The bench and the crew still hold one job each, which are camp-wide rules with their own
+   * reasons — choosing what to build next is the game.
+   *
+   * Trips are not, and were only ever counted that way because a camp had one survivor. The
+   * invariant is one trip *per person*: two people can both be out, and neither can be in
+   * two places at once.
+   */
+  assert.ok(active[0].crafts <= 1, `${label}: ${active[0].crafts} crafts at once`);
+  assert.ok(active[0].fittings <= 1, `${label}: ${active[0].fittings} fittings at once`);
+
+  const { rows: doubled } = await client.query(
+    `select e.character_id, count(*)::int as n
+       from expeditions e join characters c on c.id = e.character_id
+      where c.settlement_id = $1 and e.status = 'active'
+      group by e.character_id having count(*) > 1`,
+    [settlementId],
+  );
+  assert.equal(doubled.length, 0, `${label}: somebody is in two places at once`);
+  assert.ok(
+    active[0].expeditions <= living.length,
+    `${label}: ${active[0].expeditions} trips for ${living.length} people`,
+  );
 
   /**
    * The road. Phase 8 shipped with unit tests and eleven database tests and was never
@@ -357,6 +417,22 @@ test('ninety days of attentive play holds every invariant at every check-in', as
         }
       }
 
+      /*
+       * Take on a second pair of hands as soon as the camp can hold one.
+       *
+       * Added 2026-08-31, when occupation became a fact about a person: a survivor who is
+       * away cannot build and a survivor who is building cannot leave, so a camp of one must
+       * choose between travelling and raising a level. Ninety days of that answered a single
+       * moment, which is the rule working rather than the test breaking — a camp of one is
+       * simply a slower game now.
+       *
+       * So the soak plays the way the rules push, which is also the way a player would: it
+       * builds a bed when it can and takes in whoever turns up. That makes this a test of
+       * the roster as well as of the invariants, which it had no way to be before.
+       */
+      await attempt(() => startUpgrade(client, settlementId, 'bed', now));
+      await attempt(() => takeInWanderer(client, settlementId, { now }));
+
       // Build whatever is cheapest and affordable.
       const scrap = state.settlement.resources.scrap.amount;
       const affordable = state.settlement.structures
@@ -397,13 +473,37 @@ test('ninety days of attentive play holds every invariant at every check-in', as
         });
       }
 
-      // Keep somebody in the field: short trips while irradiated, the rotation otherwise.
-      const region =
-        state.survivor.radiation > 40 || state.survivor.health < 50
-          ? 'the_fence_line'
-          : rotation[checkin % rotation.length];
-      if (await attempt(() => dispatchExpedition(client, settlementId, region, now))) {
-        await pinExpeditionSeed(client, settlementId, checkin);
+      /*
+       * Everybody who can go, goes — each to somewhere suited to *them*.
+       *
+       * This read `state.survivor` for the condition and let `dispatchExpedition` pick who
+       * actually went, which was the same person while a camp held one. With a roster it
+       * judged one survivor and sent another: a clean second survivor was kept on
+       * ten-minute fence-line trips because the first one was irradiated, and a trip that
+       * short has no interior, so ninety days answered no moments at all.
+       *
+       * Named now, which is what the `who` argument is for, and it puts two people in the
+       * field at once — the thing this whole phase is for and the thing the soak had no way
+       * to exercise.
+       */
+      const roster = state.survivors ?? [state.survivor];
+      for (const [nth, person] of roster.entries()) {
+        /*
+         * Each to a different slot in the rotation.
+         *
+         * Sending the whole roster to the same one meant everybody walked the same
+         * ten-minute errand and was free again by the next check-in: a thousand trips in
+         * ninety days, almost none of them long enough to have an interior, and one moment
+         * answered in the whole run. A player with two people sends them to two places.
+         */
+        const region =
+          person.radiation > 40 || person.health < 50
+            ? 'the_fence_line'
+            : rotation[(checkin + nth * 3) % rotation.length];
+
+        if (await attempt(() => dispatchExpedition(client, settlementId, region, now, person.id))) {
+          await pinExpeditionSeed(client, settlementId, checkin);
+        }
       }
 
       const onTheRoad = await checkInvariants(client, settlementId, now, `check-in ${checkin}`);
@@ -440,7 +540,7 @@ test('ninety days of attentive play holds every invariant at every check-in', as
     //
     // Which player the windows should serve is a design question, and the dial is the
     // divisor in windowHours(). This floor only guards against them vanishing.
-    assert.ok(tallies.moments > 2, `only ${tallies.moments} moments answered`);
+    assert.ok(tallies.moments > 2, `only ${tallies.moments} moments answered — ` + JSON.stringify(tallies));
     // Same reasoning again: without a floor, a road that silently stopped accepting
     // fuel would run ninety days and stay green.
     assert.ok(tallies.links > 0, `ninety days reached ${tallies.links} links`);
