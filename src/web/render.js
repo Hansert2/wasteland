@@ -1549,13 +1549,30 @@ ${PANE_CSS}
    * a dispatch row lifts to .68 because it is a row you are considering, and this is a
    * report rather than a choice.
    */
-  .out-readout.plated {
+  .afield.plated {
     background-image: linear-gradient(rgba(23, 22, 20, .82), rgba(23, 22, 20, .82)),
                       var(--plate);
     background-size: cover;
     background-position: center 72%;
     background-repeat: no-repeat;
+    border: 1px solid var(--rule);
   }
+  /*
+   * The head: the place on the left, the clock hard right.
+   *
+   * Small caps for the place because it is a label — the same voice a block's own strip
+   * uses — and the countdown in the numeral face, because it is the one thing here that
+   * moves and the page sets every running clock the same way.
+   */
+  .afield-head { display: flex; align-items: baseline; justify-content: space-between;
+                 gap: 12px; padding: 9px 16px; }
+  .afield-head .tag { letter-spacing: .14em; color: var(--dim); }
+  .afield-head .back { font-family: var(--numer); font-size: 12.5px; color: var(--prose);
+                       font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .afield-head .back .short { font-family: var(--body); color: var(--faint); }
+  /* Inside the field the rules belong to the field, so the readout keeps only the hairline
+     that separates the head from the figures. */
+  .afield .readout { border-bottom: 0; border-top-color: var(--rule-in); }
 
   ul.events { list-style: none; margin: 0; padding: 0; }
   ul.events li { padding: 11px 18px; border-bottom: 1px solid var(--rule-in);
@@ -1939,7 +1956,7 @@ ${PANE_CSS}
        and a photograph behind that much text is a photograph nobody can see and every
        line is read against. Dropping the image also means it is never fetched. The
        traveller's readout goes with it: same argument, same width, same place. */
-    .dispatch tr.plated, .out-readout.plated { background-image: none; }
+    .dispatch tr.plated, .afield.plated { background-image: none; }
   }
 `;
 
@@ -3659,20 +3676,26 @@ function renderGate(gate) {
  * answers "what is this person doing" on its own, and the Away block could go back to being
  * only about where to send somebody.
  */
-function tripReadout(report, slug = null) {
-  if (!report) return '';
+function tripReadout(away) {
+  if (!away) return '';
+  const report = away.report;
 
   const signed = (value, mark) =>
     value > 0 ? `${mark}${n(value, mark === '−' ? 0 : 1)}` : '—';
 
-  const cells = [
-    { tag: 'damage', value: signed(report.damage, '−'), tone: report.damage > 0 ? 'hurt' : '' },
-    { tag: 'rads', value: signed(report.radiation, '+') },
-  ];
-  for (const [kind, amount] of Object.entries(report.carrying ?? {})) {
-    cells.push({ tag: kind, value: String(amount) });
+  const cells = [];
+  if (report) {
+    cells.push({
+      tag: 'damage',
+      value: signed(report.damage, '−'),
+      tone: report.damage > 0 ? 'hurt' : '',
+    });
+    cells.push({ tag: 'rads', value: signed(report.radiation, '+') });
+    for (const [kind, amount] of Object.entries(report.carrying ?? {})) {
+      cells.push({ tag: kind, value: String(amount) });
+    }
+    if (Object.keys(report.carrying ?? {}).length === 0) cells.push({ tag: 'haul', value: '—' });
   }
-  if (Object.keys(report.carrying ?? {}).length === 0) cells.push({ tag: 'haul', value: '—' });
 
   /*
    * On the ground of the place they are in.
@@ -3688,14 +3711,45 @@ function tripReadout(report, slug = null) {
    * beside one — and now the two say it the same way, which is what makes "Coastal Wreckage"
    * on the readout and "Coastal Wreckage" in the table below read as one place.
    */
-  return `<div class="readout out-readout${slug ? ' plated' : ''}"${plateGround(slug)}>${cells
-    .map(
-      (cell) =>
-        `<div class="read"><span class="tag">${escape(cell.tag)}</span><span class="fig${
-          cell.tone ? ` ${cell.tone}` : ''
-        }">${escape(cell.value)}</span></div>`,
-    )
-    .join('')}</div>`;
+  /*
+   * Where they are and when they are back, on the ground of the place itself.
+   *
+   * Those two facts sat under the name in the left column, in the same small line a camp
+   * survivor gets for "fitting · a bed" — which is right for a job in the yard and thin for
+   * a person who is not here. Being away is the largest thing true of a survivor, and the
+   * photograph of where they went was already directly beside the words naming it, doing
+   * nothing for them.
+   *
+   * So the middle column becomes the elsewhere: headed by the place and the countdown,
+   * standing on a picture of it, with the trip's figures underneath. The left column goes
+   * back to being who they are, which is what it says for everybody else in the roster.
+   *
+   * The head renders whether or not a report has arrived. A trip an hour old has nothing to
+   * report yet and is no less a trip, and an empty field with a countdown running on it is
+   * the honest shape of that — where somebody is does not wait on the first haul.
+   */
+  const figures =
+    cells.length > 0
+      ? `<div class="readout out-readout">${cells
+          .map(
+            (cell) =>
+              `<div class="read"><span class="tag">${escape(cell.tag)}</span><span class="fig${
+                cell.tone ? ` ${cell.tone}` : ''
+              }">${escape(cell.value)}</span></div>`,
+          )
+          .join('')}</div>`
+      : '';
+
+  return `<div class="afield plated"${plateGround(away.regionSlug)}>
+      <div class="afield-head">
+        <span class="tag">away &middot; ${escape(away.regionName)}</span>
+        <span class="back"><span class="short">back in</span> ${countdown(
+          away.returnsAt,
+          'now',
+        )}</span>
+      </div>
+      ${figures}
+    </div>`;
 }
 
 /**
@@ -3927,21 +3981,18 @@ function renderSurvivor(survivor, strain, vitals, inventory, chosen, panelId) {
           * the walk since Phase 11 — so putting the trip in a tab would hide the numbers most
           * worth watching at the moment they move fastest.
           */
-         survivor.away
-           ? `<p class="out">away &middot; ${escape(survivor.away.regionName)}
-                ${/*
-                   * The countdown on its own line, because the column is 190px and a place
-                   * name is most of it. Run together it broke wherever it ran out of room —
-                   * "back" on one line and "in 10h 00m" on the next — which is a phrase torn
-                   * in half rather than a line wrapped.
-                   */ ''}
-                <span class="back"><span class="short">back in</span> ${countdown(
-                  survivor.away.returnsAt,
-                  'now',
-                )}</span></p>`
-           : survivor.busy
-             ? `<p class="out">${occupiedFully(survivor.busy, survivor.busyWith)}</p>`
-             : ''
+         /*
+          * What has them, when what has them is a job in the yard.
+          *
+          * Being away used to print here too, and it outgrew the slot: a place and a
+          * countdown are not the same size of fact as "fitting · a bed", and the picture of
+          * that place was sitting inertly beside the words. It heads its own field now, in
+          * the middle column — see tripReadout. This line is for the work that keeps
+          * somebody in the camp, which is genuinely a footnote to their name.
+          */
+         survivor.busy && !survivor.away
+           ? `<p class="out">${occupiedFully(survivor.busy, survivor.busyWith)}</p>`
+           : ''
        }
      </div>
      <div class="who-body">
@@ -3962,7 +4013,7 @@ function renderSurvivor(survivor, strain, vitals, inventory, chosen, panelId) {
                 * the countdown is on the line under the name — so this is the one part that
                 * was dropped rather than moved.
                 */ ''}
-              ${tripReadout(survivor.away.report, survivor.away.regionSlug)}
+              ${tripReadout(survivor.away)}
               ${/*
                  * The armed timer that fetches the next window.
                  *
