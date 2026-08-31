@@ -588,7 +588,7 @@ function driversFor(person, { working, resting, fedShort, radScrubbing, strain, 
     });
   } else if (strain?.state === 'stalled') {
     health.push({
-      tag: 'the dose holds it',
+      tag: 'the dose cancels rest',
       note: 'The dose is taking about what rest gives back, so health is standing still.',
     });
   }
@@ -596,7 +596,9 @@ function driversFor(person, { working, resting, fedShort, radScrubbing, strain, 
   const hunger = [];
   if (resting) {
     hunger.push({
-      tag: `resting ×${config.staminaRecoveryRationMultiplier}`,
+      // The mark says what, the hover says how much — so not a bare multiplier, which is a
+      // figure with nothing to say what it multiplies.
+      tag: 'resting, eating for it',
       note:
         `Paying back stamina is work of a kind, and they eat for it — ` +
         `${perHour(config.foodPerHour * config.staminaRecoveryRationMultiplier)} food and ` +
@@ -614,7 +616,16 @@ function driversFor(person, { working, resting, fedShort, radScrubbing, strain, 
   const radiation = [];
   if (working === 'away') {
     radiation.push({
-      tag: 'no scrubbing out there',
+      /*
+       * Asked about on 2026-08-31: "what does no scrubbing out there mean".
+       *
+       * Which is the answer. "Scrubbing" is the game's own word — it is in the filtration
+       * summary and in this gauge's note — but a mark has to carry itself, and in the note
+       * the word arrives beside a rate and a contrast that teach it. Alone it is a term you
+       * either already know or do not, and a label nobody can read is a label that is not
+       * there. This says the effect instead, in the hover's own words, so the two agree.
+       */
+      tag: 'nothing comes off out there',
       note: 'A dose decays in the camp and not on the road. Nothing comes off until they are home.',
     });
   } else if (radScrubbing) {
