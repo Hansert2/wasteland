@@ -140,7 +140,22 @@ export function applyTick(state, now, config = CONFIG) {
  * Null when nobody is out.
  */
 function flightOf(state, expedition) {
-  if (!expedition || expedition.status !== 'active' || !state.survivor) return null;
+  /*
+   * Whoever is actually walking it, which decides what they find.
+   *
+   * This read `state.survivor` — the first of them — and handed that person to
+   * `resolveExpedition`, where `skillScavenging` multiplies the haul and medicine shifts
+   * the dose. So on a roster every trip was rolled against the founder's skills whoever
+   * walked it: a scavenger sent to the Deep Zone came home with an ordinary survivor's
+   * haul, and the wanderer's whole reason for existing — that they are better at
+   * something — did nothing.
+   *
+   * Same phrase, same fault, third time: `state.survivor` meant "the survivor" when a camp
+   * held one and silently means "the first one" now. `walkerOf` is the question this was
+   * always asking.
+   */
+  const walker = walkerOf(state, expedition);
+  if (!expedition || expedition.status !== 'active' || !walker) return null;
 
   /*
    * Both ends and a region, or there is nothing to settle across.
@@ -161,7 +176,7 @@ function flightOf(state, expedition) {
 
   const outcome = resolveExpedition({
     region: expedition.region,
-    survivor: state.survivor,
+    survivor: walker,
     seed: expedition.seed,
     weather: travelFactors(
       state.worldEvents,
