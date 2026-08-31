@@ -1,5 +1,6 @@
 import { advanceSettlement } from './advance-settlement.js';
 import { choosableZones, isPlaced } from './set-camp-clock.js';
+import { occupations } from './who-is-free.js';
 import { POTENCY_TO_POINTS } from './use-item.js';
 import {
   WORLD_EVENTS,
@@ -802,6 +803,19 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
   );
   const everHeld = everHeldRows[0].n;
 
+  /*
+   * What each survivor is doing, from the one place that decides it.
+   *
+   * The page had no idea. `whoSelector` filtered on a `busy` field that was never set, so a
+   * survivor fitting a bed stayed in every dropdown and the service refused them after the
+   * click — the exact fault the bench and the moment options exist to avoid, reintroduced
+   * by a field I invented and did not wire.
+   *
+   * Read through `occupations` rather than recomputed here, so the page and the refusal
+   * cannot disagree about who is free.
+   */
+  const busyBy = await occupations(client, settlementId, now);
+
   const bedRows = upgradeRows.filter(
     (row) => row.upgrade === 'bed' && row.installed_at !== null,
   );
@@ -1535,6 +1549,7 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
         inventory: packsByOwner.get(Number(person.id)) ?? [],
         // What they are doing, in the words the refusals use, so a block and a refusal
         // cannot describe the same person differently.
+        busy: busyBy.get(Number(person.id)) ?? null,
         away: trip
           ? {
               regionName: trip.region.name,

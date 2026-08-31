@@ -3637,25 +3637,43 @@ function tripReadout(report) {
  * render of a moment ago and somebody can be sent from another tab.
  */
 function whoSelector(view, { field, label }) {
-  const free = (view.roster ?? []).filter((one) => !one.away && !one.busy);
-  if ((view.roster ?? []).length === 0) return '';
+  const roster = view.roster ?? [];
+  if (roster.length === 0) return '';
 
+  const free = roster.filter((one) => !one.busy);
   if (free.length === 0) {
-    return '<span class="f-nav"><span class="short">nobody is free</span></span>';
+    // Nobody, and what everybody is doing instead — a camp of one that says only "nobody is
+    // free" makes the player go and look for the reason they already know.
+    const doing = roster.map((one) => `${one.name ?? 'Somebody'} is ${one.busy}`).join(', ');
+    return `<span class="f-nav"><span class="short">${escape(doing)}</span></span>`;
   }
 
+  /*
+   * The busy are listed and cannot be chosen, rather than quietly dropped.
+   *
+   * The bench's rule, and the moment options': an option you cannot take keeps its place and
+   * says why, because a name that vanishes from a list reads as a bug rather than as a
+   * person who is occupied. Disabled, so the browser refuses the choice before the service
+   * has to — and the service refuses it again, because the page is a render of a moment ago.
+   */
+  const option = (one) =>
+    one.busy
+      ? `<option value="${escape(String(one.id))}" disabled>${escape(
+          one.name ?? 'Survivor',
+        )} — ${escape(one.busy)}</option>`
+      : `<option value="${escape(String(one.id))}">${escape(one.name ?? 'Survivor')}</option>`;
+
   return `<span class="f-nav"><span class="tag">${escape(label)}</span>
-      <select data-whopicks="${escape(field)}" aria-label="${escape(label)}">${free
-        .map(
-          (one) =>
-            `<option value="${escape(String(one.id))}">${escape(one.name ?? 'Survivor')}</option>`,
-        )
+      <select data-whopicks="${escape(field)}" aria-label="${escape(label)}">${roster
+        .slice()
+        .sort((a, b) => Number(Boolean(a.busy)) - Number(Boolean(b.busy)))
+        .map(option)
         .join('')}</select></span>`;
 }
 
 /** The hidden field a row carries, kept in step with the block's selector. */
 function whoField(view, field) {
-  const free = (view.roster ?? []).filter((one) => !one.away && !one.busy);
+  const free = (view.roster ?? []).filter((one) => !one.busy);
   if (free.length === 0) return '';
   return `<input type="hidden" name="who" data-whofield="${escape(field)}" value="${escape(
     String(free[0].id),

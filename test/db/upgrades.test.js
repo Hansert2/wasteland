@@ -544,3 +544,52 @@ test('every block that occupies somebody says who, and keeps its own answer', as
     assert.equal((picker[1].match(/<option/g) ?? []).length, 2, 'both free survivors offered');
   });
 });
+
+test('somebody already working is shown as working, and cannot be chosen', async () => {
+  /*
+   * Reported from a live camp: Wren was set to fit a bed and stayed selectable for a trip
+   * and for the bench. `whoSelector` filtered on a `busy` field the view never set, so every
+   * dropdown offered somebody the service would refuse after the click — the exact fault the
+   * bench rows and the moment options exist to avoid.
+   *
+   * The view reads `occupations`, the same source the refusals read, so the page and the
+   * refusal cannot disagree about who is free. And the busy are listed rather than dropped:
+   * a name that vanishes reads as a bug, where a name that says what it is doing reads as a
+   * person who is occupied.
+   */
+  await withRollback(async (client) => {
+    const settlementId = await setup(client);
+    await client.query(
+      "update resources set amount = 300 where settlement_id = $1 and kind = 'scrap'",
+      [settlementId],
+    );
+    const { rows } = await client.query(
+      `insert into characters (settlement_id, name, born_at, health, radiation)
+       values ($1, 'Odd', now(), 100, 0) returning id`,
+      [settlementId],
+    );
+    const odd = rows[0].id;
+
+    await startUpgrade(client, settlementId, 'filtration', Date.now(), odd);
+
+    const view = await viewCamp(client, settlementId);
+    const busy = view.roster.find((one) => one.id === odd);
+    assert.equal(busy.busy, 'fitting', 'the view knows what they are doing');
+
+    const html = campPage(view, { pane: 'camp' }) + campPage(view, { pane: 'survivor' });
+    for (const field of ['send', 'work', 'bench']) {
+      // [^] rather than the usual any-character class, because this pattern is built in a
+      // template literal, where a lone backslash-s collapses to a bare s before RegExp
+      // ever sees it and the class quietly stops matching anything.
+      const picker = new RegExp(
+        `<select data-whopicks="${field}"[^>]*>([^]*?)</select>`,
+      ).exec(html);
+      assert.ok(picker, `${field} has a selector`);
+
+      const theirs = new RegExp(`<option value="${odd}"([^>]*)>`).exec(picker[1]);
+      assert.ok(theirs, `${field} still lists them`);
+      assert.match(theirs[1], /disabled/, `${field} does not let them be chosen`);
+      assert.match(picker[1], /Odd — fitting/, `${field} says what they are doing`);
+    }
+  });
+});
