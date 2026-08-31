@@ -410,9 +410,27 @@ test('a bed is the one fitting there can be more than one of', async () => {
       'the refusal names the ceiling',
     );
 
-    // Deepen the shelter and the ceiling rises with it.
+    /*
+     * Deepen the shelter and its ceiling rises — but a second ceiling is behind it.
+     *
+     * A camp may be one bed ahead and never two, so with one survivor and one empty bed the
+     * shelter's depth is no longer what is in the way, and the refusal has to say which of
+     * the two it is: a deeper shelter fixes one and somebody arriving fixes the other.
+     */
     await client.query(
       "update camp_structures set level = 4 where settlement_id = $1 and kind = 'shelter'",
+      [settlementId],
+    );
+    await assert.rejects(
+      () => startUpgrade(client, settlementId, 'bed', T0 + hours(2)),
+      /spare bed is still empty/,
+      'the shelter holds two now, and the camp still has use for one',
+    );
+
+    // Somebody sleeps in it, and the next one is bought at the moment it is about to matter.
+    await client.query(
+      `insert into characters (settlement_id, name, born_at, health, radiation)
+       values ($1, 'Odd', now(), 100, 0)`,
       [settlementId],
     );
     await startUpgrade(client, settlementId, 'bed', T0 + hours(3));
@@ -606,5 +624,56 @@ test('somebody already working is shown as working, and cannot be chosen', async
       /<div class="who-name">Odd<\/div>\s*<p class="out">fitting &middot; filtration<\/p>/,
       "the survivor's own block names the job, not just the verb",
     );
+  });
+});
+
+test('the bed row says what it costs, and which ceiling is holding it', async () => {
+  /*
+   * Two things the page got wrong about the one fitting that is not an instrument.
+   *
+   * It priced every fitting in fuel — `${upgrade.fuel} fuel` — so the bed, the only one
+   * bought with scrap, advertised "undefined fuel, 30m" and then took twelve scrap. The
+   * view had already had to learn the distinction to report a shortfall honestly; the
+   * label never did.
+   *
+   * And a bed the camp has nobody for is not "fitted". The room is there and the scrap is
+   * there — what is missing is a person — so saying "fitted" sends the player to the
+   * shelter's level track to fix something the level track has nothing to do with.
+   */
+  await withRollback(async (client) => {
+    const settlementId = await setup(client);
+    await client.query(
+      "update resources set amount = 200 where settlement_id = $1 and kind = 'scrap'",
+      [settlementId],
+    );
+    await client.query(
+      "update camp_structures set level = 8 where settlement_id = $1 and kind = 'shelter'",
+      [settlementId],
+    );
+
+    const bedRow = async () => {
+      const view = await viewCamp(client, settlementId);
+      const html = campPage(view, { pane: 'camp' });
+      const row = /<span class="tag">A Bed<\/span>[^]*?<span>([^]*?)<\/span>\s*<\/span>/.exec(html);
+      assert.ok(row, 'the shelter offers a bed');
+      return row[1].replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    };
+
+    assert.match(await bedRow(), /12 scrap, 30m/, 'priced in the currency it actually takes');
+    assert.doesNotMatch(await bedRow(), /fuel/, 'and never in the one it does not');
+
+    await startUpgrade(client, settlementId, 'bed', Date.now());
+    await client.query(
+      `update structure_upgrades
+          set completes_at = now() - interval '1 hour', installed_at = now() - interval '1 hour'
+        where settlement_id = $1 and upgrade = 'bed'`,
+      [settlementId],
+    );
+
+    // A shelter at 8 holds four. What is in the way is that nobody has come to sleep in the
+    // first, so the row says that rather than claiming the shelter is full.
+    const held = await bedRow();
+    assert.match(held, /the spare is empty/, 'the page names the ceiling that is actually binding');
+    assert.doesNotMatch(held, /fitted/, 'and does not claim the shelter has no room');
   });
 });

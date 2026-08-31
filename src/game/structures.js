@@ -136,6 +136,17 @@ export const UPGRADES = {
     // able to build its first, which is what puts the second survivor inside the window.
     perLevels: 2,
     repeats: true,
+    /*
+     * And one more only once the last one has somebody in it.
+     *
+     * A bed is capacity, so a camp with the scrap could stand four of them up on the first
+     * afternoon and then wait on the road for people to fill them — which spends the
+     * decision all at once, at the moment it means least. Held to the roster, the camp may
+     * always be exactly one bed ahead: enough to take in whoever knocks, never enough to
+     * stockpile room. Each bed is then bought at the moment it is about to be used, against
+     * the level of shelter it is competing with for the same scrap.
+     */
+    heldByRoster: true,
     summary: 'Somewhere for one more person to sleep. The camp can hold one more than it has beds.',
   },
 
@@ -325,6 +336,20 @@ export function fittingsAllowed(slug, level) {
   if (!spec) return 0;
   if (!spec.repeats) return Number(level) >= spec.requiresLevel ? 1 : 0;
   return Math.max(0, Math.floor(Number(level) / spec.perLevels));
+}
+
+/**
+ * How many of a fitting a camp may *build* right now.
+ *
+ * Deliberately not `fittingsAllowed`, which is the ceiling the structure sets and is what
+ * capacity is counted against. Folding the roster into that one would make the bed circular
+ * — capacity would depend on the roster that depends on capacity — so the two questions keep
+ * two names: what the shelter holds, and what the camp has any use for yet.
+ */
+export function fittingsBuildable(slug, level, roster) {
+  const ceiling = fittingsAllowed(slug, level);
+  if (!UPGRADES[slug]?.heldByRoster) return ceiling;
+  return Math.min(ceiling, Math.max(0, Number(roster) || 0));
 }
 
 /** The most people a camp with this shelter can hold: the first needs no bed. */

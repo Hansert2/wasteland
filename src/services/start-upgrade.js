@@ -1,4 +1,4 @@
-import { UPGRADES, fittingsAllowed } from '../game/structures.js';
+import { UPGRADES, fittingsAllowed, fittingsBuildable } from '../game/structures.js';
 import { InputError } from '../errors.js';
 import { occupations, mustBeFree } from './who-is-free.js';
 
@@ -104,9 +104,19 @@ export async function startUpgrade(
    * second clock tells the same hour. A bed is capacity, so the ceiling is what the shelter
    * allows and the refusal has to name it rather than say the thing is already there.
    */
-  const allowed = fittingsAllowed(slug, level);
+  const ceiling = fittingsAllowed(slug, level);
+  const allowed = fittingsBuildable(slug, level, living.length);
   if (standing.length >= allowed) {
     const name = spec.kind.replaceAll('_', ' ');
+
+    // Which ceiling bit, because they are two different problems with two different answers:
+    // one is solved by a deeper shelter and the other by somebody arriving.
+    if (allowed < ceiling) {
+      throw new InputError(
+        'The spare bed is still empty. Somebody has to sleep in it before the camp builds another.',
+      );
+    }
+
     throw new InputError(
       spec.repeats
         ? `A ${name} at level ${level} holds ${allowed} of those. A deeper one holds more.`

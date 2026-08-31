@@ -50,6 +50,7 @@ import {
   campDefence,
   bedsToRoster,
   fittingsAllowed,
+  fittingsBuildable,
   campWealth,
   productionRates,
   structureEffect,
@@ -823,7 +824,8 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
     structures.find((s) => s.kind === 'shelter')?.level ?? 0,
   );
   const bedsStanding = Math.min(bedRows.length, fittingsAllowed('bed', shelterLevel));
-  const bedsFree = bedsToRoster(bedsStanding) - (state.survivors?.length ?? 0);
+  const livingCount = state.survivors?.length ?? 0;
+  const bedsFree = bedsToRoster(bedsStanding) - livingCount;
   const newestBedAt = bedRows.length
     ? Math.max(...bedRows.map((row) => row.installed_at.getTime()))
     : null;
@@ -1397,7 +1399,8 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
          * beds fitted for ever and the second could never be offered.
          */
         const standing = installedCounts.get(branch.slug) ?? 0;
-        const allowed = fittingsAllowed(branch.slug, Number(s.level));
+        const ceiling = fittingsAllowed(branch.slug, Number(s.level));
+        const allowed = fittingsBuildable(branch.slug, Number(s.level), livingCount);
 
         /*
          * And priced in its own currency. This read `{ fuel: branch.fuel }`, which for a
@@ -1412,6 +1415,13 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
           // No room for another, whether because one instrument is enough or because the
           // shelter is not deep enough for a fourth bed.
           fitted: standing >= allowed,
+          /*
+           * And whether the thing in the way is the camp rather than the structure — a
+           * spare bed nobody has come to sleep in yet. Kept apart from `fitted` because the
+           * page has to say something different: "fitted" on an empty bed would be a plain
+           * falsehood, and the two are undone by two different things.
+           */
+          waiting: standing >= allowed && allowed < ceiling,
           standing,
           allowed,
           shortBy: shortfall(purse, pack, price),

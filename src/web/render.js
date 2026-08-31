@@ -5074,6 +5074,19 @@ function oneFittingIn(structure, upgrade, buildInFlight, someoneAlive, who = '')
       <span>${tail}</span>
     </span>`;
 
+  /*
+   * Held by the camp rather than by the structure, which is a different sentence.
+   *
+   * A bed the shelter has no depth for is "fitted" in the sense the page means: there is no
+   * room for another and a deeper shelter is what buys one. A bed standing empty is not —
+   * the room is there, the scrap is there, and what is missing is a person. Saying "fitted"
+   * to that would send the player to the shelter's level track to fix something the level
+   * track has nothing to do with.
+   */
+  if (upgrade.waiting) {
+    return inset('<span class="needs">the spare is empty</span>');
+  }
+
   if (upgrade.fitted) return inset('<em class="needs">fitted</em>');
 
   if (upgrade.fittingUntil) {
@@ -5089,10 +5102,15 @@ function oneFittingIn(structure, upgrade, buildInFlight, someoneAlive, who = '')
     return inset(`<span class="needs">needs level ${upgrade.requiresLevel}</span>`);
   }
 
-  // Fuel only comes home from expeditions, so the cost is worth spelling out.
-  const cost = `<span class="cost">${escape(
-    `${upgrade.fuel} fuel, ${duration(upgrade.hours)}`,
-  )}</span>`;
+  /*
+   * In whatever it is priced in. Fuel only comes home from expeditions, so the cost is worth
+   * spelling out — but a bed is scrap, and this said `${upgrade.fuel} fuel` for everything,
+   * so the one scrap-priced fitting in the game advertised "undefined fuel, 30m". The view
+   * already had to learn this same distinction for `shortBy`; the label never did.
+   */
+  const priced =
+    (upgrade.fuel ?? 0) > 0 ? `${upgrade.fuel} fuel` : `${upgrade.scrap} scrap`;
+  const cost = `<span class="cost">${escape(`${priced}, ${duration(upgrade.hours)}`)}</span>`;
 
   if (upgrade.shortBy) {
     return inset(`${cost} <span class="short">${escape(upgrade.shortBy)}</span>`);
