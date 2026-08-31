@@ -1608,7 +1608,30 @@ ${PANE_CSS}
    * Sized and tracked like a tag, in the grey the page keeps for something that is a label
    * rather than a reading, with a hairline box so a run of two reads as two.
    */
+  /*
+   * The glyphs, beside the name they qualify.
+   *
+   * Set at the label's own size and tracked with it so they read as part of the heading
+   * rather than as decoration hung off it, and in "--dim" until asked — a mark that is the
+   * brightest thing in a gauge is competing with the figure, which is the one thing in
+   * there that has to win.
+   *
+   * Hidden by default and revealed only where there is a pointer to reveal them with. On a
+   * phone the words below take over: see "marks".
+   */
+  .signs { display: none; }
+  .sign { cursor: help; }
   .drivers { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 7px; }
+
+  /* Placed after both, because it turns each of them off and a media query carries no
+     extra weight — the plain rule below it would simply win. */
+  @media (hover: hover) and (pointer: fine) {
+    .signs { display: inline-flex; gap: 5px; margin-right: auto; padding-left: 7px;
+             font-size: 10px; line-height: 1; color: var(--dim); }
+    .sign:hover { color: var(--bone); }
+    /* One or the other, never both. */
+    .drivers { display: none; }
+  }
   .driver {
     font-family: var(--label);
     font-weight: 700;
@@ -3989,6 +4012,33 @@ function renderSurvivor(survivor, strain, vitals, inventory, chosen, panelId) {
    * Each mark is its own `.noted`, nested inside the gauge's. That works because the popup
    * takes a host's own note rather than the first one under it — see the handler in TIMERS.
    */
+  /*
+   * The same facts twice, and only one of them is ever on screen.
+   *
+   * A pointer gets **signs**: one glyph an effect, beside the gauge's name, explaining
+   * itself on hover. That is the whole of what a mark needs to be for somebody who can
+   * hover — the strip of words underneath cost a line of every gauge and said in six
+   * words what the popup was going to say properly anyway.
+   *
+   * A finger gets the **words**, because a glyph with no hover is a rune. This is the same
+   * split `.note` itself has used since it was written: `@media (hover: hover)` decides
+   * which, and neither device is shown the other's version.
+   *
+   * `aria-label` carries the word onto the glyph, so the two are one fact to a screen
+   * reader rather than a symbol and an orphaned duplicate.
+   */
+  const signs = (list) =>
+    (list ?? []).length === 0
+      ? ''
+      : `<span class="signs">${list
+          .map(
+            (one) =>
+              `<span class="sign noted" aria-label="${escape(one.tag)}">${escape(
+                one.sign ?? '•',
+              )}<span class="note">${escape(one.note)}</span></span>`,
+          )
+          .join('')}</span>`;
+
   const marks = (list) =>
     (list ?? []).length === 0
       ? ''
@@ -4033,7 +4083,7 @@ function renderSurvivor(survivor, strain, vitals, inventory, chosen, panelId) {
    */
   const gauge = (label, value, of, note, tail = '', acting = []) => {
     return `<div class="gauge noted g-${label.toLowerCase()}">
-      <div class="gauge-top"><span class="tag">${label}</span>
+      <div class="gauge-top"><span class="tag">${label}</span>${signs(acting)}
         <span class="val">${n(value)}</span></div>
       <div class="track">${
         value > 0 ? `<i style="width:${bar(value, of)}%"></i>` : ''

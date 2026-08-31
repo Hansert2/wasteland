@@ -567,9 +567,26 @@ function strainOf(survivor, decayPerHour) {
  * exactly the complaint: a cost you can derive is a cost most people will not derive, and
  * recovery's price on the stores was real and invisible from the day it shipped.
  *
- * Each is `{ tag, note }` — a word for the pip and a sentence for the hover — and an empty
- * list is the ordinary case rather than a missing one. Nothing is added for a survivor who
- * is simply standing in the camp being fed, because "nothing unusual" is not news.
+ * Each is `{ sign, tag, note }`: a glyph for the gauge's own line, a word for a device with
+ * no hover to give, and a sentence for the popup. An empty list is the ordinary case rather
+ * than a missing one — nothing is added for a survivor standing in the camp being fed,
+ * because "nothing unusual" is not news, and a gauge nothing is doing anything to says so
+ * by having no sign beside it.
+ *
+ * ### The glyphs
+ *
+ * One each, and they are a system rather than a set of pictures: **direction** says which
+ * way the number is going and **weight** says how hard. A filled triangle is the full rate
+ * and a hollow one is a rate being throttled; a square is stopped; an equals is held level
+ * by two forces cancelling. The two that are not about direction are about cause — a
+ * diamond is a thing the camp built acting on the gauge, a disc is the stores being drawn
+ * on. Nothing here is drawn or fetched: they are characters in the face the page already
+ * sets, at the size of a label.
+ *
+ *     v  falling at rate      ^  rising at rate       (filled)
+ *     u  rising, throttled    #  stopped              (hollow / square)
+ *     =  held level           +  a fitting acting     (diamond)
+ *     o  drawing on stores    !  the stores cannot    (disc / hollow disc)
  */
 function driversFor(person, { working, resting, fedShort, radScrubbing, strain, config }) {
   const perHour = (value) => `${Math.round(Number(value) * 10) / 10}`;
@@ -577,17 +594,20 @@ function driversFor(person, { working, resting, fedShort, radScrubbing, strain, 
   const health = [];
   if (person.hunger >= config.regenHungerCeiling) {
     health.push({
+      sign: '■',
       tag: 'too hungry to heal',
       note: `Health only mends below ${config.regenHungerCeiling} hunger, and they are at ${perHour(person.hunger)}.`,
     });
   }
   if (strain?.state === 'burning') {
     health.push({
+      sign: '▼',
       tag: `the dose −${perHour(strain.damagePerHour)}/h`,
       note: 'The radiation they are carrying costs more health than rest gives back.',
     });
   } else if (strain?.state === 'stalled') {
     health.push({
+      sign: '=',
       tag: 'the dose cancels rest',
       note: 'The dose is taking about what rest gives back, so health is standing still.',
     });
@@ -598,6 +618,7 @@ function driversFor(person, { working, resting, fedShort, radScrubbing, strain, 
     hunger.push({
       // The mark says what, the hover says how much — so not a bare multiplier, which is a
       // figure with nothing to say what it multiplies.
+      sign: '●',
       tag: 'resting, eating for it',
       note:
         `Paying back stamina is work of a kind, and they eat for it — ` +
@@ -608,6 +629,7 @@ function driversFor(person, { working, resting, fedShort, radScrubbing, strain, 
   }
   if (fedShort) {
     hunger.push({
+      sign: '○',
       tag: 'the stores are short',
       note: 'The camp cannot meet what this survivor is drawing, so hunger is climbing.',
     });
@@ -631,6 +653,7 @@ function driversFor(person, { working, resting, fedShort, radScrubbing, strain, 
   const radiation = [];
   if (working !== 'away' && radScrubbing) {
     radiation.push({
+      sign: '◆',
       tag: 'filtration',
       note: 'The filter on the purifier scrubs the camp, so a dose comes off faster than it would.',
     });
@@ -640,6 +663,7 @@ function driversFor(person, { working, resting, fedShort, radScrubbing, strain, 
   if (working !== null) {
     const doing = { away: 'out there', building: 'building', fitting: 'fitting', crafting: 'at the bench' };
     stamina.push({
+      sign: '▼',
       tag: `${doing[working] ?? working} −${perHour(config.staminaPerHourWorked)}/h`,
       note:
         'Every kind of work spends it at the same rate — walking, building, the bench. ' +
@@ -648,6 +672,7 @@ function driversFor(person, { working, resting, fedShort, radScrubbing, strain, 
   } else if (resting) {
     const slowed = person.hunger > config.regenHungerCeiling - config.staminaRecoveryHungerTaper;
     stamina.push({
+      sign: slowed ? '△' : '▲',
       tag: slowed ? 'resting, slowed' : `resting +${perHour(config.staminaRegenPerHour)}/h`,
       note: slowed
         ? 'Recovery slows as hunger nears the line where healing stops, so it can never be ' +

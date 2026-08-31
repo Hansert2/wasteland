@@ -369,6 +369,24 @@ test('every gauge says what its number counts, in a place the note script can fi
      * unscoped it would show a gauge's mark where the gauge's scale belongs. Silent, and
      * exactly the class of failure this file exists for.
      */
+    /*
+     * A pointer gets one glyph an effect beside the gauge's name; a finger gets the same
+     * effects as words underneath, because a symbol with no hover is a rune. Both are
+     * rendered and `@media (hover: hover)` shows one — so both have to be checkable, and
+     * the pairing has to hold or one device gets a mark the other does not.
+     */
+    const signs = [...html.matchAll(/<span class="sign noted" aria-label="([^"]*)">([^<]*)</g)];
+    const words = [...html.matchAll(/<span class="driver noted">([^<]*)</g)].map((m) => m[1]);
+    assert.deepEqual(
+      signs.map((m) => m[1]),
+      words,
+      `${name}: the glyphs and the words are not the same list of effects`,
+    );
+    for (const [, label, glyph] of signs) {
+      assert.ok(glyph.trim().length > 0, `${name}: an effect with no glyph on it`);
+      assert.ok(label.trim().length > 0, `${name}: a glyph with nothing to call it`);
+    }
+
     for (const mark of html.split('<span class="driver noted">').slice(1)) {
       const own = mark.slice(0, mark.indexOf('</span>') + 7);
       assert.ok(
