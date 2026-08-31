@@ -553,7 +553,11 @@ ${SURVIVOR_TAB_CSS}
   .goes { border-top: 1px solid var(--rule); padding: 8px 18px; }
   .pick { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; }
   .pick .tag { color: var(--dim); font-size: 10px; letter-spacing: .18em; }
-  .pick input { accent-color: var(--oxide); margin: 0; cursor: pointer; }
+  /* The dark scheme declared, as the selects declare it and for the same reason: left to
+     itself the browser draws an unchecked radio as a solid light disc, which on this page
+     reads as the chosen one. Declared, it is a hollow ring, and only the picked one is
+     filled — which is the entire readout here. */
+  .pick input { accent-color: var(--oxide); color-scheme: dark; margin: 0; cursor: pointer; }
   .pick:has(:checked) .tag { color: var(--bone); }
   /* Occupied: the control keeps its place and refuses, and does not repeat the reason —
      that is two lines up, under the name, on this same card. */
