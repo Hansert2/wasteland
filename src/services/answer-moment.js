@@ -18,25 +18,67 @@ const HOUR_MS = 60 * 60 * 1000;
 export async function answerMoment(client, settlementId, { index, option }, now = Date.now()) {
   await client.query('select id from settlements where id = $1 for update', [settlementId]);
 
-  // Answering needs living hands in the same sense every other verb does: there has to
-  // be somebody out there to be answering for.
-  const { rows: living } = await client.query(
-    'select id from characters where settlement_id = $1 and died_at is null',
-    [settlementId],
-  );
-  const character = living[0];
-  if (!character) throw new InputError('There is nobody out there to answer for.');
-
+  /*
+   * Whose trip this is, which the moment itself decides.
+   *
+   * This took the first living character and answered *their* trip: `living[0]`, from a
+   * query with no ORDER BY, so on a camp of one it was the survivor and on a camp of more
+   * it was whoever the heap handed back first. With two people in the field it answered the
+   * wrong person's window, or — when that person was standing in the camp — refused with
+   * "Nobody is out there" while somebody genuinely was.
+   *
+   * It is the same fault as the singular `state.expedition` in the tick and the singular
+   * `rows[0]` the soak's own reader had: a phrase that meant one thing while a camp held one
+   * person and quietly meant something else afterwards. Measured 2026-08-31: ninety days of
+   * play with a roster of ten answered **zero** moments out of 479 trips, because the first
+   * living character was rarely the one with a window open.
+   *
+   * A moment index belongs to a trip — `momentsFor` derives it from that trip's region and
+   * seed — so the trip is found by asking which active one actually has this index, rather
+   * than by picking a survivor and hoping. Ordered by departure so that a camp where two
+   * trips somehow offer the same index answers the older one, which is the one whose window
+   * closes first.
+   */
   const { rows: active } = await client.query(
-    `select e.id, e.seed, e.choices, e.departed_at, e.returns_at,
+    `select e.id, e.seed, e.choices, e.departed_at, e.returns_at, e.character_id,
             r.slug, r.travel_hours
        from expeditions e
        join regions r on r.id = e.region_id
-      where e.character_id = $1 and e.status = 'active'`,
-    [character.id],
+       join characters c on c.id = e.character_id
+      where c.settlement_id = $1 and c.died_at is null and e.status = 'active'
+      order by e.departed_at, e.id`,
+    [settlementId],
   );
-  const expedition = active[0];
-  if (!expedition) throw new InputError('Nobody is out there.');
+  /*
+   * Two different absences, and they had two different sentences before this query joined
+   * them together. Worth keeping apart: one is "you have not sent anybody" and the other is
+   * "the person you sent is dead", and a player meeting the second has lost somebody.
+   */
+  if (active.length === 0) {
+    const { rows: orphaned } = await client.query(
+      `select 1 from expeditions e
+         join characters c on c.id = e.character_id
+        where c.settlement_id = $1 and e.status = 'active' and c.died_at is not null
+        limit 1`,
+      [settlementId],
+    );
+    throw new InputError(
+      orphaned.length > 0
+        ? 'There is nobody out there to answer for.'
+        : 'Nobody is out there.',
+    );
+  }
+
+  const wanted = Number(index);
+  const expedition =
+    active.find((trip) => {
+      const answered = new Set((trip.choices ?? []).map((choice) => Number(choice.index)));
+      if (answered.has(wanted)) return false;
+      return momentsFor(
+        { slug: trip.slug, travelHours: Number(trip.travel_hours) },
+        Number(trip.seed),
+      ).some((moment) => moment.index === wanted);
+    }) ?? active[0];
 
   const travelHours = Number(expedition.travel_hours);
   const moments = momentsFor({ slug: expedition.slug, travelHours }, Number(expedition.seed));
@@ -68,7 +110,10 @@ export async function answerMoment(client, settlementId, { index, option }, now 
   // Spending something means having it. Checked here rather than only being hidden on
   // the page, because the page is a render of a moment ago.
   if (chosen.consumes) {
-    await spendOne(client, character.id, chosen.consumes);
+    // From the pack of whoever is actually out there. It read the first living character's,
+    // which on a roster is a survivor standing in the camp being charged for a tablet
+    // somebody else swallowed a day's walk away.
+    await spendOne(client, expedition.character_id, chosen.consumes);
   }
 
   // The moment's own name travels with the answer, not just its position. Content is
