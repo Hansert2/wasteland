@@ -1608,6 +1608,11 @@ ${PANE_CSS}
    * Sized and tracked like a tag, in the grey the page keeps for something that is a label
    * rather than a reading, with a hairline box so a run of two reads as two.
    */
+  /* Present, and saying nothing. The figure keeps its size so the column still reads as a
+     column; only its voice drops. */
+  .gauge.at-rest .tag { color: var(--rule); }
+  .gauge.at-rest .val { color: var(--faint); }
+
   .drivers { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 7px; }
   .driver {
     font-family: var(--label);
@@ -3978,13 +3983,36 @@ function renderSurvivor(survivor, strain, vitals, inventory, chosen, panelId) {
           )
           .join('')}</div>`;
 
-  const gauge = (label, value, of, note, tail = '', acting = []) => `<div class="gauge noted">
+  /*
+   * A gauge with nothing happening to it steps back.
+   *
+   * Four gauges a survivor, and on a rested camp every one of them reads the same
+   * uninteresting thing: full health, no hunger, no dose, full stamina. Five people is
+   * twenty figures saying nothing, and what a player is scanning a roster for is the one
+   * that is not saying nothing.
+   *
+   * Dimmed rather than dropped, which is the argument worth writing down. The roster is
+   * rows so that figures line up across people — health under health, the dose under the
+   * dose — and that column is the whole of what makes four survivors comparable at a
+   * glance. Gauges that come and go make every row a different shape and there is no column
+   * left to read down. It would also make "fine" and "not rendered" the same picture, which
+   * is the fault `NOTHING` exists to avoid one level up: a slot that disappears stops being
+   * a slot a player expects anything to appear in.
+   *
+   * So it keeps its place and loses its weight — no track, no accent on the figure, the
+   * label at the grey the page uses for something that is merely present. Anything acting
+   * on it wakes it up, whatever the number says.
+   */
+  const gauge = (label, value, of, note, tail = '', acting = [], resting = false) => {
+    const quiet = resting && (acting ?? []).length === 0 && !tail;
+    return `<div class="gauge noted${quiet ? ' at-rest' : ''}">
       <div class="gauge-top"><span class="tag">${label}</span>
         <span class="val">${n(value)}</span></div>
-      <div class="track">${
+      ${quiet ? '' : `<div class="track">${
         value > 0 ? `<i style="width:${bar(value, of)}%"></i>` : ''
-      }</div>${marks(acting)}${tail}${note}
+      }</div>`}${marks(acting)}${tail}${note}
     </div>`;
+  };
 
   const said = gaugeNotes(strain, vitals);
 
@@ -4087,8 +4115,13 @@ function renderSurvivor(survivor, strain, vitals, inventory, chosen, panelId) {
        }
        <div class="tabbed" id="${panelId(survivor, 'condition')}" data-tab="condition" role="tabpanel">
          <div class="gauges">
-           ${gauge('Health', survivor.health, 100, said.health, '', survivor.drivers?.health)}
-           ${gauge('Hunger', survivor.hunger, 100, said.hunger, '', survivor.drivers?.hunger)}
+           ${/*
+             * "At rest" is each gauge's own uninteresting end, not a shared number: full
+             * for the two that count what somebody has, empty for the two that count what
+             * is being done to them.
+             */ ''}
+           ${gauge('Health', survivor.health, 100, said.health, '', survivor.drivers?.health, survivor.health >= 100)}
+           ${gauge('Hunger', survivor.hunger, 100, said.hunger, '', survivor.drivers?.hunger, survivor.hunger <= 0)}
            ${gauge(
              'Radiation',
              survivor.radiation,
@@ -4096,6 +4129,7 @@ function renderSurvivor(survivor, strain, vitals, inventory, chosen, panelId) {
              said.radiation,
              strainNote(strain),
              survivor.drivers?.radiation,
+             survivor.radiation <= 0,
            )}
            ${/*
              * Phase 10's gauge, and the first time `characters.stamina` has been on a page.
@@ -4104,7 +4138,7 @@ function renderSurvivor(survivor, strain, vitals, inventory, chosen, panelId) {
              * do next rather than how they are: health, hunger and the dose are their
              * condition, and this is their day.
              */ ''}
-           ${gauge('Stamina', survivor.stamina, 100, said.stamina, '', survivor.drivers?.stamina)}
+           ${gauge('Stamina', survivor.stamina, 100, said.stamina, '', survivor.drivers?.stamina, survivor.stamina >= 100)}
          </div>
        </div>
        <div class="tabbed" id="${panelId(survivor, 'skills')}" data-tab="skills" role="tabpanel">

@@ -309,7 +309,17 @@ test('every gauge says what its number counts, in a place the note script can fi
     );
 
     for (const gauge of gauges) {
-      assert.match(gauge.slice(0, 20), /^noted"/, `${name}: a gauge no pointer will ever ask about`);
+      /*
+       * Carries `noted`, whatever else it carries. Pinned as exactly `noted"` until a gauge
+       * with nothing acting on it grew a second class to step back with — and the claim
+       * being made here is that the pointer handler can find it, not that the attribute has
+       * one word in it.
+       */
+      assert.match(
+        gauge.slice(0, 30),
+        /^noted[ "]/,
+        `${name}: a gauge no pointer will ever ask about`,
+      );
       assert.ok(
         gauge.includes('<span class="note">'),
         `${name}: a gauge with a number and no account of what it counts`,
