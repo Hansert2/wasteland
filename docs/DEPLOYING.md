@@ -97,6 +97,13 @@ Everything else is already safe for concurrency, and deliberately so:
 The recommended path if you have your own hardware, and the one this repo is set up
 for: `docker-compose.prod.yml` runs the app, its database and a way in, on one box.
 
+**Every** `docker compose -f docker-compose.prod.yml` command takes `--env-file .env.prod`,
+including the ones that only stop a service. The production compose refuses to interpolate
+without it and stops with `required variable POSTGRES_PASSWORD is missing a value` — a clear
+message the first time and a confusing one during a restore, where the natural reading is
+that something is wrong with the database rather than with the invocation. Four of the
+commands below were missing it, and it has cost an evening twice.
+
 It is a small machine's worth of work — **1 vCPU, 1GB RAM, 8GB disk** is comfortable.
 There is no build step, no background worker and no disk state; the heaviest query
 reads one camp.
@@ -168,7 +175,7 @@ will still surprise you once.
 `pg_dump` on a schedule, not only a hypervisor snapshot:
 
 ```
-docker compose -f docker-compose.prod.yml exec -T db \
+docker compose -f docker-compose.prod.yml --env-file .env.prod exec -T db \
   pg_dump -U wasteland wasteland | gzip > wasteland-$(date +%F).sql.gz
 ```
 
@@ -210,9 +217,11 @@ rather than reporting success, which is the only reason to believe the passing c
 
 **To actually restore, when it is not a drill:**
 
-    docker compose -f docker-compose.prod.yml stop app
-    gunzip -c ~/backups/wasteland-2026-08-27.sql.gz       | docker compose -f docker-compose.prod.yml exec -T db           psql -v ON_ERROR_STOP=1 -U wasteland -d wasteland
-    docker compose -f docker-compose.prod.yml start app
+    docker compose -f docker-compose.prod.yml --env-file .env.prod stop app
+    gunzip -c ~/backups/wasteland-2026-08-27.sql.gz \
+      | docker compose -f docker-compose.prod.yml --env-file .env.prod exec -T db \
+          psql -v ON_ERROR_STOP=1 -U wasteland -d wasteland
+    docker compose -f docker-compose.prod.yml --env-file .env.prod start app
 
 Stop the app first: it holds a row lock per camp while it ticks, and restoring underneath
 a running game is how you get half of one. `ON_ERROR_STOP=1` is not optional — without it
