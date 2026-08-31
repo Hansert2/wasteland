@@ -744,3 +744,57 @@ test('the card that reads as chosen is the one the table would actually send', a
     assert.match(html, /<h2>The roads out/, 'and the block is named for what is left in it');
   });
 });
+
+test('the stores line counts every mouth in the camp, and what recovery drinks', async () => {
+  /*
+   * The page priced one survivor however many were standing there.
+   *
+   * `eats` was `state.survivor ? one mouth : {}` — truthy the moment anybody was alive, and
+   * then a single draw for the whole camp. A camp of four was told its water climbed 6.75 an
+   * hour when it climbed 6.0, and `planFor`, which prices every door in hours-until-you-can-
+   * afford-it, read the same wrong number. The simulation was never wrong: `simulateSurvivor`
+   * draws per person and the walk covers the roster. Only the page counted one.
+   *
+   * Recovery is the other half and the larger one. A survivor paying back stamina drinks six
+   * times a mouth, so a camp that has just come home draws several times what an idle one
+   * does — which is exactly when a player is looking at the stores line.
+   */
+  await withRollback(async (client) => {
+    const settlementId = await setup(client);
+    const one = await viewCamp(client, settlementId);
+    const drawOf = (view, kind) =>
+      view.resources.find((row) => row.kind === kind).breakdown.eaten;
+
+    const solo = drawOf(one, 'water');
+    assert.ok(solo > 0, 'a camp of one draws something');
+
+    await client.query(
+      `insert into characters (settlement_id, name, born_at, health, radiation, stamina)
+       values ($1, 'Odd', now(), 100, 0, 100)`,
+      [settlementId],
+    );
+    const two = await viewCamp(client, settlementId);
+    assert.equal(drawOf(two, 'water'), solo * 2, 'two mouths draw twice as much water');
+    assert.equal(
+      drawOf(two, 'food'),
+      drawOf(one, 'food') * 2,
+      'and twice as much food',
+    );
+
+    // And the one paying back stamina drinks several times a mouth.
+    await client.query(
+      "update characters set stamina = 40 where settlement_id = $1 and name = 'Odd'",
+      [settlementId],
+    );
+    const resting = await viewCamp(client, settlementId);
+    assert.ok(
+      drawOf(resting, 'food') > drawOf(two, 'food'),
+      'a survivor recovering costs the camp more than one idling',
+    );
+    assert.equal(
+      drawOf(resting, 'water'),
+      drawOf(two, 'water'),
+      'and it is food that recovery drinks, not water',
+    );
+  });
+});

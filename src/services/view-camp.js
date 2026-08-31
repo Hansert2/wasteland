@@ -40,7 +40,7 @@ import { directionFor } from '../game/direction.js';
 import { radThresholdFor, skillsOf, wandererFor } from '../game/wanderers.js';
 import { stateAt, timelineOf } from '../game/timeline.js';
 import { CONFIG } from '../game/constants.js';
-import { radDamagePerHourAt } from '../game/tick.js';
+import { radDamagePerHourAt, workingAt } from '../game/tick.js';
 import { LINKS, TRADE_POST_LINKS, linkCost, linkGives, neighbourFor } from '../game/road.js';
 import { WORLD_SEED, loadWorldEvents } from '../db/world-events.js';
 import { FACTIONS, caravanVisit, postKeeper, priceAt, standingOf } from '../game/factions.js';
@@ -1139,9 +1139,30 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
   // What the sky is doing to production, and what the survivor takes back out. Both
   // are part of "the rate" as a player experiences it; neither used to be counted.
   const weatherFactors = productionFactors(activeAt(state.worldEvents, now));
-  const eats = state.survivor
-    ? { food: CONFIG.foodPerHour, water: CONFIG.waterPerHour }
-    : {};
+  /*
+   * What the camp draws, which is everybody in it and not the first of them.
+   *
+   * This was `state.survivor ? one survivor's draw : {}` — truthy the moment anybody was
+   * alive, and then a single mouth however many were standing there. A camp of four was
+   * told its water climbed 6.75 an hour when it climbed 6.0, and the plan below, which
+   * prices every door in hours-until-you-can-afford-it, was reading the same wrong number.
+   * The simulation was always right: `simulateSurvivor` draws per person and the walk
+   * covers the roster. Only the page was counting one.
+   *
+   * **And recovery drinks.** A survivor paying back stamina eats six times a mouth, so a
+   * camp with three people resting is drawing nine food an hour rather than one and a half.
+   * That is the largest single number on the page for a camp that has just come home, and
+   * leaving it out would make the stores line most wrong exactly when it matters most.
+   * `workingAt` is the tick's own answer to "is this person resting", so this asks it the
+   * same way rather than inventing a second definition that can drift.
+   */
+  const eats = { food: 0, water: 0 };
+  for (const person of state.survivors ?? (state.survivor ? [state.survivor] : [])) {
+    if (!person.alive) continue;
+    const resting = workingAt(state, person) === null && Number(person.stamina) < 100;
+    eats.food += CONFIG.foodPerHour * (resting ? CONFIG.staminaRecoveryFoodMultiplier : 1);
+    eats.water += CONFIG.waterPerHour;
+  }
 
   /**
    * The net rate, in the shape `planFor` wants, and the same arithmetic the stores

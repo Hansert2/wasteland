@@ -645,8 +645,12 @@ function isDueBack(state, expedition, at) {
  * Every one of these is a slice boundary in `nextEventAfter` — a build's completion, a
  * trip's return, a craft's, a fitting's — so within one slice a survivor is working for
  * the whole of it or none of it, and charging the whole slice is exact rather than nearly.
+ *
+ * Exported because the page has to price the same hour the tick charges: a survivor who is
+ * resting drinks six times a mouth, and the stores line that leaves that out is most wrong
+ * exactly when a camp has just come home. One definition, asked twice.
  */
-function workingAt(state, survivor) {
+export function workingAt(state, survivor) {
   if (tripOf(state, survivor) !== null) return 'away';
 
   for (const structure of state.settlement.structures ?? []) {
