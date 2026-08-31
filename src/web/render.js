@@ -300,15 +300,77 @@ const STYLE = `
     padding-top: 8px;
     max-width: 260px;
   }
+  /*
+   * Every dropdown on the page, in the camp's own hand.
+   *
+   * A bare select renders as the operating system's control — rounded, pale, with a blue
+   * focus ring and a chrome arrow — which on a page built out of rules, small caps and
+   * three greys reads as a piece of somebody else's software. appearance: none takes the
+   * chrome off and the arrow comes back as a caret drawn in the palette.
+   *
+   * Shaped like button, which is what it stands beside: the same condensed label face,
+   * the same uppercase and letter-spacing, the same one-pixel border in --control that
+   * out-ranks a panel edge. A select is a control, so it should look like the other one.
+   *
+   * The dark scheme is declared rather than assumed. Without color-scheme, the open
+   * option list is drawn by the browser in its own light palette however the closed control
+   * is styled — white rows on a dark page, and the one part of this that CSS cannot reach.
+   */
+  select {
+    appearance: none;
+    -webkit-appearance: none;
+    color-scheme: dark;
+    font-family: var(--label);
+    font-weight: 700;
+    font-size: 10.5px;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    padding: 5px 26px 5px 9px;
+    background-color: transparent;
+    /* The caret, drawn rather than inherited: two strokes in --dim, kept clear of the edge. */
+    background-image:
+      linear-gradient(45deg, transparent 50%, var(--dim) 50%),
+      linear-gradient(135deg, var(--dim) 50%, transparent 50%);
+    background-position: right 12px center, right 7px center;
+    background-size: 5px 5px, 5px 5px;
+    background-repeat: no-repeat;
+    color: var(--bone);
+    border: 1px solid var(--control);
+    border-radius: 0;
+    cursor: pointer;
+  }
+  select:hover { border-color: var(--bone); }
+  select:focus-visible { outline: 2px solid var(--oxide); outline-offset: 1px; }
+  /* The open list, for the browsers that let a page reach it at all. */
+  select option { background: var(--panel); color: var(--prose); }
+
+  /*
+   * In a label strip, where three of them live. Smaller and quieter than a button, because
+   * a strip is a caption rather than a row of controls — the figure it sets is the point,
+   * not the setting of it.
+   */
+  h2 select {
+    font-size: 10px;
+    padding: 3px 22px 3px 7px;
+    background-position: right 10px center, right 5px center;
+    border-color: var(--rule);
+    color: var(--prose);
+  }
+  h2 select:hover { border-color: var(--edge); color: var(--bone); }
+
   .place-form { display: flex; gap: 6px; }
   .place-form select {
     flex: 1 1 auto;
     min-width: 0;
-    background: var(--panel);
+    /* The one that is a sentence rather than a label: a hundred place names in small caps
+       would be unreadable, so this one keeps its own case and the page's prose face. */
+    font-family: inherit;
+    font-weight: 400;
+    font-size: 12px;
+    letter-spacing: 0;
+    text-transform: none;
     color: var(--prose);
-    border: 1px solid var(--rule);
-    padding: 3px 4px;
-    font: inherit;
+    border-color: var(--rule);
   }
   .hourbar .band {
     font-variant-caps: all-small-caps;
