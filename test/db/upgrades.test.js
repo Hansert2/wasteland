@@ -595,7 +595,21 @@ test('somebody already working is shown as working, and cannot be chosen', async
     assert.equal(busy.busy, 'fitting', 'the view knows what they are doing');
 
     const html = campPage(view, { pane: 'camp' }) + campPage(view, { pane: 'survivor' });
-    for (const field of ['send', 'work', 'bench']) {
+
+    /*
+     * Going is asked on the survivor's own card now, so it is a radio rather than an option
+     * in a list — but under the same rule: the control keeps its place and refuses, because
+     * a name that vanishes reads as a bug where one that is there and will not be picked
+     * reads as a person who is occupied.
+     */
+    const theirCard = new RegExp(
+      `<div class="who-name">Odd</div>[^]*?<label class="pick( off)?">[^]*?value="${odd}"([^>]*)>`,
+    ).exec(html);
+    assert.ok(theirCard, 'their card offers the choice at all');
+    assert.equal(theirCard[1], ' off', 'and marks it as one they cannot take');
+    assert.match(theirCard[2], /disabled/, 'so the browser refuses before the service has to');
+
+    for (const field of ['work', 'bench']) {
       // [^] rather than the usual any-character class, because this pattern is built in a
       // template literal, where a lone backslash-s collapses to a bare s before RegExp
       // ever sees it and the class quietly stops matching anything.
@@ -675,5 +689,58 @@ test('the bed row says what it costs, and which ceiling is holding it', async ()
     const held = await bedRow();
     assert.match(held, /the spare is empty/, 'the page names the ceiling that is actually binding');
     assert.doesNotMatch(held, /fitted/, 'and does not claim the shelter has no room');
+  });
+});
+
+test('the card that reads as chosen is the one the table would actually send', async () => {
+  /*
+   * The invariant that lets "who goes" live on the person.
+   *
+   * The choice is a radio outside every form: it submits nothing, and the eleven dispatch
+   * forms carry the id in a hidden field the client keeps in step with it. So the page has
+   * to agree with itself before a line of script runs — the card drawn as picked and the id
+   * sitting in the hidden fields are chosen by two different functions, and if they ever
+   * disagree a player with JavaScript off sends somebody they did not pick.
+   *
+   * The button names them for the same reason: the table used to ask who in a dropdown in
+   * its own caption, and now it only reports the answer.
+   */
+  await withRollback(async (client) => {
+    const settlementId = await setup(client);
+    await client.query(
+      "update resources set amount = 300 where settlement_id = $1 and kind = 'scrap'",
+      [settlementId],
+    );
+    const { rows } = await client.query(
+      `insert into characters (settlement_id, name, born_at, health, radiation)
+       values ($1, 'Odd', now(), 100, 0) returning id`,
+      [settlementId],
+    );
+
+    // Occupy the founder, so the free one is not simply the first in the roster.
+    const view0 = await viewCamp(client, settlementId);
+    const founder = view0.roster.find((one) => one.id !== rows[0].id);
+    await startUpgrade(client, settlementId, 'filtration', Date.now(), founder.id);
+
+    const view = await viewCamp(client, settlementId);
+    const html = campPage(view, { pane: 'survivor' });
+
+    const checked = /<input type="radio"[^>]*value="(\d+)"[^>]*checked/.exec(html);
+    assert.ok(checked, 'exactly one card is drawn as going');
+    assert.equal(Number(checked[1]), Number(rows[0].id), 'and it is the one who is free');
+
+    const carried = [...new Set([...html.matchAll(/data-whofield="send" value="(\d+)"/g)].map((m) => m[1]))];
+    assert.deepEqual(carried, [checked[1]], 'every row carries that same person, and only them');
+
+    assert.match(
+      html,
+      /<button type="submit">Send <span data-nameof="send">Odd<\/span>/,
+      'and the button says whose trip it is about to start',
+    );
+
+    // The block is a catalogue of places now, and stopped asking a question about somebody
+    // standing in another block.
+    assert.doesNotMatch(html, /<select data-whopicks="send"/, 'the dropdown is gone');
+    assert.match(html, /<h2>The roads out/, 'and the block is named for what is left in it');
   });
 });

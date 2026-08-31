@@ -542,6 +542,25 @@ const STYLE = `
 ${SURVIVOR_TAB_CSS}
 
   /* Where they are: under the name, above the tabs. */
+  /*
+   * The card's own footing: who is going, on the person it would be.
+   *
+   * Below the body rather than inside a tab, and separated by the same hairline the block
+   * uses everywhere else, because it is true of the whole survivor and not of whichever
+   * panel happens to be open. A checked one lights its label, which is the whole readout —
+   * there is no figure here, only a person picked or not picked.
+   */
+  .goes { border-top: 1px solid var(--rule); padding: 8px 18px; }
+  .pick { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; }
+  .pick .tag { color: var(--dim); font-size: 10px; letter-spacing: .18em; }
+  .pick input { accent-color: var(--oxide); margin: 0; cursor: pointer; }
+  .pick:has(:checked) .tag { color: var(--bone); }
+  /* Occupied: the control keeps its place and refuses, and does not repeat the reason —
+     that is two lines up, under the name, on this same card. */
+  .pick.off { cursor: default; }
+  .pick.off .tag { color: var(--rule); }
+  .pick.off input { cursor: default; }
+
   .out { margin: 5px 0 0; color: var(--dim); font-size: 13px; }
   .out .short { color: var(--faint); }
 
@@ -816,42 +835,48 @@ ${PANE_CSS}
    */
   .lane { display: contents; }
 
-  /* Left: the trip and the bench. Right: the person, gauges number-first, and what
-     they are carrying. Two flex columns rather than grid cells, because grid rows are
-     shared and a tall dispatch table would drag the pack down the page with it. */
   /* The column's own stack. Everything the views arrange lives here rather than on
      "main", so the strip above it is never a grid item — see the note in campPage. */
   .stream { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
 
-  body[data-pane="survivor"] .stream {
+  /*
+   * The people, across the top, as many to a row as the window has room for.
+   *
+   * This view was a 1fr column and a 300px sidebar: the dispatch table on the left, the
+   * survivor on the right. That was the right shape for a camp of one and it aged badly —
+   * every bed built adds another full block to a third of a column, so three survivors
+   * stacked their gauges, tabs and packs down a 300px gutter while the widest comparison
+   * table in the game was squeezed into what was left. The wide thing wanted the width.
+   *
+   * "auto-fit" rather than a fixed count, because the roster is what it is: one survivor
+   * fills the row, four wrap onto two, and no number of them is a special case in here.
+   */
+  body[data-pane="survivor"] .lane-people {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 300px;
-    gap: 18px 24px;
+    grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+    gap: 18px;
     align-items: start;
   }
-  /* Scoped to the two lanes the Survivor view actually arranges. ".lane-pair" has both
-     its sections hidden here, and turning it into a flex box would leave an empty grid
-     item eating a row and a gap. */
-  body[data-pane="survivor"] .lane-main,
-  body[data-pane="survivor"] .lane-side { display: flex; flex-direction: column; gap: 18px; }
-  body[data-pane="survivor"] .lane-main { grid-column: 1; }
-  body[data-pane="survivor"] .lane-side { grid-column: 2; }
-  body[data-pane="survivor"] #s-error,
-  body[data-pane="survivor"] #s-moment { grid-column: 1 / -1; }
+  /*
+   * The sections dissolve so the blocks inside them are the grid items.
+   *
+   * "#s-survivor" holds one block per survivor, and as a grid *item* that is a single
+   * cell with a stack in it — the roster back in a column, one indirection further down.
+   * "display: contents" hands its children to the grid. Written with the ids rather than
+   * with the wrapper's class because "PANE_CSS" sets "display: block" through an id and
+   * would otherwise out-rank this; it also has to stay below that rule in the sheet.
+   */
+  body[data-pane="survivor"] #s-survivor,
+  body[data-pane="survivor"] #s-gate { display: contents; }
   /*
    * The Contact box repeats the trip's state on purpose — the decision needs those facts
-   * beside it rather than a click away. On this view they are not a click away: the Away
-   * block is directly underneath saying the same sentence about the same trip. So the
-   * line goes here and only here, and the box keeps it everywhere else.
+   * beside it rather than a click away. On this view they are not a click away: the
+   * survivor's own block is on the same screen saying the same sentence about the same
+   * trip. So the line goes here and only here, and the box keeps it everywhere else.
    */
   body[data-pane="survivor"] #s-moment .state { display: none; }
-  /* A 104px label gutter is a third of a 300px column, so in the sidebar a quiet row
-     stacks its label above its line instead of standing beside it. */
-  body[data-pane="survivor"] .lane-side .quiet { display: block; margin: 0; }
-  body[data-pane="survivor"] .lane-side .quiet .tag { display: block; margin-bottom: 7px; }
-  @media (max-width: 900px) {
-    body[data-pane="survivor"] .stream { display: flex; }
-    body[data-pane="survivor"] .lane { display: contents; }
+  @media (max-width: 620px) {
+    body[data-pane="survivor"] .lane-people { display: contents; }
   }
 
   /* The away log beside Next, on the one view that has both. Unpicked when the log has
@@ -2490,6 +2515,16 @@ export const TIMERS = `
     for (const field of document.querySelectorAll('[data-whofield="' + which + '"]')) {
       field.value = picker.value;
     }
+
+    // And whoever asked to be told the name gets it. The dispatch buttons read "Send Odd",
+    // so a choice made on a card up the page is legible at the button that acts on it —
+    // without this they would all still say whoever was free when the page was drawn.
+    var named = picker.dataset.whoname;
+    if (named) {
+      for (const label of document.querySelectorAll('[data-nameof="' + which + '"]')) {
+        label.textContent = named;
+      }
+    }
   });
 
   document.addEventListener('click', (event) => {
@@ -3028,37 +3063,33 @@ export function campPage(view, { error, pane = 'camp' } = {}) {
     </div>
 
     ${/*
-      * The Survivor view is two columns — the trip and the bench on the left, the person
-      * and their pack in a 300px sidebar — and these lanes are what make that possible
-      * without the section stream growing a second arrangement.
+      * The people first and across the width, then the places they can be sent.
       *
-      * A grid cannot give two columns independent heights: rows are shared, so a tall
-      * dispatch table on the left would push the pack halfway down the page on the
-      * right. Two flex columns can, and the lanes are `display: contents` on every other
-      * view, which means their sections are laid out as direct children of `main` and
-      * the single-column views do not know the wrappers exist.
+      * This was two columns — the dispatch table in a 1fr lane, the survivor in a 300px
+      * sidebar — which is the shape a camp of one wants. A camp of four stacks four full
+      * blocks down that gutter, so the roster went wide and the eleven-row table took the
+      * full width it always wanted. The wrapper survives because the grid needs a parent
+      * that is not "main": it is display: contents on every other view, so the four views
+      * that do not arrange these sections cannot tell it is there.
       *
-      * The order changed to make them adjacent: `s-workshop` moved up beside
-      * `s-expedition`, and the pair now sits before the person rather than after.
-      * Filtered through `PANES` the Camp view is byte-for-byte what it was — none of
-      * these four is on it.
+      * Order is what puts the roster on top, and it costs nothing elsewhere: none of
+      * these four sections appears on any other view, so filtered through PANES every
+      * other page is byte-for-byte what it was.
       */ ''}
-    <div class="lane lane-main">
-      ${section(
-        'expedition',
-        view.roster?.length ? renderExpeditions(view) : quiet('Away', NOTHING.expedition),
-      )}
-      ${section('workshop', renderWorkshop(view))}
-    </div>
-    <div class="lane lane-side">
-      ${section('gate', renderGate(view.atTheGate))}
+    <div class="lane lane-people">
       ${section(
         'survivor',
         view.roster?.length
           ? renderSurvivors(view)
           : renderNoSurvivor(view.fallenCount > 0, view.arriving),
       )}
+      ${section('gate', renderGate(view.atTheGate))}
     </div>
+    ${section(
+      'expedition',
+      view.roster?.length ? renderExpeditions(view) : quiet('Away', NOTHING.expedition),
+    )}
+    ${section('workshop', renderWorkshop(view))}
 
     ${section(
       'structures',
@@ -3728,12 +3759,25 @@ function whoField(view, field) {
 
 function renderSurvivors(view) {
   if (!view.roster?.length) return '';
+
+  /*
+   * Which card shows as chosen, decided the same way the table decides it.
+   *
+   * whoField writes the first free survivor's id into all eleven hidden fields when the
+   * page is built, so the card that reads as picked and the person who would actually walk
+   * out of the gate are the same one before a line of script has run. Get these two from
+   * different places and a player with JavaScript off sends somebody they did not pick.
+   */
+  const chosen = view.roster.find((one) => !one.busy)?.id ?? null;
+
   return view.roster
-    .map((person) => renderSurvivor(person, person.strain, view.vitals, person.inventory))
+    .map((person) =>
+      renderSurvivor(person, person.strain, view.vitals, person.inventory, chosen),
+    )
     .join('');
 }
 
-function renderSurvivor(survivor, strain, vitals, inventory) {
+function renderSurvivor(survivor, strain, vitals, inventory, chosen = null) {
   /*
    * What this one is, under how they are doing — as figures now rather than as a sentence.
    *
@@ -3785,6 +3829,35 @@ function renderSurvivor(survivor, strain, vitals, inventory) {
     </div>`;
 
   const said = gaugeNotes(strain, vitals);
+
+  /*
+   * Who goes, asked on the person rather than in a caption two blocks down.
+   *
+   * It was a dropdown in the dispatch table's label strip, which is a fine place for a
+   * setting and a poor one for half the decision — and with a roster it is half: where to
+   * send somebody and which somebody are the same size of question now. A card is already
+   * the person, so the choice belongs on it, and picking it names the button on all eleven
+   * rows so the table stops asking something the page has already answered.
+   *
+   * A radio rather than a button, and outside any form: it submits nothing. The eleven
+   * dispatch forms carry the id in a hidden field the script keeps in step, exactly as the
+   * dropdown fed them — so this changes where the question is asked and not how it travels.
+   *
+   * The busy keep a control they cannot use, which is the rule the bench rows and the
+   * moment options follow: an option that vanishes reads as a bug where one that is there
+   * and refuses reads as a person who is occupied. Why they are occupied is two lines up on
+   * this same card, so the label does not say it twice.
+   */
+  const goes = `<div class="goes">
+      <label class="pick${survivor.busy ? ' off' : ''}">
+        <input type="radio" name="sending" value="${escape(String(survivor.id))}"
+               data-whopicks="send" data-whoname="${escape(survivor.name ?? 'Survivor')}"
+               ${survivor.busy ? 'disabled' : ''}${
+                 !survivor.busy && String(survivor.id) === String(chosen) ? ' checked' : ''
+               }>
+        <span class="tag">sending</span>
+      </label>
+    </div>`;
 
   return block(
     'Survivor',
@@ -3857,7 +3930,9 @@ function renderSurvivor(survivor, strain, vitals, inventory) {
      * Phrasing content only — a `span` of `button`s, as `dayNav` is a `span` of links —
      * because the strip is an `h2` and an `h2` may not contain a `div`.
      */
-    { aside: tabs },
+    // The tabs ride in the strip; who goes rides under the body, below whichever tab is
+    // open — it is a fact about the whole person, not about their gauges or their pack.
+    { aside: tabs, foot: goes },
   );
 }
 
@@ -4263,13 +4338,14 @@ function renderExpeditions(view) {
    */
 
   /*
-   * Who is going, chosen once for the whole table.
+   * Who is going is asked on the survivor's own card now, not here.
    *
-   * Only the free are offered: somebody building or already out cannot be sent, and the
-   * service refuses again behind this because the page is a render of a moment ago. A camp
-   * with nobody free gets the reason rather than an empty box.
+   * The block kept a dropdown in its label strip while the person it referred to sat in
+   * another block entirely — the caption of a table asking a question about somebody two
+   * blocks away. The card is the person, so the card asks. What is left here is the answer
+   * to it, printed on the button: the table says whose trip it is about to start.
    */
-  const sending = whoSelector(view, { field: 'send', label: 'sending' });
+  const going = (view.roster ?? []).find((one) => !one.busy);
 
   const rows = view.regions
     .map(
@@ -4290,19 +4366,24 @@ function renderExpeditions(view) {
               * The client script copies the selection into each of these on change.
               */ ''}
             ${whoField(view, 'send')}
-            <button type="submit">Send</button>
+            <button type="submit">Send${
+              going ? ` <span data-nameof="send">${escape(going.name ?? 'them')}</span>` : ''
+            }</button>
           </form>
         </td>
       </tr>`,
     )
     .join('');
 
-  // The selector rides in the label strip, opposite the block's name — the slot `dayNav` and
-  // the survivor tabs already use, and the same reason: it belongs to the whole block.
-  return block('Where to send them', `<table class="dispatch">${rows}</table>`, {
-    flush: true,
-    aside: sending,
-  });
+  /*
+   * And it is named for what it is.
+   *
+   * "Where to send them" was the name of a decision, and the decision has been leaving this
+   * block for a while: the trip reports went to the survivors, and now the choice of who
+   * has too. What stands here is the eleven places and what is known about each — a
+   * catalogue, which is exactly the thing that wanted the full width.
+   */
+  return block('The roads out', `<table class="dispatch">${rows}</table>`, { flush: true });
 }
 
 /**
