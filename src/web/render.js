@@ -4035,7 +4035,7 @@ function renderSurvivor(survivor, strain, vitals, inventory, chosen, panelId) {
             (one) =>
               `<span class="sign noted" aria-label="${escape(one.tag)}">${escape(
                 one.sign ?? '•',
-              )}${stats(one.head, one.rows)}</span>`,
+              )}<span class="note">${escape(one.note)}</span></span>`,
           )
           .join('')}</span>`;
 
@@ -4045,7 +4045,9 @@ function renderSurvivor(survivor, strain, vitals, inventory, chosen, panelId) {
       : `<div class="drivers">${list
           .map(
             (one) =>
-              `<span class="driver noted">${escape(one.tag)}${stats(one.head, one.rows)}</span>`,
+              `<span class="driver noted">${escape(one.tag)}<span class="note">${escape(
+                one.note,
+              )}</span></span>`,
           )
           .join('')}</div>`;
 
@@ -4324,6 +4326,14 @@ function gaugeNotes(strain, vitals) {
  * Concretely: a popup opens with a heading, may carry **one** short line for the thing a
  * figure cannot carry — what a place is like, what a structure is for — and everything
  * measurable after that is `[key, value]`. Not a sentence with figures embedded in it.
+ *
+ * **And only the figures that were asked for.** The rule is not "tabulate everything known
+ * about the subject". The marks beside a gauge went from prose to a five-row table each and
+ * that was worse, not better: a mark is a footnote to a number already on screen, and the
+ * question behind hovering a triangle is "what is that" — "out there −3.8/h" is the whole
+ * answer. A table belongs where the subject is the whole point of the popup, which is what
+ * a gauge's own scale and a fitting's terms are. Short is part of the style, not a failure
+ * to apply it.
  *
  * The reason is what the reader is doing. "Paying back stamina is work of a kind, and they
  * eat for it — 3 food and 4.5 water an hour out of the stores, against 0.5 and 0.8 for

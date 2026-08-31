@@ -567,15 +567,16 @@ function strainOf(survivor, decayPerHour) {
  * exactly the complaint: a cost you can derive is a cost most people will not derive, and
  * recovery's price on the stores was real and invisible from the day it shipped.
  *
- * Each is `{ sign, tag, head, rows }`: a glyph for the gauge's own line, a word for a device
- * with no hover to give, and — where a sentence used to be — a heading and a column of
- * figures, which is the house style for anything a popup has to explain.
+ * Each is `{ sign, tag, note }`: a glyph for the gauge's own line, a word for a device with
+ * no hover to give, and **one line** for the popup — an effect and its rate, and nothing
+ * else.
  *
- * The sentences were the last prose left in a panel that had already given them up. "Paying
- * back stamina is work of a kind, and they eat for it — 3 food and 4.5 water an hour out of
- * the stores, against 0.5 and 0.8 for somebody idle" carries four numbers and makes the
- * reader dig each of them out of a clause. The same four in a column are read at a glance
- * and compared down the page, which is what a player is doing with them. An empty list is the ordinary case rather
+ * This has been three things in a day and the middle one was wrong in both directions. It
+ * began as prose, which is not what a page of figures should be explaining itself in. It
+ * became a five-row table per effect, which answers questions nobody hovering a triangle
+ * was asking: what a survivor is spending, what they would spend resting, how much they
+ * have, when it clears. A mark is a footnote to a number that is already on screen. "Out
+ * there −3.8/h" is the whole of it. An empty list is the ordinary case rather
  * than a missing one — nothing is added for a survivor standing in the camp being fed,
  * because "nothing unusual" is not news, and a gauge nothing is doing anything to says so
  * by having no sign beside it.
@@ -616,39 +617,20 @@ function driversFor(person, {
     health.push({
       sign: '■',
       tag: 'too hungry to heal',
-      head: 'healing is stopped',
-      rows: [
-        ['hunger now', n1(person.hunger)],
-        ['heals below', n1(config.regenHungerCeiling)],
-        ['would heal', perHour(config.regenPerHour, '+')],
-        ['fed, hunger', perHour(config.hungerFallPerHour, '−')],
-      ],
+      note: `no healing above ${n1(config.regenHungerCeiling)} hunger`,
     });
   }
   if (strain?.state === 'burning') {
     health.push({
       sign: '▼',
       tag: `the dose −${n1(strain.damagePerHour)}/h`,
-      head: 'the dose outpaces rest',
-      rows: [
-        ['losing', perHour(strain.damagePerHour, '−')],
-        ['rest gives', perHour(strain.fullHealing, '+')],
-        ['gains again', `under ${n1(strain.tipping)} rads`],
-        ['that is', hours(strain.hoursToSafe)],
-        ['clear in', hours(strain.hoursToMending)],
-      ],
+      note: `${perHour(strain.damagePerHour, '−')} against ${perHour(strain.fullHealing, '+')} rest`,
     });
   } else if (strain?.state === 'stalled') {
     health.push({
       sign: '=',
       tag: 'the dose cancels rest',
-      head: 'health is standing still',
-      rows: [
-        ['rest gives', perHour(strain.fullHealing, '+')],
-        ['the dose takes', perHour(strain.fullHealing, '−')],
-        ['net', perHour(0)],
-        ['clear in', hours(strain.hoursToMending)],
-      ],
+      note: `net ${perHour(0)}, clear in ${hours(strain.hoursToMending)}`,
     });
   }
 
@@ -658,26 +640,14 @@ function driversFor(person, {
     hunger.push({
       sign: '●',
       tag: 'resting, eating for it',
-      head: 'recovery draws rations',
-      rows: [
-        ['food', perHour(config.foodPerHour * draw)],
-        ['water', perHour(config.waterPerHour * draw)],
-        ['idle would be', `${n1(config.foodPerHour)} · ${n1(config.waterPerHour)}`],
-        ['buys', perHour(config.staminaRegenPerHour, '+')],
-      ],
+      note: `draws ${n1(config.foodPerHour * draw)} food, ${n1(config.waterPerHour * draw)} water /h`,
     });
   }
   if (fedShort) {
     hunger.push({
       sign: '○',
       tag: 'the stores are short',
-      head: 'hunger is climbing',
-      rows: [
-        ['now', n1(person.hunger)],
-        ['unfed', perHour(config.hungerRisePerHour, '+')],
-        ['fed', perHour(config.hungerFallPerHour, '−')],
-        ['starves at', n1(config.starvationThreshold)],
-      ],
+      note: `${perHour(config.hungerRisePerHour, '+')}, starves at ${n1(config.starvationThreshold)}`,
     });
   }
 
@@ -686,12 +656,7 @@ function driversFor(person, {
     radiation.push({
       sign: '◆',
       tag: 'filtration',
-      head: 'the filter is running',
-      rows: [
-        ['in camp', perHour(radDecayPerHour, '−')],
-        ['without it', perHour(config.radDecayPerHour, '−')],
-        ['on the road', 'nothing'],
-      ],
+      note: `${perHour(radDecayPerHour, '−')} in camp, ${perHour(config.radDecayPerHour, '−')} without it`,
     });
   }
 
@@ -706,13 +671,7 @@ function driversFor(person, {
     stamina.push({
       sign: '▼',
       tag: `${doing[working] ?? working} −${n1(config.staminaPerHourWorked)}/h`,
-      head: doing[working] ?? working,
-      rows: [
-        ['any work', perHour(config.staminaPerHourWorked, '−')],
-        ['danger', 'costs none'],
-        ['resting', perHour(config.staminaRegenPerHour, '+')],
-        ['has', n1(person.stamina)],
-      ],
+      note: `${doing[working] ?? working} ${perHour(config.staminaPerHourWorked, '−')}`,
     });
   } else if (resting) {
     const slowed = person.hunger > config.regenHungerCeiling - config.staminaRecoveryHungerTaper;
@@ -720,14 +679,9 @@ function driversFor(person, {
     stamina.push({
       sign: slowed ? '△' : '▲',
       tag: slowed ? 'resting, slowed' : `resting +${n1(config.staminaRegenPerHour)}/h`,
-      head: slowed ? 'resting, and slowed' : 'resting',
-      rows: [
-        ['gains', perHour(config.staminaRegenPerHour, '+')],
-        ['draws', `${n1(config.foodPerHour * draw)} · ${n1(config.waterPerHour * draw)}/h`],
-        ['slows from', `${n1(config.regenHungerCeiling - config.staminaRecoveryHungerTaper)} hunger`],
-        ['stops at', `${n1(config.regenHungerCeiling)}`],
-        ['has', n1(person.stamina)],
-      ],
+      note: slowed
+        ? `resting ${perHour(config.staminaRegenPerHour, '+')}, slowed by hunger`
+        : `resting ${perHour(config.staminaRegenPerHour, '+')}`,
     });
   }
 
