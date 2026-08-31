@@ -1,7 +1,7 @@
 /**
  * Would stamina be a decision, or queue discipline with a gauge attached?
  *
- * Phase 10 asks one question before anything is built, and this answers it:
+ * Phase 10 asked one question before anything was built, and this answers it:
  *
  *   **Does stamina ever make the right answer "send the tired one anyway"?**
  *
@@ -16,44 +16,44 @@
  * that person is then unavailable**, which is the currency the whole fuel economy already
  * turns out to trade in — see `fuel-balance.mjs`.
  *
- * With one gauge the answer is trivial: radiation decides, and you send whoever is
- * cleanest. Adding stamina is only worth doing if the two gauges *disagree* often enough
- * that a player has something to weigh. So:
+ * With one gauge the answer is trivial: you send whoever is in better shape. Adding stamina
+ * is only worth doing if the two gauges *disagree* often enough that a player has something
+ * to weigh. So the value of sending someone is `yield / (travel + downtime)`, where
  *
- *     downtime = max(rads to clear / decay, stamina to refill / regen)
+ *     downtime = max(hours until fit to travel, hours until rested enough to)
  *
- * and the value of sending someone is `yield / (travel + downtime)`.
- *
- * **The max is the whole mechanic.** If stamina always refills faster than radiation
- * clears, stamina never binds and it is scenery for the third time. If it sometimes binds
- * and sometimes does not, there is a decision.
+ * **The max is the whole mechanic.** If stamina always refills faster than the dose clears,
+ * stamina never binds and it is scenery for the third time. If it sometimes binds and
+ * sometimes does not, there is a decision.
  *
  * ## The three answers this prints
  *
- * - **binds** — how often stamina, rather than radiation, is what a survivor is waiting
- *   on. Zero means scenery.
- * - **contested** — how often the cleanest survivor and the most rested one are *different
- *   people*. Only there is a choice being made at all; everywhere else both gauges point
- *   the same way and any policy gets it right.
- * - **cleanest wrong** — inside those contested states, how often sending the cleanest is
- *   the worse call. This is the number that matters, because "send the cleanest" is the
- *   game as it stands: radiation is the only gauge that gates anything today.
+ * - **contested** — how often the survivor in better shape and the most rested one are
+ *   *different people*. Only there is a choice being made at all; everywhere else both
+ *   gauges point at the same person and any policy gets it right.
+ * - **healthiest wrong / rested wrong** — inside those contested states, how often each
+ *   single-gauge policy is the worse call. Both have to be substantial or there is no
+ *   weighing: one near zero means the other gauge already decides and this one is either
+ *   agreeing with it or has replaced it.
+ * - **survivor idle** — the share of a cycle spent waiting rather than playing, because a
+ *   contest bought with idleness is not a bargain. It is already what makes danger 4
+ *   out-earn danger 5.
  *
- * A first version of this counted states where the best pick was *neither* the cleanest
+ * A first version of this counted states where the best pick was *neither* the healthiest
  * nor the most rested, and reported a flat zero at every shape. That was not a finding —
  * with two survivors and two gauges the winner is always better on at least one of them,
  * so the column could not have been anything else. It measured the arithmetic, not the
  * game, and it is recorded here because it looked exactly like a result.
  *
- * Regions come from the database, so this measures the map that shipped. Nothing here
- * writes, and nothing here needs stamina to exist in the code — that is the point of
- * measuring first.
+ * Regions come from the database and the health arithmetic is imported from `tick.js`, so
+ * this measures the game that shipped rather than a model of it. Nothing here writes.
  *
  *   node scripts/with-db.mjs node --env-file=.env tools/stamina-sensitivity.mjs
  */
 import { pool } from '../src/db/pool.js';
 import { resolveExpedition } from '../src/game/expeditions.js';
 import { CONFIG } from '../src/game/constants.js';
+import { radDamagePerHourAt } from '../src/game/tick.js';
 import { ORDINARY } from '../src/game/wanderers.js';
 
 const SEEDS = 400;
@@ -132,231 +132,27 @@ function tripValue(region) {
 
 const priced = regions.map((region) => ({ region, ...tripValue(region) }));
 
-/** Hours before this survivor could be sent again, on whichever gauge is slower. */
-function downtime(survivor, trip, shape, decay = CONFIG.radDecayPerHour) {
-  const radsAfter = survivor.rads + trip.dose;
-  const staminaAfter = survivor.stamina - shape.cost * trip.hours;
-
-  // Radiation has to come back under the threshold; stamina has to come back to enough
-  // for the next trip of this length. Both are "when could this person leave again".
-  const radWait = Math.max(0, (radsAfter - CONFIG.radThreshold) / decay);
-  const staminaWait = Math.max(0, (shape.cost * trip.hours - staminaAfter) / shape.regen);
-
-  return { radWait, staminaWait, wait: Math.max(radWait, staminaWait) };
-}
-
-/** The rate a survivor delivers at, which is what "who should go" is actually asking. */
-function rateOf(survivor, trip, shape, decay = CONFIG.radDecayPerHour) {
-  // Cannot be sent at all: already past the threshold, or has not the stamina for it.
-  if (survivor.rads >= CONFIG.radThreshold) return null;
-  if (survivor.stamina < shape.cost * trip.hours) return null;
-
-  const { wait, radWait, staminaWait } = downtime(survivor, trip, shape, decay);
-  return { rate: trip.value / (trip.hours + wait), wait, radWait, staminaWait };
-}
-
-// ------------------------------------------------------------------ the sweep
-
-console.log(`\n${regions.length} regions that dose at all, ${STATES} camp states each.\n`);
-console.log('A camp of two picks who to send. "cleanest" and "most rested" are the two');
-console.log('single-gauge policies; the best pick is the one with the highest rate.\n');
-console.log(
-  'shape      cost/regen   binds   contested   cleanest wrong   rested wrong',
-);
-console.log('  ' + '-'.repeat(76));
-
-let anyWorthBuilding = false;
-
-for (const [label, shape] of SHAPES) {
-  let binds = 0;
-  let cleanWrong = 0;
-  let restedWrong = 0;
-  let contested = 0;
-  let occasions = 0;
-  let material = 0;
-
-  // Deterministic states rather than random ones, so a rerun is comparable.
-  let n = 0;
-  for (const trip of priced) {
-    for (let i = 0; i < STATES; i += 1) {
-      n += 1;
-      const a = { rads: ((n * 37) % 60), stamina: 20 + ((n * 53) % 81) };
-      const b = { rads: ((n * 71) % 60), stamina: 20 + ((n * 29) % 81) };
-
-      const ra = rateOf(a, trip, shape);
-      const rb = rateOf(b, trip, shape);
-      if (!ra || !rb) continue;
-      occasions += 1;
-
-      if (ra.staminaWait > ra.radWait || rb.staminaWait > rb.radWait) binds += 1;
-
-      /*
-       * Only count it when the choice is worth making.
-       *
-       * With both survivors under the threshold and a light-dosing region, `radWait` is
-       * zero for both and "send the cleanest" is deciding a tie on a number that changes
-       * nothing. Counting those as disagreements measures the tiebreak, not the mechanic
-       * — and would have reported a decision where there is none, which is the shape of
-       * error this project keeps finding in its own instruments.
-       *
-       * So a disagreement counts only when the two picks actually deliver differently.
-       */
-      const gap = Math.abs(ra.rate - rb.rate) / Math.max(ra.rate, rb.rate);
-      if (gap < MATERIAL) continue;
-      material += 1;
-
-      const best = ra.rate >= rb.rate ? 'a' : 'b';
-      const cleanest = a.rads <= b.rads ? 'a' : 'b';
-      const rested = a.stamina >= b.stamina ? 'a' : 'b';
-
-      // The only states where anything is being decided: the two gauges point at
-      // different people. Everywhere else one survivor is both cleaner and fresher and
-      // every policy sends them.
-      if (cleanest === rested) continue;
-      contested += 1;
-
-      if (best !== cleanest) cleanWrong += 1;
-      if (best !== rested) restedWrong += 1;
-    }
-  }
-
-  // Each against its own denominator: binds is about every state a survivor could be
-  // sent in, and the two "wrong" figures are about the contested ones alone.
-  const ofAll = (x) => `${((100 * x) / Math.max(1, occasions)).toFixed(0)}%`;
-  const ofContested = (x) => `${((100 * x) / Math.max(1, contested)).toFixed(0)}%`;
-
-  // Worth building if radiation alone gets the contested calls wrong often enough to be
-  // worth a player's attention, and stamina alone does not simply replace it as the one
-  // gauge that decides.
-  const clean = cleanWrong / Math.max(1, contested);
-  const rested_ = restedWrong / Math.max(1, contested);
-  if (clean > 0.15 && rested_ > 0.15) anyWorthBuilding = true;
-
-  console.log(
-    [
-      `  ${label}`,
-      `${shape.cost}/${shape.regen}`.padStart(11),
-      ofAll(binds).padStart(9),
-      ofAll(contested).padStart(11),
-      ofContested(cleanWrong).padStart(16),
-      ofContested(restedWrong).padStart(15),
-    ].join(' '),
-  );
-}
-
-console.log();
-console.log('contested = the cleanest and the most rested are different people, so');
-console.log('something is actually being chosen. The two right-hand columns are read');
-console.log('inside those states only.');
-console.log();
-console.log('If "cleanest wrong" is near zero, stamina changes nothing a player would');
-console.log('notice: radiation already decides and this is a second gauge agreeing with');
-console.log('it. If "rested wrong" is near zero, stamina has simply replaced radiation as');
-console.log('the one thing that decides, which is a swap and not a decision. Both have to');
-console.log('be substantial for there to be a weighing at all.');
-console.log();
-
-console.log(
-  anyWorthBuilding
-    ? 'At least one shape leaves both single-gauge policies wrong often enough to weigh.'
-    : 'No shape leaves both wrong. On this evidence stamina is bookkeeping, not a decision.',
-);
-
-// ------------------------------------------------- the second question: harsher both
+// --------------------------------------------------- the question, against the game
 
 /*
- * If radiation were harsher, would a harsher stamina still be a decision?
+ * Radiation has no cliff, and costs health on a curve.
  *
- * It should be, and for a reason the first table makes plain: the collapse is not about
- * stamina being punishing, it is about stamina's payback *overtaking* radiation's. Two
- * gauges only contest each other while they are the same size. Slow the decay and there
- * is room for a steeper stamina beside it.
+ * ### Two tables were cut from here on 2026-08-31, and why
  *
- * **But a contest is not the only thing worth having.** Both gauges harsh means a camp
- * whose survivor is mostly waiting, and idleness is already the thing behind the danger-5
- * inversion — Coastal Wreckage out-earns the Deep Zone precisely because 25 rads idles
- * somebody 41% of the time. A design that buys a decision by buying more waiting has sold
- * the game to pay for a choice about it.
+ * This file used to open with two passes that modelled radiation as a *threshold* — a
+ * `radWait` that is zero until the dose crosses sixty — because that is what the game had
+ * when the question was first asked. It stopped being true on 2026-08-27, when the cliff
+ * shipped out and damage became a curve, and the plan recorded the debt at the time: half
+ * this instrument's output described a game that did not exist and would be read as current
+ * by whoever picked it up next. Phase 10 is built, so it is paid.
  *
- * So this reports the contest *and* the cost: what fraction of a cycle the survivor spends
- * unavailable. Read the two together or not at all.
- */
-console.log();
-console.log('=== if radiation were harsher, could stamina be? ===');
-console.log();
-console.log('decay is CONFIG.radDecayPerHour. 0.8 is today; lower is slower to clear.');
-console.log();
-console.log('decay  shape       contested   cleanest wrong   rested wrong   survivor idle');
-console.log('  ' + '-'.repeat(76));
-
-for (const decay of [0.8, 0.5, 0.3]) {
-  for (const [label, shape] of SHAPES) {
-    let contested = 0;
-    let cleanWrong = 0;
-    let restedWrong = 0;
-    let occasions = 0;
-    let idleSum = 0;
-
-    let n = 0;
-    for (const trip of priced) {
-      for (let i = 0; i < STATES; i += 1) {
-        n += 1;
-        const a = { rads: (n * 37) % 60, stamina: 20 + ((n * 53) % 81) };
-        const b = { rads: (n * 71) % 60, stamina: 20 + ((n * 29) % 81) };
-
-        const at = rateOf(a, trip, shape, decay);
-        const bt = rateOf(b, trip, shape, decay);
-        if (!at || !bt) continue;
-        occasions += 1;
-
-        // What the better pick costs in waiting, as a share of the whole cycle.
-        const best = at.rate >= bt.rate ? at : bt;
-        idleSum += best.wait / (trip.hours + best.wait);
-
-        const gap = Math.abs(at.rate - bt.rate) / Math.max(at.rate, bt.rate);
-        if (gap < MATERIAL) continue;
-
-        const bestKey = at.rate >= bt.rate ? 'a' : 'b';
-        const cleanest = a.rads <= b.rads ? 'a' : 'b';
-        const rested = a.stamina >= b.stamina ? 'a' : 'b';
-        if (cleanest === rested) continue;
-        contested += 1;
-        if (bestKey !== cleanest) cleanWrong += 1;
-        if (bestKey !== rested) restedWrong += 1;
-      }
-    }
-
-    const ofC = (x) => `${((100 * x) / Math.max(1, contested)).toFixed(0)}%`;
-    console.log(
-      [
-        `  ${decay.toFixed(1)}`,
-        label,
-        `${((100 * contested) / occasions).toFixed(0)}%`.padStart(11),
-        ofC(cleanWrong).padStart(16),
-        ofC(restedWrong).padStart(15),
-        `${((100 * idleSum) / occasions).toFixed(0)}%`.padStart(15),
-      ].join(' '),
-    );
-  }
-  console.log();
-}
-
-console.log('A contest bought with idleness is not a bargain: "survivor idle" is the share');
-console.log('of every cycle spent waiting rather than playing, and it is already what makes');
-console.log('danger 4 out-earn danger 5. Read the two halves together.');
-
-// ------------------------------------------- the third question: no threshold at all
-
-/*
- * What if radiation had no cliff, and cost health on a curve instead?
- *
- * The two tables above answer a question and then refuse to answer the obvious follow-up.
- * Radiation is a *threshold* gauge — `radWait` is zero until the dose crosses sixty, so
- * slowing the decay sharpens something that is dormant in most states, which is why the
- * second table barely moves. Stamina as modelled is linear. **A threshold gauge and a
- * linear gauge cannot contest each other across a range**: below the line stamina decides
- * alone, above it radiation swamps everything, and only a stamina small enough to lose to
- * the rare bite looks like a decision.
+ * **The finding they produced is kept, because it is why the game changed.** Slowing the
+ * decay from 0.8 to 0.3 moved almost nothing, since a slower decay only sharpens a gauge
+ * dormant in most states. Stamina as modelled is linear. **A threshold gauge and a linear
+ * gauge cannot contest each other across a range**: below the line stamina decides alone,
+ * above it radiation swamps everything, and only a stamina small enough to lose to the rare
+ * bite looks like a decision. That is what sent the cliff away, and it is a fact about a
+ * shape rather than about a constant — so it survives its instrument.
  *
  * So the shapes have to match. Either radiation becomes continuous or stamina becomes a
  * threshold, and the first is the one worth measuring: it also removes a cliff a player
@@ -368,8 +164,17 @@ console.log('danger 4 out-earn danger 5. Read the two halves together.');
  * all: what makes somebody unavailable is health, because they bleed while irradiated and
  * only heal once the dose is nearly gone.
  */
-const EXPONENT = 4;
-const curve = (rads) => CONFIG.radDamagePerHour * Math.pow(rads / 100, EXPONENT);
+/*
+ * The game's own arithmetic, imported rather than modelled.
+ *
+ * Both halves of it. When this was a proposal it carried its own copy of the curve and a
+ * healing rule that switched off past `regenRadCeiling`, which is the thing measuring
+ * *changed*: what shipped fades healing in proportion to the dose instead. A tool holding
+ * a private copy of a rule the game has moved on from is exactly the fault the two cut
+ * tables were, arriving by the other door — so there is no copy left here to drift.
+ */
+const damageAt = (rads) => radDamagePerHourAt({ radiation: rads }, CONFIG);
+const healingAt = (rads) => CONFIG.regenPerHour * (1 - Math.min(100, Math.max(0, rads)) / 100);
 
 /** Hours until this survivor is fit to send again, bleeding the whole way down. */
 function recover(rads, health) {
@@ -378,8 +183,7 @@ function recover(rads, health) {
   let hours = 0;
 
   while ((hp < 85 || r > CONFIG.regenRadCeiling) && hours < 600) {
-    hp -= curve(r);
-    if (r < CONFIG.regenRadCeiling) hp = Math.min(100, hp + CONFIG.regenPerHour);
+    hp = Math.min(100, hp - damageAt(r) + healingAt(r));
     r = Math.max(0, r - CONFIG.radDecayPerHour);
     hours += 1;
     if (hp <= 0) return { hours: Infinity, dead: true };
@@ -389,7 +193,7 @@ function recover(rads, health) {
 }
 
 console.log();
-console.log(`=== and if radiation had no cliff: damage as (rads/100)^${EXPONENT} ===`);
+console.log(`=== damage on a curve: (rads/100)^${CONFIG.radDamageExponent}, as the game charges it ===`);
 console.log();
 console.log('no threshold to wait under, so the gauges are health and stamina.');
 console.log();
@@ -458,15 +262,20 @@ for (const [label, shape] of SHAPES) {
 }
 
 console.log();
-console.log('The contest doubles and then inverts. A continuous gauge always has something');
-console.log('to say, so nearly half of all dispatches are contested rather than a fifth —');
-console.log('and it is now the *harsh* stamina shapes that hold their own, because a gentle');
-console.log('one loses to a radiation that is no longer dormant. That is the same finding');
-console.log('as the first table, read the other way round: two gauges contest when they');
-console.log('are the same shape and the same size.');
+console.log('A continuous gauge always has something to say, so nearly half of all');
+console.log('dispatches are contested — and it is the *harsh* stamina shapes that hold');
+console.log('their own, because a radiation that is no longer dormant out-argues a gentle');
+console.log('one. Two gauges contest when they are the same shape and the same size.');
 console.log();
-console.log('Note the idle column against the first table rather than within it. Recovery');
-console.log('here waits for health as well as for the dose, which the threshold model did');
-console.log('not, so some of the jump is the stricter definition and not the mechanic.');
+console.log('"reach" is the shape the game shipped: 3.8 a worked hour, which is a hundred');
+console.log('points over the longest walk on the map rather than a figure off this table.');
+console.log('It sits where steep does and costs two points less idleness.');
+console.log();
+console.log('Two tables were cut from above this one on 2026-08-31 — see the note in the');
+console.log('source. They modelled a radiation that had a cliff, which the game stopped');
+console.log('having on 2026-08-27, and the figures here moved when the healing rule came');
+console.log('from tick.js instead of from a copy: healing now fades with the dose rather');
+console.log('than switching off under a ceiling, so recovery is slower low down and every');
+console.log('"healthiest wrong" figure is a few points higher than the plan records.');
 
 await pool.end();
