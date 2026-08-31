@@ -1694,16 +1694,31 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
 
         return {
           ...branch,
-          // No room for another, whether because one instrument is enough or because the
-          // shelter is not deep enough for a fourth bed.
-          fitted: standing >= allowed,
+          /*
+           * One is standing and there is no room for another — and **both halves matter**.
+           *
+           * This was `standing >= allowed`, which is true of a fitting the structure cannot
+           * hold at all: a watchtower at level 0 allows no Glass, so nought of nought read as
+           * full and a brand new camp was told the Glass, the Radio, filtration and the
+           * machine shop were all *fitted*. Reported from play on 2026-09-01. Every one of
+           * them was a fuel instrument four levels out of reach, which is the worst thing to
+           * be wrong about: it is the row telling a new player they have already done the
+           * thing they are supposed to be working towards.
+           *
+           * "No room for another" is only news when there is a first one. Nothing standing is
+           * not fitted; it is not built, and the check below this one says so properly.
+           */
+          fitted: standing > 0 && standing >= allowed,
           /*
            * And whether the thing in the way is the camp rather than the structure — a
            * spare bed nobody has come to sleep in yet. Kept apart from `fitted` because the
            * page has to say something different: "fitted" on an empty bed would be a plain
            * falsehood, and the two are undone by two different things.
+           *
+           * Carries the same guard for the same reason: with no beds at all and nobody alive
+           * to want one, `0 >= 0` announced an empty spare that does not exist.
            */
-          waiting: standing >= allowed && allowed < ceiling,
+          waiting: standing > 0 && standing >= allowed && allowed < ceiling,
           standing,
           allowed,
           shortBy: shortfall(purse, pack, price),

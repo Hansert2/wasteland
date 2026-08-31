@@ -746,6 +746,57 @@ test('the card that reads as chosen is the one the table would actually send', a
   });
 });
 
+test('nothing with nothing standing is ever reported as fitted', async () => {
+  /*
+   * Reported from play on 2026-09-01: a brand new camp said the Glass, the Radio,
+   * filtration and the machine shop were all fitted. Every one is a fuel instrument behind
+   * a level-4 structure, on a camp whose watchtower and workshop were at nought.
+   *
+   * `fitted` was `standing >= allowed`, and `fittingsAllowed` answers **0** for a structure
+   * below the fitting's required level — so nought of nought read as "no room for another"
+   * and the page called it done. The worst thing to be wrong about in that direction: it
+   * tells a new player they have already got the thing they are supposed to be working
+   * towards, and the row stops offering the level track that would get them there.
+   *
+   * The invariant is the one sentence that cannot be got wrong by arithmetic: **a fitting
+   * with none standing is not fitted.** Asserted across every structure and every branch of
+   * a fresh camp rather than against the four that were reported, because the fault was in
+   * a comparison and comparisons are wrong for whole classes at a time.
+   */
+  await withRollback(async (client) => {
+    const settlementId = await setup(client);
+    const view = await viewCamp(client, settlementId);
+
+    let checked = 0;
+    for (const structure of view.structures) {
+      for (const upgrade of structure.upgrades ?? []) {
+        checked += 1;
+        if (upgrade.standing === 0) {
+          assert.equal(
+            upgrade.fitted,
+            false,
+            `${upgrade.name}: none standing, and the page says fitted`,
+          );
+          assert.equal(
+            upgrade.waiting,
+            false,
+            `${upgrade.name}: none standing, and the page says a spare is empty`,
+          );
+        }
+        if (structure.level < upgrade.requiresLevel) {
+          assert.equal(
+            upgrade.fitted,
+            false,
+            `${upgrade.name}: needs ${structure.kind} ${upgrade.requiresLevel}, ` +
+              `the camp has ${structure.level}, and the page says fitted`,
+          );
+        }
+      }
+    }
+    assert.ok(checked >= 4, `only ${checked} fittings on the page, so this checked nothing`);
+  });
+});
+
 test('the stores line counts every mouth in the camp, and what recovery draws', async () => {
   /*
    * The page priced one survivor however many were standing there.
