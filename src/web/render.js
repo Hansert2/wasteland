@@ -1540,28 +1540,21 @@ ${PANE_CSS}
                       var(--plate);
   }
 
-  img.plate { display: block; object-fit: cover; border: 1px solid var(--rule);
-              opacity: .78; }
-  /* No transition: the brief allows no animation beyond the timers. This is a state
-     change, and it happens at once. */
-  .contact:hover img.plate { opacity: 1; }
-  /* The one place a plate is allowed any size: however many hours of a row whose subject
-     is a single place. Still a band rather than a picture — cropped wide, flush to the
-     column, under the line that names it rather than above. */
-  img.plate.band { width: 100%; height: 124px; border: 0;
-                   border-bottom: 1px solid var(--rule-in); opacity: .68; }
   /*
-   * Shorter inside a roster row, and it earns a rule on both sides.
+   * And the trip's own figures, on the ground of the place they were taken in.
    *
-   * 124px is the height of a band that is the top of its own block. Here it is one row of
-   * several, and a traveller whose row stands twice as tall as everybody else's has stopped
-   * being a row — so it is cropped harder, and the hairlines close it into the row rather
-   * than letting it run into the readout underneath.
+   * The same treatment as a dispatch row and deliberately so: the readout and the table
+   * below it are two views of one place, and a photograph that is a band in one and a
+   * ground in the other makes them look like two different kinds of thing. No hover here —
+   * a dispatch row lifts to .68 because it is a row you are considering, and this is a
+   * report rather than a choice.
    */
-  .person img.plate.band {
-    height: 78px;
-    margin-bottom: 10px;
-    border-top: 1px solid var(--rule-in);
+  .out-readout.plated {
+    background-image: linear-gradient(rgba(23, 22, 20, .82), rgba(23, 22, 20, .82)),
+                      var(--plate);
+    background-size: cover;
+    background-position: center 72%;
+    background-repeat: no-repeat;
   }
 
   ul.events { list-style: none; margin: 0; padding: 0; }
@@ -1944,8 +1937,9 @@ ${PANE_CSS}
     .block > table td.act { grid-column: 2; grid-row: 1 / span 2; width: auto; }
     /* No plates on a phone. Under this width the row is a stack a full screen tall,
        and a photograph behind that much text is a photograph nobody can see and every
-       line is read against. Dropping the image also means it is never fetched. */
-    .dispatch tr.plated { background-image: none; }
+       line is read against. Dropping the image also means it is never fetched. The
+       traveller's readout goes with it: same argument, same width, same place. */
+    .dispatch tr.plated, .out-readout.plated { background-image: none; }
   }
 `;
 
@@ -2738,13 +2732,6 @@ export const TIMERS = `
     follow(event.clientX, event.clientY);
   });
 
-  // A plate whose file is not there hides itself, so a region added to seed.js before
-  // anybody has drawn it degrades to the page as it was rather than to a broken-image
-  // icon. Capture phase: an <img> error does not bubble.
-  document.addEventListener('error', (event) => {
-    const img = event.target;
-    if (img && img.tagName === 'IMG' && img.classList.contains('plate')) img.remove();
-  }, true);
 
   // Fixed positioning is relative to the viewport, so a scroll moves the row out from
   // under a note that would otherwise stay exactly where it was.
@@ -3672,7 +3659,7 @@ function renderGate(gate) {
  * answers "what is this person doing" on its own, and the Away block could go back to being
  * only about where to send somebody.
  */
-function tripReadout(report) {
+function tripReadout(report, slug = null) {
   if (!report) return '';
 
   const signed = (value, mark) =>
@@ -3687,7 +3674,21 @@ function tripReadout(report) {
   }
   if (Object.keys(report.carrying ?? {}).length === 0) cells.push({ tag: 'haul', value: '—' });
 
-  return `<div class="readout out-readout">${cells
+  /*
+   * On the ground of the place they are in.
+   *
+   * This was a photograph in a band above the figures, which is the shape the Away block
+   * used when it was a block of its own — its own subject, its own width, the picture at the
+   * top of it. Inside a roster row it is a second thing stacked on a first, and it made one
+   * traveller's row twice the height of everybody else's.
+   *
+   * Under the figures instead, at the dispatch table's own strength: nothing is added to the
+   * row, the photograph is beneath the words it belongs to, most of the way to the page's
+   * grey. The same argument the table makes — a place behind a row rather than a picture
+   * beside one — and now the two say it the same way, which is what makes "Coastal Wreckage"
+   * on the readout and "Coastal Wreckage" in the table below read as one place.
+   */
+  return `<div class="readout out-readout${slug ? ' plated' : ''}"${plateGround(slug)}>${cells
     .map(
       (cell) =>
         `<div class="read"><span class="tag">${escape(cell.tag)}</span><span class="fig${
@@ -3961,8 +3962,7 @@ function renderSurvivor(survivor, strain, vitals, inventory, chosen, panelId) {
                 * the countdown is on the line under the name — so this is the one part that
                 * was dropped rather than moved.
                 */ ''}
-              ${plate(survivor.away.regionSlug, 'band')}
-              ${tripReadout(survivor.away.report)}
+              ${tripReadout(survivor.away.report, survivor.away.regionSlug)}
               ${/*
                  * The armed timer that fetches the next window.
                  *
@@ -4102,35 +4102,29 @@ function rate(value) {
 }
 
 /**
- * A region's plate, or nothing.
+ * A region's plate.
  *
  * Eleven photographs of eleven places, one per slug in `REGIONS`, in `public/img`.
  * `docs/DESIGN-BRIEF.md` §2.1 puts illustration on the restraint list because the
  * atmosphere is supposed to live in the prose, and a picture that competes with "Things
  * still grow here. That is the problem." has taken something the writing was holding.
  *
- * Two placements, and only one of them is a picture:
+ * So it is never a picture. It is ground: a photograph underneath the words it belongs to,
+ * most of the way to the page's own grey, in the two places that are about one region —
+ * the dispatch row you would send somebody to, and the readout of the trip somebody is on.
+ * It began as a 168px thumbnail in a fifth column of the table, which was a picture beside
+ * a row rather than a row with a place behind it, and it cost the description a chunk of
+ * the only measure it had.
  *
- * - **The dispatch row** gets it as ground rather than as content — see `.dispatch
- *   tr.plated`. Nothing is added to the row; the photograph is underneath the words it
- *   belongs to, most of the way to the page's own grey. It was a 168px thumbnail in a
- *   fifth column first, which was a picture beside a row rather than a row with a place
- *   behind it, and it cost the description a chunk of the only measure it had.
- * - **The Away block** keeps an <img>, because there the place is the subject: one
- *   region, for eighteen hours, with the countdown on it.
+ * It was also an <img> band at the top of the Away block, back when that block was one
+ * region for eighteen hours and had the width to be about it. The trip reports live in a
+ * roster row now, where a band is a second thing stacked on a first — one traveller's row
+ * standing twice as tall as everybody else's — so both placements are grounds, and there
+ * is nothing here that renders an <img>. That is why the load-failure handler is gone from
+ * the client script too: a background that 404s paints nothing, all by itself.
  *
- * `alt=""` on purpose rather than by omission. The region's name and description are in
- * the same block, so a caption would be a third copy of the same fact.
- *
- * A slug with no file: the row simply has no ground, because a background that 404s
- * paints nothing. The <img> in the Away block cannot do that, so the client script
- * removes one that fails to load — see the error handler in `TIMERS`.
+ * A slug with no file therefore costs nothing: the row simply has no ground.
  */
-function plate(slug, kind = 'band') {
-  if (!slug) return '';
-  return `<img class="plate ${kind}" src="/img/${escape(slug)}.webp" alt=""
-     width="1200" height="400" loading="lazy" decoding="async">`;
-}
 
 /**
  * The same plate as a custom property for the row to use as its background.

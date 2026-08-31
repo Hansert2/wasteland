@@ -436,14 +436,23 @@ test('somebody out there is shown the place they are in', () => {
   const html = STATES.away;
   assert.ok(html, 'there is a page with somebody out on it');
 
-  const shown = /<img class="plate band" src="\/img\/([a-z0-9_]+)\.webp"/.exec(html);
-  assert.ok(shown, 'the away row carries the region plate');
+  const shown = /class="readout out-readout plated" style="--plate:url\(\/img\/([a-z0-9_]+)\.webp\)"/.exec(html);
+  assert.ok(shown, 'the trip readout stands on the region plate');
   assert.equal(shown[1], 'the_deep_zone', 'and it is the place they actually went');
 
   // Inside the roster row, which is what makes it theirs rather than the page's.
   assert.match(
     html,
-    /<div class="person">[^]*?<img class="plate band"/,
+    /<div class="person">[^]*?out-readout plated/,
     'the plate is in a survivor row',
   );
+
+  /*
+   * And it is a ground, not a picture — the whole of what the restraint list allows.
+   *
+   * Asserted as an absence because that is how it went wrong before: the <img> band was
+   * the Away block's shape, the block became a row, and for a while the file carried a
+   * plate() nobody called and a stylesheet rule for a tag nobody rendered.
+   */
+  assert.doesNotMatch(html, /<img[^>]*class="plate/, 'no region is rendered as a picture');
 });
