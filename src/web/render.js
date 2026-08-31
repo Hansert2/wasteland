@@ -2810,15 +2810,26 @@ export const TIMERS = `
 
     if (host !== noted) {
       /*
-       * This host's own note, not the first one anywhere beneath it.
+       * This host's own note: the first one inside it that no *nearer* host owns.
        *
-       * Unscoped, a ".noted" that contains another ".noted" shows its child's explanation:
-       * the gauges now carry small marks for what is acting on them, each with a note of
-       * its own, and the outer gauge would have picked up the first of those instead of its
-       * own scale. Every note in the file is a direct child of the thing it explains, which
-       * is what the markup already meant and this now says.
+       * Unscoped, a ".noted" containing another ".noted" shows its child's explanation —
+       * the gauges carry a mark per effect, each with a note of its own, and the outer
+       * gauge would pick up the first of those instead of its own scale.
+       *
+       * The first fix for that was ":scope > .note", direct children only, and it was
+       * wrong in a way nothing caught: **a span cannot be a direct child of a tr.** Three
+       * blocks put their note in a cell because the HTML gives them no choice — the
+       * structures table, the bench, and the pack — so from the day the scoping landed
+       * every row in all three hovered and said nothing. Reported from play, four commits
+       * later.
+       *
+       * Ownership is the rule the markup actually expresses, and it is what "closest" is
+       * for: a note belongs to the nearest host above it, so it is this host's note when
+       * that nearest host is this one. Correct for a cell three levels down and still
+       * correct for a mark nested inside a gauge.
        */
-      const source = host.querySelector(':scope > .note');
+      const mine = (one) => one.closest('.noted') === host;
+      const source = Array.prototype.find.call(host.querySelectorAll('.note'), mine) || null;
       const text = source ? source.textContent.trim() : '';
       if (!text) { drop(); return; }
       noted = host;

@@ -407,10 +407,28 @@ test('every gauge says what its number counts, in a place the note script can fi
       assert.ok(own.length > 0, `${name}: a mark with no word on it`);
     }
     if (html.includes('class="driver noted"')) {
-      // The client script is inlined in the page, so this is checkable from here.
+      /*
+       * The client script is inlined in the page, so this is checkable from here — and this
+       * assertion is why the bug it now guards against lived for four commits.
+       *
+       * It used to require `querySelector(':scope > .note')`, direct children only, which was
+       * the first fix for marks nesting inside gauges. **A span cannot be a direct child of a
+       * tr.** The structures table, the bench and the pack all put their note in a cell
+       * because the HTML gives them no choice, so every row in all three hovered and said
+       * nothing — while this test held the broken selector in place and called it the
+       * contract. Reported from play on 2026-09-01.
+       *
+       * So it asserts the *rule* now rather than the mechanism: a note belongs to the nearest
+       * host above it. That is true of a cell three levels down and of a mark inside a gauge,
+       * and it cannot be satisfied by a selector that only looks one level.
+       */
       assert.ok(
-        html.includes("querySelector(':scope > .note')"),
-        `${name}: marks nest inside gauges, but the handler still takes the first note under a host`,
+        html.includes("closest('.noted') === host"),
+        `${name}: the handler must find a note by which host owns it, not by direct childhood`,
+      );
+      assert.ok(
+        !html.includes("querySelector(':scope > .note')"),
+        `${name}: direct-child scoping is back, and every table row's popup is dead again`,
       );
     }
   }
