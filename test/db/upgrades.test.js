@@ -12,6 +12,7 @@ import { viewCamp } from '../../src/services/view-camp.js';
 import { campPage } from '../../src/web/render.js';
 import { takeInWanderer } from '../../src/services/take-in-wanderer.js';
 import { UPGRADES } from '../../src/game/structures.js';
+import { CONFIG } from '../../src/game/constants.js';
 import { InputError } from '../../src/errors.js';
 
 const hours = (h) => h * 60 * 60 * 1000;
@@ -745,7 +746,7 @@ test('the card that reads as chosen is the one the table would actually send', a
   });
 });
 
-test('the stores line counts every mouth in the camp, and what recovery drinks', async () => {
+test('the stores line counts every mouth in the camp, and what recovery draws', async () => {
   /*
    * The page priced one survivor however many were standing there.
    *
@@ -781,20 +782,30 @@ test('the stores line counts every mouth in the camp, and what recovery drinks',
       'and twice as much food',
     );
 
-    // And the one paying back stamina drinks several times a mouth.
+    /*
+     * And the one paying back stamina draws several times a mouth — of both.
+     *
+     * Rations rather than food, decided 2026-08-31: somebody sleeping off a day's walk is
+     * not eating six times as much and drinking normally. It also means the purifier is
+     * labour capacity the way the garden is, rather than the structure you build so nobody
+     * dies of thirst.
+     */
     await client.query(
       "update characters set stamina = 40 where settlement_id = $1 and name = 'Odd'",
       [settlementId],
     );
     const resting = await viewCamp(client, settlementId);
-    assert.ok(
-      drawOf(resting, 'food') > drawOf(two, 'food'),
-      'a survivor recovering costs the camp more than one idling',
+    const extra = CONFIG.staminaRecoveryRationMultiplier - 1;
+
+    assert.equal(
+      drawOf(resting, 'food'),
+      drawOf(two, 'food') + CONFIG.foodPerHour * extra,
+      'the resting one eats a multiple of a mouth and the other still eats one',
     );
     assert.equal(
       drawOf(resting, 'water'),
-      drawOf(two, 'water'),
-      'and it is food that recovery drinks, not water',
+      drawOf(two, 'water') + CONFIG.waterPerHour * extra,
+      'and drinks by the same multiple',
     );
   });
 });

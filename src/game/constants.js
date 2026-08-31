@@ -156,8 +156,21 @@ export const CONFIG = {
    * labour builds production.** The garden has had one interesting level and seven
    * decorative ones; this gives it a track, and it quietly makes a shelter's storage cap
    * into a reserve of working hours.
+   *
+   * ### Rations, not food
+   *
+   * It draws water at the same multiple, which is what "rations" means and was the point
+   * from the start — somebody sleeping off a day's walk is not eating six times as much and
+   * drinking normally. Food alone would have made the garden the only structure that decides
+   * how many people a camp can keep working, and left the purifier as the thing you build
+   * so nobody dies. Both of them are production, so both of them limit labour.
+   *
+   * Water is the more plentiful of the two — a purifier makes 1.25 a level against the
+   * garden's 0.6, and a mouth drinks 0.75 against 0.5 — so the garden still binds first on
+   * a camp that has built evenly. It is a second gate behind the first rather than a new
+   * one in front of it.
    */
-  staminaRecoveryFoodMultiplier: 6,
+  staminaRecoveryRationMultiplier: 6,
 
   /*
    * Recovery makes a survivor hungry, and yields to healing rather than blocking it.

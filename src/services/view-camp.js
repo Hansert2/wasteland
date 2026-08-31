@@ -1149,8 +1149,9 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
    * The simulation was always right: `simulateSurvivor` draws per person and the walk
    * covers the roster. Only the page was counting one.
    *
-   * **And recovery drinks.** A survivor paying back stamina eats six times a mouth, so a
-   * camp with three people resting is drawing nine food an hour rather than one and a half.
+   * **And recovery draws rations.** A survivor paying back stamina takes six times a mouth
+   * of both food and water, so a camp with three people resting is drawing nine food an hour
+   * rather than one and a half.
    * That is the largest single number on the page for a camp that has just come home, and
    * leaving it out would make the stores line most wrong exactly when it matters most.
    * `workingAt` is the tick's own answer to "is this person resting", so this asks it the
@@ -1160,8 +1161,9 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
   for (const person of state.survivors ?? (state.survivor ? [state.survivor] : [])) {
     if (!person.alive) continue;
     const resting = workingAt(state, person) === null && Number(person.stamina) < 100;
-    eats.food += CONFIG.foodPerHour * (resting ? CONFIG.staminaRecoveryFoodMultiplier : 1);
-    eats.water += CONFIG.waterPerHour;
+    const draw = resting ? CONFIG.staminaRecoveryRationMultiplier : 1;
+    eats.food += CONFIG.foodPerHour * draw;
+    eats.water += CONFIG.waterPerHour * draw;
   }
 
   /**

@@ -804,8 +804,13 @@ function simulateSurvivor(state, survivor, hours, at, events, config) {
    * Draw rations from storage. Partial supply gives partial relief, so a camp running
    * a small deficit degrades gradually instead of falling off a cliff.
    *
-   * **Recovery drinks, and this is the load-bearing part of Phase 10.** Food is not a
-   * constraint in this game — every camp measured sits at its storage cap throwing food
+   * **Recovery draws rations, and this is the load-bearing part of Phase 10.** Both of
+   * them: somebody sleeping off a day's walk is not eating six times as much and drinking
+   * normally. Food and water are also the two things a camp *produces*, so pricing recovery
+   * in both is what makes the garden and the purifier into labour capacity rather than
+   * leaving one of them as the thing you build so nobody dies.
+   *
+   * Neither is a constraint in this game — every camp measured sits at its storage cap throwing food
    * away hourly, and a garden outgrows a mouth at level two — so a recovery priced at any
    * ordinary rate costs nothing and stamina would be scenery for a third time. At six times
    * a mouth the store notices, and a shelter's cap quietly becomes a reserve of working
@@ -819,10 +824,10 @@ function simulateSurvivor(state, survivor, hours, at, events, config) {
    * starvation window intact: on empty stores the fraction is zero either way, so a
    * recovering survivor starves at exactly the rate they always did.
    */
-  const appetite = recovering ? config.staminaRecoveryFoodMultiplier : 1;
+  const appetite = recovering ? config.staminaRecoveryRationMultiplier : 1;
   const fedFraction = Math.min(
     draw(state.settlement.resources.food, config.foodPerHour * appetite * hours),
-    draw(state.settlement.resources.water, config.waterPerHour * hours),
+    draw(state.settlement.resources.water, config.waterPerHour * appetite * hours),
   );
 
   survivor.hunger = clamp(
