@@ -597,19 +597,6 @@ test('every panel that prints what the survivor drinks prints the same number', 
   await withRollback(async (client) => {
     const { settlementId } = await seed(client);
 
-    /*
-     * Hungry on purpose, because the panel has to be on the page to be compared with.
-     *
-     * A gauge with nothing acting on it stopped rendering on 2026-08-31, and a fed survivor
-     * has nothing acting on their hunger — so the survivor panel's half of this comparison
-     * simply is not drawn. That is the mechanic working, and it is also the cost of it: the
-     * page states what a mouth draws only once the camp is failing to supply it.
-     */
-    await client.query(
-      'update characters set hunger = 30 where settlement_id = $1 and died_at is null',
-      [settlementId],
-    );
-
     const view = await viewCamp(client, settlementId, T0 + hours(1));
     const html = campPage(view, { view: 'survivor' });
 

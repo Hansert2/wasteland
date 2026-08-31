@@ -613,22 +613,23 @@ function driversFor(person, { working, resting, fedShort, radScrubbing, strain, 
     });
   }
 
+  /*
+   * A mark is something acting on the gauge, and only that.
+   *
+   * There was one here reading "nothing comes off out there" for a survivor on the road,
+   * and it is the wrong kind of thing to say: it announces a *non*-effect. Nothing is
+   * touching their dose, which is precisely the state an empty mark strip already
+   * describes — so the mark was a label whose whole content was the absence of a label.
+   *
+   * It was also the second copy of a fact the page already carries. Where they are is on
+   * the same row, under their name, on a photograph of the place. A reader who has taken
+   * that in does not need telling again that the camp's filter is not with them.
+   *
+   * The rule this leaves: a mark names a thing doing something to the number. If the number
+   * is simply sitting still, the strip is empty and that is the whole report.
+   */
   const radiation = [];
-  if (working === 'away') {
-    radiation.push({
-      /*
-       * Asked about on 2026-08-31: "what does no scrubbing out there mean".
-       *
-       * Which is the answer. "Scrubbing" is the game's own word — it is in the filtration
-       * summary and in this gauge's note — but a mark has to carry itself, and in the note
-       * the word arrives beside a rate and a contrast that teach it. Alone it is a term you
-       * either already know or do not, and a label nobody can read is a label that is not
-       * there. This says the effect instead, in the hover's own words, so the two agree.
-       */
-      tag: 'nothing comes off out there',
-      note: 'A dose decays in the camp and not on the road. Nothing comes off until they are home.',
-    });
-  } else if (radScrubbing) {
+  if (working !== 'away' && radScrubbing) {
     radiation.push({
       tag: 'filtration',
       note: 'The filter on the purifier scrubs the camp, so a dose comes off faster than it would.',

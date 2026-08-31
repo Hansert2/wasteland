@@ -4021,10 +4021,17 @@ function renderSurvivor(survivor, strain, vitals, inventory, chosen, panelId) {
    * label at the grey the page uses for something that is merely present. Anything acting
    * on it wakes it up, whatever the number says.
    */
-  const gauge = (label, value, of, note, tail = '', acting = [], resting = false) => {
-    // Nothing is happening to it, so it is not here. The decision of 2026-08-31.
-    if (resting && (acting ?? []).length === 0 && !tail) return '';
-
+  /*
+   * Every gauge, always. What comes and goes is the marks under it.
+   *
+   * This spent an afternoon not rendering a gauge that had nothing acting on it, which was
+   * a misreading of the note it was written from: the four figures are the reading, and a
+   * reading that disappears when it is unremarkable is a reading you cannot trust to be
+   * there. Full health is a fact about a survivor; a blank where it should be is not.
+   *
+   * `resting` stays in the signature because the marks still use it — see `driversFor`.
+   */
+  const gauge = (label, value, of, note, tail = '', acting = []) => {
     return `<div class="gauge noted g-${label.toLowerCase()}">
       <div class="gauge-top"><span class="tag">${label}</span>
         <span class="val">${n(value)}</span></div>
@@ -4135,13 +4142,8 @@ function renderSurvivor(survivor, strain, vitals, inventory, chosen, panelId) {
        }
        <div class="tabbed" id="${panelId(survivor, 'condition')}" data-tab="condition" role="tabpanel">
          <div class="gauges">
-           ${/*
-             * "At rest" is each gauge's own uninteresting end, not a shared number: full
-             * for the two that count what somebody has, empty for the two that count what
-             * is being done to them.
-             */ ''}
-           ${gauge('Health', survivor.health, 100, said.health, '', survivor.drivers?.health, survivor.health >= 100)}
-           ${gauge('Hunger', survivor.hunger, 100, said.hunger, '', survivor.drivers?.hunger, survivor.hunger <= 0)}
+           ${gauge('Health', survivor.health, 100, said.health, '', survivor.drivers?.health)}
+           ${gauge('Hunger', survivor.hunger, 100, said.hunger, '', survivor.drivers?.hunger)}
            ${gauge(
              'Radiation',
              survivor.radiation,
@@ -4149,7 +4151,6 @@ function renderSurvivor(survivor, strain, vitals, inventory, chosen, panelId) {
              said.radiation,
              strainNote(strain),
              survivor.drivers?.radiation,
-             survivor.radiation <= 0,
            )}
            ${/*
              * Phase 10's gauge, and the first time `characters.stamina` has been on a page.
@@ -4158,7 +4159,7 @@ function renderSurvivor(survivor, strain, vitals, inventory, chosen, panelId) {
              * do next rather than how they are: health, hunger and the dose are their
              * condition, and this is their day.
              */ ''}
-           ${gauge('Stamina', survivor.stamina, 100, said.stamina, '', survivor.drivers?.stamina, survivor.stamina >= 100)}
+           ${gauge('Stamina', survivor.stamina, 100, said.stamina, '', survivor.drivers?.stamina)}
          </div>
        </div>
        <div class="tabbed" id="${panelId(survivor, 'skills')}" data-tab="skills" role="tabpanel">
