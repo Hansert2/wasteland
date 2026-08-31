@@ -377,9 +377,33 @@ test('every survivor tab has a panel, a rule that hides it, and a rule that show
     );
 
     for (const tab of tabs) {
-      assert.ok(
-        html.includes(`class="tabbed" id="survivor-${tab}" data-tab="${tab}"`),
-        `${name}: the ${tab} tab has no panel`,
+      /*
+       * A panel per person, and the ids are what say so.
+       *
+       * They were all "survivor-condition", which was one id on the page while a camp held
+       * one survivor and four copies of it the moment a camp held four — invalid, and the
+       * exact thing aria-controls resolves against. One tab strip now controls every
+       * person's panel for its tab, so the ids carry whose panel it is.
+       */
+      const panels = [...html.matchAll(new RegExp(
+        // [0-9] rather than a backslash-d: this pattern is built in a template literal, where a
+        // lone backslash-d collapses to a bare d before RegExp ever sees it.
+        `class="tabbed" id="(survivor-[0-9]+-${tab})" data-tab="${tab}"`, 'g'
+      ))].map((m) => m[1]);
+      assert.ok(panels.length > 0, `${name}: the ${tab} tab has no panel`);
+      assert.equal(
+        new Set(panels).size,
+        panels.length,
+        `${name}: two ${tab} panels share an id`,
+      );
+
+      // And the tab claims all of them, which is what makes one strip honest about a roster.
+      const claimed = new RegExp(`data-survivortab="${tab}"[^>]*aria-controls="([^"]+)"`).exec(html);
+      assert.ok(claimed, `${name}: the ${tab} tab controls nothing`);
+      assert.deepEqual(
+        claimed[1].split(' ').sort(),
+        panels.slice().sort(),
+        `${name}: the ${tab} tab does not name every panel it switches`,
       );
       assert.ok(
         html.includes(`body[data-survivor-tab="${tab}"] .tabbed[data-tab="${tab}"]`),

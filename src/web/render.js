@@ -844,44 +844,23 @@ ${PANE_CSS}
   .stream { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
 
   /*
-   * The people, across the top, as many to a row as the window has room for.
+   * The roster is one block again, and it spans the view.
    *
-   * This view was a 1fr column and a 300px sidebar: the dispatch table on the left, the
-   * survivor on the right. That was the right shape for a camp of one and it aged badly —
-   * every bed built adds another full block to a third of a column, so three survivors
-   * stacked their gauges, tabs and packs down a 300px gutter while the widest comparison
-   * table in the game was squeezed into what was left. The wide thing wanted the width.
-   *
-   * "auto-fit" rather than a fixed count, because the roster is what it is: one survivor
-   * fills the row, four wrap onto two, and no number of them is a special case in here.
+   * It was a grid of cards for about a day: every survivor a block of their own, laid across
+   * the top. That solved the 300px sidebar and bought a new problem in its place — four
+   * headers all reading "Survivor", four copies of a tab strip that could never disagree,
+   * four frames around what is really one list. The frame belongs to the list, so there is
+   * one block now, the people are rows in it, and this view needs no arrangement at all: the
+   * stream's own column is the whole of it.
    */
-  body[data-pane="survivor"] .lane-people {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
-    gap: 18px;
-    align-items: start;
-  }
-  /*
-   * The sections dissolve so the blocks inside them are the grid items.
-   *
-   * "#s-survivor" holds one block per survivor, and as a grid *item* that is a single
-   * cell with a stack in it — the roster back in a column, one indirection further down.
-   * "display: contents" hands its children to the grid. Written with the ids rather than
-   * with the wrapper's class because "PANE_CSS" sets "display: block" through an id and
-   * would otherwise out-rank this; it also has to stay below that rule in the sheet.
-   */
-  body[data-pane="survivor"] #s-survivor,
-  body[data-pane="survivor"] #s-gate { display: contents; }
+
   /*
    * The Contact box repeats the trip's state on purpose — the decision needs those facts
-   * beside it rather than a click away. On this view they are not a click away: the
-   * survivor's own block is on the same screen saying the same sentence about the same
-   * trip. So the line goes here and only here, and the box keeps it everywhere else.
+   * beside it rather than a click away. On this view they are not a click away: the roster
+   * is on the same screen saying the same sentence about the same trip. So the line goes
+   * there and only there, and the box keeps it everywhere else.
    */
   body[data-pane="survivor"] #s-moment .state { display: none; }
-  @media (max-width: 620px) {
-    body[data-pane="survivor"] .lane-people { display: contents; }
-  }
 
   /* The away log beside Next, on the one view that has both. Unpicked when the log has
      a list in it rather than a line — half a column is not where you read the longest
@@ -1581,7 +1560,44 @@ ${PANE_CSS}
 
   /* ---- gauges ---- */
 
-  .gauges { display: flex; flex-direction: column; gap: 13px; }
+  /*
+   * A survivor, as a row across the block.
+   *
+   * Who they are and what has them on the left in a fixed column so the names stack into a
+   * readable edge; the open tab in the middle taking whatever is left; and whether they are
+   * the one going at the right end, where the eye lands last and where the answer to "who
+   * walks out of the gate" is the last thing read before the table below.
+   */
+  .person {
+    display: grid;
+    grid-template-columns: 190px minmax(0, 1fr) auto;
+    gap: 0 26px;
+    align-items: start;
+    padding: 14px 18px;
+    border-top: 1px solid var(--rule);
+  }
+  .person:first-child { border-top: 0; }
+  .who-head .out { margin-top: 4px; }
+  /* The sending control loses its own rule and padding in here: the row's border is already
+     the line between people, and a second one inside the row divides nothing. */
+  .person .goes { border-top: 0; padding: 2px 0 0; }
+
+  @media (max-width: 760px) {
+    .person { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  }
+
+  /*
+   * Side by side, now that there is width for it.
+   *
+   * Three gauges stacked is the shape a 300px column forces. Across a row they read as one
+   * reading of one person — health against hunger against the dose, in a glance — which is
+   * the comparison that decides whether this is somebody you send anywhere today.
+   */
+  .gauges { display: flex; gap: 26px; }
+  .gauges > .gauge { flex: 1 1 0; min-width: 0; }
+  @media (max-width: 620px) {
+    .gauges { flex-direction: column; gap: 13px; }
+  }
   .gauge-top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
   .gauge-top .tag { letter-spacing: .14em; color: var(--dim); }
   .gauge-top .val { font-family: var(--numer); font-size: 16px; line-height: 1;
@@ -3072,23 +3088,20 @@ export function campPage(view, { error, pane = 'camp' } = {}) {
       * This was two columns — the dispatch table in a 1fr lane, the survivor in a 300px
       * sidebar — which is the shape a camp of one wants. A camp of four stacks four full
       * blocks down that gutter, so the roster went wide and the eleven-row table took the
-      * full width it always wanted. The wrapper survives because the grid needs a parent
-      * that is not "main": it is display: contents on every other view, so the four views
-      * that do not arrange these sections cannot tell it is there.
+      * full width it always wanted. No wrapper: the roster is one block with the people as
+      * rows in it, so there is nothing here left to arrange.
       *
       * Order is what puts the roster on top, and it costs nothing elsewhere: none of
       * these four sections appears on any other view, so filtered through PANES every
       * other page is byte-for-byte what it was.
       */ ''}
-    <div class="lane lane-people">
-      ${section(
-        'survivor',
-        view.roster?.length
-          ? renderSurvivors(view)
-          : renderNoSurvivor(view.fallenCount > 0, view.arriving),
-      )}
-      ${section('gate', renderGate(view.atTheGate))}
-    </div>
+    ${section(
+      'survivor',
+      view.roster?.length
+        ? renderSurvivors(view)
+        : renderNoSurvivor(view.fallenCount > 0, view.arriving),
+    )}
+    ${section('gate', renderGate(view.atTheGate))}
     ${section(
       'expedition',
       view.roster?.length ? renderExpeditions(view) : quiet('Away', NOTHING.expedition),
@@ -3774,14 +3787,36 @@ function renderSurvivors(view) {
    */
   const chosen = view.roster.find((one) => !one.busy)?.id ?? null;
 
-  return view.roster
+  /*
+   * One tab strip for the whole roster, because there was only ever one tab.
+   *
+   * Every survivor carried their own, and the switch is a single attribute on <body> — so
+   * four strips were four copies of one control, always in the same state, and clicking any
+   * of them moved all four. A control that cannot disagree with its neighbours is not four
+   * controls. It is one, printed four times.
+   *
+   * "aria-controls" takes a list, which is exactly the shape of the truth here: one tab, and
+   * every person's panel for it.
+   */
+  const panelId = (person, tab) => `survivor-${person.id}-${tab}`;
+  const tabs = `<span class="tabs" role="tablist" aria-label="Survivors">${SURVIVOR_TABS.map(
+    ([id, label]) =>
+      `<button type="button" class="tab" data-survivortab="${id}"
+               role="tab" aria-controls="${view.roster
+                 .map((person) => panelId(person, id))
+                 .join(' ')}">${label}</button>`,
+  ).join('')}</span>`;
+
+  const people = view.roster
     .map((person) =>
-      renderSurvivor(person, person.strain, view.vitals, person.inventory, chosen),
+      renderSurvivor(person, person.strain, view.vitals, person.inventory, chosen, panelId),
     )
     .join('');
+
+  return block('Survivors', people, { flush: true, aside: tabs });
 }
 
-function renderSurvivor(survivor, strain, vitals, inventory, chosen = null) {
+function renderSurvivor(survivor, strain, vitals, inventory, chosen, panelId) {
   /*
    * What this one is, under how they are doing — as figures now rather than as a sentence.
    *
@@ -3792,25 +3827,16 @@ function renderSurvivor(survivor, strain, vitals, inventory, chosen = null) {
   const who = skillStats(survivor.skills);
 
   /*
-   * Two tabs, and the switch lives on <body> rather than in here.
+   * The tabs are built once, up in renderSurvivors, and ride in the block's label strip.
    *
-   * That is the same trick `PANES` uses one level up, for the same reason and one more.
-   * The reason: a grouping expressed in CSS from outside leaves the markup it groups
-   * untouched, so nothing in the block has to know it is in a tab. The extra one: this
-   * section is swapped in place whenever the survivor changes, and any state held inside it
-   * — a checked radio, an `.on` class, an open details — is destroyed by that swap. A
-   * player watching the skills tab would be thrown back to the gauges every time a timer
-   * fired. The body attribute is outside the swapped region and survives it.
-   *
-   * Which also means the active tab must be styled from the body attribute rather than
-   * from a class the server wrote, because after a swap the server's class is a snapshot of
-   * whichever tab was open when the page was first drawn.
+   * The switch lives on <body> rather than in here, which is the same trick PANES uses one
+   * level up and for the same reason and one more. The reason: a grouping expressed in CSS
+   * from outside leaves the markup it groups untouched, so nothing in here has to know it is
+   * in a tab. The extra one: this section is swapped in place whenever anything changes, and
+   * any state held inside it — a checked radio, an .on class, an open details — is destroyed
+   * by that swap. A player watching the skills tab would be thrown back to the gauges every
+   * time a timer fired. The body attribute is outside the swapped region and survives it.
    */
-  const tabs = `<span class="tabs" role="tablist" aria-label="Survivor">${SURVIVOR_TABS.map(
-    ([id, label]) =>
-      `<button type="button" class="tab" data-survivortab="${id}"
-               role="tab" aria-controls="survivor-${id}">${label}</button>`,
-  ).join('')}</span>`;
 
   /*
    * Number first, bar second — and the bar is the reason this is not a table.
@@ -3863,81 +3889,75 @@ function renderSurvivor(survivor, strain, vitals, inventory, chosen = null) {
       </label>
     </div>`;
 
-  return block(
-    'Survivor',
-    `<div class="who-name">${escape(survivor.name ?? 'Survivor')}</div>
-     ${
-       /*
-        * Where they are, above the tabs rather than behind one.
-        *
-        * Health and radiation keep moving while somebody is out — the dose accrues across
-        * the walk since Phase 11 — so putting the trip in a tab would hide the numbers most
-        * worth watching at the moment they move fastest.
-        */
-       survivor.away
-         ? `<p class="out">away &middot; ${escape(survivor.away.regionName)}
-              <span class="short">&middot; back in</span> ${countdown(survivor.away.returnsAt, 'now')}</p>
-            ${tripReadout(survivor.away.report)}
-            ${/*
-               * The armed timer that fetches the next window.
-               *
-               * It lived on the Away block's trip report, and moving the reports into these
-               * blocks left it defined and never called — so the Contact box stopped arriving
-               * on its own and only appeared if you happened to reload inside a window. The
-               * db suite caught it. One per traveller now, which is what a roster needs:
-               * each trip arms for its own next moment.
-               */ ''}
-            ${survivor.away.report ? momentAlarm(survivor.away.report) : ''}`
-         : /*
-            * Or what else has them, in the same place and the same voice.
-            *
-            * A survivor who is away has said so under their name since the trip readouts
-            * moved into these blocks. One who is building or at the bench said nothing here
-            * and instead turned up, greyed out, in a dropdown two blocks down — so the
-            * player learned that Wren was busy by going to ask Wren to do something else.
-            * Occupation is a fact about a person, and this block is the person, so it is
-            * stated here first and the dropdowns only have to agree with it.
-            */
-           survivor.busy
-           ? `<p class="out">${occupiedFully(survivor.busy, survivor.busyWith)}</p>`
+  /*
+   * A row in the roster rather than a panel of its own.
+   *
+   * Every survivor used to be a whole block — its own header, its own tab strip, its own
+   * border — which is what a camp of one deserves and what a camp of four cannot carry: four
+   * headers all saying "Survivor", four copies of one control, four frames around what is
+   * really one list. So the frame went up a level and the person came down to a row.
+   *
+   * Three columns, because at full width the alternative is a name with a great deal of
+   * nothing beside it: who they are and what has them on the left, the open tab in the
+   * middle, and whether they are the one going at the right end where the eye lands last.
+   */
+  return `<div class="person">
+     <div class="who-head">
+       <div class="who-name">${escape(survivor.name ?? 'Survivor')}</div>
+       ${
+         /*
+          * Where they are, beside the tabs rather than behind one.
+          *
+          * Health and radiation keep moving while somebody is out — the dose accrues across
+          * the walk since Phase 11 — so putting the trip in a tab would hide the numbers most
+          * worth watching at the moment they move fastest.
+          */
+         survivor.away
+           ? `<p class="out">away &middot; ${escape(survivor.away.regionName)}
+                <span class="short">&middot; back in</span> ${countdown(survivor.away.returnsAt, 'now')}</p>`
+           : survivor.busy
+             ? `<p class="out">${occupiedFully(survivor.busy, survivor.busyWith)}</p>`
+             : ''
+       }
+     </div>
+     <div class="who-body">
+       ${
+         survivor.away
+           ? `${tripReadout(survivor.away.report)}
+              ${/*
+                 * The armed timer that fetches the next window.
+                 *
+                 * It lived on the Away block's trip report, and moving the reports onto the
+                 * survivors left it defined and never called — so the Contact box stopped
+                 * arriving on its own and only appeared if you happened to reload inside a
+                 * window. The db suite caught it. One per traveller, which is what a roster
+                 * needs: each trip arms for its own next moment.
+                 */ ''}
+              ${survivor.away.report ? momentAlarm(survivor.away.report) : ''}`
            : ''
-     }
-     <div class="tabbed" id="survivor-condition" data-tab="condition" role="tabpanel">
-       <div class="gauges">
-         ${gauge('Health', survivor.health, 100, said.health)}
-         ${gauge('Hunger', survivor.hunger, 100, said.hunger)}
-         ${gauge(
-           'Radiation',
-           survivor.radiation,
-           strain?.threshold ?? 100,
-           said.radiation,
-           strainNote(strain),
-         )}
+       }
+       <div class="tabbed" id="${panelId(survivor, 'condition')}" data-tab="condition" role="tabpanel">
+         <div class="gauges">
+           ${gauge('Health', survivor.health, 100, said.health)}
+           ${gauge('Hunger', survivor.hunger, 100, said.hunger)}
+           ${gauge(
+             'Radiation',
+             survivor.radiation,
+             strain?.threshold ?? 100,
+             said.radiation,
+             strainNote(strain),
+           )}
+         </div>
+       </div>
+       <div class="tabbed" id="${panelId(survivor, 'skills')}" data-tab="skills" role="tabpanel">
+         ${who}
+       </div>
+       <div class="tabbed" id="${panelId(survivor, 'carrying')}" data-tab="carrying" role="tabpanel">
+         ${inventoryBody(inventory, survivor.id)}
        </div>
      </div>
-     <div class="tabbed" id="survivor-skills" data-tab="skills" role="tabpanel">
-       ${who}
-     </div>
-     <div class="tabbed" id="survivor-carrying" data-tab="carrying" role="tabpanel">
-       ${inventoryBody(inventory, survivor.id)}
-     </div>`,
-    /*
-     * The tabs ride in the label strip, opposite the block's name — the slot `dayNav`
-     * already uses on the glass.
-     *
-     * It is the right place for the same reason it was there: the strip is a full-width bar
-     * carrying the name of the whole block, and a control that switches the whole block
-     * belongs on it rather than in the body it is switching. In the body it sat between the
-     * survivor's name and their figures, which put a control in the middle of the thing it
-     * was meant to be framing.
-     *
-     * Phrasing content only — a `span` of `button`s, as `dayNav` is a `span` of links —
-     * because the strip is an `h2` and an `h2` may not contain a `div`.
-     */
-    // The tabs ride in the strip; who goes rides under the body, below whichever tab is
-    // open — it is a fact about the whole person, not about their gauges or their pack.
-    { aside: tabs, foot: goes },
-  );
+     ${goes}
+   </div>`;
 }
 
 /**
