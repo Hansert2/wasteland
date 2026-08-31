@@ -106,7 +106,7 @@ function perTrip(region) {
 
 // ---------------------------------------------------------------- pass two
 
-function camp() {
+function camp(crew = 1) {
   return {
     lastTickAt: T0,
     settlement: {
@@ -125,18 +125,23 @@ function camp() {
         fuel: { amount: 0, ratePerHour: 0, cap: 600 },
       },
     },
-    survivor: {
-      id: 1,
+    survivors: Array.from({ length: crew }, (_, nth) => ({
+      id: nth + 1,
       alive: true,
       health: 100,
       hunger: 0,
       radiation: 0,
+      // Phase 10. Without it `simulateSurvivor` defaults to a hundred and the arithmetic
+      // still runs, but the state written back would not round-trip and a reader of this
+      // file would have no way to see that the constraint is being modelled at all.
+      stamina: 100,
       skillScavenging: ORDINARY,
       bornAt: T0,
       diedAt: null,
       causeOfDeath: null,
       inventory: [],
-    },
+    })),
+    expeditions: [],
     expedition: null,
     craft: null,
     fitting: null,
@@ -183,8 +188,8 @@ const SCRUBBER = {
   rads: Number(scrubberItem?.potency ?? 0) * POTENCY_TO_POINTS,
 };
 
-function play(region, { goAt = 20, checkInsPerDay = null, upgrades = [], seed0 = 1, nightly = false, holdHours = 24, scrubbing = false, answers = null } = {}) {
-  let state = camp();
+function play(region, { goAt = 20, checkInsPerDay = null, upgrades = [], seed0 = 1, nightly = false, holdHours = 24, scrubbing = false, answers = null, crew = 1 } = {}) {
+  let state = camp(crew);
   state.settlement.upgrades = upgrades;
 
   // The expedition seed is the only randomness in a run, so it is the only thing worth
@@ -207,35 +212,58 @@ function play(region, { goAt = 20, checkInsPerDay = null, upgrades = [], seed0 =
   let hour = 0;
   let held = 0;
 
+  /*
+   * A camp, not a survivor, and Phase 10 is what made the difference matter.
+   *
+   * This modelled one person because that is all the game had. Stamina turns that into a
+   * lie in the one direction that matters most: a survivor spends four hours resting for
+   * every hour walked, so a camp of one is idle about four fifths of the time and the fuel
+   * economy appears to collapse by a factor of four. A camp of four alternates, and somebody
+   * is always on the road.
+   *
+   * They are **not** independent, which is the whole reason this has to be simulated rather
+   * than multiplied by `crew`. Recovery drinks six times a mouth, and every mouth drinks
+   * from the same store — so a garden that comfortably feeds four idlers may not feed four
+   * people recovering, and the crew throttles itself. That is the loop the design is for:
+   * production limits labour, and labour builds production.
+   */
   while (now < end) {
     const before = state.settlement.resources.fuel.amount;
     ({ state } = applyTick(state, (now += HOUR)));
     hour += 1;
 
-    if (!state.survivor?.alive) {
+    const living = state.survivors.filter((one) => one.alive);
+    if (living.length === 0) {
+      const first = state.survivors.find((one) => one.diedAt != null);
       return {
         trips,
         gained,
         waiting,
         out,
-        diedOnDay: (state.survivor.diedAt - T0) / (24 * HOUR),
+        diedOnDay: (first.diedAt - T0) / (24 * HOUR),
         perDay: (gained - burned) / ((now - T0) / (24 * HOUR)),
       };
     }
 
     gained += Math.max(0, state.settlement.resources.fuel.amount - before);
 
-    if (state.expedition?.status === 'active') {
-      out += 1;
-      continue;
+    // Trips that came home, counted once each.
+    for (const trip of state.expeditions) {
+      if (trip.status !== 'active' && !trip.counted) {
+        trip.counted = true;
+        trips += 1;
+      }
     }
-    if (state.expedition && state.expedition.status !== 'active') {
-      trips += 1;
-      state.expedition = null;
-    }
+    state.expeditions = state.expeditions.filter((trip) => trip.status === 'active');
+    state.expedition = state.expeditions[0] ?? null;
 
     // Only a player who is looking can dispatch.
-    if (hour % gap !== 0) continue;
+    if (hour % gap !== 0) {
+      for (const person of living) {
+        if (state.expeditions.some((trip) => trip.characterId === person.id)) out += 1;
+      }
+      continue;
+    }
 
     /*
      * A player who waits for the dark, which is the lever Phase 9 added and the reason
@@ -249,37 +277,55 @@ function play(region, { goAt = 20, checkInsPerDay = null, upgrades = [], seed0 =
      * day of looking.
      */
     /*
-     * Take a tablet rather than wait, when the camp can pay for one.
+     * Everybody who is home, one at a time — the same policy, applied per person.
      *
-     * Only while there is something to wait *for*: above the threshold the player would
-     * otherwise be standing still, and below it the dose is not what is holding them. That
-     * is the same policy a player would follow from the Carrying tab, which is the point.
+     * Each of the decisions below was written about "the survivor" and every one of them is
+     * really about a person: whether *they* are clean enough to go, whether *they* have the
+     * legs for it, whether a tablet is worth spending on *them*. The only thing that is
+     * about the camp is the stores they all draw from, and those are shared by being shared.
      */
-    if (
-      scrubbing &&
-      state.survivor?.alive &&
-      state.expedition?.status !== 'active' &&
-      state.survivor.radiation > goAt &&
-      state.settlement.resources.fuel.amount >= SCRUBBER.fuel &&
-      state.settlement.resources.scrap.amount >= SCRUBBER.scrap
-    ) {
-      state.settlement.resources.fuel.amount -= SCRUBBER.fuel;
-      state.settlement.resources.scrap.amount -= SCRUBBER.scrap;
-      state.survivor.radiation = Math.max(0, state.survivor.radiation - SCRUBBER.rads);
-      burned += SCRUBBER.fuel;
-    }
+    for (const person of living) {
+      if (state.expeditions.some((trip) => trip.characterId === person.id)) {
+        out += 1;
+        continue;
+      }
 
-    if (nightly && state.survivor.radiation <= goAt) {
-      const lit = daylightFraction(now, now + region.travelHours * HOUR);
-      if (lit > 0.5 && held < holdHours) {
-        held += 1;
+      /*
+       * Take a tablet rather than wait, when the camp can pay for one.
+       *
+       * Only while there is something to wait *for*: above the threshold the player would
+       * otherwise be standing still, and below it the dose is not what is holding them.
+       */
+      if (
+        scrubbing &&
+        person.radiation > goAt &&
+        state.settlement.resources.fuel.amount >= SCRUBBER.fuel &&
+        state.settlement.resources.scrap.amount >= SCRUBBER.scrap
+      ) {
+        state.settlement.resources.fuel.amount -= SCRUBBER.fuel;
+        state.settlement.resources.scrap.amount -= SCRUBBER.scrap;
+        person.radiation = Math.max(0, person.radiation - SCRUBBER.rads);
+        burned += SCRUBBER.fuel;
+      }
+
+      const legs = CONFIG.staminaPerHourWorked * region.travelHours;
+      const ready = person.radiation <= goAt && person.stamina >= legs;
+
+      if (nightly && ready) {
+        const lit = daylightFraction(now, now + region.travelHours * HOUR);
+        if (lit > 0.5 && held < holdHours) {
+          held += 1;
+          waiting += 1;
+          continue;
+        }
+        held = 0;
+      }
+
+      if (!ready) {
         waiting += 1;
         continue;
       }
-      held = 0;
-    }
 
-    if (state.survivor.radiation <= goAt) {
       const trip = seed++;
 
       /*
@@ -287,12 +333,7 @@ function play(region, { goAt = 20, checkInsPerDay = null, upgrades = [], seed0 =
        *
        * A moment's schedule and its options are a pure function of the region and the trip
        * seed, so a policy can be written down in advance and the tick will meet exactly the
-       * moments it was written against. Nothing here reaches into the trip: these are the
-       * same `{ index, key, option }` rows the route records when a player presses a button.
-       *
-       * `answers` names a policy rather than an option, because the option keys differ per
-       * moment — the hot room's is `strip`, the tanks' is `clear`, the gallery's is `far`.
-       * What they share is the shape: pay dose, take haul.
+       * moments it was written against.
        */
       const choices =
         answers === null
@@ -309,8 +350,9 @@ function play(region, { goAt = 20, checkInsPerDay = null, upgrades = [], seed0 =
               return [{ index: moment.index, key: moment.key, option: option.key }];
             });
 
-      state.expedition = {
+      state.expeditions.push({
         id: `e${trip}`,
+        characterId: person.id,
         status: 'active',
         departedAt: now,
         returnsAt: now + region.travelHours * HOUR,
@@ -319,9 +361,8 @@ function play(region, { goAt = 20, checkInsPerDay = null, upgrades = [], seed0 =
         resolvedAt: null,
         log: null,
         choices,
-      };
-    } else {
-      waiting += 1;
+      });
+      state.expedition = state.expeditions[0];
     }
   }
 
@@ -458,3 +499,39 @@ console.log(`  the whole road: ${roadCost()}`);
 console.log(`  both: ${roadCost() + fittingTotal} fuel = ${f1((roadCost() + fittingTotal) / best[1])} days attentive\n`);
 
 await pool.end();
+
+/* ------------------------------------------------------------------ pass four
+
+ * What a roster is worth, which is the question Phase 10 rests on.
+ *
+ * Stamina costs a survivor about four hours of rest for every hour walked, so a camp of one
+ * spends four fifths of its life waiting and the fuel economy above looks like it has
+ * collapsed. The design's answer is that idleness is a fact about a *person* and the thing
+ * that matters is whether the *camp* is idle: two people alternating means somebody is
+ * always on the road.
+ *
+ * That is a claim, and this is the table that decides it. Not arithmetic — the crew shares
+ * one food store and recovery drinks six times a mouth, so a garden that comfortably feeds
+ * four idlers may not feed four people recovering. If the rate stops climbing with the crew,
+ * the constraint has moved from stamina to the garden, which is exactly the loop the design
+ * says it wants and would then have to be balanced rather than assumed.
+ */
+console.log('\n=== what a roster buys, at the attentive policy ===\n');
+console.log('  fuel/day for the whole camp, and the share of survivor-hours spent waiting\n');
+console.log('  region                  crew 1     crew 2     crew 3     crew 4     crew 5');
+console.log('  ---------------------------------------------------------------------------');
+
+for (const region of paysFuel.filter((r) => ['coastal_wreckage', 'the_deep_zone', 'harrow_end'].includes(r.slug))) {
+  const cells = [];
+  for (const crew of [1, 2, 3, 4, 5]) {
+    const runs = [];
+    for (let i = 0; i < RUNS; i += 1) {
+      runs.push(play(region, { checkInsPerDay: null, seed0: 1 + i * 10_000, crew }));
+    }
+    const perDay = runs.reduce((sum, r) => sum + r.perDay, 0) / runs.length;
+    const idle =
+      runs.reduce((sum, r) => sum + r.waiting / Math.max(1, r.waiting + r.out), 0) / runs.length;
+    cells.push(`${perDay.toFixed(1).padStart(5)} ${(idle * 100).toFixed(0).padStart(3)}%`);
+  }
+  console.log('  ' + region.name.padEnd(22) + cells.join('  '));
+}
