@@ -1,5 +1,6 @@
 import { craftHoursMultiplier } from '../game/structures.js';
 import { InputError } from '../errors.js';
+import { occupations, mustBeFree } from './who-is-free.js';
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -22,7 +23,10 @@ const HOUR_MS = 60 * 60 * 1000;
  * the stores being spent are current rather than stale. Every refusal throws before
  * anything is deducted, and the transaction is what guarantees the rest.
  */
-export async function startCraft(client, settlementId, recipeSlug, now = Date.now()) {
+/**
+ * @param {string|number} [who] whose hands, as `startBuild`.
+ */
+export async function startCraft(client, settlementId, recipeSlug, now = Date.now(), who = null) {
   const { rows: recipes } = await client.query(
     `select id, slug, name, costs, inputs, requires_workshop, craft_hours
        from recipes where slug = $1`,
@@ -33,17 +37,48 @@ export async function startCraft(client, settlementId, recipeSlug, now = Date.no
 
   // Starting work needs hands, even though finishing does not.
   const { rows: living } = await client.query(
-    'select id from characters where settlement_id = $1 and died_at is null',
+    'select id, name from characters where settlement_id = $1 and died_at is null order by born_at, id',
     [settlementId],
   );
-  const character = living[0];
-  if (!character) throw new InputError('There is nobody here to work the bench.');
+  if (living.length === 0) throw new InputError('There is nobody here to work the bench.');
+
+
 
   const { rows: active } = await client.query(
     `select id from craft_orders where settlement_id = $1 and status = 'active'`,
     [settlementId],
   );
   if (active.length > 0) throw new InputError('The bench is already in use.');
+
+  // After the bench's own rule, not before it: a camp still runs one order at a time and
+  // that refusal names the bench. Asking who is free first would replace it with a vaguer
+  // message on a camp of one, where both are true.
+  /*
+   * Whose hands. A survivor at the bench is at the bench — Phase 10's first decision is that
+   * stamina depletes from crafting as much as from walking, and it cannot be charged to
+   * anybody until the order says whose it is.
+   *
+   * The pack matters here in a way it does not for a build: a recipe's inputs come out of
+   * somebody's inventory, so the person named is also the person paying.
+   */
+  const busy = await occupations(client, settlementId, now);
+  const character =
+    who == null
+      ? living.find((one) => !busy.has(Number(one.id)))
+      : living.find((one) => String(one.id) === String(who));
+
+  if (!character) {
+    if (who != null) throw new InputError('Nobody here answers to that.');
+
+    /*
+     * Nobody free, and on a camp of one "everybody here is already busy" is a worse sentence
+     * than naming them: there is one person, the player knows who, and what they want to know
+     * is what that person is doing instead. `mustBeFree` says it.
+     */
+    if (living.length === 1) mustBeFree(busy, living[0], 'work the bench');
+    throw new InputError('Everybody here is already busy with something.');
+  }
+  mustBeFree(busy, character, 'work the bench');
 
   await requireWorkshop(client, settlementId, recipe);
   await payCosts(client, settlementId, recipe);
@@ -62,9 +97,9 @@ export async function startCraft(client, settlementId, recipeSlug, now = Date.no
   const completesAt = new Date(now + hours * HOUR_MS);
 
   const { rows } = await client.query(
-    `insert into craft_orders (settlement_id, recipe_id, started_at, completes_at)
-     values ($1, $2, $3, $4) returning id`,
-    [settlementId, recipe.id, new Date(now), completesAt],
+    `insert into craft_orders (settlement_id, recipe_id, started_at, completes_at, crafted_by)
+     values ($1, $2, $3, $4, $5) returning id`,
+    [settlementId, recipe.id, new Date(now), completesAt, character.id],
   );
 
   return { craftOrderId: rows[0].id, recipeName: recipe.name, completesAt };

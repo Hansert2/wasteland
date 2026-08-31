@@ -142,20 +142,44 @@ test('the bench holds one order at a time', async () => {
   });
 });
 
-test('crafting a spear does not block upgrading the garden', async () => {
+test('the bench and the crew are two queues, and one person cannot be in both', async () => {
+  /*
+   * This asserted that crafting a spear did not block upgrading the garden — "the whole
+   * reason the craft queue is separate from the build queue" — and it was right about the
+   * queues and wrong, once a camp could hold more than one person, about who fills them.
+   *
+   * The queues are still separate: a craft and a build run together all day, provided there
+   * are two people. What changed on 2026-08-31 is that occupation became a fact about a
+   * person, so one survivor cannot be at the bench and on the roof at the same time. That is
+   * the same rule that stops them dispatching while building, and it is what Phase 10 needs
+   * before stamina can be charged for crafting at all.
+   */
   await withRollback(async (client) => {
-    // The whole reason the craft queue is separate from the build queue.
     const { settlementId, recipeSlug } = await setup(client);
     const now = Date.now();
 
     await startCraft(client, settlementId, recipeSlug, now);
+
+    // One person: the bench has them.
+    await assert.rejects(
+      () => startBuild(client, settlementId, 'garden', now),
+      /at the bench and cannot build/i,
+      'the one survivor is already working',
+    );
+
+    // A second pair of hands, and the two queues run at once as they always could.
+    await client.query(
+      `insert into characters (settlement_id, name, born_at, health, radiation)
+       values ($1, 'Odd', now(), 100, 0)`,
+      [settlementId],
+    );
     await startBuild(client, settlementId, 'garden', now);
 
     const state = await loadWorld(client, settlementId);
     assert.equal(state.craft.status, 'active');
     assert.ok(
       state.settlement.structures.find((s) => s.kind === 'garden').buildCompletesAt,
-      'both benches are busy at once',
+      'both queues are busy at once, with a person in each',
     );
   });
 });

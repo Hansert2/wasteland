@@ -316,7 +316,7 @@ export function createApp() {
       // build that just finished frees the queue before this one is refused.
       const now = Date.now();
       await advanceSettlement(client, settlementId, now);
-      await startBuild(client, settlementId, req.body.kind, now);
+      await startBuild(client, settlementId, req.body.kind, now, req.body.who || null);
     });
 
     res.redirect(backToCamp(req));
@@ -331,7 +331,7 @@ export function createApp() {
       // balance, and a fitting that just finished has to free the crew first.
       const now = Date.now();
       await advanceSettlement(client, settlementId, now);
-      await startUpgrade(client, settlementId, req.body.upgrade, now);
+      await startUpgrade(client, settlementId, req.body.upgrade, now, req.body.who || null);
     });
 
     res.redirect(backToCamp(req));
@@ -444,7 +444,7 @@ export function createApp() {
       // before this one is refused.
       const now = Date.now();
       await advanceSettlement(client, settlementId, now);
-      await startCraft(client, settlementId, req.body.recipe, now);
+      await startCraft(client, settlementId, req.body.recipe, now, req.body.who || null);
     });
 
     res.redirect(backToCamp(req));

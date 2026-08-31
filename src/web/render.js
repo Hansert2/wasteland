@@ -2410,9 +2410,15 @@ export const TIMERS = `
    * twice is doing it twice.
    */
   document.addEventListener('change', (event) => {
-    const picker = event.target.closest ? event.target.closest('[data-sending]') : null;
+    const picker = event.target.closest ? event.target.closest('[data-whopicks]') : null;
     if (!picker) return;
-    for (const field of document.querySelectorAll('[data-sendwho]')) field.value = picker.value;
+
+    // Only the fields belonging to this block: three blocks ask who now, and the bench's
+    // answer is not the dispatch table's.
+    const which = picker.dataset.whopicks;
+    for (const field of document.querySelectorAll('[data-whofield="' + which + '"]')) {
+      field.value = picker.value;
+    }
   });
 
   document.addEventListener('click', (event) => {
@@ -2991,6 +2997,10 @@ export function campPage(view, { error, pane = 'camp' } = {}) {
         Boolean(view.survivor),
         view.direction,
         !view.expedition?.moment,
+        // Whose hands, and the selector that sets it. Prepared here because these four
+        // functions are about a structure rather than about a camp.
+        whoField(view, 'work'),
+        whoSelector(view, { field: 'work', label: 'working' }),
       ),
     )}
     ${section('road', renderRoad(view.road))}
@@ -3554,6 +3564,42 @@ function tripReadout(report) {
     .join('')}</div>`;
 }
 
+/**
+ * Who does the work, chosen once for a block rather than once per row.
+ *
+ * Three blocks ask it now — where to send them, the structures, the bench — and the
+ * reasoning is the same for all three: a roster repeated on eleven rows is one decision
+ * asked eleven ways, and you know who is free before you know what to set them to.
+ *
+ * Only the free are offered. The service checks again behind this, because the page is a
+ * render of a moment ago and somebody can be sent from another tab.
+ */
+function whoSelector(view, { field, label }) {
+  const free = (view.roster ?? []).filter((one) => !one.away && !one.busy);
+  if ((view.roster ?? []).length === 0) return '';
+
+  if (free.length === 0) {
+    return '<span class="f-nav"><span class="short">nobody is free</span></span>';
+  }
+
+  return `<span class="f-nav"><span class="tag">${escape(label)}</span>
+      <select data-whopicks="${escape(field)}" aria-label="${escape(label)}">${free
+        .map(
+          (one) =>
+            `<option value="${escape(String(one.id))}">${escape(one.name ?? 'Survivor')}</option>`,
+        )
+        .join('')}</select></span>`;
+}
+
+/** The hidden field a row carries, kept in step with the block's selector. */
+function whoField(view, field) {
+  const free = (view.roster ?? []).filter((one) => !one.away && !one.busy);
+  if (free.length === 0) return '';
+  return `<input type="hidden" name="who" data-whofield="${escape(field)}" value="${escape(
+    String(free[0].id),
+  )}">`;
+}
+
 function renderSurvivors(view) {
   if (!view.roster?.length) return '';
   return view.roster
@@ -4085,20 +4131,7 @@ function renderExpeditions(view) {
    * service refuses again behind this because the page is a render of a moment ago. A camp
    * with nobody free gets the reason rather than an empty box.
    */
-  const free = (view.roster ?? []).filter((one) => !one.away);
-  const going = free[0]?.id ?? null;
-
-  const sending = (view.roster ?? []).length
-    ? free.length === 0
-      ? '<span class="f-nav"><span class="short">nobody is free to go</span></span>'
-      : `<span class="f-nav"><span class="tag">sending</span>
-           <select data-sending aria-label="Who goes">${free
-             .map(
-               (one) =>
-                 `<option value="${escape(String(one.id))}">${escape(one.name ?? 'Survivor')}</option>`,
-             )
-             .join('')}</select></span>`
-    : '';
+  const sending = whoSelector(view, { field: 'send', label: 'sending' });
 
   const rows = view.regions
     .map(
@@ -4118,7 +4151,7 @@ function renderExpeditions(view) {
               * roster repeated on every row would be the same decision asked eleven ways.
               * The client script copies the selection into each of these on change.
               */ ''}
-            <input type="hidden" name="who" data-sendwho value="${escape(String(going ?? ''))}">
+            ${whoField(view, 'send')}
             <button type="submit">Send</button>
           </form>
         </td>
@@ -4511,7 +4544,10 @@ function renderWorkshop(view) {
     })
     .join('');
 
-  return block('Workshop', `<table>${rows}</table>`, { flush: true });
+  return block('Workshop', `<table>${rows}</table>`, {
+    flush: true,
+    aside: whoSelector(view, { field: 'bench', label: 'at the bench' }),
+  });
 }
 
 /** Stores and carried materials read as one price, because that is how they are paid. */
@@ -4532,6 +4568,8 @@ function craftCell(recipe, view) {
 
   return `<form method="post" action="/craft">
       <input type="hidden" name="recipe" value="${escape(recipe.slug)}">
+      ${/* Whose hands, from the selector on the bench's label strip. */ ''}
+      ${whoField(view, 'bench')}
       <button type="submit">Make</button>
     </form>`;
 }
@@ -4825,7 +4863,7 @@ const ADVISED = {
   undefended: 'watchtower',
 };
 
-function renderStructures(structures, buildInFlight, someoneAlive, direction, quiet = true) {
+function renderStructures(structures, buildInFlight, someoneAlive, direction, quiet = true, who = '', picker = '') {
   // One filled control per view. A window that closes in eleven minutes outranks
   // standing advice about what to build next, so while contact is open the table stops
   // pointing — otherwise the page has two things marked as *the* thing to do and the
@@ -4835,7 +4873,7 @@ function renderStructures(structures, buildInFlight, someoneAlive, direction, qu
   const rows = structures
     .map((s) => {
       const name = escape(s.kind.replaceAll('_', ' '));
-      const status = statusCell(s, buildInFlight, someoneAlive, s.kind === advised);
+      const status = statusCell(s, buildInFlight, someoneAlive, s.kind === advised, who);
       // An unbuilt structure produces nothing, and saying so is more useful than
       // an empty cell the player has to interpret.
       const doing = s.effect
@@ -4848,13 +4886,13 @@ function renderStructures(structures, buildInFlight, someoneAlive, direction, qu
           ${doing}
           ${step ? `<span class="step">${step}</span>` : ''}
           <span class="note">${escape(s.summary ?? '')}</span>
-          ${fittingIn(s, buildInFlight, someoneAlive)}
+          ${fittingIn(s, buildInFlight, someoneAlive, who)}
         </td>
         ${status}
       </tr>`;
     })
     .join('');
-  return block('Structures', `<table>${rows}</table>`, { flush: true });
+  return block('Structures', `<table>${rows}</table>`, { flush: true, aside: picker });
 }
 
 /**
@@ -4864,16 +4902,16 @@ function renderStructures(structures, buildInFlight, someoneAlive, direction, qu
  * point: scrap makes the thing bigger and fuel makes it do something new, and the
  * page should not make those look like the same purchase.
  */
-function fittingIn(structure, buildInFlight, someoneAlive) {
+function fittingIn(structure, buildInFlight, someoneAlive, who = '') {
   // A structure can carry more than one branch — the watchtower sells the hour of the
   // next raid and the sky as two separate purchases — so each gets its own inset in
   // declaration order. A structure with none renders nothing at all, as the shelter does.
   return (structure.upgrades ?? [])
-    .map((upgrade) => oneFittingIn(structure, upgrade, buildInFlight, someoneAlive))
+    .map((upgrade) => oneFittingIn(structure, upgrade, buildInFlight, someoneAlive, who))
     .join('');
 }
 
-function oneFittingIn(structure, upgrade, buildInFlight, someoneAlive) {
+function oneFittingIn(structure, upgrade, buildInFlight, someoneAlive, who = '') {
   /*
    * The fitting lives *inside* its structure's description, behind a 2px inset.
    *
@@ -4921,6 +4959,7 @@ function oneFittingIn(structure, upgrade, buildInFlight, someoneAlive) {
   return inset(`${cost}
     <form method="post" action="/upgrade">
       <input type="hidden" name="upgrade" value="${escape(upgrade.slug)}">
+      ${who}
       <button type="submit">Fit</button>
     </form>`);
 }
@@ -4946,7 +4985,7 @@ function stepOf(structure) {
   return `level ${structure.level + 1} &rarr; ${escape(structure.nextEffect)}`;
 }
 
-function statusCell(structure, buildInFlight, someoneAlive, advised) {
+function statusCell(structure, buildInFlight, someoneAlive, advised, who = '') {
   if (structure.build_completes_at) {
     const hoursLeft = (new Date(structure.build_completes_at).getTime() - Date.now()) / 3600000;
     const when =
@@ -4974,6 +5013,8 @@ function statusCell(structure, buildInFlight, someoneAlive, advised) {
   return `${cost}
     <td class="act"><form method="post" action="/build">
       <input type="hidden" name="kind" value="${escape(structure.kind)}">
+      ${/* Whose hands, from the selector on the block's label strip. */ ''}
+      ${who}
       <button type="submit"${advised ? ' class="fill"' : ''}>Build</button>
     </form></td>`;
 }

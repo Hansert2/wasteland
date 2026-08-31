@@ -13,7 +13,11 @@ const HOUR_MS = 60 * 60 * 1000;
  * completion hour. Assumes the caller holds a transaction and has already advanced
  * the settlement, so the scrap balance being spent is current rather than stale.
  */
-export async function startBuild(client, settlementId, kind, now = Date.now()) {
+/**
+ * @param {string|number} [who] whose hands. Omitted means the first free survivor, which is
+ *   what "there is somebody here" meant before there was a roster to choose from.
+ */
+export async function startBuild(client, settlementId, kind, now = Date.now(), who = null) {
   if (!STRUCTURES[String(kind ?? '')]) {
     throw new InputError('No such structure.');
   }
@@ -36,19 +40,7 @@ export async function startBuild(client, settlementId, kind, now = Date.now()) {
     throw new InputError(`The ${inFlight.kind.replaceAll('_', ' ')} is already being worked on.`);
   }
 
-  /*
-   * And whose hands, because a build occupies them: a survivor who is building cannot
-   * dispatch. The first free one, which is what "there is somebody here" meant before the
-   * roster — the page will name them once it has a chooser on the row.
-   *
-   * **After the camp-wide check, not before it.** A camp still runs one build at a time and
-   * that rule has its own reason — choosing what to build next is the game. Asking who is
-   * free first would answer a different question and replace that refusal's message with a
-   * vaguer one, on a camp of one where both are true.
-   */
-  const busy = await occupations(client, settlementId, now);
-  const builder = living.find((one) => !busy.has(Number(one.id)));
-  if (!builder) throw new InputError('Everybody here is already busy with something.');
+
 
   // Builds and upgrade fittings share one queue: it is one crew, and choosing what
   // they work on next is the game. `startUpgrade` refuses in the other direction.
@@ -61,6 +53,36 @@ export async function startBuild(client, settlementId, kind, now = Date.now()) {
     const name = UPGRADES[fitting[0].upgrade]?.name ?? fitting[0].upgrade;
     throw new InputError(`The crew is fitting the ${name.toLowerCase()}.`);
   }
+
+  /*
+   * And whose hands, because a build occupies them: a survivor who is building cannot
+   * dispatch. The first free one, which is what "there is somebody here" meant before the
+   * roster — the page will name them once it has a chooser on the row.
+   *
+   * **After the camp-wide check, not before it.** A camp still runs one build at a time and
+   * that rule has its own reason — choosing what to build next is the game. Asking who is
+   * free first would answer a different question and replace that refusal's message with a
+   * vaguer one, on a camp of one where both are true.
+   */
+  const busy = await occupations(client, settlementId, now);
+
+  const builder =
+    who == null
+      ? living.find((one) => !busy.has(Number(one.id)))
+      : living.find((one) => String(one.id) === String(who));
+
+  if (!builder) {
+    if (who != null) throw new InputError('Nobody here answers to that.');
+
+    /*
+     * Nobody free, and on a camp of one "everybody here is already busy" is a worse sentence
+     * than naming them: there is one person, the player knows who, and what they want to know
+     * is what that person is doing instead. `mustBeFree` says it.
+     */
+    if (living.length === 1) mustBeFree(busy, living[0], 'build');
+    throw new InputError('Everybody here is already busy with something.');
+  }
+  mustBeFree(busy, builder, 'build');
 
   const target = structures.find((s) => s.kind === kind);
   if (!target) throw new InputError('No such structure.');

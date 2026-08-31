@@ -9,6 +9,7 @@ import { startCraft } from '../../src/services/start-craft.js';
 import { startUpgrade } from '../../src/services/start-upgrade.js';
 import { foundSettlement, raiseSuccessor } from '../../src/services/settlement-lifecycle.js';
 import { viewCamp } from '../../src/services/view-camp.js';
+import { campPage } from '../../src/web/render.js';
 import { takeInWanderer } from '../../src/services/take-in-wanderer.js';
 import { UPGRADES } from '../../src/game/structures.js';
 import { InputError } from '../../src/errors.js';
@@ -114,9 +115,14 @@ test('and the same the other way round', async () => {
   });
 });
 
-test('the bench is a different crew, though — crafting is unaffected', async () => {
+test('the bench is a different queue, but not a different pair of hands', async () => {
+  /*
+   * Fitting shares the build queue and not the craft queue: they are different work and
+   * always were. What changed on 2026-08-31 is that a queue being free is no longer enough —
+   * somebody has to be free to stand in it, and one survivor cannot be at the purifier with
+   * a filter in pieces and at the bench with a spear at the same time.
+   */
   await withRollback(async (client) => {
-    // Fitting shares the build queue, not the craft queue. They are different work.
     const settlementId = await setup(client);
     await client.query(
       `update resources set amount = 300 where settlement_id = $1 and kind = 'scrap'`,
@@ -124,11 +130,24 @@ test('the bench is a different crew, though — crafting is unaffected', async (
     );
 
     await startUpgrade(client, settlementId, 'filtration');
+
+    await assert.rejects(
+      () => startCraft(client, settlementId, 'scrap_spear'),
+      /fitting something and cannot work the bench/i,
+      'the only survivor is holding the filter',
+    );
+
+    // With somebody else in the camp, the two queues run at once as they always could.
+    await client.query(
+      `insert into characters (settlement_id, name, born_at, health, radiation)
+       values ($1, 'Odd', now(), 100, 0)`,
+      [settlementId],
+    );
     await startCraft(client, settlementId, 'scrap_spear');
 
     const state = await loadWorld(client, settlementId);
     assert.equal(state.fitting.upgrade, 'filtration');
-    assert.equal(state.craft.status, 'active', 'both are in flight');
+    assert.equal(state.craft.status, 'active', 'both are in flight, one person in each');
   });
 });
 
@@ -476,5 +495,52 @@ test('a bed makes room, and somebody is at the gate the next morning', async () 
       () => takeInWanderer(client, settlementId, { now: Date.UTC(2287, 2, 5, 11) }),
       /Every bed in this camp is taken/,
     );
+  });
+});
+
+test('every block that occupies somebody says who, and keeps its own answer', async () => {
+  /*
+   * Three verbs occupy a person — going, building or fitting, and the bench — so three
+   * blocks ask who. Each keeps its own: the bench's answer is not the dispatch table's, and
+   * a page where changing one changed all three would be one decision wearing three labels.
+   *
+   * Chosen once per block rather than once per row, which is the decision of 2026-08-31: a
+   * roster repeated on eleven region rows is the same question asked eleven ways.
+   */
+  await withRollback(async (client) => {
+    const settlementId = await setup(client);
+    await client.query(
+      "update resources set amount = 300 where settlement_id = $1 and kind = 'scrap'",
+      [settlementId],
+    );
+    await client.query(
+      `insert into characters (settlement_id, name, born_at, health, radiation)
+       values ($1, 'Odd', now(), 100, 0)`,
+      [settlementId],
+    );
+
+    const view = await viewCamp(client, settlementId);
+    const html = campPage(view, { pane: 'camp' }) + campPage(view, { pane: 'survivor' });
+
+    const fields = [...html.matchAll(/data-whopicks="([a-z]+)"/g)].map((m) => m[1]);
+    assert.deepEqual(
+      [...new Set(fields)].sort(),
+      ['bench', 'send', 'work'],
+      'three blocks ask, and they are the three that occupy somebody',
+    );
+
+    // Every row carries a hidden field tagged with its own block, which is what keeps the
+    // three answers apart when the client copies a selection into them.
+    for (const field of ['bench', 'send', 'work']) {
+      assert.ok(
+        html.includes(`data-whofield="${field}"`),
+        `${field} rows carry the block's answer`,
+      );
+    }
+
+    // And both survivors are offered, since neither is busy.
+    const picker = /<select data-whopicks="work"[^>]*>([\s\S]*?)<\/select>/.exec(html);
+    assert.ok(picker, 'the structures block has a selector');
+    assert.equal((picker[1].match(/<option/g) ?? []).length, 2, 'both free survivors offered');
   });
 });
