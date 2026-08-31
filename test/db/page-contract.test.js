@@ -313,26 +313,37 @@ test('every gauge says what its number counts, in a place the note script can fi
     if (gauges.length === 0) continue;
 
     /*
-     * However many are live, and no more than the four that exist.
+     * However many are live, and no more than the four that exist — **per person**.
      *
      * A gauge with nothing acting on it is not rendered at all since 2026-08-31, so a camp
      * whose survivor is whole and fed and clean and rested shows none — which is the point
      * of it and makes a fixed count the wrong assertion. What must not slip is the other
      * direction: a gauge appearing twice, or a fifth arriving without a slot in the grid to
      * stand in, both of which a length check on its own would miss.
+     *
+     * Counted inside each card rather than across the page, corrected 2026-08-31 when the
+     * first fixture with two survivors on it arrived and this read eight gauges and called
+     * it a fifth. It is the same mistake `state.survivor` kept making one layer down: a
+     * sentence that meant "the survivor" while a camp held one, and quietly means "the
+     * page" now. Four is a fact about a person.
      */
-    const slots = [...html.matchAll(/class="gauge noted g-(\w+)"/g)].map((m) => m[1]);
-    assert.ok(slots.length <= 4, `${name}: ${slots.length} gauges, and there are only four`);
-    assert.equal(
-      new Set(slots).size,
-      slots.length,
-      `${name}: the same gauge rendered twice`,
-    );
-    for (const slot of slots) {
-      assert.ok(
-        ['health', 'hunger', 'radiation', 'stamina'].includes(slot),
-        `${name}: a "${slot}" gauge, which has no column to stand in`,
+    const cards = html.split('<div class="person">').slice(1);
+    const slots = [];
+    for (const card of cards) {
+      const mine = [...card.matchAll(/class="gauge noted g-(\w+)"/g)].map((m) => m[1]);
+      assert.ok(mine.length <= 4, `${name}: ${mine.length} gauges on one card, and there are only four`);
+      assert.equal(
+        new Set(mine).size,
+        mine.length,
+        `${name}: the same gauge rendered twice on one card`,
       );
+      for (const slot of mine) {
+        assert.ok(
+          ['health', 'hunger', 'radiation', 'stamina'].includes(slot),
+          `${name}: a "${slot}" gauge, which has no column to stand in`,
+        );
+      }
+      slots.push(...mine);
     }
 
     for (const gauge of gauges) {

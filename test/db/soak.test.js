@@ -389,7 +389,24 @@ test('ninety days of attentive play holds every invariant at every check-in', as
       // check-in at the exact founding millisecond is a zero-elapsed tick, which
       // early-returns before the raid and caravan bookkeeping runs. No human can
       // click that fast; the automaton could.
-      const now = T0 + hours(1) + checkin * hours(12) + hours(checkin % 3);
+      /*
+       * Twelve hours apart, and the jitter runs to four rather than two — which is not a
+       * detail, it is what makes this run see anything at all.
+       *
+       * Measured 2026-09-01, when recovery stopped drawing on the stores and the camps in
+       * this run got richer and busier. Their trips settled at about twelve hours, which is
+       * exactly the cadence — so every trip was dispatched at one check-in and had already
+       * come home by the next, and across ninety days this automaton *saw* nine active trips
+       * and answered one moment. Nothing was broken: the survivors were healthy, clean and
+       * dispatching constantly. The probe had simply aliased with what it was probing.
+       *
+       * A wider jitter breaks the resonance — nine trips seen becomes forty-two, one open
+       * window becomes sixteen — and it is the more honest automaton anyway, since nobody
+       * checks a game on a metronome. **The lesson is about this file rather than the game:
+       * moment coverage here is incidental, so a balance change that moves trip lengths can
+       * silently stop exercising the path this run exists to exercise.**
+       */
+      const now = T0 + hours(1) + checkin * hours(12) + hours(checkin % 5);
 
       /**
        * One death, on purpose, because ninety days of careful play never produces one.

@@ -307,6 +307,20 @@ function nextEventAfter(state, cursor) {
     next = Math.min(next, state.fitting.completesAt);
   }
 
+  /*
+   * Every sleep's end, because the rate changes there.
+   *
+   * A survivor recovers at 3.8 an hour under and 1 an hour after, so a sleep ending inside a
+   * slice would pay the whole slice at whichever of the two the boundary test happened to
+   * land on. It is the same argument every other completion here makes; sleep is the first
+   * one that belongs to a person rather than to the camp, which is why it is a loop.
+   */
+  for (const person of state.survivors ?? (state.survivor ? [state.survivor] : [])) {
+    if (Number.isFinite(person?.sleepUntil) && person.sleepUntil > cursor) {
+      next = Math.min(next, person.sleepUntil);
+    }
+  }
+
   if (state.settlement.nextRaidAt != null && state.settlement.nextRaidAt > cursor) {
     next = Math.min(next, state.settlement.nextRaidAt);
   }
@@ -381,7 +395,7 @@ function advance(state, from, at, events, config, flights) {
    * at once.
    */
   for (const person of state.survivors ?? (state.survivor ? [state.survivor] : [])) {
-    if (person.alive) simulateSurvivor(state, person, hours, at, events, config);
+    if (person.alive) simulateSurvivor(state, person, hours, from, at, events, config);
   }
 
   // Last, because delivery is the one part of crafting that needs hands, and whether
@@ -653,16 +667,94 @@ function isDueBack(state, expedition, at) {
 export function workingAt(state, survivor) {
   if (tripOf(state, survivor) !== null) return 'away';
 
+  /*
+   * Whose job it is, and never "nobody's".
+   *
+   * An unowned job occupies nobody — migration `019`'s reading, and the reason those rows
+   * are null rather than backfilled. Comparing the columns directly gets that right for
+   * every survivor the game loads and wrong for two cases that cost an afternoon: a fixture
+   * whose survivor has no id, where `undefined === undefined` made an absent fitting into a
+   * job somebody was doing, and any state where an unowned job meets a nameless person.
+   * Both are the same mistake, which is treating "neither of these is set" as a match.
+   */
+  const mine = (owner) => owner != null && survivor?.id != null && owner === survivor.id;
+
   for (const structure of state.settlement.structures ?? []) {
-    if (structure.buildCompletesAt != null && structure.builtBy === survivor.id) return 'building';
+    if (structure.buildCompletesAt != null && mine(structure.builtBy)) return 'building';
   }
-  if (state.fitting?.installedAt == null && state.fitting?.fittedBy === survivor.id) {
+  if (state.fitting != null && state.fitting.installedAt == null && mine(state.fitting.fittedBy)) {
     return 'fitting';
   }
-  if (state.craft?.status === 'active' && state.craft?.craftedBy === survivor.id) {
+  if (state.craft?.status === 'active' && mine(state.craft.craftedBy)) {
     return 'crafting';
   }
   return null;
+}
+
+/**
+ * Whether this survivor is under, at the instant asked about.
+ *
+ * One comparison, and it is the whole of what sleep is: `characters.sleep_until` in the
+ * future. Nothing clears the column when a sleep ends — waking is the clock passing it —
+ * which is the same reading a build's completion gets and for the same reason. See
+ * migration `020`.
+ *
+ * Null on a state built by hand, which is most of what the tick is tested against, so a
+ * fixture that has never heard of sleep is simply awake.
+ */
+function sleepingAt(state, survivor, at) {
+  return Number.isFinite(survivor?.sleepUntil) && survivor.sleepUntil > at;
+}
+
+/**
+ * What this hour is worth to a survivor's stamina, and what it draws from the stores to be
+ * worth it. One definition, asked by three callers.
+ *
+ * The tick charges it, the page prints the rate under the gauge, and the stores line prices
+ * the camp's draw against it — and the three have to agree, because a page that says
+ * "asleep +3.8/h" over a simulation paying 1/h is worse than a page that says nothing. It
+ * lives here rather than beside the page because this is the one that is authoritative.
+ *
+ * ### Appetite is a mouth or nothing, and recovery is not paid for here
+ *
+ * **Nothing draws on the stores but a mouth.** The rule, from the user on 2026-08-31: only
+ * hunger may take food, so recovery is charged in hunger — see `staminaRecoveryHungerPerPoint`
+ * — and hunger is what sends somebody to the stores. The chain is `stores -> hunger ->
+ * stamina -> work` and each arrow is the only way to cross it.
+ *
+ * So an appetite is one mouth for anybody awake, and **nothing at all for a sleeper**, because
+ * nobody eats in their sleep. That second case is why `simulateSurvivor` forces a sleeper's
+ * `fedFraction` to zero rather than letting a zero draw report "demand met".
+ *
+ * A camp that cannot feed somebody is not punishing them twice: `fedFraction` scales the
+ * ration taken and the waking recovery given together, so short stores buy fewer points
+ * rather than burning the larder for nothing. A sleeper's recovery is not scaled at all —
+ * they are spending themselves, and an empty shelf cannot reach that.
+ *
+ * @returns {{ working: string|null, asleep: boolean, recovering: boolean,
+ *             perHour: number, appetite: number }}
+ */
+export function recoveryOf(state, survivor, at, config) {
+  const working = workingAt(state, survivor);
+  const stamina = Number.isFinite(survivor?.stamina) ? survivor.stamina : 100;
+
+  // Work wins. Nobody can be asked to build while asleep — `who-is-free.js` refuses it at
+  // the gate — but a state can still be handed here with both, and an hour spent on a job
+  // is an hour spent whatever the other column says.
+  const asleep = working === null && sleepingAt(state, survivor, at);
+  const recovering = working === null && stamina < 100;
+
+  const perHour = asleep ? config.staminaSleepPerHour : config.staminaRegenPerHour;
+
+  return {
+    working,
+    asleep,
+    recovering,
+    perHour,
+    // Nothing at all while under, one mouth awake. Recovery does not eat; it makes you
+    // hungry, and the hunger eats.
+    appetite: asleep ? 0 : 1,
+  };
 }
 
 /**
@@ -788,7 +880,7 @@ function accrueResources(state, hours, factors = {}) {
   }
 }
 
-function simulateSurvivor(state, survivor, hours, at, events, config) {
+function simulateSurvivor(state, survivor, hours, from, at, events, config) {
 
   /*
    * What this hour was, which decides whether stamina is spent or paid back.
@@ -796,9 +888,21 @@ function simulateSurvivor(state, survivor, hours, at, events, config) {
    * Read before the rations, because a survivor recovering eats several times what a
    * survivor idling eats and the draw has to know that before it takes it.
    */
-  const working = workingAt(state, survivor);
   const stamina = Number.isFinite(survivor.stamina) ? survivor.stamina : 100;
-  const recovering = working === null && stamina < 100;
+  /*
+   * Asked at the slice's *start*, which is the one subtlety sleep adds to this walk.
+   *
+   * `at` is where the slice ends, and a sleep ending exactly there is a boundary in
+   * `nextEventAfter` — so testing the end would find `sleepUntil > at` false on the very
+   * slice the survivor slept through and pay it the passive rate. The slice is entirely
+   * inside the sleep or entirely outside it; `from` is the end that says which.
+   */
+  const { working, asleep, perHour, appetite } = recoveryOf(
+    state,
+    survivor,
+    from,
+    config,
+  );
 
   /*
    * Draw rations from storage. Partial supply gives partial relief, so a camp running
@@ -824,19 +928,24 @@ function simulateSurvivor(state, survivor, hours, at, events, config) {
    * starvation window intact: on empty stores the fraction is zero either way, so a
    * recovering survivor starves at exactly the rate they always did.
    */
-  const appetite = recovering ? config.staminaRecoveryRationMultiplier : 1;
-  const fedFraction = Math.min(
-    draw(state.settlement.resources.food, config.foodPerHour * appetite * hours),
-    draw(state.settlement.resources.water, config.waterPerHour * appetite * hours),
-  );
+  /*
+   * A sleeper is fed by nothing and takes nothing, which is one branch rather than an
+   * appetite of zero.
+   *
+   * `draw` answers 1 for a demand of nothing — "everything you asked for", which is the right
+   * answer to the question it is asked and the wrong one here: a fraction of one would then
+   * feed them at the full rate out of an empty hand, and hunger would *fall* while they slept.
+   * Zero is the honest figure: they took nothing and were given nothing. What it does *not*
+   * do is put their hunger up on its own — see the hunger arithmetic below, where a sleeper
+   * skips both the fed and the unfed term and pays only for what they recovered.
+   */
+  const fedFraction = asleep
+    ? 0
+    : Math.min(
+        draw(state.settlement.resources.food, config.foodPerHour * appetite * hours),
+        draw(state.settlement.resources.water, config.waterPerHour * appetite * hours),
+      );
 
-  survivor.hunger = clamp(
-    survivor.hunger +
-      (1 - fedFraction) * config.hungerRisePerHour * hours -
-      fedFraction * config.hungerFallPerHour * hours,
-    0,
-    100,
-  );
   /*
    * A dose decays in the camp and not on the road.
    *
@@ -871,24 +980,74 @@ function simulateSurvivor(state, survivor, hours, at, events, config) {
    * Paid back passively rather than only through scheduled sleep. A player away for three
    * days would otherwise come back to a survivor who had been exhausted for sixty hours and
    * done nothing, which is the punish-a-weekend-away failure the starvation window exists
-   * to prevent. Sleep is an accelerator, and it is a later commit.
+   * to prevent. Sleep is the accelerator on top of that and never a requirement: it pays
+   * `staminaSleepPerHour` instead of `staminaRegenPerHour` and costs the survivor's
+   * availability for the hours it runs. `recoveryOf` decides which rate this hour was.
    *
-   * The taper is the decision of 2026-08-31. `regenHungerCeiling` is a real gate — health
-   * regenerates only below it — so a recovery that pushed hunger past it would stop an
-   * injured survivor healing, and the thing keeping them hurt would be the thing meant to
-   * make them useful. Recovery yields instead: full rate until five points short of the
-   * ceiling, nothing at it. The tension is kept, the trap is not.
+   * **A sleeper's recovery is not scaled by the stores, and everyone else's is.** That is the
+   * difference between being paid for out of the larder and being paid for out of yourself:
+   * resting awake buys points with rations and stops when there are none, while sleeping buys
+   * them with hunger and cannot be interrupted by an empty shelf. Nobody eats in their sleep.
+   *
+   * Two things stood here before and both were dials that turned out to be unnecessary — a
+   * taper guarding a hunger cost that did not exist, then a hunger cost per point. See the
+   * note where `staminaRecoveryHungerPerPoint` used to be declared in `constants.js`.
    */
-  const roomToEat = clamp(
-    (config.regenHungerCeiling - survivor.hunger) / config.staminaRecoveryHungerTaper,
-    0,
-    1,
-  );
+  const spent = stamina;
   survivor.stamina = clamp(
-    stamina +
+    spent +
       (working === null
-        ? config.staminaRegenPerHour * hours * roomToEat * fedFraction
+        ? perHour * hours * (asleep ? 1 : fedFraction)
         : -config.staminaPerHourWorked * hours),
+    0,
+    100,
+  );
+
+  // What was actually paid back, which is what hunger is charged for. Read off the gauge
+  // rather than off the rate: somebody who reaches a hundred part-way through a slice stops
+  // paying at that instant.
+  const recovered = Math.max(0, survivor.stamina - spent);
+
+  /*
+   * Hunger, which is now the only thing that ever sends anybody to the stores.
+   *
+   * Three terms, and the third is the one the user's rule adds: **recovery is paid for here
+   * and nowhere else.** A point of stamina costs `staminaRecoveryHungerPerPoint`, whoever
+   * pays it and however fast, so the whole economy is `stores -> hunger -> stamina -> work`
+   * with no shortcut across it.
+   *
+   * A sleeper takes neither of the first two terms. Not the fall, because nobody eats in
+   * their sleep; and not the unfed rise either, because that and the recovery charge are the
+   * same physical fact — a body running on its reserves — and charging both puts a
+   * twelve-hour sleep into the starvation band. What they pay is the recovery, at 3.8 points
+   * an hour, which comes to the unfed rate by construction.
+   *
+   * `regenHungerCeiling` is where it bites, and only for the sleeper: a long sleep ends past
+   * it, so a survivor cannot sleep a hard trip off and mend from it in the same twelve hours.
+   * Awake, eating outruns the charge twelvefold and recovery costs the player nothing to
+   * manage — which is the intent. Resting is the thing that always works; sleeping is the
+   * thing you choose.
+   */
+  const charged = recovered * config.staminaRecoveryHungerPerPoint;
+  survivor.hunger = clamp(
+    survivor.hunger +
+      (asleep
+        ? /*
+           * Whichever is larger, and they are the same number while recovery is running.
+           *
+           * A sleeper pays for what they recovered, and at 3.8 points an hour that comes to
+           * `hungerRisePerHour` exactly — the constant is derived from it. The two part
+           * company only when the gauge tops out mid-sleep: the charge stops, and somebody
+           * who is still not eating goes on getting hungry at the unfed rate.
+           *
+           * Which is what keeps overshooting a real mistake. There is no waking them, so
+           * twelve hours to recover four points still costs twelve hours of hunger, and
+           * choosing the duration stays a decision rather than a formality.
+           */
+          Math.max(config.hungerRisePerHour * hours, charged)
+        : (1 - fedFraction) * config.hungerRisePerHour * hours -
+          fedFraction * config.hungerFallPerHour * hours +
+          charged),
     0,
     100,
   );

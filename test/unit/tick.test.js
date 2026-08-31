@@ -1111,3 +1111,216 @@ test('whether a survivor is on the road is asked about that survivor', () => {
     close(home.radiation, decayed, `${name}: the one in the camp scrubs as they always did`);
   }
 });
+
+/*
+ * Sleep — Phase 10's accelerator, and the four things that have to be true of it.
+ *
+ * A camp with the stores to cover the draw, because a sleeper eats eleven food an hour and
+ * a fixture that cannot feed one is a test of `fedFraction` wearing sleep's name.
+ */
+const wellStocked = (survivor) =>
+  makeState({
+    resources: {
+      food: { amount: 500, ratePerHour: 0, cap: 500 },
+      water: { amount: 500, ratePerHour: 0, cap: 500 },
+    },
+    // With an id, because who a job belongs to is compared against it and a survivor
+    // without one is a person no job can be pinned on — which is a fixture describing
+    // something the game never loads.
+    survivor: { id: 7, ...survivor },
+  });
+
+test('an hour asleep undoes an hour of work', () => {
+  const { state } = applyTick(
+    wellStocked({ stamina: 40, sleepUntil: T0 + hours(10) }),
+    T0 + hours(10),
+  );
+
+  close(
+    state.survivor.stamina,
+    40 + CONFIG.staminaSleepPerHour * 10,
+    'ten hours under pays back ten hours of work',
+  );
+  assert.equal(
+    CONFIG.staminaSleepPerHour,
+    CONFIG.staminaPerHourWorked,
+    'and the two rates are one number, which is the rule the figure is derived from',
+  );
+});
+
+test('a survivor left awake recovers at the passive rate, not the sleeping one', () => {
+  const { state } = applyTick(wellStocked({ stamina: 40 }), T0 + hours(10));
+
+  close(state.survivor.stamina, 40 + CONFIG.staminaRegenPerHour * 10, 'ten points, not thirty-eight');
+});
+
+test('waking is a slice boundary, so the rate changes on the hour it changes', () => {
+  const { state } = applyTick(
+    wellStocked({ stamina: 40, sleepUntil: T0 + hours(4) }),
+    T0 + hours(10),
+  );
+
+  /*
+   * Four hours at the sleeping rate and six at the passive one. Without the boundary in
+   * `nextEventAfter` the slice containing the fourth hour would be paid at whichever rate
+   * its own end landed on, and the figure would come out about a point either side.
+   */
+  close(
+    state.survivor.stamina,
+    40 + CONFIG.staminaSleepPerHour * 4 + CONFIG.staminaRegenPerHour * 6,
+    'the accelerated hours stop when the sleep does',
+  );
+});
+
+test('a sleeper draws nothing, because nobody eats in their sleep', () => {
+  const hoursSlept = 4;
+  const start = 40;
+
+  const asleep = applyTick(
+    wellStocked({ stamina: start, sleepUntil: T0 + hours(hoursSlept) }),
+    T0 + hours(hoursSlept),
+  ).state;
+  const dozing = applyTick(wellStocked({ stamina: start }), T0 + hours(hoursSlept)).state;
+
+  const drawn = (after, kind) => 500 - after.settlement.resources[kind].amount;
+
+  close(drawn(asleep, 'food'), 0, 'not a mouthful of food');
+  close(drawn(asleep, 'water'), 0, 'nor a drop of water');
+  assert.ok(
+    drawn(dozing, 'food') > 0,
+    'while somebody eating their way back to strength is eating',
+  );
+
+  /*
+   * And the recovery happens anyway. A sleeper is spending themselves rather than the camp,
+   * so an empty shelf cannot reach them — which is the whole of what the branch in
+   * `simulateSurvivor` is for.
+   */
+  assert.ok(
+    asleep.survivor.stamina - start > dozing.survivor.stamina - start,
+    'and they still come back faster than the one being fed for it',
+  );
+});
+
+test('work wins: an hour on a job is spent, whatever the sleep column says', () => {
+  const state = wellStocked({ stamina: 40, sleepUntil: T0 + hours(10) });
+  state.settlement.structures = [
+    { id: 1, kind: 'workshop', level: 1, buildCompletesAt: T0 + hours(20), builtBy: 7 },
+  ];
+
+  const { state: after } = applyTick(state, T0 + hours(10));
+
+  /*
+   * `who-is-free.js` refuses this at the gate — nobody asleep can be set to build — so this
+   * is a state the game does not create. It is asserted anyway because `recoveryOf` has to
+   * answer it deterministically rather than by which branch was written first.
+   */
+  close(
+    after.survivor.stamina,
+    40 - CONFIG.staminaPerHourWorked * 10,
+    'the builder pays for the hours, and is paid nothing for them',
+  );
+});
+
+/*
+ * What recovery costs the survivor, as against what it costs the camp.
+ *
+ * Until 2026-08-31 it cost the camp alone: `appetite` scaled the ration draw and hunger
+ * moved only on `fedFraction`, so a camp that could pay the bill saw its survivor end ten
+ * hours of hard sleeping at exactly the hunger an idle one ended at. Three places said
+ * otherwise — the plan, the constant's own comment, and the page — which is why these are
+ * asserted rather than described.
+ */
+test('sleeping makes a survivor hungry; resting on their feet does not', () => {
+  const after = (survivor) =>
+    applyTick(wellStocked({ hunger: 0, ...survivor }), T0 + hours(10)).state.survivor;
+
+  const idle = after({ stamina: 100 });
+  const dozing = after({ stamina: 40 });
+  const asleep = after({ stamina: 40, sleepUntil: T0 + hours(10) });
+
+  close(idle.hunger, 0, 'a survivor with nothing to pay back stays fed');
+  close(dozing.hunger, 0, 'and so does one eating their way back, which is what the draw is for');
+  close(
+    asleep.hunger,
+    CONFIG.hungerRisePerHour * 10,
+    'a sleeper climbs at exactly the rate anybody with nothing to eat climbs at',
+  );
+});
+
+test('tuning guard: a nap is free of the tension and the longest sleep is not', () => {
+  /*
+   * Both bounds fall out of `sleepHours`, `hungerRisePerHour`, `regenHungerCeiling` and
+   * `starvationThreshold` — there is no constant of sleep's own in this any more, which is
+   * why it is guarded here rather than beside a number. A balance pass that lengthens the
+   * longest sleep or quickens hunger breaks one of these two.
+   */
+  const endsAt = (h) =>
+    applyTick(
+      // Low enough that recovery runs the whole block rather than topping out inside it.
+      wellStocked({ hunger: 0, stamina: 5, sleepUntil: T0 + hours(h) }),
+      T0 + hours(h),
+    ).state.survivor.hunger;
+
+  const shortest = Math.min(...CONFIG.sleepHours);
+  const longest = Math.max(...CONFIG.sleepHours);
+
+  assert.ok(
+    endsAt(shortest) < CONFIG.regenHungerCeiling,
+    `a nap must not cost the healing ceiling, got ${endsAt(shortest).toFixed(1)}`,
+  );
+  assert.ok(
+    endsAt(longest) > CONFIG.regenHungerCeiling,
+    `and the longest sleep must, got ${endsAt(longest).toFixed(1)}`,
+  );
+  assert.ok(
+    endsAt(longest) < CONFIG.starvationThreshold,
+    `without reaching the starvation band on a fed camp, got ${endsAt(longest).toFixed(1)}`,
+  );
+});
+
+test('sleeping longer than you need to is a mistake you can make', () => {
+  /*
+   * The gauge stops at a hundred and the clock does not, and there is no waking them. So
+   * twelve hours to recover four points costs the full twelve hours of hunger — which is
+   * what makes choosing the duration a decision rather than a formality. It was free under
+   * the per-point costing this replaced.
+   */
+  const { state } = applyTick(
+    wellStocked({ hunger: 0, stamina: 96, sleepUntil: T0 + hours(12) }),
+    T0 + hours(12),
+  );
+
+  close(state.survivor.stamina, 100, 'four points, and then nothing');
+  close(
+    state.survivor.hunger,
+    CONFIG.hungerRisePerHour * 12,
+    'and twelve hours of hunger for them',
+  );
+});
+
+test('tuning guard: recovery cannot shorten the starvation window, because it cannot happen', () => {
+  /*
+   * The window is 36 to 72 hours and it is what stops the game punishing a weekend away.
+   * Recovery draws six times a mouth and now makes a survivor hungry on top, so the obvious
+   * fear is that a tired survivor starves faster than a rested one. They cannot: recovery is
+   * scaled by `fedFraction`, so on empty stores nothing is recovered and nothing is charged.
+   */
+  const died = (survivor) => {
+    const { state } = applyTick(starvingState({ survivor }), T0 + days(14));
+    return (state.survivor.diedAt - T0) / hours(1);
+  };
+
+  for (const [what, survivor] of [
+    ['awake and tired', { stamina: 20 }],
+    // Asleep too, and it is the same number rather than a near one: a sleeper's hunger
+    // climbs at the unfed rate, which is what an empty camp does to everybody anyway.
+    ['asleep', { stamina: 20, sleepUntil: T0 + days(14) }],
+  ]) {
+    const elapsedHours = died(survivor);
+    assert.ok(
+      elapsedHours > 36 && elapsedHours < 72,
+      `${what}: expected death between 36h and 72h, got ${elapsedHours.toFixed(1)}h`,
+    );
+  }
+});

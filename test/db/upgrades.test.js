@@ -792,26 +792,40 @@ test('the stores line counts every mouth in the camp, and what recovery draws', 
     );
 
     /*
-     * And the one paying back stamina draws several times a mouth — of both.
+     * And paying back stamina changes the draw by nothing at all.
      *
-     * Rations rather than food, decided 2026-08-31: somebody sleeping off a day's walk is
-     * not eating six times as much and drinking normally. It also means the purifier is
-     * labour capacity the way the garden is, rather than the structure you build so nobody
-     * dies of thirst.
+     * It used to multiply it by six, which was how food came to limit labour. **The rule from
+     * the user on 2026-08-31 is that only hunger may draw on the stores**: recovery is charged
+     * in hunger, hunger sends somebody to eat, and eating is the one thing that takes food. So
+     * a recovering survivor is a mouth like any other, and the line this test guards should
+     * not move when one of them starts paying stamina back.
      */
     await client.query('update characters set stamina = 40 where id = $1', [odd]);
     const resting = await viewCamp(client, settlementId);
-    const extra = CONFIG.staminaRecoveryRationMultiplier - 1;
 
     assert.equal(
       drawOf(resting, 'food'),
-      drawOf(two, 'food') + CONFIG.foodPerHour * extra,
-      'the resting one eats a multiple of a mouth and the other still eats one',
+      drawOf(two, 'food'),
+      'recovering is not eating; it is what makes somebody eat',
     );
     assert.equal(
       drawOf(resting, 'water'),
-      drawOf(two, 'water') + CONFIG.waterPerHour * extra,
-      'and drinks by the same multiple',
+      drawOf(two, 'water'),
+      'and the same for water',
+    );
+
+    /*
+     * Asleep is the one state that does move it, and downwards: nobody eats in their sleep.
+     */
+    await client.query(
+      "update characters set sleep_until = now() + interval '8 hours' where id = $1",
+      [odd],
+    );
+    const sleeping = await viewCamp(client, settlementId);
+    assert.equal(
+      drawOf(sleeping, 'food'),
+      drawOf(two, 'food') - CONFIG.foodPerHour,
+      'a sleeper leaves the stores line entirely',
     );
   });
 });

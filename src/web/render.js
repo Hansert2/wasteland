@@ -1650,6 +1650,14 @@ ${PANE_CSS}
   /* The sending control loses its own rule and padding in here: the row's border is already
      the line between people, and a second one inside the row divides nothing. */
   .person .goes { border-top: 0; padding: 2px 0 0; }
+  /* Two controls in the column now, and they stack: what to do with this person is one
+     question with two answers, not a row of buttons. Left-aligned rather than stretched,
+     because a select as wide as the column reads as a field to fill in. */
+  .goes { display: grid; gap: 9px; justify-items: start; }
+  .rest { display: flex; align-items: stretch; gap: 6px; }
+  /* Quieter and shorter than a form in a block: this is a footing, not a row of actions. */
+  .rest select, .rest button { font-size: 9.5px; padding-top: 5px; padding-bottom: 5px; }
+  .rest button { padding-left: 10px; padding-right: 10px; }
 
   @media (max-width: 760px) {
     .person { grid-template-columns: minmax(0, 1fr); gap: 10px; }
@@ -3852,6 +3860,7 @@ const OCCUPIED_AS = Object.assign(Object.create(null), {
   building: 'building',
   fitting: 'fitting',
   crafting: 'at the bench',
+  sleeping: 'asleep',
 });
 
 const occupiedAs = (busy) => OCCUPIED_AS[busy] ?? busy;
@@ -4111,6 +4120,38 @@ function renderSurvivor(survivor, strain, vitals, inventory, chosen, panelId) {
    * and refuses reads as a person who is occupied. Why they are occupied is two lines up on
    * this same card, so the label does not say it twice.
    */
+  /*
+   * Sleep, under the sending radio, because the two are the same question asked twice.
+   *
+   * What this card decides about a person is what to do with the hours they have: send them
+   * somewhere, or spend the hours getting the hours back. Phase 10's fifth decision is that
+   * sleep is an accelerator and never a requirement — recovery happens anyway at a point an
+   * hour — so what the player is buying here is speed, and what they pay is that this person
+   * cannot be asked to do anything until they wake. There is no waking them.
+   *
+   * ### Refusing without saying why, on purpose
+   *
+   * Two states disable it and neither gets a sentence. Busy is written under the name, two
+   * lines up on this same card, and repeating it beside the control is the fault the sending
+   * radio already avoids. Rested is the stamina gauge in the row beside this one reading a
+   * hundred — a reason a player can see is not a reason worth printing.
+   *
+   * The control keeps its place in both, which is this page's rule everywhere: an option
+   * that vanishes reads as a bug where one that refuses reads as a person who is occupied.
+   */
+  const rested = Number(survivor.stamina) >= 100;
+  const canSleep = !survivor.busy && !rested;
+  const rest = `<form class="rest" method="post" action="/sleep">
+      ${/* Whose hours. The page has a roster and the service will not guess. */ ''}
+      <input type="hidden" name="who" value="${escape(String(survivor.id))}">
+      <select name="hours" aria-label="how long${
+        survivor.name ? ` ${escape(survivor.name)} sleeps` : ''
+      }"${canSleep ? '' : ' disabled'}>${(vitals?.sleepHours ?? [])
+        .map((h) => `<option value="${escape(String(h))}">${escape(String(h))}h</option>`)
+        .join('')}</select>
+      <button type="submit"${canSleep ? '' : ' disabled'}>Sleep</button>
+    </form>`;
+
   const goes = `<div class="goes">
       <label class="pick${survivor.busy ? ' off' : ''}">
         <input type="radio" name="sending" value="${escape(String(survivor.id))}"
@@ -4120,6 +4161,7 @@ function renderSurvivor(survivor, strain, vitals, inventory, chosen, panelId) {
                }>
         <span class="tag">sending</span>
       </label>
+      ${(vitals?.sleepHours ?? []).length > 0 ? rest : ''}
     </div>`;
 
   /*
@@ -4155,7 +4197,18 @@ function renderSurvivor(survivor, strain, vitals, inventory, chosen, panelId) {
           * somebody in the camp, which is genuinely a footnote to their name.
           */
          survivor.busy && !survivor.away
-           ? `<p class="out">${occupiedFully(survivor.busy, survivor.busyWith)}</p>`
+           ? `<p class="out">${
+               /*
+                * Asleep is the one occupation with an hour attached, so it gets the treatment
+                * being away gets: the state, then the clock. Every other job on this line
+                * finishes when the camp's own countdown says so and is named instead — see
+                * occupiedFully. Without the hour, "asleep" is a state a player cannot plan
+                * around, which is the opposite of what committing the hours was for.
+                */
+               survivor.busy === 'sleeping' && survivor.sleepUntil
+                 ? `asleep &middot; wakes in ${countdown(survivor.sleepUntil)}`
+                 : occupiedFully(survivor.busy, survivor.busyWith)
+             }</p>`
            : ''
        }
      </div>
@@ -4288,22 +4341,43 @@ function gaugeNotes(strain, vitals) {
       ['food drawn', `${rate(vitals.eats.food)}/h`],
       ['water drawn', `${rate(vitals.eats.water)}/h`],
       ['nothing to eat', `+${rate(vitals.hungerRisePerHour)}/h`],
+      /*
+       * Where recovery is paid for, which is the one thing about this gauge a player cannot
+       * work out by watching it. Nothing else in the game takes food but a mouth, so the
+       * chain a player has to hold is stores, then hunger, then stamina — and this is the
+       * middle link stated on the gauge it lands on.
+       */
+      ['recovering', `+${rate(vitals.staminaRecoveryHungerPerPoint)} a point`],
       ['starves at', `${rate(vitals.starvationThreshold)}+`],
     ]),
     /*
      * What a survivor's day is worth, which is the one gauge that says what they may do
      * rather than how they are.
      *
-     * The rows are the whole mechanic in five lines: every kind of work spends it at one
-     * rate, danger does not touch it, rest pays it back on its own, and resting is itself
-     * work enough to eat for. The last row is the refusal a player will actually meet —
-     * a walk they cannot finish is a walk the gate will not open for.
+     * The rows are the whole mechanic: every kind of work spends it at one rate, danger does
+     * not touch it, rest pays it back on its own, sleep pays it back faster, and recovery of
+     * either kind is work enough to eat for. The last row is the refusal a player will
+     * actually meet — a walk they cannot finish is a walk the gate will not open for.
+     *
+     * Sleep is one row because one figure is the whole of it: it is the work rate read
+     * backwards, so an hour under undoes an hour out. The rations row covers both kinds of
+     * recovery, and says per point rather than per hour for the reason it is true — sleep
+     * costs the same food as dozing and takes a quarter of the time.
      */
     stamina: stats('0 – 100 · a day’s walking', [
       ['any work', `-${rate(vitals.staminaPerHourWorked)}/h`],
       ['danger', 'costs none of it'],
       ['resting', `+${rate(vitals.staminaRegenPerHour)}/h`],
-      ['resting draws', `${rate(vitals.staminaRecoveryRationMultiplier)}× rations`],
+      ['asleep', `+${rate(vitals.staminaSleepPerHour)}/h`],
+      ['costs', `${rate(vitals.staminaRecoveryHungerPerPoint)} hunger a point`],
+      /*
+       * The row that says where a sleep's price actually falls.
+       *
+       * Without it the block reads as though sleeping were simply four times better, and the
+       * cost — hunger climbing at the unfed rate for as long as it runs — is on the other
+       * gauge with nothing here pointing at it.
+       */
+      ['asleep, eating', 'nothing at all'],
       ['a trip needs', 'enough for all of it'],
     ]),
     radiation: stats('0 – 100 · carried in from the road', [

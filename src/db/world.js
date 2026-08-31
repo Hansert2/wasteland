@@ -93,7 +93,8 @@ export async function loadWorld(client, settlementId) {
    * do the same job by accident; `born_at` says why.
    */
   const { rows: characters } = await client.query(
-    `select id, name, health, hunger, radiation, stamina, born_at, skill_scavenging, skill_medicine
+    `select id, name, health, hunger, radiation, stamina, sleep_until, born_at,
+            skill_scavenging, skill_medicine
        from characters
       where settlement_id = $1 and died_at is null
       order by born_at, id`,
@@ -158,6 +159,20 @@ export async function loadWorld(client, settlementId) {
        * choice. With two it is an allocation.
        */
       stamina: Number(person.stamina),
+      /*
+       * When they wake, or null if they are not under.
+       *
+       * Carried for the same reason `builtBy` is: `applyTick` is a pure function of the
+       * state it is handed and may not run a query, and this is what tells it whether an
+       * hour was paid at the sleeping rate or the passive one. It is also a slice boundary,
+       * so the walk has to know it before it starts rather than at the hour it matters.
+       *
+       * Nothing writes it back. Waking is the clock passing the timestamp, so the tick has
+       * no reason to touch the column and `saveWorld` deliberately leaves it out of the
+       * update — a survivor's sleep is set by the service that started it and by nothing
+       * else.
+       */
+      sleepUntil: person.sleep_until?.getTime() ?? null,
       skillScavenging: person.skill_scavenging,
       // Read by the tick, not by any generator: medicine moves where a dose starts
       // costing the survivor and never what a trip rolled. See `radThresholdFor`.

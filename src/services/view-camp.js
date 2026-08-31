@@ -40,7 +40,7 @@ import { directionFor } from '../game/direction.js';
 import { radThresholdFor, skillsOf, wandererFor } from '../game/wanderers.js';
 import { stateAt, timelineOf } from '../game/timeline.js';
 import { CONFIG } from '../game/constants.js';
-import { radDamagePerHourAt, workingAt } from '../game/tick.js';
+import { radDamagePerHourAt, recoveryOf } from '../game/tick.js';
 import { LINKS, TRADE_POST_LINKS, linkCost, linkGives, neighbourFor } from '../game/road.js';
 import { WORLD_SEED, loadWorldEvents } from '../db/world-events.js';
 import { FACTIONS, caravanVisit, postKeeper, priceAt, standingOf } from '../game/factions.js';
@@ -603,14 +603,27 @@ function strainOf(survivor, decayPerHour) {
  *     o  drawing on stores    !  the stores cannot    (disc / hollow disc)
  */
 function driversFor(person, {
-  working,
-  resting,
+  recovery,
   fed,
   radScrubbing,
   radDecayPerHour,
   strain,
   config,
 }) {
+  /*
+   * What this hour is worth and what it draws, from the tick rather than from here.
+   *
+   * These marks are a report on the simulation, so every figure in them has to be the
+   * figure the simulation used — `recoveryOf` decides whether an hour was work, sleep or
+   * idling, at what rate and at what appetite, and this prints what it decided. Working it
+   * out a second time is how a page ends up saying "+1/h" over a survivor recovering at 3.8.
+   */
+  // `perHour` is taken — it is the formatter two lines down — so the rate is named for what
+  // it is rather than for its unit.
+  const { working, asleep, recovering: resting, perHour: recoveredPerHour, appetite } = recovery;
+  // What to call it, once, because the hunger mark and the stamina mark must not describe
+  // the same hour as two different states.
+  const recoveringAs = asleep ? 'asleep' : 'resting';
   const n1 = (value) => `${Math.round(Number(value) * 10) / 10}`;
   const perHour = (value, mark = '') => `${mark}${n1(value)}/h`;
   const hours = (value) => {
@@ -677,12 +690,22 @@ function driversFor(person, {
   }
 
   const hunger = [];
+  /*
+   * The two recoveries, which cost this gauge opposite things.
+   *
+   * Somebody resting on their feet is *eating* their way back and the mark says what that
+   * draws. Somebody asleep is not eating at all, so their hunger climbs at exactly the rate
+   * anybody with nothing to eat climbs at — and that is the mark, because it is the price
+   * the player just agreed to and the one they cannot see coming from the gauge alone.
+   */
   if (resting) {
-    const draw = config.staminaRecoveryRationMultiplier;
+    const charge = recoveredPerHour * config.staminaRecoveryHungerPerPoint;
     hunger.push({
-      sign: '●',
-      tag: 'resting, eating for it',
-      note: `draws ${n1(config.foodPerHour * draw)} food, ${n1(config.waterPerHour * draw)} water /h`,
+      sign: '▲',
+      tag: `${recoveringAs} +${n1(charge)}/h`,
+      note: asleep
+        ? `asleep ${perHour(charge, '+')} — recovery is paid for here, and nobody eats in their sleep`
+        : `resting ${perHour(charge, '+')} — recovery is paid for in hunger, not out of the stores`,
     });
   }
   /*
@@ -693,7 +716,12 @@ function driversFor(person, {
    * not feed somebody whose hunger was falling at twelve an hour. Which way it is going is
    * the whole of what the mark is for.
    */
-  if (person.hunger > 0) {
+  /*
+   * And whether they are eating it back — which a sleeper is not, however full the stores
+   * are. Without the guard the page put "eating −12/h" under a gauge climbing at 4.2, which
+   * is the page contradicting the simulation in the space of two marks.
+   */
+  if (person.hunger > 0 && !asleep) {
     hunger.push(
       fed
         ? {
@@ -743,15 +771,33 @@ function driversFor(person, {
       note: `${doing[working] ?? working} ${perHour(config.staminaPerHourWorked, '−')}`,
     });
   } else if (resting) {
-    const slowed = person.hunger > config.regenHungerCeiling - config.staminaRecoveryHungerTaper;
-    const draw = config.staminaRecoveryRationMultiplier;
-    stamina.push({
-      sign: slowed ? '△' : '▲',
-      tag: slowed ? 'resting, slowed' : `resting +${n1(config.staminaRegenPerHour)}/h`,
-      note: slowed
-        ? `resting ${perHour(config.staminaRegenPerHour, '+')}, slowed by hunger`
-        : `resting ${perHour(config.staminaRegenPerHour, '+')}`,
-    });
+    /*
+     * Asleep and resting are the same mark at two rates, which is the honest way to draw
+     * them: the difference between them is a number, not a mechanism. Naming the state
+     * before the rate is the rule from 2026-08-31 — "asleep +3.8/h", never "+3.8/h".
+     *
+     * What this used to carry was a "slowed" variant, for the taper that stopped recovery as
+     * hunger approached the healing ceiling. The taper is gone — it was guarding a hunger
+     * cost that did not exist — so the only thing that can stop recovery now is a camp with
+     * nothing to give, and that is a different sentence.
+     */
+    stamina.push(
+      asleep || fed
+        ? {
+            sign: '▲',
+            tag: `${recoveringAs} +${n1(recoveredPerHour)}/h`,
+            note: `${recoveringAs} ${perHour(recoveredPerHour, '+')}, at ${n1(
+              recoveredPerHour * config.staminaRecoveryHungerPerPoint,
+            )} hunger an hour`,
+          }
+        : {
+            // Only the waking kind can be stopped by an empty shelf. A sleeper is spending
+            // themselves rather than the camp, so bare stores do not reach them.
+            sign: '■',
+            tag: 'resting, nothing to eat',
+            note: 'no recovery without rations',
+          },
+    );
   }
 
   return { health, hunger, radiation, stamina };
@@ -784,7 +830,10 @@ function vitalsOf(radDecayPerHour) {
     // pass edits in one place — and this one is derived from the map, so it moves.
     staminaPerHourWorked: CONFIG.staminaPerHourWorked,
     staminaRegenPerHour: CONFIG.staminaRegenPerHour,
-    staminaRecoveryRationMultiplier: CONFIG.staminaRecoveryRationMultiplier,
+    staminaRecoveryHungerPerPoint: CONFIG.staminaRecoveryHungerPerPoint,
+    // And the fourth: what an hour under is worth, which is the whole of what sleep is.
+    staminaSleepPerHour: CONFIG.staminaSleepPerHour,
+    sleepHours: CONFIG.sleepHours,
     radDecayPerHour,
     radDecayBasePerHour: CONFIG.radDecayPerHour,
     radDamagePerHour: CONFIG.radDamagePerHour,
@@ -1360,20 +1409,20 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
    * covers the roster. Only the page was counting one.
    *
    * **And recovery draws rations.** A survivor paying back stamina takes six times a mouth
-   * of both food and water, so a camp with three people resting is drawing nine food an hour
-   * rather than one and a half.
-   * That is the largest single number on the page for a camp that has just come home, and
-   * leaving it out would make the stores line most wrong exactly when it matters most.
-   * `workingAt` is the tick's own answer to "is this person resting", so this asks it the
-   * same way rather than inventing a second definition that can drift.
+   * of both food and water *per point recovered*, so a camp with three people resting is
+   * drawing nine food an hour rather than one and a half — and a single survivor asleep is
+   * drawing eleven, because sleep recovers 3.8 times as fast and pays 3.8 times as much for
+   * it. That is the largest single number on the page for a camp that has just come home,
+   * and leaving it out would make the stores line most wrong exactly when it matters most.
+   * `recoveryOf` is the tick's own answer to what this hour costs, so this asks it rather
+   * than inventing a second definition that can drift.
    */
   const eats = { food: 0, water: 0 };
   for (const person of state.survivors ?? (state.survivor ? [state.survivor] : [])) {
     if (!person.alive) continue;
-    const resting = workingAt(state, person) === null && Number(person.stamina) < 100;
-    const draw = resting ? CONFIG.staminaRecoveryRationMultiplier : 1;
-    eats.food += CONFIG.foodPerHour * draw;
-    eats.water += CONFIG.waterPerHour * draw;
+    const { appetite } = recoveryOf(state, person, now, CONFIG);
+    eats.food += CONFIG.foodPerHour * appetite;
+    eats.water += CONFIG.waterPerHour * appetite;
   }
 
   /**
@@ -1790,6 +1839,15 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
         skills: skillsOf(person, CONFIG.radThreshold),
         // Phase 10's gauge, and the reason the column stopped being dead schema.
         stamina: Number(person.stamina),
+        /*
+         * When they wake, for the block to count down to.
+         *
+         * Sent whether or not they are under — a past timestamp is simply a survivor who has
+         * woken — because `busy` is already the answer to "are they asleep" and two fields
+         * disagreeing about one fact is how a card ends up counting down beside a name that
+         * is free to be sent.
+         */
+        sleepUntil: person.sleepUntil == null ? null : new Date(person.sleepUntil),
         strain: strainOf(person, radDecayPerHour),
         /*
          * And what is acting on each gauge for *this* person in *this* hour.
@@ -1800,8 +1858,7 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
          * second guess at it.
          */
         drivers: driversFor(person, {
-          working: workingAt(state, person),
-          resting: workingAt(state, person) === null && Number(person.stamina) < 100,
+          recovery: recoveryOf(state, person, now, CONFIG),
           fed:
             Number(state.settlement.resources.food?.amount ?? 0) > 0 &&
             Number(state.settlement.resources.water?.amount ?? 0) > 0,

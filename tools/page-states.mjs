@@ -192,6 +192,36 @@ export async function buildStates(client, now = Date.now()) {
     states['weather'] = campPage(await viewCamp(client, id, now + HOUR));
   }
 
+  /*
+   * 6b. Somebody under, which is the one card state nothing else here reaches.
+   *
+   * Sleep replaces two things on a survivor's row at once: the line under the name becomes a
+   * countdown rather than a named job, and the control at the foot of the card refuses
+   * instead of offering. Both are conditional markup that only exists while a survivor is
+   * asleep, and this file exists because a layout only ever looked at in one state will be
+   * wrong in the other six.
+   *
+   * The camp is given a second person deliberately. One survivor asleep is a camp that can
+   * do nothing at all, which is a legitimate state and not the interesting one to draw
+   * against: what the roster has to show is one person committed and one still free, side by
+   * side, with the same controls reading differently.
+   */
+  {
+    const id = await camp(client, now);
+    await raiseSuccessor(client, id, { now });
+    await client.query(
+      `insert into characters (settlement_id, name, born_at, stamina)
+       values ($1, 'Wren', $2, 31)`,
+      [id, new Date(now - HOUR)],
+    );
+    await client.query(
+      `update characters set stamina = 46, sleep_until = $2
+        where settlement_id = $1 and died_at is null and name <> 'Wren'`,
+      [id, new Date(now + 7.4 * HOUR)],
+    );
+    states['asleep'] = campPage(await viewCamp(client, id, now + 0.1 * HOUR));
+  }
+
   // 7. The ledger, and the empty camp that follows a death.
   {
     const id = await camp(client, now);

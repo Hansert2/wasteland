@@ -18,6 +18,7 @@ import { answerMoment } from '../services/answer-moment.js';
 import { dispatchExpedition } from '../services/dispatch-expedition.js';
 import { startBuild } from '../services/start-build.js';
 import { startCraft } from '../services/start-craft.js';
+import { startSleep } from '../services/start-sleep.js';
 import { setCampClock } from '../services/set-camp-clock.js';
 import { useItem } from '../services/use-item.js';
 import { takeInWanderer } from '../services/take-in-wanderer.js';
@@ -445,6 +446,22 @@ export function createApp() {
       const now = Date.now();
       await advanceSettlement(client, settlementId, now);
       await startCraft(client, settlementId, req.body.recipe, now, req.body.who || null);
+    });
+
+    res.redirect(backToCamp(req));
+  });
+
+  app.post('/sleep', requireAuth, async (req, res) => {
+    await withTransaction(async (client) => {
+      const settlementId = await settlementIdForPlayer(client, req.playerId);
+      if (!settlementId) throw new InputError('This account has no camp.');
+
+      // Advance first, as everything that reads a gauge does. The refusal at a full bar is
+      // read off `stamina`, and a survivor who walked in the gate while the page sat there
+      // has spent a good deal of it since it was drawn.
+      const now = Date.now();
+      await advanceSettlement(client, settlementId, now);
+      await startSleep(client, settlementId, req.body.who || null, req.body.hours, now);
     });
 
     res.redirect(backToCamp(req));

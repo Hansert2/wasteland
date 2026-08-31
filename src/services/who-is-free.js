@@ -27,6 +27,7 @@ const OCCUPATIONS = {
   building: 'building',
   fitting: 'fitting something',
   crafting: 'at the bench',
+  sleeping: 'asleep',
 };
 
 /**
@@ -54,6 +55,26 @@ export async function occupations(client, settlementId, now = Date.now()) {
   // Where they went is on the survivor's own block already, printed with the countdown, so
   // this does not join the regions table to say it a second time.
   for (const row of away) busy.set(Number(row.character_id), { kind: 'away', what: null });
+
+  /*
+   * Asleep, which is the one occupation that is not a job.
+   *
+   * It belongs here all the same, because what this map answers is "can this person be asked
+   * to do something else" and the answer is no for exactly the same reason — Phase 10's
+   * fifth decision is that sleep trades availability for speed, and the trade is only real
+   * if the refusals are. There is no waking them: the countdown is the commitment.
+   *
+   * `sleep_until` in the future and nothing else. Nothing clears the column when a sleep
+   * ends, so the comparison against the clock *is* the state — see migration `020`.
+   */
+  const { rows: sleeping } = await client.query(
+    `select id from characters
+      where settlement_id = $1 and died_at is null and sleep_until > $2`,
+    [settlementId, at],
+  );
+  // What there is to name is the hour they wake, and that is a countdown rather than a
+  // string — the survivor's own block prints it from `sleepUntil`. This says only who.
+  for (const row of sleeping) busy.set(Number(row.id), { kind: 'sleeping', what: null });
 
   /*
    * A job counts as occupying only while it is unfinished. The tick is what marks a build

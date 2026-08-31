@@ -2878,7 +2878,9 @@ precisely the punish-a-weekend-away failure the 36-to-72-hour guard exists to pr
 overhaul document lists "a well-prepared camp must remain safe during a normal real-world
 absence" among its balance principles and then proposes the mechanic that breaks it.
 
-**3. Recovery drinks food, and this is the load-bearing one.** Measured 2026-08-27:
+**3. Recovery drinks food, and this is the load-bearing one.** *(Superseded 2026-09-01 —
+recovery draws nothing at all now, and only hunger may reach the stores. The reasoning below
+is why it was built, and* What decision 3 became *is what happened to it.)* Measured 2026-08-27:
 
     garden   grows   a mouth eats   surplus   surplus in mouths
       L1       0.6            0.5       0.1         x0.2
@@ -3090,9 +3092,19 @@ Steep is unchanged at 36/64. So steep and brutal have converged, and brutal no l
 the extra contest it used to — it costs more idleness for the same 45%. **The range to look
 in is steep, and not past it.**
 
-> **A note on the instrument itself.** Its first table still models radiation as a threshold,
-> which the game stopped having on 2026-08-27. Half its output describes a game that does not
-> exist and will be read as current by whoever picks this up. Cut it when Phase 10 is built.
+> **A note on the instrument itself, settled 2026-08-31.** Its first two tables modelled
+> radiation as a threshold, which the game stopped having on 2026-08-27 — half its output
+> described a game that did not exist. They were cut when sleep shipped, and the finding they
+> produced is kept in the source above what remains, because *a threshold gauge and a linear
+> gauge cannot contest each other across a range* is a fact about shapes rather than about
+> constants and it is why the cliff went.
+>
+> The surviving table now imports the damage curve and the healing rule from `tick.js`
+> instead of carrying copies. The healing copy was stale in the same way — it switched off
+> past `regenRadCeiling` where the game fades it with the dose — so every figure moved a
+> little on re-measurement: *healthiest wrong* reads 15/28/43/51% against the 9/15/37/62%
+> recorded above, and the shipped shape ("reach", 3.8) sits at 45% contested, 45/55, 57%
+> idle. The conclusion is unchanged, and the tables above are the older instrument's.
 
 ### The cost, and the tension left open
 
@@ -3147,13 +3159,217 @@ and worth being a decision the page states rather than a surprise a player works
 
 ### Schema
 
-None. `characters.stamina` is `numeric(6,3) not null default 100 check (stamina between 0
-and 100)` and has been since migration `001`.
+`characters.stamina` needed none. It is `numeric(6,3) not null default 100 check (stamina
+between 0 and 100)` and has been since migration `001`.
 
 The one column three phases have wanted to drop turns out to be the one this needs. That is
 an argument for having left it, and it is not a strong enough argument to have left it on —
 the plan's own note stands: a schema describing a system nothing implements reads, to
 anyone planning against it, as a system that is nearly there.
+
+Sleep needed one: `characters.sleep_until timestamptz`, migration `020`. A column rather
+than a table because one person's sleep is a queue of one by construction, and only an end
+because nothing ever asks how long they have been under — see the migration, which argues
+both.
+
+## Sleep, built 2026-08-31 — the last piece of Phase 10
+
+*Decision 5 of the five, and the only one that had not been built.*
+
+A survivor can be put under for a fixed number of hours. While they are, they recover at
+`staminaSleepPerHour` instead of `staminaRegenPerHour`, and every verb refuses them:
+`who-is-free.js` gained a `sleeping` occupation, so the gate, the yard, the bench and the
+pack all say "Vera is asleep and cannot ..." without any of them learning what sleep is.
+
+**There is no waking them, and that is the mechanic.** Recovery happens anyway — passively,
+at a point an hour, which decision 2 settled to keep a weekend away survivable. So the only
+thing sleep can charge for the speed is the availability, and an availability the player can
+take back at any moment is not a price. A twelve-hour commitment is twelve hours.
+
+### The rate is derived, not swept
+
+**An hour asleep undoes an hour of work**: `staminaSleepPerHour` *is*
+`staminaPerHourWorked`, one constant read twice, 3.8.
+
+The sensitivity table could not have chosen this, and it is worth being clear why. That
+instrument measures *which survivor to send*; sleep does not touch that question — it
+changes how long the answer stays unavailable. So the figure comes from a rule, the way 3.8
+itself did (a hundred points over the longest walk on the map). Harrow End is 26 hours out
+and costs a whole gauge; under this it costs a whole day under. The coupling to the map
+recorded against `staminaPerHourWorked` now covers both numbers, because they are one
+number.
+
+Passive rest stays at 1/h and is therefore 3.8 times slower, which is what keeps this a
+decision rather than a formality: a camp that never sleeps anybody still recovers, across
+four days instead of one.
+
+### What decision 3 became
+
+Phase 10's third decision — *recovery drinks food, and this is the load-bearing one* — was
+built as `staminaRecoveryRationMultiplier`, six times a mouth per point recovered. It was
+load-bearing for a real reason: food is not otherwise a constraint, so this was the only
+thing making production limit labour, and it is what turned a shelter's storage cap into a
+reserve of working hours.
+
+**It is gone, and what replaced it is one rule from the user on 2026-09-01: only hunger may
+draw on the stores.** See *What recovery costs* below for how it got there. The chain is now
+
+    stores -> hunger -> stamina -> work
+
+with each arrow the only way to cross it. Production still limits labour — through a belly,
+which is how it works everywhere else — but it limits it **much** more loosely, and that is
+a balance fact worth stating rather than discovering:
+
+> **Measured 2026-09-01: a full gauge, nought to a hundred, costs the camp 50 food. Doing
+> nothing at all for the same hundred hours costs the camp 50 food.** Recovering is a mouth
+> like any other mouth. Under the multiplier the same hundred points cost 300.
+
+So recovery's price is now **time and the healing ceiling**, not food. That is a deliberate
+trade and it is the user's, made with the number in front of them: the arithmetic nobody
+could believe — a sleeper drawing twenty-three mouths an hour out of stores while the page
+said they were asleep — bought a loop that was never legible as a loop.
+
+**If food should bite again, the lever is not this.** It is `foodPerHour` against
+`hungerFallPerHour`, which together decide what a point of hunger costs in rations: half a
+unit of food currently buys twelve points, which is why the chain is cheap. Retuning those
+two is a change to the whole hunger economy — the starvation window included — and should be
+measured as one.
+
+### Three durations, and no free number
+
+`sleepHours` is `[4, 8, 12]` — a nap, a night, a long night, worth 15, 30 and 46 points
+against 17, 34 and 50 hunger. The longest is deliberately shorter than the longest walk, so
+the deepest hole a player can dig takes two decisions to climb out of. A free number would
+have needed a bound, and a bound is a constant nothing derives.
+
+The three are a real choice rather than three sizes of the same thing, and only because
+nobody can be woken: a nap stays under the healing ceiling, a long night does not. Picking
+one is picking how much of the next day to spend hungry.
+
+### Two things the tick had to learn
+
+**Waking is a slice boundary.** `nextEventAfter` cuts at every survivor's `sleepUntil`, or a
+sleep ending mid-slice would be paid at whichever rate the boundary test happened to land
+on. It is the first boundary in that function that belongs to a person rather than to the
+camp, which is why it is a loop.
+
+**`recoveryOf` is one definition asked three times** — by the tick that charges it, by the
+gauge mark that names it ("asleep +3.8/h"), and by the stores line that prices the camp's
+draw. A page quoting a rate the simulation is not charging is the fault this project keeps
+finding in itself; three callers of one function cannot have it.
+
+### What recovery costs, settled over four answers
+
+Asked by the user the day sleep shipped: *does recovering stamina deplete hunger? I think it
+still depletes food and water directly.* It did, and only that. Getting from there to the
+rule took four answers, and the last is smaller than any of the others.
+
+#### The hole
+
+`appetite` scaled the ration draw; hunger moved on `fedFraction` alone. Pay the bill and
+hunger fell at the ordinary rate whatever the bill was. **Measured over ten hours from hunger
+40, on stores deep enough to pay: idle ended at 0.0, recovering at 0.0, asleep at 0.0.** The
+intent — *resting hard is work of a kind and should show on the gauge eating does* — was
+written in this plan, in the constant's own comment and on the page, and implemented nowhere.
+
+Worse, `staminaRecoveryHungerTaper` stopped recovery as hunger approached
+`regenHungerCeiling`, to keep recovery from locking an injured survivor out of healing. It
+guarded a cost that could not occur, and it was not free: it slowed a hungry survivor's
+recovery for a reason that was not real.
+
+#### Two wrong turns, both dials
+
+**First:** charge hunger per point recovered — `staminaRecoveryHungerPerPoint`, derived at
+4.2 from two bounds. It worked and it measured correctly. It was a new dial invented to make
+a cost exist.
+
+**Second:** the user, shown that a sleeper drew 11.4 food and 17.1 water an hour — *"sleeping
+shouldn't draw food and water, you can't eat while sleeping."* A sleeper's appetite went to
+zero and their hunger climbed at the unfed rate. Right, and half a rule: it fixed sleeping and
+left resting drawing six mouths for reasons nobody could state.
+
+#### The rule
+
+> **Only hunger may draw on the stores.**
+
+Recovery is charged in hunger; hunger is what sends somebody to eat; eating is the one thing
+that takes food. `staminaRecoveryRationMultiplier` is deleted, appetite is a mouth or nothing,
+and `staminaRecoveryHungerPerPoint` survives as **one price for everybody**, derived rather
+than picked: an hour asleep recovers `staminaSleepPerHour` and costs `hungerRisePerHour`, so a
+point costs `4.2 / 3.8 ≈ 1.1` hunger. Sleeping is that same price paid faster by somebody who
+is not eating it back.
+
+A sleeper is charged the recovery and *not* the ordinary unfed rise, because the two are the
+same physical fact — a body running on reserves — and charging both puts a twelve-hour sleep
+into the starvation band. What they pay is `max(unfed rise, recovery charge)`, which are equal
+by construction while recovery runs and part company only when the gauge tops out mid-sleep.
+**That is what keeps overshooting a real mistake**: there is no waking them, so twelve hours
+to recover four points still costs twelve hours of hunger.
+
+Measured on the shipped code, starting fed:
+
+    4h asleep   +16.8 hunger    under the ceiling; a nap is free of the tension
+    8h asleep   +33.6 hunger    healing has stopped
+    12h asleep  +50.4 hunger    and starvation is still twenty away
+    12h dozing    0.0 hunger    the charge loses to eating twelvefold
+
+So a survivor cannot sleep a hard trip off and mend from it in the same twelve hours — they
+wake hungry, eat it down at twelve an hour, and heal after. Awake, recovery costs the player
+nothing to manage, which is the intent: **resting is the thing that always works; sleeping is
+the thing you choose.** Both bounds are guarded in `test/unit/tick.test.js`, as consequences
+of four constants rather than properties of one.
+
+#### What the page had to learn
+
+The hunger mark read "resting, eating for it" with the draw in its note, which described the
+cost to the camp and left the survivor's unsaid. Both kinds of recovery now carry the charge —
+`asleep +4.2/h`, `resting +1.1/h` — and the eating mark is suppressed for a sleeper, because
+the page was otherwise printing "eating −12/h" under a gauge climbing at 4.2, which is the
+page contradicting the simulation in the space of two marks. The hunger popup gained
+`recovering +1.1 a point`; the stamina popup lost its rations row and gained
+`costs 1.1 hunger a point`.
+
+#### And what it did to the soak, which was not a regression
+
+`test/db/soak.test.js` failed on the change: one moment answered in ninety days. Nothing was
+broken — the survivors were healthy, clean and dispatching constantly. Richer camps produced
+busier ones, their trips settled at about twelve hours, and the automaton checks in every
+twelve. Every trip was dispatched at one check-in and home by the next, so across ninety days
+it *saw* nine active trips. Widening the jitter from two hours to four took that to
+forty-two. **The lesson is about the instrument: moment coverage there is incidental, so a
+balance change that moves trip lengths can silently stop exercising the path the run exists
+to exercise.**
+
+### A bug the fixtures found### A bug the fixtures found
+
+`workingAt` compared `built_by` / `fitted_by` / `crafted_by` against `survivor.id` directly,
+so `undefined === undefined` made an *absent* fitting into a job somebody was doing.
+Invisible in play, because every loaded survivor has an id — and it made every hand-built
+fixture read as "fitting", which is how it surfaced: a sleep test that recovered nothing. An
+unowned job occupies nobody, and the comparison now says so.
+
+`test/db/page-contract.test.js` had the same shape of assumption one layer up: it counted
+gauges per *page* and capped them at four, which was true while every fixture held one
+survivor. The `asleep` page state is the first with two people on it. Four is a fact about a
+person, and it is counted per card now.
+
+### What is deliberately not built
+
+**A sleeper still defends.** `resolveRaid` asks only whether anybody is alive, so the
+overhaul document's "cannot defend while asleep" is not modelled. Modelling it means
+deciding what a camp of sleepers does when raiders arrive, which is a raid design question
+and not a sleep one. Noted here so the next reader knows it was seen rather than missed.
+
+Related and worth grepping before touching raids: `raid()` passes `state.survivor` — the
+founder — as the person who takes the damage. That is the sixth instance of the phrase that
+meant "the survivor" when a camp held one.
+
+**No shelter bonus.** The overhaul proposes a shelter that improves sleep. Beds already cap
+the roster, so "you need a bed to sleep" would be scenery — everybody standing in the camp
+has one by construction — and a level-scaled rate is a second dial nothing derives.
+
+**No night bonus.** The camp clock exists and sleeping through the small hours could be
+worth more. It is a nice idea and it is a *third* thing acting on one rate.
 
 ## Phase 11 — the trip as it happens
 
