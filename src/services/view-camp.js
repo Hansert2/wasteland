@@ -1458,7 +1458,14 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
       const due = gateOpensAt(newestBedAt, clock);
       if (now < due) return { dueAt: new Date(due), wanderer: null };
 
-      const who = wandererFor(settlements[0].caravan_seed, everHeld);
+      /*
+       * The same `taken` the service passes. `wandererFor` will not offer somebody the camp
+       * already holds, and the two have to agree about who that is — a page naming one
+       * person and a service admitting another is the same class of fault as the count.
+       */
+      const who = wandererFor(settlements[0].caravan_seed, everHeld, {
+        taken: (state.survivors ?? []).map((one) => one.name).filter(Boolean),
+      });
       return { dueAt: new Date(due), wanderer: { ...who, skills: skillsOf(who, CONFIG.radThreshold) } };
     })(),
     arriving: state.survivor

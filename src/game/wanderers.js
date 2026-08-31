@@ -1,3 +1,4 @@
+import { makeRandom, mix } from './random.js';
 /**
  * Who walks in when the camp is empty.
  *
@@ -151,19 +152,73 @@ export const WANDERERS = [
 /**
  * Which wanderer walks into this camp next.
  *
- * Derived from the camp's seed and the count of everyone who has held it, so the
- * sequence is fixed the moment a camp is founded and replays identically however the
- * database is restored. Deliberately the same shape as `caravanVisit(seed, index)`,
- * because it is the same kind of fact: something the world does on its own schedule that
- * the player does not get a vote on.
+ * Derived from the camp's seed and the count of everyone who has held it, so the sequence
+ * is fixed the moment a camp is founded and replays identically however the database is
+ * restored. The same shape as `caravanVisit(seed, index)`, because it is the same kind of
+ * fact: something the world does on its own schedule that the player gets no vote on.
  *
- * **Not random per call**, which is the property that matters. A refresh must not
- * produce a different person, or the empty-camp page becomes a slot machine and every
- * word above about not shopping for a survivor stops being true.
+ * **Not random per call**, which is the property that matters. A refresh must not produce
+ * a different person, or the gate becomes a slot machine and every word about not shopping
+ * for a survivor stops being true.
+ *
+ * ### Two things it got wrong, both found once a camp could hold more than one person
+ *
+ * It was `WANDERERS[(seed + index * 7919) % 7]`, and **7919 mod 7 is 2** — so it stepped
+ * two along the list every arrival and every camp in the game walked the same ring in the
+ * same order, entering at a different point. Seven people met in one fixed rotation.
+ * `mix` is a hash rather than a stride, so the order is the camp's own.
+ *
+ * And nothing stopped the same person arriving twice. That could not happen while a camp
+ * held one survivor at a time; it is likely with seven wanderers and up to five beds, and
+ * a camp holding two Veras is a bug the player would read as one. `taken` is who is
+ * already here, and they are not offered again.
+ *
+ * `taken` is the camp's own roster and not something a reload can change, so the guarantee
+ * above survives it — but every caller has to pass the same list, or the page names one
+ * person and the service admits another.
  */
-export function wandererFor(seed, index) {
-  const at = Number(seed) + Number(index) * 7919;
-  return WANDERERS[Math.abs(at) % WANDERERS.length];
+export function wandererFor(seed, index, { taken = [] } = {}) {
+  /*
+   * The camp's own order, shuffled once from its seed and then walked.
+   *
+   * A hash per arrival was tried and lost two properties the stride had for free: a camp
+   * met everybody before it met anybody twice, and no wanderer was luckier than another to
+   * turn up first. Independent draws break both — they repeat, and they are only uniform in
+   * the limit. A permutation keeps them and is still the camp's own rather than one ring
+   * the whole game walks.
+   */
+  const order = shuffledFor(Number(seed) || 0);
+  const from = Math.abs(Number(index) || 0) % order.length;
+
+  /*
+   * And from there, the first of them this camp is not already holding.
+   *
+   * Nothing stopped the same person arriving twice while a camp held one survivor at a
+   * time. It is likely with seven wanderers and up to five beds, and a camp holding two
+   * Veras is a bug the player would read as one. Walked in order rather than filtered, so
+   * a camp with a bed free still meets the next person in *its* sequence rather than
+   * whoever happens to be left.
+   */
+  const held = new Set(taken);
+  for (let step = 0; step < order.length; step += 1) {
+    const candidate = order[(from + step) % order.length];
+    if (!held.has(candidate.name)) return candidate;
+  }
+
+  // Every one of them is already here. Not reachable today — seven beds needs a shelter at
+  // fourteen — and a silent null would be a worse way to find out.
+  return order[from];
+}
+
+/** The order one camp meets them in. Fisher–Yates, so every order is equally likely. */
+function shuffledFor(seed) {
+  const random = makeRandom(mix(seed, 'wanderer-order'));
+  const order = [...WANDERERS];
+  for (let i = order.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(random() * (i + 1));
+    [order[i], order[j]] = [order[j], order[i]];
+  }
+  return order;
 }
 
 /**

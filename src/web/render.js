@@ -70,7 +70,10 @@ const DEFAULT_SURVIVOR_TAB = SURVIVOR_TABS[0][0];
 /** Rail order, and the label each view answers to. `records` is the graveyard page. */
 const RAIL = [
   ['camp', 'Camp', '/camp'],
-  ['survivor', 'Survivor', '/camp/survivor'],
+  // "Survivors", because a camp holds more than one now. The pane key and the path stay
+  // `survivor`: the key is what PANES and the page contract are written against, and the
+  // path is what a player has bookmarked.
+  ['survivor', 'Survivors', '/camp/survivor'],
   ['road', 'Road', '/camp/road'],
   ['trade', 'Trade', '/camp/trade'],
   ['records', 'Records', '/graveyard'],

@@ -30,7 +30,7 @@ export async function takeInWanderer(client, settlementId, { now = Date.now() } 
   await client.query('select id from settlements where id = $1 for update', [settlementId]);
 
   const { rows: living } = await client.query(
-    'select id from characters where settlement_id = $1 and died_at is null',
+    'select id, name from characters where settlement_id = $1 and died_at is null',
     [settlementId],
   );
 
@@ -80,7 +80,11 @@ export async function takeInWanderer(client, settlementId, { now = Date.now() } 
     [settlementId],
   );
 
-  const wanderer = wandererFor(camp.caravan_seed, held.n);
+  // Who is already here, so nobody is offered twice — a camp holding two Veras is a bug
+  // the player would read as one. The page passes the same list.
+  const wanderer = wandererFor(camp.caravan_seed, held.n, {
+    taken: living.map((one) => one.name),
+  });
   const characterId = await insertSurvivor(client, settlementId, wanderer, now);
 
   return { characterId, wanderer };

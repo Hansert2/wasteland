@@ -80,7 +80,7 @@ export async function loadWorld(client, settlementId) {
    * do the same job by accident; `born_at` says why.
    */
   const { rows: characters } = await client.query(
-    `select id, health, hunger, radiation, born_at, skill_scavenging, skill_medicine
+    `select id, name, health, hunger, radiation, born_at, skill_scavenging, skill_medicine
        from characters
       where settlement_id = $1 and died_at is null
       order by born_at, id`,
@@ -126,6 +126,10 @@ export async function loadWorld(client, settlementId) {
 
     survivor = {
       id: person.id,
+      // Carried on the survivor rather than fetched again beside them: with a roster the
+      // page needs a name per person, and `wandererFor` needs the names already held so it
+      // does not offer one of them a second time.
+      name: person.name,
       alive: true,
       health: person.health,
       hunger: person.hunger,

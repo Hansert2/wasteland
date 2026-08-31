@@ -61,13 +61,42 @@ test('a camp meets everybody before it meets anybody twice', () => {
 });
 
 test('no camp is luckier than another about who turns up first', () => {
+  /*
+   * This asserted exactly a thousand of each, which was free while the choice was
+   * `(seed + index * 7919) % 7`: modulo over consecutive seeds is perfectly uniform by
+   * construction. It was also the reason every camp in the game walked one ring in one
+   * order, entering at a different point — so the exactness went with the stride and the
+   * property has to be stated as what it actually is.
+   *
+   * Within five percent over seven thousand camps. Measured 2026-08-31 at a worst deviation
+   * of 3.6% here and 2.2% over seventy thousand, which is the shape of a fair shuffle
+   * converging. A real bias — a wanderer the hash favours, or a shuffle that never moves the
+   * first element — would be far outside this and is what the bound is for.
+   */
   const counts = new Map(WANDERERS.map((w) => [w.key, 0]));
   for (let seed = 1; seed <= 7000; seed += 1) {
     counts.set(wandererFor(seed, 0).key, counts.get(wandererFor(seed, 0).key) + 1);
   }
+
+  const expected = 7000 / WANDERERS.length;
   for (const [key, n] of counts) {
-    assert.equal(n, 1000, `${key} turned up ${n} times in 7000 camps`);
+    assert.ok(
+      Math.abs(n - expected) / expected < 0.05,
+      `${key} turned up ${n} times in 7000 camps, against ${expected}`,
+    );
   }
+});
+
+test('a camp meets its own order, not the one every other camp walks', () => {
+  /*
+   * The fault that started this. The stride stepped two along a fixed list every arrival, so
+   * seed 11 met Faye Nim Alder Corr Odd Wren Sesh and seed 12 met the same ring rotated —
+   * one order for the whole game, which a player would see the moment they founded a second
+   * camp.
+   */
+  const orderFor = (seed) => WANDERERS.map((_, i) => wandererFor(seed, i).key).join(' ');
+  const orders = new Set([11, 12, 13, 14, 15, 16, 17].map(orderFor));
+  assert.ok(orders.size > 4, `seven camps produced ${orders.size} distinct orders`);
 });
 
 test('medicine moves the dose that costs them, five points a level', () => {
