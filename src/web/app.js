@@ -299,7 +299,9 @@ export function createApp() {
       // anywhere, and the tick is what establishes that.
       const now = Date.now();
       await advanceSettlement(client, settlementId, now);
-      await dispatchExpedition(client, settlementId, req.body.region, now);
+      // Who goes, from the selector above the dispatch table. Absent means the first free
+      // survivor, which is what every caller meant before there was a roster to choose from.
+      await dispatchExpedition(client, settlementId, req.body.region, now, req.body.who || null);
     });
 
     res.redirect(backToCamp(req));

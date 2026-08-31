@@ -496,10 +496,24 @@ test('ninety days of attentive play holds every invariant at every check-in', as
          * ninety days, almost none of them long enough to have an interior, and one moment
          * answered in the whole run. A player with two people sends them to two places.
          */
+        /*
+         * The first walks the rotation; everybody after them takes something with an
+         * interior.
+         *
+         * Sending the whole roster round the same rotation meant most of a thousand trips
+         * were the ten-minute errands in it, and a moment only exists on a trip of four
+         * hours or more — so ninety days of two people caught one or two windows and the
+         * assertion below became a coin toss. A player with a second clean survivor sends
+         * them somewhere worth the walk, which is also what keeps this test honest about
+         * what it is measuring.
+         */
+        const long = ['ruined_city', 'underground_bunkers', 'the_deep_zone'];
         const region =
           person.radiation > 40 || person.health < 50
             ? 'the_fence_line'
-            : rotation[(checkin + nth * 3) % rotation.length];
+            : nth === 0
+              ? rotation[checkin % rotation.length]
+              : long[(checkin + nth) % long.length];
 
         if (await attempt(() => dispatchExpedition(client, settlementId, region, now, person.id))) {
           await pinExpeditionSeed(client, settlementId, checkin);

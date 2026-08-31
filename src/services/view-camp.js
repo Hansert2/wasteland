@@ -649,6 +649,7 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
   const { rows: away } = await client.query(
     `select r.name, r.slug, r.danger, r.travel_hours, r.loot, r.finds, r.radiation_per_trip,
             r.description,
+            e.character_id,
             e.returns_at, e.departed_at, e.seed, e.choices,
             e.clock_offset_minutes, e.solar_noon_minutes
        from expeditions e
@@ -678,7 +679,7 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
   );
 
   const { rows: inventoryRows } = await client.query(
-    `select i.slug, i.name, i.kind, i.potency, i.description, ii.qty
+    `select ii.character_id, i.slug, i.name, i.kind, i.potency, i.description, ii.qty
        from inventory_items ii
        join items i on i.id = ii.item_id
        join characters c on c.id = ii.character_id
@@ -699,6 +700,15 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
    * The service refuses all three cases again. This decides what the page offers; that
    * decides what actually happens, because the page is a render of a moment ago.
    */
+  /*
+   * The packs, grouped by whose they are.
+   *
+   * The query already reaches every living character's items — it joined through
+   * `characters` to find them — and only the grouping is new. With one survivor the whole
+   * result was one pack and nobody had to ask.
+   */
+  const packsByOwner = new Map();
+
   const inventory = inventoryRows.map((row) => {
     // The constant `useItem` applies, not a copy of it: the page must not advertise a
     // dose the service would not deliver.
@@ -756,6 +766,12 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
 
     return { ...row, use: null, idle: null, worth: 'used at the bench' };
   });
+
+  for (const [i, row] of inventoryRows.entries()) {
+    const owner = Number(row.character_id);
+    if (!packsByOwner.has(owner)) packsByOwner.set(owner, []);
+    packsByOwner.get(owner).push(inventory[i]);
+  }
 
   const { rows: upgradeRows } = await client.query(
     'select kind, upgrade, completes_at, installed_at from structure_upgrades where settlement_id = $1',
@@ -895,6 +911,20 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
   // scrap levels protect the camp while you are gone; the radio only ever helps while
   // you are here, so an unfitted camp meets a moment by loading the page inside its
   // window and never by planning to.
+  /*
+   * A report per trip, keyed on whoever is walking it.
+   *
+   * `expedition` stays as the first of them because the Contact block and a good deal of the
+   * page still read it. The map is what lets each survivor's own block say what their own
+   * trip has done — the decision on 2026-08-31 — rather than every block repeating the first
+   * traveller's numbers.
+   */
+  const reports = new Map();
+  for (const row of away) {
+    const report = reportOn(row, state, now);
+    if (report) reports.set(Number(row.character_id), report);
+  }
+
   const expedition = reportOn(away[0], state, now);
   if (expedition && fitted.has('radio')) {
     expedition.nextMomentAt = expedition.upcoming[0] ?? null;
@@ -1479,6 +1509,44 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
         })(),
     // What those numbers are doing to them. Null with nobody in the camp, because a
     // camp with no survivor has no strain, only an empty chair.
+    /**
+     * Everybody in the camp, each with what their own block needs.
+     *
+     * `survivor`, `strain` and `inventory` stay beside it as the first of them, because the
+     * rest of the page still reads them and moving 26 call sites in the same change as
+     * building the roster would be two risks in one commit.
+     *
+     * A person's trip is here rather than in a stack of its own — the decision on
+     * 2026-08-31: Vera's block says where Vera is, so "what is Vera doing" is one place.
+     */
+    roster: (state.survivors ?? []).map((person) => {
+      const trip = (state.expeditions ?? []).find(
+        (one) => one.status === 'active' && one.characterId === person.id,
+      );
+
+      return {
+        id: person.id,
+        name: person.name,
+        health: person.health,
+        hunger: person.hunger,
+        radiation: person.radiation,
+        skills: skillsOf(person, CONFIG.radThreshold),
+        strain: strainOf(person, radDecayPerHour),
+        inventory: packsByOwner.get(Number(person.id)) ?? [],
+        // What they are doing, in the words the refusals use, so a block and a refusal
+        // cannot describe the same person differently.
+        away: trip
+          ? {
+              regionName: trip.region.name,
+              regionSlug: trip.region.slug,
+              returnsAt: new Date(trip.returnsAt),
+              // What this trip has done to them so far, which is the whole reason the
+              // report belongs in their block rather than in a stack of its own.
+              report: reports.get(Number(person.id)) ?? null,
+            }
+          : null,
+      };
+    }),
     strain: state.survivor ? strainOf(state.survivor, radDecayPerHour) : null,
     // What the three gauges are counting and what moves them. Null with nobody in the
     // camp, for the same reason as the strain: there are no gauges to explain.

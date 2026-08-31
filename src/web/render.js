@@ -479,6 +479,10 @@ const STYLE = `
 
 ${SURVIVOR_TAB_CSS}
 
+  /* Where they are: under the name, above the tabs. */
+  .out { margin: 5px 0 0; color: var(--dim); font-size: 13px; }
+  .out .short { color: var(--faint); }
+
   .skills { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
   .skill { display: grid; gap: 3px; }
   .skill-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
@@ -2397,6 +2401,20 @@ export const TIMERS = `
     since = Date.now();
   };
 
+  /*
+   * Who is going, copied into every row's hidden field the moment it changes.
+   *
+   * The dispatch table asks once and eleven forms have to agree. A form= attribute on the
+   * select would do it without script, but each row is its own form and a select can only
+   * belong to one. change rather than input, because a select fires both and doing the work
+   * twice is doing it twice.
+   */
+  document.addEventListener('change', (event) => {
+    const picker = event.target.closest ? event.target.closest('[data-sending]') : null;
+    if (!picker) return;
+    for (const field of document.querySelectorAll('[data-sendwho]')) field.value = picker.value;
+  });
+
   document.addEventListener('click', (event) => {
     const tab = event.target.closest ? event.target.closest('[data-survivortab]') : null;
     if (!tab) return;
@@ -2951,7 +2969,7 @@ export function campPage(view, { error, pane = 'camp' } = {}) {
     <div class="lane lane-main">
       ${section(
         'expedition',
-        view.survivor ? renderExpeditions(view) : quiet('Away', NOTHING.expedition),
+        view.roster?.length ? renderExpeditions(view) : quiet('Away', NOTHING.expedition),
       )}
       ${section('workshop', renderWorkshop(view))}
     </div>
@@ -2959,8 +2977,8 @@ export function campPage(view, { error, pane = 'camp' } = {}) {
       ${section('gate', renderGate(view.atTheGate))}
       ${section(
         'survivor',
-        view.survivor
-          ? renderSurvivor(view.survivor, view.strain, view.vitals, view.inventory)
+        view.roster?.length
+          ? renderSurvivors(view)
           : renderNoSurvivor(view.fallenCount > 0, view.arriving),
       )}
     </div>
@@ -3493,6 +3511,56 @@ function renderGate(gate) {
   );
 }
 
+/**
+ * One block per person, stacked.
+ *
+ * The decision on 2026-08-31, and the reason a trip is reported inside a block rather than
+ * in a stack of its own: Vera's block says where Vera is, so "what is Vera doing" is one
+ * place rather than two to cross-reference.
+ *
+ * `vitals` is the camp's rather than the person's — what each gauge counts and what moves
+ * it is the same for everybody, which is why it stays one argument.
+ */
+/**
+ * What a trip has done so far, in the person's own block.
+ *
+ * The same figures the Away block printed when a camp had one traveller — both deltas, both
+ * signed, a dash before anything has happened. It moved here on 2026-08-31 so that a block
+ * answers "what is this person doing" on its own, and the Away block could go back to being
+ * only about where to send somebody.
+ */
+function tripReadout(report) {
+  if (!report) return '';
+
+  const signed = (value, mark) =>
+    value > 0 ? `${mark}${n(value, mark === '−' ? 0 : 1)}` : '—';
+
+  const cells = [
+    { tag: 'damage', value: signed(report.damage, '−'), tone: report.damage > 0 ? 'hurt' : '' },
+    { tag: 'rads', value: signed(report.radiation, '+') },
+  ];
+  for (const [kind, amount] of Object.entries(report.carrying ?? {})) {
+    cells.push({ tag: kind, value: String(amount) });
+  }
+  if (Object.keys(report.carrying ?? {}).length === 0) cells.push({ tag: 'haul', value: '—' });
+
+  return `<div class="readout out-readout">${cells
+    .map(
+      (cell) =>
+        `<div class="read"><span class="tag">${escape(cell.tag)}</span><span class="fig${
+          cell.tone ? ` ${cell.tone}` : ''
+        }">${escape(cell.value)}</span></div>`,
+    )
+    .join('')}</div>`;
+}
+
+function renderSurvivors(view) {
+  if (!view.roster?.length) return '';
+  return view.roster
+    .map((person) => renderSurvivor(person, person.strain, view.vitals, person.inventory))
+    .join('');
+}
+
 function renderSurvivor(survivor, strain, vitals, inventory) {
   /*
    * What this one is, under how they are doing — as figures now rather than as a sentence.
@@ -3549,6 +3617,30 @@ function renderSurvivor(survivor, strain, vitals, inventory) {
   return block(
     'Survivor',
     `<div class="who-name">${escape(survivor.name ?? 'Survivor')}</div>
+     ${
+       /*
+        * Where they are, above the tabs rather than behind one.
+        *
+        * Health and radiation keep moving while somebody is out — the dose accrues across
+        * the walk since Phase 11 — so putting the trip in a tab would hide the numbers most
+        * worth watching at the moment they move fastest.
+        */
+       survivor.away
+         ? `<p class="out">away &middot; ${escape(survivor.away.regionName)}
+              <span class="short">&middot; back in</span> ${countdown(survivor.away.returnsAt, 'now')}</p>
+            ${tripReadout(survivor.away.report)}
+            ${/*
+               * The armed timer that fetches the next window.
+               *
+               * It lived on the Away block's trip report, and moving the reports into these
+               * blocks left it defined and never called — so the Contact box stopped arriving
+               * on its own and only appeared if you happened to reload inside a window. The
+               * db suite caught it. One per traveller now, which is what a roster needs:
+               * each trip arms for its own next moment.
+               */ ''}
+            ${survivor.away.report ? momentAlarm(survivor.away.report) : ''}`
+         : ''
+     }
      <div class="tabbed" id="survivor-condition" data-tab="condition" role="tabpanel">
        <div class="gauges">
          ${gauge('Health', survivor.health, 100, said.health)}
@@ -3976,160 +4068,37 @@ function readout(cells) {
 }
 
 function renderExpeditions(view) {
-  if (view.expedition) {
-    const trip = view.expedition;
-    const hoursLeft = (new Date(trip.returnsAt).getTime() - Date.now()) / 3600000;
-    // Label first, then the figure: "due back in 18h 00m 00s" is a sentence the strip
-    // finishes, where "18h 00m 00s DUE BACK" is a readout with a caption. The Contact
-    // strip runs the other way round for the same reason — there the figure is the
-    // point and "to answer" is what it is a figure *of*.
-    const due =
-      hoursLeft > 0
-        ? `<span class="clock"><small>due back in</small>${countdown(trip.returnsAt, 'now')}</span>`
-        : '<span class="short">overdue &mdash; reload to see what came back</span>';
+  /*
+   * Only ever the dispatch table now.
+   *
+   * It used to be either a trip report *or* the table, which was right while a camp had one
+   * traveller and wrong the moment it had two: one person out meant the other could not be
+   * sent anywhere, because the block that sends people had been replaced by a report about
+   * somebody else. The reports moved into the survivor blocks; this went back to being about
+   * where to send whoever is free.
+   */
 
-    // The report, which is what makes a check-in that catches no window worth making.
-    // Rendered once and not animated: the haul steps by a whole unit about once an
-    // hour, so a live counter would buy nothing and would cost the client script a copy
-    // of the progress curve.
-    const lines = [];
+  /*
+   * Who is going, chosen once for the whole table.
+   *
+   * Only the free are offered: somebody building or already out cannot be sent, and the
+   * service refuses again behind this because the page is a render of a moment ago. A camp
+   * with nobody free gets the reason rather than an empty box.
+   */
+  const free = (view.roster ?? []).filter((one) => !one.away);
+  const going = free[0]?.id ?? null;
 
-    // Damage is in the readout as a figure, so this line exists only for the part a
-    // figure cannot carry: what did it. "Hurt out there." beside an accented health
-    // number is the same fact told twice.
-    if (trip.damage > 0 && trip.cause) lines.push(`Hurt out there — ${escape(trip.cause)}.`);
-
-    // What has already been answered, and — the part that was missing — the fact that
-    // it has not happened yet. Answering records a choice and nothing more; the trip is
-    // still rolled at the return, with the answers as an input. Without this the moment
-    // box simply vanished on submit and the page said nothing at all until the survivor
-    // walked back through the gate, which reads exactly like a button that did nothing.
-    //
-    // Three facts per answer — which moment, when, and what was chosen — set as three
-    // columns rather than as a sentence with a comma and a dash in it. They are a log,
-    // and a log is read down one column at a time.
-    const settled = (trip.settled ?? [])
-      .map(
-        (answer) => `<div class="answered">
-          <span class="what">${escape(answer.title)}</span>
-          <span class="when">${escape(duration(answer.atHour))} in</span>
-          <span class="took">${escape(answer.label)}</span>
-        </div>`,
-      )
-      .join('');
-
-    /*
-     * The state of the trip is a readout, and this is the second time that sentence has
-     * been rewritten in the opposite direction.
-     *
-     * It was 13px mono in the colour for things that are present but not the point —
-     * right inside the Contact panel, where it is small print under a decision, and
-     * wrong here, where it is the whole of what the block has to say. So it became a
-     * lede: one prose sentence at prose size.
-     *
-     * Which made it *legible* and left it unreadable in the way that actually mattered.
-     * "4 hours in, carrying 5 fuel, 9 scrap, 5 water, at 51 health" is six facts in one
-     * breath, and a player checking in wants one of them — usually health, sometimes
-     * fuel — and has to parse past five to reach it. Prose is the wrong container for
-     * a set of independent figures however well it is set.
-     *
-     * So: labelled cells, in the language the stores in the rail already speak. Every
-     * figure is findable by its label without reading its neighbours, which is the
-     * whole difference between a sentence and an instrument.
-     *
-     * Under it, what the place is. The dispatch table says that sentence before you
-     * send anybody and then the block that replaces it never said it again, so a trip
-     * in progress was eight hours of numbers about a name.
-     */
-    /*
-     * No elapsed figure here. The strip above already carries a clock, and two spans of the
-     * same trip measured from opposite ends is one reading too many — the one worth having
-     * is the one you can act on, which is when they are back.
-     *
-     * Both figures are what the *trip* has done, not where the survivor stands. They used to
-     * disagree about that: rads was already the dose this trip had given them and health was
-     * an absolute, so one cell was a delta and its neighbour was a level, in the same row,
-     * with no way to tell which was which.
-     *
-     * Damage rather than health is what makes them agree, and it is now the honest half.
-     * Health out there used to be computed here because the tick had not applied anything
-     * yet; since the trip settles across its hours the survivor's health is real and live in
-     * their own block. So this block reports the trip and that block reports the person,
-     * which is what each is for.
-     *
-     * A dash when nothing has happened yet, the convention the stores set: a zero is four
-     * characters of precision saying nothing occurred.
-     */
-    const cells = [
-      {
-        // Literal characters, not entities: these values go through `escape` on the way out,
-        // so an `&mdash;` here arrives on the page as the six letters of one.
-        tag: 'damage',
-        value: trip.damage > 0 ? `−${n(trip.damage, 0)}` : '—',
-        tone: trip.damage > 0 ? 'hurt' : '',
-      },
-      { tag: 'rads', value: trip.radiation > 0 ? `+${n(trip.radiation)}` : '—' },
-    ];
-
-    // One cell per kind carried, and a single dash when the pack is still empty. The
-    // stores make the same argument for an empty track: the block keeps its shape
-    // whatever is in it, or the eye has to re-find the layout on every visit.
-    const carried = Object.entries(trip.carrying);
-    if (carried.length === 0) cells.push({ tag: 'haul', value: '—' });
-    for (const [kind, amount] of carried) cells.push({ tag: kind, value: String(amount) });
-
-    // Unlike health and rads, a find is an event rather than a scale being watched, so
-    // "finds 0" on every trip would be a cell that is only ever noise.
-    if (trip.findCount > 0) cells.push({ tag: 'finds', value: String(trip.findCount) });
-
-    // The radio's figure, last and accented.
-    //
-    // It was a line of prose under the report — "Radio: next contact in 1h 09m 01s." —
-    // which is a countdown wearing a sentence. It is a labelled figure like every other
-    // number in this block, and the design's own rail sketch already puts it exactly
-    // here: the only warm thing in a column of quiet ones, because a deadline is what
-    // the accent is for.
-    //
-    // Only present when a radio is fitted, which is the whole of what the fitting buys
-    // and is decided upstream — `nextMomentAt` is null without one.
-    //
-    // **The label names the radio and the caption names the subject**, because a cell
-    // reading only "next contact" is a figure that arrived from nowhere: it is the one
-    // number in this block that a *fitting* pays for, and a player who cannot see which
-    // fitting cannot see what 55 fuel bought. Figure first and caption after is the
-    // Contact strip's arrangement, for the reason stated there — here the countdown is
-    // the point and the words are what it is a countdown of.
-    if (trip.nextMomentAt) {
-      cells.push({
-        tag: 'radio',
-        html: `${countdown(trip.nextMomentAt, 'any moment')}<small>to contact</small>`,
-        tone: 'due',
-      });
-    }
-
-    return `<div class="block contact">
-        <div class="block-head">
-          <span class="tag">Away &mdash; ${escape(trip.regionName)}</span>
-          ${due}
-        </div>
-        ${plate(trip.regionSlug, 'band')}
-        ${readout(cells)}
-        <div class="block-body">
-          ${
-            trip.regionDescription
-              ? `<p class="under">${escape(trip.regionDescription)}</p>`
-              : ''
-          }
-          ${lines.length > 0 ? `<p class="under">${lines.join('<br>')}</p>` : ''}
-        </div>
-        ${
-          settled
-            ? `<div class="settled"><span class="tag">Settled out there</span>${settled}
-               <p class="footnote">What came of that comes home with them.</p></div>`
-            : ''
-        }
-      </div>${momentAlarm(trip)}`;
-  }
+  const sending = (view.roster ?? []).length
+    ? free.length === 0
+      ? '<span class="f-nav"><span class="short">nobody is free to go</span></span>'
+      : `<span class="f-nav"><span class="tag">sending</span>
+           <select data-sending aria-label="Who goes">${free
+             .map(
+               (one) =>
+                 `<option value="${escape(String(one.id))}">${escape(one.name ?? 'Survivor')}</option>`,
+             )
+             .join('')}</select></span>`
+    : '';
 
   const rows = view.regions
     .map(
@@ -4141,6 +4110,15 @@ function renderExpeditions(view) {
         <td class="act">
           <form method="post" action="/expedition">
             <input type="hidden" name="region" value="${escape(region.slug)}">
+            ${/*
+              * Who goes rides along hidden, filled from the selector above the table.
+              *
+              * The choice is made once for the block rather than eleven times inside it —
+              * you know who is free before you know where they should go, and a list of the
+              * roster repeated on every row would be the same decision asked eleven ways.
+              * The client script copies the selection into each of these on change.
+              */ ''}
+            <input type="hidden" name="who" data-sendwho value="${escape(String(going ?? ''))}">
             <button type="submit">Send</button>
           </form>
         </td>
@@ -4148,7 +4126,12 @@ function renderExpeditions(view) {
     )
     .join('');
 
-  return block('Where to send them', `<table class="dispatch">${rows}</table>`, { flush: true });
+  // The selector rides in the label strip, opposite the block's name — the slot `dayNav` and
+  // the survivor tabs already use, and the same reason: it belongs to the whole block.
+  return block('Where to send them', `<table class="dispatch">${rows}</table>`, {
+    flush: true,
+    aside: sending,
+  });
 }
 
 /**
