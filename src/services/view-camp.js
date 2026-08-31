@@ -599,7 +599,7 @@ function strainOf(survivor, decayPerHour) {
 function driversFor(person, {
   working,
   resting,
-  fedShort,
+  fed,
   radScrubbing,
   radDecayPerHour,
   strain,
@@ -612,7 +612,43 @@ function driversFor(person, {
     return h >= 24 ? `${Math.floor(h / 24)}d ${h % 24}h` : `${h}h`;
   };
 
+  /*
+   * If the number is moving, say why. If it is not, say nothing.
+   *
+   * The first pass only marked *problems* — too hungry to heal, the dose winning, the
+   * stores short — and left every ordinary process silent. So a survivor healing at two an
+   * hour had a bare gauge, which the rule cannot justify: stamina carries "resting +1/h" for
+   * exactly the same kind of fact, and a page that marks the bad news and not the good one
+   * is not reporting, it is warning.
+   *
+   * Asked about on 2026-08-31: "why is there no healing pip here". There was no reason.
+   */
   const health = [];
+  /*
+   * Healing, and only when it is actually happening.
+   *
+   * `strainOf` weighs rest against the dose and knows nothing about hunger, so on a starving
+   * survivor it reports mending while the ceiling has healing switched off entirely — and
+   * the gauge carried "healing +2/h" and "too hungry to heal" side by side, which is the page
+   * contradicting itself in the space of two glyphs. The ceiling is checked here because it
+   * is the gate: below it the dose decides the rate, above it there is no rate to state.
+   */
+  if (
+    person.health < 100 &&
+    person.hunger < config.regenHungerCeiling &&
+    strain?.state === 'mending'
+  ) {
+    const slowed = strain.healingPerHour < strain.fullHealing * 0.85;
+    health.push({
+      sign: slowed ? '△' : '▲',
+      tag: slowed
+        ? `healing +${n1(strain.healingPerHour)}/h, slowed`
+        : `healing +${n1(strain.healingPerHour)}/h`,
+      note: slowed
+        ? `${perHour(strain.healingPerHour, '+')}, slowed by the dose`
+        : perHour(strain.healingPerHour, '+'),
+    });
+  }
   if (person.hunger >= config.regenHungerCeiling) {
     health.push({
       sign: '■',
@@ -643,20 +679,47 @@ function driversFor(person, {
       note: `draws ${n1(config.foodPerHour * draw)} food, ${n1(config.waterPerHour * draw)} water /h`,
     });
   }
-  if (fedShort) {
-    hunger.push({
-      sign: '○',
-      tag: 'the stores are short',
-      note: `${perHour(config.hungerRisePerHour, '+')}, starves at ${n1(config.starvationThreshold)}`,
-    });
+  /*
+   * Hunger above zero is two different states and this said only one of them.
+   *
+   * `fedShort` was `hunger > 0`, which is true of a survivor eating their way back down as
+   * well as one with nothing to eat — so a camp with full stores told the player it could
+   * not feed somebody whose hunger was falling at twelve an hour. Which way it is going is
+   * the whole of what the mark is for.
+   */
+  if (person.hunger > 0) {
+    hunger.push(
+      fed
+        ? {
+            sign: '▼',
+            tag: `eating −${n1(config.hungerFallPerHour)}/h`,
+            note: perHour(config.hungerFallPerHour, '−'),
+          }
+        : {
+            sign: '○',
+            tag: 'the stores are short',
+            note: `${perHour(config.hungerRisePerHour, '+')}, starves at ${n1(config.starvationThreshold)}`,
+          },
+    );
   }
 
+  /*
+   * A dose coming down, and whether the filter is why.
+   *
+   * This marked only filtration, so ordinary decay — the thing happening to most survivors
+   * most of the time — went unsaid. Away is still silent, and correctly: nothing on the road
+   * touches a dose, and a mark for that would be a mark reporting its own absence.
+   */
   const radiation = [];
-  if (working !== 'away' && radScrubbing) {
+  if (person.radiation > 0 && working !== 'away') {
     radiation.push({
-      sign: '◆',
-      tag: 'filtration',
-      note: `${perHour(radDecayPerHour, '−')} in camp, ${perHour(config.radDecayPerHour, '−')} without it`,
+      sign: radScrubbing ? '◆' : '▼',
+      tag: radScrubbing
+        ? `filtration −${n1(radDecayPerHour)}/h`
+        : `decaying −${n1(radDecayPerHour)}/h`,
+      note: radScrubbing
+        ? `${perHour(radDecayPerHour, '−')}, ${perHour(config.radDecayPerHour, '−')} without the filter`
+        : perHour(radDecayPerHour, '−'),
     });
   }
 
@@ -1725,14 +1788,17 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
         /*
          * And what is acting on each gauge for *this* person in *this* hour.
          *
-         * `fedShort` is read from the state the tick just wrote rather than predicted:
-         * hunger above zero on a camp that is drawing means the stores did not meet the
-         * draw, which is the same fact the simulation acted on and not a second guess at it.
+         * `fed` is whether the stores have anything in them, which is what the tick's own
+         * `draw` asks a moment later — so a hunger that is falling and a hunger that is
+         * climbing are told apart by the same fact the simulation acted on rather than by a
+         * second guess at it.
          */
         drivers: driversFor(person, {
           working: workingAt(state, person),
           resting: workingAt(state, person) === null && Number(person.stamina) < 100,
-          fedShort: Number(person.hunger) > 0,
+          fed:
+            Number(state.settlement.resources.food?.amount ?? 0) > 0 &&
+            Number(state.settlement.resources.water?.amount ?? 0) > 0,
           radScrubbing: fitted.has('filtration'),
           radDecayPerHour,
           strain: strainOf(person, radDecayPerHour),

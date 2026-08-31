@@ -551,3 +551,52 @@ test('somebody out there is shown the place they are in', () => {
    */
   assert.doesNotMatch(html, /<img[^>]*class="plate/, 'no region is rendered as a picture');
 });
+
+test('a gauge that is moving says why, and one that is not says nothing', () => {
+  /*
+   * The rule the marks are for, asserted in both directions because the first pass only got
+   * one of them: it marked the *problems* — too hungry to heal, the stores short, the dose
+   * winning — and left every ordinary process silent. A survivor healing at two an hour had
+   * a bare gauge, which is a page that warns rather than reports.
+   *
+   * Asked on 2026-08-31, of a survivor at 90.3 health with nothing in the way: "why is there
+   * no healing pip here". There was no reason.
+   */
+  const html = STATES.hungry;
+  assert.ok(html, 'there is a page with somebody in trouble on it');
+
+  // The chip carries the tag; the rate lives in the note nested inside it, so these match
+  // on what the chip itself says.
+  const marks = [...html.matchAll(/<span class="driver noted">([^<]*)</g)].map((m) => m[1]);
+
+  // Something is happening to every one of these on that page, so every one of them says so.
+  // And the two that cannot both be true are not both there: a survivor above the hunger
+  // ceiling is not healing, whatever the dose alone would have made of it.
+  assert.ok(
+    !marks.some((mark) => /healing \+/.test(mark)),
+    'a survivor too hungry to heal is also reported as healing',
+  );
+  for (const moving of [/too hungry to heal/, /the stores are short/, /resting|out there/]) {
+    assert.ok(
+      marks.some((mark) => moving.test(mark)),
+      `nothing on the page reports ${moving} — a live effect going unmarked`,
+    );
+  }
+
+  /*
+   * And the other direction, on the page where nobody is in trouble: a camp whose survivor
+   * is whole, fed, clean and rested has nothing acting on any gauge, and the gauges are
+   * still all four. Marks come and go; the reading does not.
+   */
+  const quiet = STATES.home;
+  assert.equal(
+    [...quiet.matchAll(/<span class="driver noted">/g)].length,
+    0,
+    'a survivor with nothing happening to them is carrying marks anyway',
+  );
+  assert.equal(
+    [...quiet.matchAll(/class="gauge noted g-/g)].length,
+    4,
+    'and the four gauges are there regardless',
+  );
+});
