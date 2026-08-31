@@ -1055,3 +1055,59 @@ test('two trips in flight are settled separately, each on its own hour', () => {
     'two arrivals, reported separately',
   );
 });
+
+test('whether a survivor is on the road is asked about that survivor', () => {
+  /*
+   * A dose decays in the camp and not on the road, and for as long as a camp held one
+   * person "is anybody away" and "is this person away" were the same question. They stopped
+   * being the same the day a camp could hold two, and the tick went on asking the first one:
+   * `state.expedition?.status !== 'active'` — the *first* trip, asked about everybody.
+   *
+   * It is wrong in both directions, and the second one is the expensive one.
+   *
+   * - Somebody else is out, so a survivor standing in the camp is told they are on the road
+   *   and stops scrubbing.
+   * - The first trip has resolved, so a survivor who is genuinely out there is told they
+   *   are home and scrubs *while walking* — which is precisely the hole the
+   *   road-does-not-scrub change closed on 2026-08-30, reopened by a different door. Going
+   *   out recklessly becomes safer than waiting, again.
+   *
+   * Both suites were green through all of it, because nothing had asked what happens to the
+   * other person's dose.
+   */
+  const region = { ...REGION, radiationPerHour: 0 };
+  const walked = { id: 10, name: 'Away', alive: true, health: 100, hunger: 0, radiation: 50,
+                   bornAt: T0, diedAt: null, causeOfDeath: null, inventory: [] };
+  const stayed = { ...walked, id: 11, name: 'Home' };
+
+  const camp = (expeditions) => {
+    const state = makeState({
+      resources: { food: { amount: 500, ratePerHour: 0, cap: 500 },
+                   water: { amount: 500, ratePerHour: 0, cap: 500 } },
+    });
+    state.survivors = [{ ...walked }, { ...stayed }];
+    state.survivor = state.survivors[0];
+    state.expeditions = expeditions;
+    state.expedition = expeditions[0] ?? null;
+    return state;
+  };
+
+  const trip = { id: 'exp_live', characterId: 10, status: 'active', departedAt: T0,
+                 returnsAt: T0 + hours(20), seed: 1234, region, resolvedAt: null, log: null };
+  const done = { id: 'exp_done', characterId: 11, status: 'returned', departedAt: T0 - hours(40),
+                 returnsAt: T0 - hours(20), seed: 99, region, resolvedAt: T0 - hours(20), log: null };
+
+  const decayed = 50 - CONFIG.radDecayPerHour * 6;
+
+  for (const [name, expeditions] of [
+    ['somebody else is out', [trip]],
+    ['the first trip has resolved', [done, trip]],
+  ]) {
+    const { state } = applyTick(camp(expeditions), T0 + hours(6));
+    const away = state.survivors.find((one) => one.id === 10);
+    const home = state.survivors.find((one) => one.id === 11);
+
+    close(away.radiation, 50, `${name}: the one on the road does not scrub while walking`);
+    close(home.radiation, decayed, `${name}: the one in the camp scrubs as they always did`);
+  }
+});

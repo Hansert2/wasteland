@@ -614,6 +614,35 @@ function isDueBack(state, expedition, at) {
  * `characterId` is null on a state built by hand, and a fixture with one survivor and one
  * trip means the trip is theirs — which is most of what the tick is tested against.
  */
+/**
+ * The trip this survivor is on, or null if they are standing in the camp.
+ *
+ * The inverse of `walkerOf`, and it exists because the thing it replaces was wrong. That
+ * read `state.expedition?.status !== 'active'` — one trip, asked about every survivor — and
+ * with a roster it answers about the wrong person in both directions:
+ *
+ * - **Somebody else is out**, so a survivor sitting in the camp is told they are on the
+ *   road and their dose stops decaying. Measured before the fix: two survivors at 50 rads,
+ *   one away, six hours — the one at home came out of it still at 50 instead of 44.2.
+ * - **The first trip has resolved**, so a survivor who is genuinely out there is told they
+ *   are home and scrubs on the road. That is the exact hole the road-does-not-scrub change
+ *   closed on 2026-08-30, reopened by a different door: going out would once again be safer
+ *   than waiting.
+ *
+ * Neither could happen while a camp held one person, which is why it survived the roster
+ * work. Whose trip it is has to be asked per survivor, because it is a fact about them.
+ */
+function tripOf(state, survivor) {
+  const trips = state.expeditions ?? (state.expedition ? [state.expedition] : []);
+  return (
+    trips.find(
+      (trip) =>
+        trip.status === 'active' &&
+        (trip.characterId == null || trip.characterId === survivor.id),
+    ) ?? null
+  );
+}
+
 function walkerOf(state, expedition) {
   const roster = state.survivors ?? (state.survivor ? [state.survivor] : []);
   if (expedition?.characterId == null) return state.survivor ?? roster[0] ?? null;
@@ -741,7 +770,7 @@ function simulateSurvivor(state, survivor, hours, at, events, config) {
    * region figures were divided down to keep the net exactly where it was — see the note in
    * `seed.js`. A survivor recovers where there is water and shelter to recover in.
    */
-  const inCamp = state.expedition?.status !== 'active';
+  const inCamp = tripOf(state, survivor) === null;
   const radDecay =
     config.radDecayPerHour * (inCamp ? radDecayMultiplier(state.settlement.upgrades) : 0);
   survivor.radiation = clamp(survivor.radiation - radDecay * hours, 0, 100);
