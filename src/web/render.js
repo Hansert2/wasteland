@@ -1608,11 +1608,6 @@ ${PANE_CSS}
    * Sized and tracked like a tag, in the grey the page keeps for something that is a label
    * rather than a reading, with a hairline box so a run of two reads as two.
    */
-  /* Present, and saying nothing. The figure keeps its size so the column still reads as a
-     column; only its voice drops. */
-  .gauge.at-rest .tag { color: var(--rule); }
-  .gauge.at-rest .val { color: var(--faint); }
-
   .drivers { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 7px; }
   .driver {
     font-family: var(--label);
@@ -1644,10 +1639,33 @@ ${PANE_CSS}
    * reading of one person — health against hunger against the dose, in a glance — which is
    * the comparison that decides whether this is somebody you send anywhere today.
    */
-  .gauges { display: flex; gap: 26px; }
-  .gauges > .gauge { flex: 1 1 0; min-width: 0; }
+  /*
+   * Four fixed slots, of which a gauge fills its own or none.
+   *
+   * A gauge with nothing acting on it is not rendered at all — a rested camp would
+   * otherwise be twenty figures reading full, no, no, full, and what a player scans a
+   * roster for is the one that is not saying that.
+   *
+   * A grid rather than a flex row is what makes that affordable. Under "flex: 1 1 0" the
+   * survivors left standing would spread to fill the space and every row would put its
+   * figures somewhere different, which costs the thing the row layout was for: health under
+   * health and the dose under the dose, down a column, across four people. Named slots keep
+   * every gauge in its own place whether or not its neighbours exist, and the gap where one
+   * is missing is simply a gap.
+   */
+  .gauges { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 13px 26px; }
+  .g-health { grid-column: 1; }
+  .g-hunger { grid-column: 2; }
+  .g-radiation { grid-column: 3; }
+  .g-stamina { grid-column: 4; }
+  /* Narrow enough and the slots stop being worth holding: two columns, then one, and a
+     gauge takes whichever cell it lands in. */
+  @media (max-width: 900px) {
+    .gauges { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .g-health, .g-hunger, .g-radiation, .g-stamina { grid-column: auto; }
+  }
   @media (max-width: 620px) {
-    .gauges { flex-direction: column; gap: 13px; }
+    .gauges { grid-template-columns: minmax(0, 1fr); }
   }
   .gauge-top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
   .gauge-top .tag { letter-spacing: .14em; color: var(--dim); }
@@ -4004,13 +4022,15 @@ function renderSurvivor(survivor, strain, vitals, inventory, chosen, panelId) {
    * on it wakes it up, whatever the number says.
    */
   const gauge = (label, value, of, note, tail = '', acting = [], resting = false) => {
-    const quiet = resting && (acting ?? []).length === 0 && !tail;
-    return `<div class="gauge noted${quiet ? ' at-rest' : ''}">
+    // Nothing is happening to it, so it is not here. The decision of 2026-08-31.
+    if (resting && (acting ?? []).length === 0 && !tail) return '';
+
+    return `<div class="gauge noted g-${label.toLowerCase()}">
       <div class="gauge-top"><span class="tag">${label}</span>
         <span class="val">${n(value)}</span></div>
-      ${quiet ? '' : `<div class="track">${
+      <div class="track">${
         value > 0 ? `<i style="width:${bar(value, of)}%"></i>` : ''
-      }</div>`}${marks(acting)}${tail}${note}
+      }</div>${marks(acting)}${tail}${note}
     </div>`;
   };
 

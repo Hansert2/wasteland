@@ -169,7 +169,16 @@ test('the first survivor moves in through the same door as every successor', asy
     WANDERERS.some((w) => html.includes(w.name)),
     'the page names the wanderer who took the camp on',
   );
-  assert.match(html, /Health/);
+  /*
+   * That somebody lives here, which is what this test is about.
+   *
+   * It read `/Health/`, and a gauge with nothing acting on it stopped rendering on
+   * 2026-08-31 — a survivor who has just moved in is whole, fed, clean and rested, so the
+   * word is gone from a page that is otherwise entirely correct. The claim was never about
+   * the gauge; it was that the camp is occupied rather than standing empty, and the block
+   * that says so is the one to look for.
+   */
+  assert.match(html, /<div class="who-name">/);
   assert.doesNotMatch(html, /camp stands empty/i);
 });
 

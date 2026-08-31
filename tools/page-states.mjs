@@ -121,6 +121,30 @@ export async function buildStates(client, now = Date.now()) {
   };
   const early = seedWithEarlyWindow(deepZone);
 
+  /*
+   * 2b. A survivor the camp is not keeping up with.
+   *
+   * Added 2026-08-31 because the page contract asked for it and nothing here could answer.
+   * Every camp in this file is fed, so from the day gauges stopped rendering when nothing
+   * was acting on them, the hunger gauge was never on any fixture — and the assertion that
+   * every gauge explains what it counts had quietly stopped covering one of the four.
+   *
+   * A hungry survivor is also the state that carries the most marks: the stores are short,
+   * they are too hungry to heal, and recovery is drawing rations it cannot get. Worth
+   * having a page of on its own.
+   */
+  {
+    const id = await camp(client, now);
+    await raiseSuccessor(client, id, { now });
+    await client.query('update resources set amount = 0 where settlement_id = $1', [id]);
+    await client.query(
+      `update characters set hunger = 44, health = 61, stamina = 55
+        where settlement_id = $1 and died_at is null`,
+      [id],
+    );
+    states['hungry'] = campPage(await viewCamp(client, id, now));
+  }
+
   // 3. Away, mid-trip, nothing open. The report without the invitation.
   {
     const id = await camp(client, now);

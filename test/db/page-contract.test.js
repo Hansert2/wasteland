@@ -295,6 +295,16 @@ test('every gauge says what its number counts, in a place the note script can fi
    * is a `note` in the document rather than a `title` attribute. Either half alone
    * renders a page that looks perfectly correct and explains nothing.
    */
+  /*
+   * Every one of the four has to turn up somewhere across the fixtures.
+   *
+   * With gauges droppable, a suite of healthy camps would render none of them and every
+   * assertion in this loop would pass by never running — the exact shape of green that this
+   * file exists to refuse. So the states are read together and the four are accounted for
+   * at the end.
+   */
+  const seenSlots = [];
+
   for (const [name, html] of Object.entries(STATES)) {
     if (name === 'opening') continue; // its own page, with its own contract below
     // Cut on the opening tag rather than matching a balanced one: a gauge holds nested
@@ -302,11 +312,28 @@ test('every gauge says what its number counts, in a place the note script can fi
     const gauges = html.split('<div class="gauge ').slice(1);
     if (gauges.length === 0) continue;
 
+    /*
+     * However many are live, and no more than the four that exist.
+     *
+     * A gauge with nothing acting on it is not rendered at all since 2026-08-31, so a camp
+     * whose survivor is whole and fed and clean and rested shows none — which is the point
+     * of it and makes a fixed count the wrong assertion. What must not slip is the other
+     * direction: a gauge appearing twice, or a fifth arriving without a slot in the grid to
+     * stand in, both of which a length check on its own would miss.
+     */
+    const slots = [...html.matchAll(/class="gauge noted g-(\w+)"/g)].map((m) => m[1]);
+    assert.ok(slots.length <= 4, `${name}: ${slots.length} gauges, and there are only four`);
     assert.equal(
-      gauges.length,
-      4,
-      `${name}: ${gauges.length} gauges, expected health, hunger, rads, stamina`,
+      new Set(slots).size,
+      slots.length,
+      `${name}: the same gauge rendered twice`,
     );
+    for (const slot of slots) {
+      assert.ok(
+        ['health', 'hunger', 'radiation', 'stamina'].includes(slot),
+        `${name}: a "${slot}" gauge, which has no column to stand in`,
+      );
+    }
 
     for (const gauge of gauges) {
       /*
@@ -330,6 +357,8 @@ test('every gauge says what its number counts, in a place the note script can fi
       const rows = [...gauge.matchAll(/class="stat-row"/g)].length;
       assert.ok(rows >= 3, `${name}: ${rows} rates under the scale, expected at least three`);
     }
+
+    seenSlots.push(...slots);
 
     /*
      * And a mark on a gauge carries its own note, in its own `.noted`.
@@ -356,6 +385,12 @@ test('every gauge says what its number counts, in a place the note script can fi
       );
     }
   }
+
+  assert.deepEqual(
+    [...new Set(seenSlots)].sort(),
+    ['health', 'hunger', 'radiation', 'stamina'],
+    'some gauge is never rendered by any fixture, so nothing above was checked on it',
+  );
 });
 
 test('every plate the page asks for is a file that exists', async () => {
