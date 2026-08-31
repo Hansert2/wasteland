@@ -91,6 +91,7 @@ export async function loadWorld(client, settlementId) {
   let survivor = null;
   let expedition = null;
   const survivors = [];
+  const expeditions = [];
 
   /*
    * Every pack in the camp, in one query rather than one per person.
@@ -196,13 +197,11 @@ export async function loadWorld(client, settlementId) {
          from expeditions e
          join regions r on r.id = e.region_id
         where e.character_id = any($1) and e.status = 'active'
-        order by e.departed_at
-        limit 1`,
+        order by e.departed_at`,
       [survivors.map((one) => one.id)],
     );
 
-    if (active[0]) {
-      const row = active[0];
+    for (const row of active) {
       expedition = {
         id: row.id,
         status: row.status,
@@ -247,8 +246,17 @@ export async function loadWorld(client, settlementId) {
           radiationPerTrip: row.radiation_per_trip,
         },
       };
+      expeditions.push(expedition);
     }
   }
+
+  /*
+   * `expedition` is the first trip in flight, which is who the page and the tick are still
+   * written against. Assigned after the walk rather than left as whatever the loop finished
+   * on — the same value while a camp runs one trip, and quietly the wrong one the moment it
+   * runs two.
+   */
+  expedition = expeditions[0] ?? null;
 
   // The craft order hangs off the settlement rather than the character, so it loads
   // whether or not anyone is alive to receive it — that is what the 'lost' status is
@@ -265,7 +273,6 @@ export async function loadWorld(client, settlementId) {
 
   const order = crafting[0];
 
-  // The fuel track. Installed upgrades are capabilities the camp has; the one with a
   // null installed_at is still being fitted, and the partial unique index guarantees
   // there is at most one. What each upgrade *does* lives in code, not here.
   const { rows: upgradeRows } = await client.query(
@@ -322,6 +329,13 @@ export async function loadWorld(client, settlementId) {
      */
     survivors,
     expedition,
+    /*
+     * Every trip in flight, in departure order. One long today: `dispatchExpedition` still
+     * refuses a second while anybody is out, and making it plural is the next step. The
+     * shape is here first so the tick and the page can be taught to walk it while the
+     * behaviour is still the behaviour they were tested against.
+     */
+    expeditions,
     craft: order
       ? {
           id: order.id,

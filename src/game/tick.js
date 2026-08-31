@@ -94,7 +94,19 @@ export function applyTick(state, now, config = CONFIG) {
 
   // Resolved before the walk and not inside it: every slice asks the same trip the same
   // question, and asking it once is what guarantees they all get the same answer.
-  const flight = flightOf(next);
+  /*
+   * One resolved trip per trip in flight, worked out before the walk and carried.
+   *
+   * Resolving inside the loop would ask the same question on every slice and invite two
+   * answers; resolving one trip when a camp can run several would settle the first and
+   * accrue nothing for the rest.
+   */
+  const inFlight = next.expeditions ?? (next.expedition ? [next.expedition] : []);
+  const flights = new Map();
+  for (const trip of inFlight) {
+    const flight = flightOf(next, trip);
+    if (flight) flights.set(trip, flight);
+  }
 
   let cursor = next.lastTickAt;
   while (cursor < now) {
@@ -102,7 +114,7 @@ export function applyTick(state, now, config = CONFIG) {
     // expedition returns), so a rate change lands at its true hour and the result
     // cannot depend on how the interval happens to be divided.
     const at = Math.min(cursor + config.stepMs, now, nextEventAfter(next, cursor));
-    advance(next, cursor, at, events, config, flight);
+    advance(next, cursor, at, events, config, flights);
     cursor = at;
   }
 
@@ -127,8 +139,7 @@ export function applyTick(state, now, config = CONFIG) {
  *
  * Null when nobody is out.
  */
-function flightOf(state) {
-  const expedition = state.expedition;
+function flightOf(state, expedition) {
   if (!expedition || expedition.status !== 'active' || !state.survivor) return null;
 
   /*
@@ -193,10 +204,8 @@ function flightOf(state) {
  * Healing before damage inside the slice, which is the rule the gate used to get for free by
  * applying both at once.
  */
-function accrueTrip(state, from, at, events, config, flight) {
+function accrueTrip(state, expedition, from, at, events, config, flight) {
   if (!flight) return;
-
-  const expedition = state.expedition;
   if (!expedition || expedition.status !== 'active') return;
 
   /*
@@ -261,8 +270,18 @@ function nextEventAfter(state, cursor) {
     }
   }
 
-  if (state.expedition?.status === 'active' && state.expedition.returnsAt > cursor) {
-    next = Math.min(next, state.expedition.returnsAt);
+  /*
+   * Every trip's return, not the first one's.
+   *
+   * A slice is cut at each so the last instalment of a trip's dose and damage lands on its
+   * exact hour rather than at whatever boundary happened to be next. With one trip this read
+   * `state.expedition`; with two, the second one's arrival would have been rounded to the
+   * step and its final accrual delivered late.
+   */
+  for (const trip of state.expeditions ?? (state.expedition ? [state.expedition] : [])) {
+    if (trip?.status === 'active' && trip.returnsAt > cursor) {
+      next = Math.min(next, trip.returnsAt);
+    }
   }
 
   if (state.craft?.status === 'active' && state.craft.completesAt > cursor) {
@@ -296,7 +315,7 @@ function nextEventAfter(state, cursor) {
 }
 
 /** One simulation slice, applied in a fixed order. */
-function advance(state, from, at, events, config, flight) {
+function advance(state, from, at, events, config, flights) {
   const hours = (at - from) / HOUR_MS;
 
   // What the sky is doing across this slice, sampled at its start. Slices are cut at
@@ -315,14 +334,22 @@ function advance(state, from, at, events, config, flight) {
   // from that hour rather than from the next one.
   raid(state, at, events);
 
-  // What the road did to them in this slice, before they can walk in the gate with it.
-  // The slice ending exactly at `returns_at` is what makes the last instalment land in full.
-  accrueTrip(state, from, at, events, config, flight);
-
-  // Coming home happens before the hour's hunger is applied, so a survivor who
-  // returns carrying food is fed by it rather than starving on the doorstep.
-  if (isDueBack(state, at)) {
-    returnExpedition(state, at, events, flight);
+  /*
+   * Every trip in flight, in the order they left.
+   *
+   * What the road did to them in this slice comes before they can walk in the gate with it,
+   * and the slice ending exactly at `returns_at` is what makes the last instalment land in
+   * full. Coming home comes before the hour's hunger, so a survivor who returns carrying
+   * food is fed by it rather than starving on the doorstep.
+   *
+   * A copy of the list, because `returnExpedition` and `kill` both write to it.
+   */
+  for (const trip of [...(state.expeditions ?? (state.expedition ? [state.expedition] : []))]) {
+    const flight = flights?.get(trip);
+    accrueTrip(state, trip, from, at, events, config, flight);
+    if (isDueBack(state, trip, at)) {
+      returnExpedition(state, trip, at, events, flight);
+    }
   }
 
   /*
@@ -572,12 +599,25 @@ function visibleWealth(settlement) {
   return campWealth(settlement.structures);
 }
 
-function isDueBack(state, at) {
-  return (
-    state.survivor?.alive &&
-    state.expedition?.status === 'active' &&
-    at >= state.expedition.returnsAt
-  );
+function isDueBack(state, expedition, at) {
+  if (expedition?.status !== 'active' || at < expedition.returnsAt) return false;
+
+  // Somebody has to be alive to come home, and it has to be *them*: a camp where one
+  // survivor is still standing must not walk a dead one through the gate.
+  const walker = walkerOf(state, expedition);
+  return Boolean(walker?.alive);
+}
+
+/**
+ * Whoever is on this trip.
+ *
+ * `characterId` is null on a state built by hand, and a fixture with one survivor and one
+ * trip means the trip is theirs — which is most of what the tick is tested against.
+ */
+function walkerOf(state, expedition) {
+  const roster = state.survivors ?? (state.survivor ? [state.survivor] : []);
+  if (expedition?.characterId == null) return state.survivor ?? roster[0] ?? null;
+  return roster.find((one) => one.id === expedition.characterId) ?? null;
 }
 
 /**
@@ -585,9 +625,10 @@ function isDueBack(state, at) {
  * dispatch, so this is deterministic: replaying the same interval replays the same
  * trip rather than re-rolling it.
  */
-function returnExpedition(state, at, events, flight) {
-  const expedition = state.expedition;
-  const survivor = state.survivor;
+function returnExpedition(state, expedition, at, events, flight) {
+  // Whoever walked it, which is who the haul and the wounds belong to.
+  const survivor = walkerOf(state, expedition);
+  if (!survivor) return;
 
   /*
    * The outcome was resolved before the walk began — see `flightOf` — and settled across the
@@ -598,7 +639,7 @@ function returnExpedition(state, at, events, flight) {
    * over the whole trip either way, so they would agree only for as long as nobody edited
    * one of them.
    */
-  const settled = flight ?? flightOf(state);
+  const settled = flight ?? flightOf(state, expedition);
   const outcome = settled ? settled.outcome : null;
   if (!outcome) return;
 

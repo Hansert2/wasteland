@@ -991,3 +991,67 @@ test('one survivor dying does not forfeit the trip of another', () => {
     'nobody else lost their haul for it',
   );
 });
+
+test('two trips in flight are settled separately, each on its own hour', () => {
+  /*
+   * The shape Phase 7 needs, tested before anything can dispatch a second trip — the tick
+   * has to be able to settle two before the service is allowed to create them, or the first
+   * camp to send two people would be the thing that discovers it cannot.
+   *
+   * Two people, two regions, two different lengths. What is checked is that neither trip is
+   * settled with the other's numbers: the haul of each lands, and the damage of each lands
+   * on the person who walked it.
+   */
+  const early = { id: 41, alive: true, health: 100, hunger: 0, radiation: 0, bornAt: T0 };
+  const late = { id: 42, alive: true, health: 100, hunger: 0, radiation: 0, bornAt: T0 };
+
+  const state = makeState({
+    survivor: early,
+    resources: { scrap: { amount: 0, ratePerHour: 0, cap: 10_000 } },
+  });
+  state.survivors = [early, late];
+
+  // `span` and not `hours`: the file already has an `hours()` helper and a parameter of
+  // that name shadows it inside the very expression that calls it.
+  const trip = (id, characterId, span, loot) => ({
+    id,
+    status: 'active',
+    characterId,
+    departedAt: T0,
+    returnsAt: T0 + hours(span),
+    seed: id === 'a' ? 5 : 9,
+    region: { ...REGION, travelHours: span, loot },
+    resolvedAt: null,
+    log: null,
+  });
+
+  state.expeditions = [
+    trip('a', early.id, 4, { scrap: [10, 10] }),
+    trip('b', late.id, 9, { scrap: [30, 30] }),
+  ];
+  state.expedition = state.expeditions[0];
+
+  // Past the first return and short of the second.
+  const midway = applyTick(state, T0 + hours(6));
+  assert.equal(midway.state.expeditions[0].status, 'returned', 'the short trip is home');
+  assert.equal(midway.state.expeditions[1].status, 'active', 'the long one is still walking');
+  assert.equal(
+    Number(midway.state.settlement.resources.scrap.amount),
+    10,
+    'and only the short one has paid out',
+  );
+
+  // Past both.
+  const done = applyTick(state, T0 + hours(12));
+  assert.equal(done.state.expeditions[1].status, 'returned', 'the long trip is home too');
+  assert.equal(
+    Number(done.state.settlement.resources.scrap.amount),
+    40,
+    'both hauls landed, and neither was settled twice',
+  );
+  assert.equal(
+    done.events.filter((e) => e.type === 'expedition_returned').length,
+    2,
+    'two arrivals, reported separately',
+  );
+});
