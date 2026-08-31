@@ -591,5 +591,19 @@ test('somebody already working is shown as working, and cannot be chosen', async
       assert.match(theirs[1], /disabled/, `${field} does not let them be chosen`);
       assert.match(picker[1], /Odd — fitting/, `${field} says what they are doing`);
     }
+
+    /*
+     * And the block says it first.
+     *
+     * The strip used to name everybody and their job — "Hansert is away, Wren is fitting" —
+     * on all three blocks that ask who, so one screen carried the same roster three times in
+     * captions. Occupation is a fact about a person, so it is stated under that person's own
+     * name, once; the strip only reports that the choice is closed.
+     */
+    assert.match(
+      html,
+      /<div class="who-name">Odd<\/div>\s*<p class="out">fitting<\/p>/,
+      "the survivor's own block says what has them",
+    );
   });
 });

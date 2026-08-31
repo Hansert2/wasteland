@@ -3636,16 +3636,40 @@ function tripReadout(report) {
  * Only the free are offered. The service checks again behind this, because the page is a
  * render of a moment ago and somebody can be sent from another tab.
  */
+/*
+ * What an occupation is called, in one place.
+ *
+ * `occupations` answers with a kind — the word the service refuses by — and two things
+ * render it: the disabled option in a selector, and the line under a survivor's name. They
+ * have to agree, or the page says a person is crafting where the dropdown says they are at
+ * the bench and the player is left wondering whether those are two different jobs.
+ */
+const OCCUPIED_AS = Object.assign(Object.create(null), {
+  away: 'away',
+  building: 'building',
+  fitting: 'fitting',
+  crafting: 'at the bench',
+});
+
+const occupiedAs = (busy) => OCCUPIED_AS[busy] ?? busy;
+
 function whoSelector(view, { field, label }) {
   const roster = view.roster ?? [];
   if (roster.length === 0) return '';
 
   const free = roster.filter((one) => !one.busy);
   if (free.length === 0) {
-    // Nobody, and what everybody is doing instead — a camp of one that says only "nobody is
-    // free" makes the player go and look for the reason they already know.
-    const doing = roster.map((one) => `${one.name ?? 'Somebody'} is ${one.busy}`).join(', ');
-    return `<span class="f-nav"><span class="short">${escape(doing)}</span></span>`;
+    /*
+     * Nobody, and only that.
+     *
+     * This used to name everybody and what they were doing — "Hansert is away, Wren is
+     * fitting" — which is a roster printed into a label strip, and printed again on the
+     * next block, and the next. Three blocks ask who, so a camp with nobody free said the
+     * same sentence three times across one screen while the strips it sat in were meant to
+     * be captions. What each survivor is doing belongs under their own name, in their own
+     * block, once; the strip only has to say the choice is closed.
+     */
+    return '<span class="f-nav"><span class="short">no survivor available</span></span>';
   }
 
   /*
@@ -3660,7 +3684,7 @@ function whoSelector(view, { field, label }) {
     one.busy
       ? `<option value="${escape(String(one.id))}" disabled>${escape(
           one.name ?? 'Survivor',
-        )} — ${escape(one.busy)}</option>`
+        )} — ${escape(occupiedAs(one.busy))}</option>`
       : `<option value="${escape(String(one.id))}">${escape(one.name ?? 'Survivor')}</option>`;
 
   return `<span class="f-nav"><span class="tag">${escape(label)}</span>
@@ -3765,7 +3789,19 @@ function renderSurvivor(survivor, strain, vitals, inventory) {
                * each trip arms for its own next moment.
                */ ''}
             ${survivor.away.report ? momentAlarm(survivor.away.report) : ''}`
-         : ''
+         : /*
+            * Or what else has them, in the same place and the same voice.
+            *
+            * A survivor who is away has said so under their name since the trip readouts
+            * moved into these blocks. One who is building or at the bench said nothing here
+            * and instead turned up, greyed out, in a dropdown two blocks down — so the
+            * player learned that Wren was busy by going to ask Wren to do something else.
+            * Occupation is a fact about a person, and this block is the person, so it is
+            * stated here first and the dropdowns only have to agree with it.
+            */
+           survivor.busy
+           ? `<p class="out">${escape(occupiedAs(survivor.busy))}</p>`
+           : ''
      }
      <div class="tabbed" id="survivor-condition" data-tab="condition" role="tabpanel">
        <div class="gauges">
