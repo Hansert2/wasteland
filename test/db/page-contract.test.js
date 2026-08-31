@@ -600,3 +600,26 @@ test('a gauge that is moving says why, and one that is not says nothing', () => 
     'and the four gauges are there regardless',
   );
 });
+
+test('a mark says what is acting before it says how much', () => {
+  /*
+   * Reported on 2026-08-31: the health mark's popup read "+2/h" and nothing else.
+   *
+   * A figure with no subject restates the mystery with a number attached, and the reader is
+   * hovering a glyph precisely because they do not know what it is. The two that already
+   * read well — "out there −3.8/h", "resting +1/h" — were the two that happened to be
+   * written with the word in front, and this makes that the rule rather than the accident.
+   */
+  for (const [name, html] of Object.entries(STATES)) {
+    for (const chunk of html.split('<span class="driver noted">').slice(1)) {
+      const note = /<span class="note">([^<]*)</.exec(chunk);
+      assert.ok(note, `${name}: a mark with nothing to say when asked`);
+
+      const line = note[1].trim();
+      assert.ok(
+        /^[a-z]/i.test(line),
+        `${name}: a mark's line opens with a figure rather than the thing doing it: "${line}"`,
+      );
+    }
+  }
+});

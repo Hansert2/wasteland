@@ -571,6 +571,12 @@ function strainOf(survivor, decayPerHour) {
  * no hover to give, and **one line** for the popup — an effect and its rate, and nothing
  * else.
  *
+ * **The line names the effect before it states the rate.** Several read "+2/h" on their own,
+ * which is a figure with nothing to say what is doing it — and the reader is hovering a
+ * triangle precisely because they do not know. "Healing +2/h" answers the question that was
+ * asked; "+2/h" restates the mystery with a number attached. The two that already read well
+ * were the two that happened to be written that way: "out there −3.8/h", "resting +1/h".
+ *
  * This has been three things in a day and the middle one was wrong in both directions. It
  * began as prose, which is not what a page of figures should be explaining itself in. It
  * became a five-row table per effect, which answers questions nobody hovering a triangle
@@ -645,8 +651,8 @@ function driversFor(person, {
         ? `healing +${n1(strain.healingPerHour)}/h, slowed`
         : `healing +${n1(strain.healingPerHour)}/h`,
       note: slowed
-        ? `${perHour(strain.healingPerHour, '+')}, slowed by the dose`
-        : perHour(strain.healingPerHour, '+'),
+        ? `healing ${perHour(strain.healingPerHour, '+')}, slowed by the dose`
+        : `healing ${perHour(strain.healingPerHour, '+')}`,
     });
   }
   if (person.hunger >= config.regenHungerCeiling) {
@@ -660,13 +666,13 @@ function driversFor(person, {
     health.push({
       sign: '▼',
       tag: `the dose −${n1(strain.damagePerHour)}/h`,
-      note: `${perHour(strain.damagePerHour, '−')} against ${perHour(strain.fullHealing, '+')} rest`,
+      note: `the dose ${perHour(strain.damagePerHour, '−')} against ${perHour(strain.fullHealing, '+')} rest`,
     });
   } else if (strain?.state === 'stalled') {
     health.push({
       sign: '=',
       tag: 'the dose cancels rest',
-      note: `net ${perHour(0)}, clear in ${hours(strain.hoursToMending)}`,
+      note: `health net ${perHour(0)}, clear in ${hours(strain.hoursToMending)}`,
     });
   }
 
@@ -693,12 +699,12 @@ function driversFor(person, {
         ? {
             sign: '▼',
             tag: `eating −${n1(config.hungerFallPerHour)}/h`,
-            note: perHour(config.hungerFallPerHour, '−'),
+            note: `eating ${perHour(config.hungerFallPerHour, '−')}`,
           }
         : {
             sign: '○',
             tag: 'the stores are short',
-            note: `${perHour(config.hungerRisePerHour, '+')}, starves at ${n1(config.starvationThreshold)}`,
+            note: `hunger ${perHour(config.hungerRisePerHour, '+')}, starves at ${n1(config.starvationThreshold)}`,
           },
     );
   }
@@ -718,8 +724,8 @@ function driversFor(person, {
         ? `filtration −${n1(radDecayPerHour)}/h`
         : `decaying −${n1(radDecayPerHour)}/h`,
       note: radScrubbing
-        ? `${perHour(radDecayPerHour, '−')}, ${perHour(config.radDecayPerHour, '−')} without the filter`
-        : perHour(radDecayPerHour, '−'),
+        ? `filtration ${perHour(radDecayPerHour, '−')}, ${perHour(config.radDecayPerHour, '−')} without it`
+        : `decaying ${perHour(radDecayPerHour, '−')}`,
     });
   }
 
