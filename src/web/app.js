@@ -406,7 +406,7 @@ export function createApp() {
        */
       const now = Date.now();
       await advanceSettlement(client, settlementId, now);
-      await useItem(client, settlementId, req.body.slug);
+      await useItem(client, settlementId, req.body.slug, req.body.who || null);
     });
 
     res.redirect(backToCamp(req));

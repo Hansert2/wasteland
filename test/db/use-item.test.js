@@ -234,3 +234,74 @@ test('a thing worth more than the moment says so', async () => {
     assert.equal(full.worth, full.use.effect, 'and only one when the whole tablet lands');
   });
 });
+
+test('a pack belongs to the person whose block it is in', async () => {
+  /*
+   * `useItem` took the first living survivor, because there was only ever one. With a roster
+   * that is a live fault rather than a simplification: every survivor's block has its own
+   * pack and its own Use button, so pressing the one in the second block ate out of the
+   * first survivor's pack and mended *them*.
+   */
+  await withRollback(async (client) => {
+    const { settlementId, characterId: first } = await seed(client, { health: 100 });
+    const { rows } = await client.query(
+      `insert into characters (settlement_id, name, born_at, health, radiation)
+       values ($1, 'Odd', now(), 40, 0) returning id`,
+      [settlementId],
+    );
+    const second = rows[0].id;
+
+    await give(client, second, 'preserved_meal');
+
+    await useItem(client, settlementId, 'preserved_meal', second);
+
+    const { rows: after } = await client.query(
+      'select id, health from characters where settlement_id = $1 order by born_at, id',
+      [settlementId],
+    );
+    assert.equal(Number(after.find((one) => one.id === first).health), 100, 'the first is untouched');
+    assert.equal(Number(after.find((one) => one.id === second).health), 57.5, 'the second ate it');
+    assert.equal((await pack(client, second)).get('preserved_meal'), undefined, 'out of their pack');
+  });
+});
+
+test('hands full of beam cannot open a pack, but hands on the road can', async () => {
+  /*
+   * The rule as given: a survivor who is building is occupied for anything else. The one
+   * thing it deliberately does not cover is a survivor who is away — a trip is when a tablet
+   * matters most, and the whole point of the pack travelling with them is that it can be
+   * opened out there.
+   */
+  await withRollback(async (client) => {
+    const { settlementId, characterId } = await seed(client, { health: 40, radiation: 50 });
+    await give(client, characterId, 'preserved_meal', 2);
+
+    await client.query(
+      `update camp_structures set build_completes_at = now() + interval '2 hours', built_by = $2
+        where settlement_id = $1 and kind = 'shelter'`,
+      [settlementId, characterId],
+    );
+
+    await assert.rejects(
+      () => useItem(client, settlementId, 'preserved_meal', characterId),
+      /is building and cannot take anything/i,
+      'a builder has their hands full',
+    );
+
+    // Out on the road instead, and the pack opens.
+    await client.query(
+      `update camp_structures set build_completes_at = null, built_by = null
+        where settlement_id = $1 and kind = 'shelter'`,
+      [settlementId],
+    );
+    const { rows: region } = await client.query('select id from regions limit 1');
+    await client.query(
+      `insert into expeditions (character_id, region_id, departed_at, returns_at, seed, status)
+       values ($1, $2, now(), now() + interval '6 hours', 1, 'active')`,
+      [characterId, region[0].id],
+    );
+
+    const used = await useItem(client, settlementId, 'preserved_meal', characterId);
+    assert.equal(used.health, 17.5, 'a ration on the road still works');
+  });
+});

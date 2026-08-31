@@ -1,4 +1,5 @@
 import { InputError } from '../errors.js';
+import { occupations, mustBeFree } from './who-is-free.js';
 
 /**
  * Use something out of the pack, on purpose, whenever you like.
@@ -50,17 +51,49 @@ const CONSUMABLE = new Set(['ration', 'antirad']);
  * @param {number} settlementId
  * @param {string} slug
  */
-export async function useItem(client, settlementId, slug) {
+/**
+ * @param {string|number} [who] whose pack and whose body. Omitted means the first living
+ *   survivor, which is what this meant when a camp held one.
+ */
+export async function useItem(client, settlementId, slug, who = null) {
   const wanted = String(slug ?? '').trim();
   if (!wanted) throw new InputError('Nothing was chosen.');
 
   const { rows: survivors } = await client.query(
-    `select id, health, radiation from characters
-      where settlement_id = $1 and died_at is null`,
+    `select id, name, health, radiation from characters
+      where settlement_id = $1 and died_at is null order by born_at, id`,
     [settlementId],
   );
-  const survivor = survivors[0];
-  if (!survivor) throw new InputError('There is nobody to take it.');
+  if (survivors.length === 0) throw new InputError('There is nobody to take it.');
+
+  /*
+   * Whose, which this never had to ask.
+   *
+   * It took the first living survivor, because there was only ever one. With a roster that
+   * is a live fault rather than a simplification: every survivor's block has its own pack
+   * and its own Use button, so pressing the one in Vera's block ate out of whoever happened
+   * to be listed first, and mended them instead.
+   */
+  const survivor =
+    who == null
+      ? survivors[0]
+      : survivors.find((one) => String(one.id) === String(who));
+
+  if (!survivor) throw new InputError('Nobody here answers to that.');
+
+  /*
+   * And they have to be free to take it.
+   *
+   * A survivor who is building is occupied for anything else, which is the rule as given —
+   * hands full of beam are hands that cannot open a pack. The one thing this deliberately
+   * does not block is a survivor who is *away*: their trip is exactly when a tablet matters
+   * most, and the whole point of the pack travelling with them is that it can be opened out
+   * there.
+   */
+  const busy = await occupations(client, settlementId);
+  if (busy.get(Number(survivor.id)) !== 'away') {
+    mustBeFree(busy, survivor, 'take anything');
+  }
 
   const { rows: held } = await client.query(
     `select ii.id, ii.qty, i.slug, i.name, i.kind, i.potency

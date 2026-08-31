@@ -3766,7 +3766,7 @@ function renderSurvivor(survivor, strain, vitals, inventory) {
        ${who}
      </div>
      <div class="tabbed" id="survivor-carrying" data-tab="carrying" role="tabpanel">
-       ${inventoryBody(inventory)}
+       ${inventoryBody(inventory, survivor.id)}
      </div>`,
     /*
      * The tabs ride in the label strip, opposite the block's name — the slot `dayNav`
@@ -4484,7 +4484,7 @@ function renderRoad(road) {
  * Returns a body and no label: the tab is the label. An empty pack still says so in words,
  * because a tab that opens onto nothing reads as a page that failed to load.
  */
-function inventoryBody(inventory) {
+function inventoryBody(inventory, owner = null) {
   if (!inventory || inventory.length === 0) {
     return `<p class="none">${NOTHING.inventory}</p>`;
   }
@@ -4513,6 +4513,11 @@ function inventoryBody(inventory) {
       const action = item.use
         ? `<form method="post" action="/use">
              <input type="hidden" name="slug" value="${escape(item.slug)}">
+             ${/*
+               * Whose pack this is. Without it the button in one survivor's block reached
+               * into the first survivor's pack, because the service had never had to ask.
+               */ ''}
+             <input type="hidden" name="who" value="${escape(String(owner ?? ''))}">
              <button type="submit">Use</button>
            </form>`
         : '';
