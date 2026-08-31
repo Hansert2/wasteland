@@ -280,7 +280,11 @@ function cleanName(value, fallback) {
   return name.length > 0 ? name : fallback;
 }
 
-async function insertSurvivor(client, settlementId, wanderer, now) {
+/**
+ * Put a person in a camp. Shared by succession and by joining, because the two differ in
+ * everything that happens *around* the arrival and in nothing about the arrival itself.
+ */
+export async function insertSurvivor(client, settlementId, wanderer, now) {
   const { rows } = await client.query(
     `insert into characters (settlement_id, name, born_at, skill_scavenging, skill_medicine)
      values ($1, $2, $3, $4, $5) returning id`,

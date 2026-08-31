@@ -20,6 +20,7 @@ import { startBuild } from '../services/start-build.js';
 import { startCraft } from '../services/start-craft.js';
 import { setCampClock } from '../services/set-camp-clock.js';
 import { useItem } from '../services/use-item.js';
+import { takeInWanderer } from '../services/take-in-wanderer.js';
 import { startUpgrade } from '../services/start-upgrade.js';
 import { commitToRoad } from '../services/commit-to-road.js';
 import { tradeWithCaravan } from '../services/trade.js';
@@ -265,6 +266,25 @@ export function createApp() {
       await advanceSettlement(client, settlementId, now);
       // No name from the form: who turns up is the camp's business, not the player's.
       await raiseSuccessor(client, settlementId, { now });
+    });
+
+    res.redirect(backToCamp(req));
+  });
+
+  app.post('/gate', requireAuth, async (req, res) => {
+    await withTransaction(async (client) => {
+      const settlementId = await settlementIdForPlayer(client, req.playerId);
+      if (!settlementId) throw new InputError('This account has no camp.');
+
+      /*
+       * Advance first, as every verb that spends something does. Here what is being spent is
+       * a bed, and a bed can stop being free while the page sits there — a survivor comes
+       * home, or another tab takes somebody in. The service checks the ceiling again for the
+       * same reason the moment options do: the page is a render of a moment ago.
+       */
+      const now = Date.now();
+      await advanceSettlement(client, settlementId, now);
+      await takeInWanderer(client, settlementId, { now });
     });
 
     res.redirect(backToCamp(req));

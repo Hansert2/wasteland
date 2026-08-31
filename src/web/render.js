@@ -46,7 +46,7 @@
  */
 const PANES = {
   camp: ['raid', 'sky', 'forecast', 'events', 'direction', 'structures', 'caravan', 'roster'],
-  survivor: ['survivor', 'expedition', 'workshop', 'forecast'],
+  survivor: ['gate', 'survivor', 'expedition', 'workshop', 'forecast'],
   road: ['road'],
   trade: ['caravan', 'post', 'standings'],
 };
@@ -2953,6 +2953,7 @@ export function campPage(view, { error, pane = 'camp' } = {}) {
       ${section('workshop', renderWorkshop(view))}
     </div>
     <div class="lane lane-side">
+      ${section('gate', renderGate(view.atTheGate))}
       ${section(
         'survivor',
         view.survivor
@@ -3450,6 +3451,43 @@ function strainNote(strain) {
   }
 
   return '';
+}
+
+/**
+ * Somebody at the gate of a camp that already has people in it.
+ *
+ * The same beat as the empty camp's — a name, two sentences, one lit button — because it is
+ * the same event seen twice: somebody walks up and the player decides. What differs is
+ * everything around it. An empty camp is succession and the block is the only thing on the
+ * page; this is a camp that is running, so it is one block among many and says who they are
+ * rather than what has gone to ruin.
+ *
+ * Before the hour comes it is an armed timer and nothing else. `data-until` is what the
+ * client script watches, so the block writes itself in at eight in the morning without the
+ * player reloading — the same trick the returning expedition uses, and the reason the hour
+ * is worth having at all.
+ */
+function renderGate(gate) {
+  if (!gate) return '';
+
+  if (!gate.wanderer) {
+    return block(
+      'The gate',
+      `<p>The bed is made. Somebody comes up the road most mornings.</p>
+       <p class="soft" data-until="${gate.dueAt.getTime()}">Nobody yet.</p>`,
+    );
+  }
+
+  const who = gate.wanderer;
+  return block(
+    'The gate',
+    `<p><strong>${escape(who.name)}</strong> is at the gate. ${escape(who.arrival)}</p>
+     ${skillStats(who.skills)}
+     <form method="post" action="/gate">
+       <button type="submit" class="fill">Let them stay</button>
+     </form>`,
+    { wants: true },
+  );
 }
 
 function renderSurvivor(survivor, strain, vitals, inventory) {

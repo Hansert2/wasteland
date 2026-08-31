@@ -69,7 +69,7 @@ test('the camp page renders every block, including the ones with nothing to say'
   // nowhere to appear and simply never shows up until the player reloads.
   const always = [
     's-head', 's-error', 's-moment', 's-raid', 's-sky', 's-events', 's-survivor',
-    's-direction', 's-expedition', 's-stores', 's-structures', 's-road',
+    's-gate', 's-direction', 's-expedition', 's-stores', 's-structures', 's-road',
     's-workshop', 's-caravan', 's-post', 's-standings', 's-roster',
   ];
 

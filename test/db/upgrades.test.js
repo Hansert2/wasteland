@@ -9,6 +9,7 @@ import { startCraft } from '../../src/services/start-craft.js';
 import { startUpgrade } from '../../src/services/start-upgrade.js';
 import { foundSettlement, raiseSuccessor } from '../../src/services/settlement-lifecycle.js';
 import { viewCamp } from '../../src/services/view-camp.js';
+import { takeInWanderer } from '../../src/services/take-in-wanderer.js';
 import { UPGRADES } from '../../src/game/structures.js';
 import { InputError } from '../../src/errors.js';
 
@@ -408,6 +409,72 @@ test('a bed is the one fitting there can be more than one of', async () => {
       beds.map((row) => row.ordinal),
       [1, 2],
       'two beds, numbered — the unique key is on the ordinal, so a reused one is refused',
+    );
+  });
+});
+
+test('a bed makes room, and somebody is at the gate the next morning', async () => {
+  /*
+   * The arrival beat. A bed is what makes room and the hour is what makes it a moment: the
+   * first eight in the morning after the bed was ready, on the camp's own clock. You build
+   * it in the evening and meet them over breakfast, which is the rhythm the per-camp clock
+   * was added for and the first thing to use it.
+   *
+   * Derived rather than stored, so this also pins the derivation: a column would have to be
+   * written by whatever made the bed free — a build finishing, a death, a shelter knocked
+   * down by a succession — and every one of those is a place it could be forgotten.
+   */
+  await withRollback(async (client) => {
+    const settlementId = await setup(client);
+    await client.query(
+      `update settlements set clock_offset_minutes = 0, last_tick_at = $2 where id = $1`,
+      [settlementId, new Date(Date.UTC(2287, 2, 4, 19))],
+    );
+    await client.query(
+      "update resources set amount = 60 where settlement_id = $1 and kind = 'scrap'",
+      [settlementId],
+    );
+
+    const evening = Date.UTC(2287, 2, 4, 19);
+    const gateOf = async (when) => (await viewCamp(client, settlementId, when)).atTheGate;
+
+    assert.equal(await gateOf(evening), null, 'no bed, no gate');
+
+    await startUpgrade(client, settlementId, 'bed', evening);
+    await advanceSettlement(client, settlementId, evening + hours(1));
+
+    // Built at seven in the evening, and nobody comes that night.
+    const waiting = await gateOf(evening + hours(1));
+    assert.ok(waiting, 'the bed is made');
+    assert.equal(waiting.wanderer, null, 'and nobody is there yet');
+    assert.equal(
+      waiting.dueAt.getTime(),
+      Date.UTC(2287, 2, 5, 8),
+      'they come at eight, on the camp clock',
+    );
+    assert.equal((await gateOf(Date.UTC(2287, 2, 5, 7))).wanderer, null, 'not at seven');
+
+    // Eight, and they wait rather than passing through: a player who checks in at noon
+    // must not have missed them, which is what the whole check-in design is arranged for.
+    const morning = await gateOf(Date.UTC(2287, 2, 5, 8));
+    assert.ok(morning.wanderer, 'somebody is at the gate');
+    assert.ok(morning.wanderer.skills?.length, 'and the page says what they are worth');
+    const noon = await gateOf(Date.UTC(2287, 2, 5, 12));
+    assert.equal(noon.wanderer.name, morning.wanderer.name, 'still the same person at noon');
+
+    // Taken in, the camp holds two and the gate closes behind them.
+    const { wanderer } = await takeInWanderer(client, settlementId, {
+      now: Date.UTC(2287, 2, 5, 9),
+    });
+    assert.equal(wanderer.name, morning.wanderer.name, 'the page named who actually walked in');
+
+    const world = await loadWorld(client, settlementId);
+    assert.equal(world.survivors.length, 2, 'two people, both loaded');
+    assert.equal(await gateOf(Date.UTC(2287, 2, 5, 10)), null, 'and the bed is taken');
+
+    await assert.rejects(
+      () => takeInWanderer(client, settlementId, { now: Date.UTC(2287, 2, 5, 11) }),
+      /Every bed in this camp is taken/,
     );
   });
 });

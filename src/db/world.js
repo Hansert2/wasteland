@@ -92,27 +92,49 @@ export async function loadWorld(client, settlementId) {
   let expedition = null;
   const survivors = [];
 
-  if (character) {
-    const { rows: inventory } = await client.query(
-      `select ii.id as row_id, ii.qty, i.slug, i.kind, i.potency
+  /*
+   * Every pack in the camp, in one query rather than one per person.
+   *
+   * A query inside the loop would be the ordinary way to write this and would cost a round
+   * trip per survivor on every page load, for a table that is at most five rows deep.
+   */
+  const packs = new Map();
+  if (characters.length > 0) {
+    const { rows: inventoryRows } = await client.query(
+      `select ii.character_id, ii.id as row_id, ii.qty, i.slug, i.kind, i.potency
          from inventory_items ii
          join items i on i.id = ii.item_id
-        where ii.character_id = $1
+        where ii.character_id = any($1)
         order by i.slug`,
-      [character.id],
+      [characters.map((row) => row.id)],
     );
+    for (const row of inventoryRows) {
+      if (!packs.has(row.character_id)) packs.set(row.character_id, []);
+      packs.get(row.character_id).push(row);
+    }
+  }
+
+  /*
+   * Everybody, not just the first.
+   *
+   * This was `if (character)` around a single construction, with the roster pushed at the
+   * end of it — which built a list of one however many people were living, because the body
+   * only ever saw `characters[0]`. The camp read as having room it did not have.
+   */
+  for (const person of characters) {
+    const inventory = packs.get(person.id) ?? [];
 
     survivor = {
-      id: character.id,
+      id: person.id,
       alive: true,
-      health: character.health,
-      hunger: character.hunger,
-      radiation: character.radiation,
-      skillScavenging: character.skill_scavenging,
+      health: person.health,
+      hunger: person.hunger,
+      radiation: person.radiation,
+      skillScavenging: person.skill_scavenging,
       // Read by the tick, not by any generator: medicine moves where a dose starts
       // costing the survivor and never what a trip rolled. See `radThresholdFor`.
-      skillMedicine: character.skill_medicine,
-      bornAt: character.born_at.getTime(),
+      skillMedicine: person.skill_medicine,
+      bornAt: person.born_at.getTime(),
       diedAt: null,
       causeOfDeath: null,
       // `id` is the slug because that is what the simulation's events should name;
@@ -136,17 +158,43 @@ export async function loadWorld(client, settlementId) {
      * first person.
      */
     survivors.push(survivor);
+  }
 
-    // The region travels with the expedition because resolution is pure: the tick
-    // must be able to roll an outcome without reaching back into the database.
+  /*
+   * `survivor` is the first of them, which is who the game is written against at 26 call
+   * sites and counting. Assigned once here rather than left as whatever the loop finished
+   * on — inside the loop it held the *last* person, which is the same value while a camp
+   * holds one and quietly the wrong one the moment it holds two.
+   */
+  survivor = survivors[0] ?? null;
+
+  if (survivors.length > 0) {
+    /*
+     * The trip in flight, and there is still only one of them.
+     *
+     * Keyed on whoever is actually out rather than on the first person in the roster —
+     * `state.expedition` is what the tick settles and what the page reports, and with two
+     * people the one who left is not necessarily the one listed first.
+     *
+     * **What this does not yet do is let two people be out at once.** That is the next
+     * piece of Phase 7 and it is a larger one: `state.expedition` is singular at every
+     * call site that reads it, and making it plural is where the roster stops being a
+     * refactor. Until then a camp with two survivors can have one trip, which is a
+     * smaller game than intended and an honest one.
+     *
+     * The region travels with the expedition because resolution is pure: the tick must be
+     * able to roll an outcome without reaching back into the database.
+     */
     const { rows: active } = await client.query(
       `select e.id, e.status, e.departed_at, e.returns_at, e.seed, e.choices,
-              e.clock_offset_minutes, e.solar_noon_minutes,
+              e.clock_offset_minutes, e.solar_noon_minutes, e.character_id,
               r.slug, r.name, r.danger, r.travel_hours, r.loot, r.finds, r.radiation_per_trip
          from expeditions e
          join regions r on r.id = e.region_id
-        where e.character_id = $1 and e.status = 'active'`,
-      [character.id],
+        where e.character_id = any($1) and e.status = 'active'
+        order by e.departed_at
+        limit 1`,
+      [survivors.map((one) => one.id)],
     );
 
     if (active[0]) {

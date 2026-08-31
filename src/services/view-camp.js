@@ -47,6 +47,7 @@ import {
   STRUCTURES,
   UPGRADES,
   campDefence,
+  bedsToRoster,
   fittingsAllowed,
   campWealth,
   productionRates,
@@ -311,6 +312,29 @@ function roughLight(now, lit, clock = 0, noon = DEFAULT_SOLAR_NOON) {
 function producerOf(kind) {
   const found = Object.entries(STRUCTURES).find(([, spec]) => spec.produces === kind);
   return found ? found[0] : null;
+}
+
+/** The hour a wanderer walks up, on the camp's own clock. */
+const GATE_HOUR = 8;
+
+/**
+ * When somebody would be at the gate, given a bed that became free at `since`.
+ *
+ * The first eight in the morning after it, on the camp's clock — which is a real hour now
+ * that migrations `015` and `016` gave the camp one. You build a bed in the evening, and
+ * somebody is standing there when you check in over breakfast.
+ *
+ * Derived rather than stored. A column would have to be written by whatever made the bed
+ * free — a build finishing, a survivor dying, a shelter knocked down by a succession — and
+ * every one of those is a place it could be forgotten. The bed's own timestamp is already
+ * the answer, so this asks it.
+ */
+function gateOpensAt(since, offset) {
+  const local = since + offset * 60_000;
+  const midnight = Math.floor(local / DAY_MS) * DAY_MS;
+  const eight = midnight + GATE_HOUR * HOUR_MS;
+  const due = eight > local ? eight : eight + DAY_MS;
+  return due - offset * 60_000;
 }
 
 function reportOn(row, state, now) {
@@ -743,6 +767,37 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
 
   // How many of each are standing, which is the question a bed asks where an instrument
   // asks whether it is there at all.
+  /*
+   * Beds standing, when the newest became ready, and how many people have ever held this
+   * camp — the three facts a gate arrival is derived from.
+   *
+   * Capped by what the shelter can hold, because a succession knocks levels down and can
+   * leave a bed in a room that is no longer there. The service checks the same ceiling.
+   */
+  /*
+   * How many people have ever held this camp, counted the same way `takeInWanderer` counts
+   * it — every row in `characters`, living and dead. It has to be the same count: the page
+   * names who is at the gate and the service decides who actually walks in, and a page that
+   * counted the fallen alone would introduce a stranger on the click.
+   */
+  const { rows: everHeldRows } = await client.query(
+    'select count(*)::int as n from characters where settlement_id = $1',
+    [settlementId],
+  );
+  const everHeld = everHeldRows[0].n;
+
+  const bedRows = upgradeRows.filter(
+    (row) => row.upgrade === 'bed' && row.installed_at !== null,
+  );
+  const shelterLevel = Number(
+    structures.find((s) => s.kind === 'shelter')?.level ?? 0,
+  );
+  const bedsStanding = Math.min(bedRows.length, fittingsAllowed('bed', shelterLevel));
+  const bedsFree = bedsToRoster(bedsStanding) - (state.survivors?.length ?? 0);
+  const newestBedAt = bedRows.length
+    ? Math.max(...bedRows.map((row) => row.installed_at.getTime()))
+    : null;
+
   const installedCounts = new Map();
   for (const row of upgradeRows) {
     if (row.installed_at === null) continue;
@@ -1382,6 +1437,30 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
      * every character it has ever had is a dead one. A test pins that the page and the
      * button name the same person, because the reasoning is sound and invisible.
      */
+    /*
+     * Somebody at the gate of a camp that already has people in it.
+     *
+     * A bed is what makes room and the hour is what makes it a moment: the first eight in
+     * the morning after the bed was ready, on this camp's own clock. You build it in the
+     * evening and meet them over breakfast, which is the rhythm the per-camp clock was added
+     * for and the first thing to actually use it.
+     *
+     * They wait once they are there. The alternative — present only between eight and nine
+     * — would punish a player for checking in at the wrong hour, which is the failure the
+     * whole check-in design is arranged against.
+     *
+     * Null when the camp is empty: that is succession and goes through `arriving` below,
+     * which halves what is left because a camp nobody held has been standing open.
+     */
+    atTheGate: (() => {
+      if (!state.survivor || bedsFree <= 0 || newestBedAt === null) return null;
+
+      const due = gateOpensAt(newestBedAt, clock);
+      if (now < due) return { dueAt: new Date(due), wanderer: null };
+
+      const who = wandererFor(settlements[0].caravan_seed, everHeld);
+      return { dueAt: new Date(due), wanderer: { ...who, skills: skillsOf(who, CONFIG.radThreshold) } };
+    })(),
     arriving: state.survivor
       ? null
       : (() => {
