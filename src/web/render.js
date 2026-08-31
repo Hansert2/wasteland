@@ -1545,11 +1545,24 @@ ${PANE_CSS}
   /* No transition: the brief allows no animation beyond the timers. This is a state
      change, and it happens at once. */
   .contact:hover img.plate { opacity: 1; }
-  /* The one place a plate is allowed any size: eighteen hours of a page whose subject
-     is a single place. Still a band rather than a picture — cropped to 5:1, flush to
-     the block's edges, under the heading rather than above it. */
+  /* The one place a plate is allowed any size: however many hours of a row whose subject
+     is a single place. Still a band rather than a picture — cropped wide, flush to the
+     column, under the line that names it rather than above. */
   img.plate.band { width: 100%; height: 124px; border: 0;
                    border-bottom: 1px solid var(--rule-in); opacity: .68; }
+  /*
+   * Shorter inside a roster row, and it earns a rule on both sides.
+   *
+   * 124px is the height of a band that is the top of its own block. Here it is one row of
+   * several, and a traveller whose row stands twice as tall as everybody else's has stopped
+   * being a row — so it is cropped harder, and the hairlines close it into the row rather
+   * than letting it run into the readout underneath.
+   */
+  .person img.plate.band {
+    height: 78px;
+    margin-bottom: 10px;
+    border-top: 1px solid var(--rule-in);
+  }
 
   ul.events { list-style: none; margin: 0; padding: 0; }
   ul.events li { padding: 11px 18px; border-bottom: 1px solid var(--rule-in);
@@ -1578,6 +1591,7 @@ ${PANE_CSS}
   }
   .person:first-child { border-top: 0; }
   .who-head .out { margin-top: 4px; }
+  .who-head .back { display: block; white-space: nowrap; }
   /* The sending control loses its own rule and padding in here: the row's border is already
      the line between people, and a second one inside the row divides nothing. */
   .person .goes { border-top: 0; padding: 2px 0 0; }
@@ -3914,7 +3928,16 @@ function renderSurvivor(survivor, strain, vitals, inventory, chosen, panelId) {
           */
          survivor.away
            ? `<p class="out">away &middot; ${escape(survivor.away.regionName)}
-                <span class="short">&middot; back in</span> ${countdown(survivor.away.returnsAt, 'now')}</p>`
+                ${/*
+                   * The countdown on its own line, because the column is 190px and a place
+                   * name is most of it. Run together it broke wherever it ran out of room —
+                   * "back" on one line and "in 10h 00m" on the next — which is a phrase torn
+                   * in half rather than a line wrapped.
+                   */ ''}
+                <span class="back"><span class="short">back in</span> ${countdown(
+                  survivor.away.returnsAt,
+                  'now',
+                )}</span></p>`
            : survivor.busy
              ? `<p class="out">${occupiedFully(survivor.busy, survivor.busyWith)}</p>`
              : ''
@@ -3923,7 +3946,23 @@ function renderSurvivor(survivor, strain, vitals, inventory, chosen, panelId) {
      <div class="who-body">
        ${
          survivor.away
-           ? `${tripReadout(survivor.away.report)}
+           ? `${/*
+                * The place they are in, back where it belongs.
+                *
+                * The Away block carried an <img> of the region — the one placement where a
+                * plate is a picture rather than ground, because there the place is the
+                * subject: one region, for however many hours, with the countdown on it.
+                * When the reports moved onto the survivors the image did not come with
+                * them, and "away · Coastal Wreckage" went back to being a string. It reads
+                * like a form field, and the eleven photographs exist precisely so that
+                * being out there is not a form field.
+                *
+                * The rest of the block is already here — the readout is the same readout,
+                * the countdown is on the line under the name — so this is the one part that
+                * was dropped rather than moved.
+                */ ''}
+              ${plate(survivor.away.regionSlug, 'band')}
+              ${tripReadout(survivor.away.report)}
               ${/*
                  * The armed timer that fetches the next window.
                  *

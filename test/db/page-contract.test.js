@@ -421,3 +421,29 @@ test('every survivor tab has a panel, a rule that hides it, and a rule that show
     assert.equal(defaults[0][1], tabs[0], `${name}: the default is the first tab`);
   }
 });
+
+test('somebody out there is shown the place they are in', () => {
+  /*
+   * The plate is the one placement where a region photograph is a picture rather than
+   * ground: the Away block carried an <img> because there the place is the subject.
+   *
+   * Written because it was silently lost once. When the trip reports moved out of the Away
+   * block and onto the survivors the image did not come with them — "plate()" stayed
+   * defined, its CSS stayed in the sheet, and nothing called either for days. Both suites
+   * were green throughout, because nothing here had ever asserted that a traveller is shown
+   * where they went.
+   */
+  const html = STATES.away;
+  assert.ok(html, 'there is a page with somebody out on it');
+
+  const shown = /<img class="plate band" src="\/img\/([a-z0-9_]+)\.webp"/.exec(html);
+  assert.ok(shown, 'the away row carries the region plate');
+  assert.equal(shown[1], 'the_deep_zone', 'and it is the place they actually went');
+
+  // Inside the roster row, which is what makes it theirs rather than the page's.
+  assert.match(
+    html,
+    /<div class="person">[^]*?<img class="plate band"/,
+    'the plate is in a survivor row',
+  );
+});
