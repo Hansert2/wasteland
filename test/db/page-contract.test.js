@@ -302,7 +302,11 @@ test('every gauge says what its number counts, in a place the note script can fi
     const gauges = html.split('<div class="gauge ').slice(1);
     if (gauges.length === 0) continue;
 
-    assert.equal(gauges.length, 3, `${name}: ${gauges.length} gauges, expected health, hunger, rads`);
+    assert.equal(
+      gauges.length,
+      4,
+      `${name}: ${gauges.length} gauges, expected health, hunger, rads, stamina`,
+    );
 
     for (const gauge of gauges) {
       assert.match(gauge.slice(0, 20), /^noted"/, `${name}: a gauge no pointer will ever ask about`);
@@ -315,6 +319,31 @@ test('every gauge says what its number counts, in a place the note script can fi
       assert.ok(gauge.includes('class="stat-head"'), `${name}: a note with no scale on it`);
       const rows = [...gauge.matchAll(/class="stat-row"/g)].length;
       assert.ok(rows >= 3, `${name}: ${rows} rates under the scale, expected at least three`);
+    }
+
+    /*
+     * And a mark on a gauge carries its own note, in its own `.noted`.
+     *
+     * The marks say what is acting on a gauge *now* where the note says what the scale
+     * *is*, so they nest — a `.noted` inside a `.noted`. That only reads correctly because
+     * the pointer handler takes a host's own note rather than the first one beneath it, and
+     * unscoped it would show a gauge's mark where the gauge's scale belongs. Silent, and
+     * exactly the class of failure this file exists for.
+     */
+    for (const mark of html.split('<span class="driver noted">').slice(1)) {
+      const own = mark.slice(0, mark.indexOf('</span>') + 7);
+      assert.ok(
+        mark.includes('<span class="note">'),
+        `${name}: a mark on a gauge with nothing to say when asked`,
+      );
+      assert.ok(own.length > 0, `${name}: a mark with no word on it`);
+    }
+    if (html.includes('class="driver noted"')) {
+      // The client script is inlined in the page, so this is checkable from here.
+      assert.ok(
+        html.includes("querySelector(':scope > .note')"),
+        `${name}: marks nest inside gauges, but the handler still takes the first note under a host`,
+      );
     }
   }
 });

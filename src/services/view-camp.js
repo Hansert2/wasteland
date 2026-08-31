@@ -554,6 +554,100 @@ function strainOf(survivor, decayPerHour) {
 }
 
 /**
+ * What is acting on each of this survivor's gauges, right now.
+ *
+ * Distinct from `gaugeNotes`, and the difference is the point. Those describe the *rules* —
+ * "food drawn 0.5/h", "starves at 70" — and read the same for everybody in every state,
+ * because they are the scale rather than the reading. These are facts about this person in
+ * this hour: that they are out on the road so nothing is scrubbing, that they are resting
+ * and drinking six times a mouth for it, that hunger has climbed past the line where they
+ * stop healing.
+ *
+ * A player could work every one of them out from the numbers already on the page. That is
+ * exactly the complaint: a cost you can derive is a cost most people will not derive, and
+ * recovery's price on the stores was real and invisible from the day it shipped.
+ *
+ * Each is `{ tag, note }` — a word for the pip and a sentence for the hover — and an empty
+ * list is the ordinary case rather than a missing one. Nothing is added for a survivor who
+ * is simply standing in the camp being fed, because "nothing unusual" is not news.
+ */
+function driversFor(person, { working, resting, fedShort, radScrubbing, strain, config }) {
+  const perHour = (value) => `${Math.round(Number(value) * 10) / 10}`;
+
+  const health = [];
+  if (person.hunger >= config.regenHungerCeiling) {
+    health.push({
+      tag: 'too hungry to heal',
+      note: `Health only mends below ${config.regenHungerCeiling} hunger, and they are at ${perHour(person.hunger)}.`,
+    });
+  }
+  if (strain?.state === 'burning') {
+    health.push({
+      tag: `the dose −${perHour(strain.damagePerHour)}/h`,
+      note: 'The radiation they are carrying costs more health than rest gives back.',
+    });
+  } else if (strain?.state === 'stalled') {
+    health.push({
+      tag: 'the dose holds it',
+      note: 'The dose is taking about what rest gives back, so health is standing still.',
+    });
+  }
+
+  const hunger = [];
+  if (resting) {
+    hunger.push({
+      tag: `resting ×${config.staminaRecoveryRationMultiplier}`,
+      note:
+        `Paying back stamina is work of a kind, and they eat for it — ` +
+        `${perHour(config.foodPerHour * config.staminaRecoveryRationMultiplier)} food and ` +
+        `${perHour(config.waterPerHour * config.staminaRecoveryRationMultiplier)} water an hour ` +
+        `out of the stores, against ${perHour(config.foodPerHour)} and ${perHour(config.waterPerHour)} for somebody idle.`,
+    });
+  }
+  if (fedShort) {
+    hunger.push({
+      tag: 'the stores are short',
+      note: 'The camp cannot meet what this survivor is drawing, so hunger is climbing.',
+    });
+  }
+
+  const radiation = [];
+  if (working === 'away') {
+    radiation.push({
+      tag: 'no scrubbing out there',
+      note: 'A dose decays in the camp and not on the road. Nothing comes off until they are home.',
+    });
+  } else if (radScrubbing) {
+    radiation.push({
+      tag: 'filtration',
+      note: 'The filter on the purifier scrubs the camp, so a dose comes off faster than it would.',
+    });
+  }
+
+  const stamina = [];
+  if (working !== null) {
+    const doing = { away: 'out there', building: 'building', fitting: 'fitting', crafting: 'at the bench' };
+    stamina.push({
+      tag: `${doing[working] ?? working} −${perHour(config.staminaPerHourWorked)}/h`,
+      note:
+        'Every kind of work spends it at the same rate — walking, building, the bench. ' +
+        'Danger does not: that is what radiation is for.',
+    });
+  } else if (resting) {
+    const slowed = person.hunger > config.regenHungerCeiling - config.staminaRecoveryHungerTaper;
+    stamina.push({
+      tag: slowed ? 'resting, slowed' : `resting +${perHour(config.staminaRegenPerHour)}/h`,
+      note: slowed
+        ? 'Recovery slows as hunger nears the line where healing stops, so it can never be ' +
+          'the reason somebody stays injured. Feed them and it picks up.'
+        : 'It comes back on its own. Nothing has to be scheduled for it.',
+    });
+  }
+
+  return { health, hunger, radiation, stamina };
+}
+
+/**
  * The rates behind the three gauges, so the page can say what a figure is made of.
  *
  * Played on 2026-08-24: the Survivor block read `HUNGER 0.0` and `RADIATION 0.7`, and a
@@ -575,6 +669,12 @@ function vitalsOf(radDecayPerHour) {
     hungerFallPerHour: CONFIG.hungerFallPerHour,
     starvationThreshold: CONFIG.starvationThreshold,
     starvationDamagePerHour: CONFIG.starvationDamagePerHour,
+    // Phase 10's three, passed rather than described for the reason above: a sentence in
+    // `render.js` saying "work costs 3.8 an hour" is a second copy of a number a balance
+    // pass edits in one place — and this one is derived from the map, so it moves.
+    staminaPerHourWorked: CONFIG.staminaPerHourWorked,
+    staminaRegenPerHour: CONFIG.staminaRegenPerHour,
+    staminaRecoveryRationMultiplier: CONFIG.staminaRecoveryRationMultiplier,
     radDecayPerHour,
     radDecayBasePerHour: CONFIG.radDecayPerHour,
     radDamagePerHour: CONFIG.radDamagePerHour,
@@ -1578,7 +1678,24 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
         hunger: person.hunger,
         radiation: person.radiation,
         skills: skillsOf(person, CONFIG.radThreshold),
+        // Phase 10's gauge, and the reason the column stopped being dead schema.
+        stamina: Number(person.stamina),
         strain: strainOf(person, radDecayPerHour),
+        /*
+         * And what is acting on each gauge for *this* person in *this* hour.
+         *
+         * `fedShort` is read from the state the tick just wrote rather than predicted:
+         * hunger above zero on a camp that is drawing means the stores did not meet the
+         * draw, which is the same fact the simulation acted on and not a second guess at it.
+         */
+        drivers: driversFor(person, {
+          working: workingAt(state, person),
+          resting: workingAt(state, person) === null && Number(person.stamina) < 100,
+          fedShort: Number(person.hunger) > 0,
+          radScrubbing: fitted.has('filtration'),
+          strain: strainOf(person, radDecayPerHour),
+          config: CONFIG,
+        }),
         inventory: packsByOwner.get(Number(person.id)) ?? [],
         // What they are doing, in the words the refusals use, so a block and a refusal
         // cannot describe the same person differently.

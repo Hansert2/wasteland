@@ -1600,6 +1600,28 @@ ${PANE_CSS}
     border-top: 1px solid var(--rule);
   }
   .person:first-child { border-top: 0; }
+  /*
+   * What is acting on a gauge, as small marks under its track.
+   *
+   * Deliberately not figures. The number is already the largest thing in the gauge and a
+   * second one beside it competes with it — these say *what*, and the hover says how much.
+   * Sized and tracked like a tag, in the grey the page keeps for something that is a label
+   * rather than a reading, with a hairline box so a run of two reads as two.
+   */
+  .drivers { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 7px; }
+  .driver {
+    font-family: var(--label);
+    font-weight: 700;
+    font-size: 9.5px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--dim);
+    border: 1px solid var(--rule);
+    padding: 2px 5px;
+    cursor: help;
+  }
+  .driver:hover { color: var(--bone); border-color: var(--edge); }
+
   .who-head .out { margin-top: 4px; }
   .who-head .back { display: block; white-space: nowrap; }
   /* The sending control loses its own rule and padding in here: the row's border is already
@@ -2733,7 +2755,16 @@ export const TIMERS = `
     if (!host) { if (noted) drop(); return; }
 
     if (host !== noted) {
-      const source = host.querySelector('.note');
+      /*
+       * This host's own note, not the first one anywhere beneath it.
+       *
+       * Unscoped, a ".noted" that contains another ".noted" shows its child's explanation:
+       * the gauges now carry small marks for what is acting on them, each with a note of
+       * its own, and the outer gauge would have picked up the first of those instead of its
+       * own scale. Every note in the file is a direct child of the thing it explains, which
+       * is what the markup already meant and this now says.
+       */
+      const source = host.querySelector(':scope > .note');
       const text = source ? source.textContent.trim() : '';
       if (!text) { drop(); return; }
       noted = host;
@@ -3919,12 +3950,40 @@ function renderSurvivor(survivor, strain, vitals, inventory, chosen, panelId) {
    * against a hundred, because that is the number the survivor's life depends on and
    * the only one the track can honestly be full of.
    */
-  const gauge = (label, value, of, note, tail = '') => `<div class="gauge noted">
+  /*
+   * A gauge, and beneath its label whatever is acting on it right now.
+   *
+   * The note under a gauge explains the *scale* — "food drawn 0.5/h", "starves at 70" — and
+   * reads the same for everybody in every state, because it is the rules rather than the
+   * reading. The marks are this person in this hour: out on the road so nothing is
+   * scrubbing, resting and drinking six times a mouth for it, too hungry to heal.
+   *
+   * Recovery's cost on the stores was real and invisible from the day it shipped — derivable
+   * from three numbers on two blocks, which is to say not derived. A mark that says
+   * "resting ×6" and explains itself on hover is the difference between a cost the game
+   * charges and a cost the player can see being charged.
+   *
+   * Each mark is its own `.noted`, nested inside the gauge's. That works because the popup
+   * takes a host's own note rather than the first one under it — see the handler in TIMERS.
+   */
+  const marks = (list) =>
+    (list ?? []).length === 0
+      ? ''
+      : `<div class="drivers">${list
+          .map(
+            (one) =>
+              `<span class="driver noted">${escape(one.tag)}<span class="note">${escape(
+                one.note,
+              )}</span></span>`,
+          )
+          .join('')}</div>`;
+
+  const gauge = (label, value, of, note, tail = '', acting = []) => `<div class="gauge noted">
       <div class="gauge-top"><span class="tag">${label}</span>
         <span class="val">${n(value)}</span></div>
       <div class="track">${
         value > 0 ? `<i style="width:${bar(value, of)}%"></i>` : ''
-      }</div>${tail}${note}
+      }</div>${marks(acting)}${tail}${note}
     </div>`;
 
   const said = gaugeNotes(strain, vitals);
@@ -4028,15 +4087,24 @@ function renderSurvivor(survivor, strain, vitals, inventory, chosen, panelId) {
        }
        <div class="tabbed" id="${panelId(survivor, 'condition')}" data-tab="condition" role="tabpanel">
          <div class="gauges">
-           ${gauge('Health', survivor.health, 100, said.health)}
-           ${gauge('Hunger', survivor.hunger, 100, said.hunger)}
+           ${gauge('Health', survivor.health, 100, said.health, '', survivor.drivers?.health)}
+           ${gauge('Hunger', survivor.hunger, 100, said.hunger, '', survivor.drivers?.hunger)}
            ${gauge(
              'Radiation',
              survivor.radiation,
              strain?.threshold ?? 100,
              said.radiation,
              strainNote(strain),
+             survivor.drivers?.radiation,
            )}
+           ${/*
+             * Phase 10's gauge, and the first time `characters.stamina` has been on a page.
+             *
+             * Fourth rather than first because it is the one that says what a survivor can
+             * do next rather than how they are: health, hunger and the dose are their
+             * condition, and this is their day.
+             */ ''}
+           ${gauge('Stamina', survivor.stamina, 100, said.stamina, '', survivor.drivers?.stamina)}
          </div>
        </div>
        <div class="tabbed" id="${panelId(survivor, 'skills')}" data-tab="skills" role="tabpanel">
@@ -4076,7 +4144,7 @@ function renderSurvivor(survivor, strain, vitals, inventory, chosen, panelId) {
  * and a page that throws rather than render one is a bad trade.
  */
 function gaugeNotes(strain, vitals) {
-  if (!vitals) return { health: '', hunger: '', radiation: '' };
+  if (!vitals) return { health: '', hunger: '', radiation: '', stamina: '' };
 
   /*
    * The dose at which this survivor stops gaining health and starts losing it.
@@ -4116,6 +4184,22 @@ function gaugeNotes(strain, vitals) {
       ['water drawn', `${rate(vitals.eats.water)}/h`],
       ['nothing to eat', `+${rate(vitals.hungerRisePerHour)}/h`],
       ['starves at', `${rate(vitals.starvationThreshold)}+`],
+    ]),
+    /*
+     * What a survivor's day is worth, which is the one gauge that says what they may do
+     * rather than how they are.
+     *
+     * The rows are the whole mechanic in five lines: every kind of work spends it at one
+     * rate, danger does not touch it, rest pays it back on its own, and resting is itself
+     * work enough to eat for. The last row is the refusal a player will actually meet —
+     * a walk they cannot finish is a walk the gate will not open for.
+     */
+    stamina: stats('0 – 100 · a day’s walking', [
+      ['any work', `-${rate(vitals.staminaPerHourWorked)}/h`],
+      ['danger', 'costs none of it'],
+      ['resting', `+${rate(vitals.staminaRegenPerHour)}/h`],
+      ['resting draws', `${rate(vitals.staminaRecoveryRationMultiplier)}× rations`],
+      ['a trip needs', 'enough for all of it'],
     ]),
     radiation: stats('0 – 100 · carried in from the road', [
       ...scrubs,
