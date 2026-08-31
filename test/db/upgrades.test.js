@@ -600,10 +600,11 @@ test('somebody already working is shown as working, and cannot be chosen', async
      * captions. Occupation is a fact about a person, so it is stated under that person's own
      * name, once; the strip only reports that the choice is closed.
      */
+    assert.equal(busy.busyWith, 'filtration', 'and which job it is');
     assert.match(
       html,
-      /<div class="who-name">Odd<\/div>\s*<p class="out">fitting<\/p>/,
-      "the survivor's own block says what has them",
+      /<div class="who-name">Odd<\/div>\s*<p class="out">fitting &middot; filtration<\/p>/,
+      "the survivor's own block names the job, not just the verb",
     );
   });
 });

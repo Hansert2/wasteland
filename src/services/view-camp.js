@@ -1549,7 +1549,12 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
         inventory: packsByOwner.get(Number(person.id)) ?? [],
         // What they are doing, in the words the refusals use, so a block and a refusal
         // cannot describe the same person differently.
-        busy: busyBy.get(Number(person.id)) ?? null,
+        // Kept as two flat fields rather than the map's object, because everything that
+        // reads `busy` reads it as "is this person free" — a truthy object would keep
+        // working and a rendered one would print [object Object] the first time somebody
+        // forgot which it was.
+        busy: busyBy.get(Number(person.id))?.kind ?? null,
+        busyWith: busyBy.get(Number(person.id))?.what ?? null,
         away: trip
           ? {
               regionName: trip.region.name,

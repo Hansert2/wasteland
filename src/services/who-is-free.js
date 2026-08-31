@@ -1,4 +1,5 @@
 import { InputError } from '../errors.js';
+import { UPGRADES } from '../game/structures.js';
 
 /**
  * What each survivor in a camp is doing, and therefore who can be asked to do something else.
@@ -31,7 +32,14 @@ const OCCUPATIONS = {
 /**
  * A map of character id to what they are doing, holding only the busy.
  *
- * @returns {Promise<Map<number, keyof OCCUPATIONS>>}
+ * The value carries the job as well as the kind. A page that can only say "fitting" makes
+ * the player open the structures block to find out fitting *what*, and the answer is one
+ * column away in the row this already reads — so it is read here rather than looked up
+ * again by whoever renders it.
+ *
+ * `what` is a display string, and null for a job with nothing to name.
+ *
+ * @returns {Promise<Map<number, { kind: keyof OCCUPATIONS, what: string|null }>>}
  */
 export async function occupations(client, settlementId, now = Date.now()) {
   const busy = new Map();
@@ -43,7 +51,9 @@ export async function occupations(client, settlementId, now = Date.now()) {
       where c.settlement_id = $1 and e.status = 'active'`,
     [settlementId],
   );
-  for (const row of away) busy.set(Number(row.character_id), 'away');
+  // Where they went is on the survivor's own block already, printed with the countdown, so
+  // this does not join the regions table to say it a second time.
+  for (const row of away) busy.set(Number(row.character_id), { kind: 'away', what: null });
 
   /*
    * A job counts as occupying only while it is unfinished. The tick is what marks a build
@@ -52,27 +62,39 @@ export async function occupations(client, settlementId, now = Date.now()) {
    * against the clock rather than against the row's presence.
    */
   const { rows: building } = await client.query(
-    `select built_by from camp_structures
+    `select built_by, kind from camp_structures
       where settlement_id = $1 and built_by is not null and build_completes_at > $2`,
     [settlementId, at],
   );
-  for (const row of building) busy.set(Number(row.built_by), 'building');
+  for (const row of building) {
+    // The column, as the page spells it: a structure has no display name of its own, and
+    // every other place that prints one turns the underscores into spaces.
+    busy.set(Number(row.built_by), { kind: 'building', what: String(row.kind).replace(/_/g, ' ') });
+  }
 
   const { rows: fitting } = await client.query(
-    `select fitted_by from structure_upgrades
+    `select fitted_by, upgrade from structure_upgrades
       where settlement_id = $1 and fitted_by is not null
         and installed_at is null and completes_at > $2`,
     [settlementId, at],
   );
-  for (const row of fitting) busy.set(Number(row.fitted_by), 'fitting');
+  for (const row of fitting) {
+    // Lowercased, because a fitting's name is title case for a label strip — "A Bed", "The
+    // Clock" — and this lands mid-sentence under somebody's name.
+    const named = UPGRADES[row.upgrade]?.name ?? row.upgrade;
+    busy.set(Number(row.fitted_by), { kind: 'fitting', what: String(named).toLowerCase() });
+  }
 
   const { rows: crafting } = await client.query(
-    `select crafted_by from craft_orders
-      where settlement_id = $1 and crafted_by is not null
-        and status = 'active' and completes_at > $2`,
+    `select co.crafted_by, rec.name from craft_orders co
+       join recipes rec on rec.id = co.recipe_id
+      where co.settlement_id = $1 and co.crafted_by is not null
+        and co.status = 'active' and co.completes_at > $2`,
     [settlementId, at],
   );
-  for (const row of crafting) busy.set(Number(row.crafted_by), 'crafting');
+  for (const row of crafting) {
+    busy.set(Number(row.crafted_by), { kind: 'crafting', what: String(row.name).toLowerCase() });
+  }
 
   return busy;
 }
@@ -88,5 +110,5 @@ export function mustBeFree(busy, character, verb) {
   if (!doing) return;
 
   const who = character.name ?? 'They';
-  throw new InputError(`${who} is ${OCCUPATIONS[doing]} and cannot ${verb}.`);
+  throw new InputError(`${who} is ${OCCUPATIONS[doing.kind]} and cannot ${verb}.`);
 }

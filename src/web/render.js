@@ -1456,6 +1456,15 @@ ${PANE_CSS}
   /* The end of the reach is a mark, not a control: a link that refuses is worse than a
      glyph that never claimed to be one. */
   .f-step.off { color: var(--rule); }
+  /*
+   * A strip that has nothing to offer says so quietly.
+   *
+   * "No survivor available" is not a control and not a figure — it is the absence of the
+   * one that would have been here — so it takes the tag's size and tracking and the grey
+   * the page keeps for a reach that has ended, rather than the strip's own speaking voice.
+   * At full weight it pulled the eye to the corner of every block that had nothing to say.
+   */
+  .f-nav .short { color: var(--faint); font-size: 10px; letter-spacing: .18em; }
 
   /*
    * One box for every swatch, whatever shape the mark inside it is.
@@ -3653,6 +3662,19 @@ const OCCUPIED_AS = Object.assign(Object.create(null), {
 
 const occupiedAs = (busy) => OCCUPIED_AS[busy] ?? busy;
 
+/*
+ * The same, with the job named — "fitting · a bed" rather than "fitting".
+ *
+ * Which is the version a survivor's own block wants and a dropdown does not: the block is
+ * answering "what is this person doing", where an option in a list is only answering
+ * "can I pick them", and a name trailing four more words in a narrow select is a worse
+ * answer to that question than a short one.
+ *
+ * Middot, because that is how this line already joins its parts when somebody is away.
+ */
+const occupiedFully = (busy, what) =>
+  what ? `${occupiedAs(busy)} &middot; ${escape(what)}` : escape(occupiedAs(busy));
+
 function whoSelector(view, { field, label }) {
   const roster = view.roster ?? [];
   if (roster.length === 0) return '';
@@ -3800,7 +3822,7 @@ function renderSurvivor(survivor, strain, vitals, inventory) {
             * stated here first and the dropdowns only have to agree with it.
             */
            survivor.busy
-           ? `<p class="out">${escape(occupiedAs(survivor.busy))}</p>`
+           ? `<p class="out">${occupiedFully(survivor.busy, survivor.busyWith)}</p>`
            : ''
      }
      <div class="tabbed" id="survivor-condition" data-tab="condition" role="tabpanel">

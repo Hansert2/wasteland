@@ -91,7 +91,7 @@ export async function useItem(client, settlementId, slug, who = null) {
    * there.
    */
   const busy = await occupations(client, settlementId);
-  if (busy.get(Number(survivor.id)) !== 'away') {
+  if (busy.get(Number(survivor.id))?.kind !== 'away') {
     mustBeFree(busy, survivor, 'take anything');
   }
 
