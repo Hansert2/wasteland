@@ -1,6 +1,6 @@
 import { InputError } from '../errors.js';
 import { FACTIONS, raidTemper, standingOf } from '../game/factions.js';
-import { resolveRaid, standFor } from '../game/raids.js';
+import { resolveRaid } from '../game/raids.js';
 import { campDefence, campWealth } from '../game/structures.js';
 import { occupations, mustBeFree } from './who-is-free.js';
 
@@ -25,6 +25,14 @@ import { occupations, mustBeFree } from './who-is-free.js';
  * deadline. An un-advanced call could answer a raid the clock has already closed.
  */
 export async function answerRaid(client, settlementId, who, now = Date.now()) {
+  /*
+   * Everybody who was named, and the page names as many as the player ticked.
+   *
+   * One survivor or four arrive here the same way, because a form with one box checked and
+   * a form with four are the same submission with a different length. Deduplicated, since
+   * a repeated id would otherwise stand somebody twice and hurt them twice for it.
+   */
+  const named = [...new Set([].concat(who ?? []).filter((one) => one != null).map(String))];
   const { rows: open } = await client.query(
     `select id, at, closes_at, seed, faction from raids
       where settlement_id = $1 and resolved_at is null`,
@@ -49,8 +57,15 @@ export async function answerRaid(client, settlementId, who, now = Date.now()) {
   );
   if (living.length === 0) throw new InputError('There is nobody here to stand.');
 
-  const defender = who == null ? living[0] : living.find((one) => String(one.id) === String(who));
-  if (!defender) throw new InputError('Nobody here answers to that.');
+  const defenders =
+    named.length === 0
+      ? living.slice(0, 1)
+      : named.map((id) => {
+          const person = living.find((one) => String(one.id) === id);
+          if (!person) throw new InputError('Nobody here answers to that.');
+          return person;
+        });
+  if (defenders.length === 0) throw new InputError('Nobody stood.');
 
   /*
    * Away is the only occupation that stops you, and that is a decision rather than an
@@ -61,8 +76,10 @@ export async function answerRaid(client, settlementId, who, now = Date.now()) {
    * A sleeper cannot be in this list: the raid woke them when it arrived. See `openRaid`.
    */
   const busy = await occupations(client, settlementId, now);
-  if (busy.get(Number(defender.id))?.kind === 'away') {
-    mustBeFree(busy, defender, 'stand at the fence');
+  for (const person of defenders) {
+    if (busy.get(Number(person.id))?.kind === 'away') {
+      mustBeFree(busy, person, 'stand at the fence');
+    }
   }
 
   const [{ rows: structures }, { rows: resourceRows }, { rows: standingRows }] = [
@@ -86,35 +103,36 @@ export async function answerRaid(client, settlementId, who, now = Date.now()) {
   for (const row of standingRows) standings[row.faction] = Number(row.standing);
 
   /*
-   * What they are carrying, because that is what standing is worth. `standFor` reads the best
-   * weapon in the pack — the same "no equip step" assumption `equipmentOf` makes for a trip,
-   * which is the right one: a survivor uses the best thing they own and there is no decision
+   * What each of them is carrying, because that is what standing is worth. `standFor` reads
+   * the best weapon in a pack — the same "no equip step" assumption `equipmentOf` makes for a
+   * trip, and the right one: a survivor uses the best thing they own and there is no decision
    * in choosing to.
+   *
+   * One query for the lot rather than one per person, which is the same reason `loadWorld`
+   * reads every pack at once: this is at most five rows deep and a round trip each is a round
+   * trip too many.
    */
-  const { rows: pack } = await client.query(
-    `select i.kind, i.potency, ii.qty from inventory_items ii
+  const { rows: packs } = await client.query(
+    `select ii.character_id, i.kind, i.potency, ii.qty from inventory_items ii
        join items i on i.id = ii.item_id
-      where ii.character_id = $1`,
-    [defender.id],
+      where ii.character_id = any($1)`,
+    [defenders.map((one) => one.id)],
   );
 
-  const survivor = {
-    id: defender.id,
-    name: defender.name,
+  const crew = defenders.map((person) => ({
+    id: Number(person.id),
+    name: person.name,
     alive: true,
-    inventory: pack.map((row) => ({
-      kind: row.kind,
-      potency: Number(row.potency),
-      qty: Number(row.qty),
-    })),
-  };
+    inventory: packs
+      .filter((row) => Number(row.character_id) === Number(person.id))
+      .map((row) => ({ kind: row.kind, potency: Number(row.potency), qty: Number(row.qty) })),
+  }));
 
   const outcome = resolveRaid({
     wealth: campWealth(structures, resources),
     defence: campDefence(structures),
     resources,
-    survivor,
-    stood: standFor(survivor),
+    defenders: crew,
     // The tower already asked whether they would come at all, when the raid opened. Asking
     // again here would let a raid the player is looking at turn out never to have happened.
     engaged: true,
@@ -133,20 +151,30 @@ export async function answerRaid(client, settlementId, who, now = Date.now()) {
     );
   }
 
-  // Hurt, never killed — the one figure in the raid table that has never moved.
-  if (outcome.damage > 0) {
-    await client.query('update characters set health = greatest(1, health - $2) where id = $1', [
-      defender.id,
-      outcome.damage,
-    ]);
+  /*
+   * Hurt, never killed, and the floor is per survivor rather than on the total: a crew of
+   * four comes home wrecked and alive. Each took their own roll — see `resolveRaid`, and the
+   * reason it is not split between them.
+   */
+  for (const one of outcome.hurt) {
+    if (one.damage > 0) {
+      await client.query('update characters set health = greatest(1, health - $2) where id = $1', [
+        one.id,
+        one.damage,
+      ]);
+    }
+    await client.query(
+      `insert into raid_stands (raid_id, character_id, damage) values ($1, $2, $3)
+       on conflict (raid_id, character_id) do nothing`,
+      [raid.id, one.id, one.damage],
+    );
   }
 
   await client.query(
-    `update raids set stood_by = $2, resolved_at = $3, taken = $4, damage = $5, log = $6
+    `update raids set resolved_at = $2, taken = $3, damage = $4, log = $5
       where id = $1 and resolved_at is null`,
     [
       raid.id,
-      defender.id,
       new Date(now),
       JSON.stringify(outcome.taken),
       outcome.damage,
@@ -154,5 +182,11 @@ export async function answerRaid(client, settlementId, who, now = Date.now()) {
     ],
   );
 
-  return { name: defender.name, taken: outcome.taken, damage: outcome.damage, log: outcome.log };
+  return {
+    stood: outcome.hurt.map((one) => one.name),
+    taken: outcome.taken,
+    hurt: outcome.hurt,
+    damage: outcome.damage,
+    log: outcome.log,
+  };
 }

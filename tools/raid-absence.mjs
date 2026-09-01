@@ -92,7 +92,7 @@ function absence({ days, boost, seed, refill = true }) {
       defence,
       resources,
       // Nobody answered, so nobody stood: this is the hidden case in every row.
-      survivor: null,
+      defenders: [],
       seed: seed + index,
       temper: { repelBonus: 0, softening: 0, shareBoost: boost },
     });

@@ -41,7 +41,7 @@ import { radThresholdFor, skillsOf, wandererFor } from '../game/wanderers.js';
 import { stateAt, timelineOf } from '../game/timeline.js';
 import { CONFIG } from '../game/constants.js';
 import { radDamagePerHourAt, recoveryOf } from '../game/tick.js';
-import { standFor } from '../game/raids.js';
+import { standFor, standTogether } from '../game/raids.js';
 import {
   LINKS,
   TRADE_POST_LINKS,
@@ -1682,6 +1682,19 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
             at: new Date(state.raid.at),
             closesAt: new Date(state.raid.closesAt),
             crew: FACTIONS[state.raid.faction]?.name ?? null,
+            /*
+             * What the whole camp would hold back if everybody able to went out.
+             *
+             * A ceiling rather than a running total: the page cannot add up ticked boxes
+             * without script, and the figure a player wants before ticking any is how much
+             * there is to be had. Computed from the same function the raid settles with, over
+             * exactly the survivors the block will offer.
+             */
+            together: standTogether(
+              (state.survivors ?? []).filter(
+                (one) => one.alive && busyBy.get(Number(one.id))?.kind !== 'away',
+              ),
+            ),
           }
         : null,
     caravan,

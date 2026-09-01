@@ -15,7 +15,6 @@ import {
   nextRaidAt,
   repelChance,
   resolveRaid,
-  standFor,
 } from './raids.js';
 import { chance, makeRandom } from './random.js';
 import { activeAt, nextBoundaryAfter, productionFactors } from './world-events.js';
@@ -657,8 +656,8 @@ function openRaid(state, at, events) {
    * arithmetic, so the log a player reads is the one `resolveRaid` writes.
    */
   if (campWealth(settlement.structures, settlement.resources) < NOT_WORTH_THE_WALK) {
-    const picked = { id: null, at: raidAt, closesAt: raidAt, seed, faction, stoodBy: null };
-    applyRaid(state, picked, null, raidAt, events);
+    const picked = { id: null, at: raidAt, closesAt: raidAt, seed, faction };
+    applyRaid(state, picked, [], raidAt, events);
     (state.raidsSettled ??= []).push(picked);
     return;
   }
@@ -669,7 +668,6 @@ function openRaid(state, at, events) {
     closesAt: raidAt + RAID_WINDOW_HOURS * HOUR_MS,
     seed,
     faction,
-    stoodBy: null,
     resolvedAt: null,
   };
 
@@ -702,7 +700,7 @@ function settleOpenRaid(state, at, events) {
   const open = state.raid;
   if (!open || open.resolvedAt != null || open.closesAt > at) return;
 
-  applyRaid(state, open, null, open.closesAt, events);
+  applyRaid(state, open, [], open.closesAt, events);
 }
 
 /**
@@ -712,14 +710,15 @@ function settleOpenRaid(state, at, events) {
  * anything else: the stores come off the same way, the injury is floored the same way, and
  * the log is written once. `answer-raid.js` calls the same arithmetic through the service.
  */
-function applyRaid(state, open, defender, at, events) {
+function applyRaid(state, open, defenders, at, events) {
   const settlement = state.settlement;
   const outcome = resolveRaid({
     wealth: campWealth(settlement.structures, settlement.resources),
     defence: campDefence(settlement.structures),
     resources: settlement.resources,
-    survivor: defender,
-    stood: standFor(defender),
+    // Always empty from in here. The walk cannot name anybody — that is the service's job —
+    // so every raid the tick settles is one nobody answered.
+    defenders,
     engaged: true,
     seed: open.seed,
     crew: FACTIONS[open.faction]?.name,
@@ -731,13 +730,17 @@ function applyRaid(state, open, defender, at, events) {
     if (resource) resource.amount = clamp(resource.amount - amount, 0, resource.cap);
   }
 
-  // Hurt, never killed: the settled rule, and the only one of these figures that has never
-  // moved. Only somebody who stood can be hurt at all now.
-  if (outcome.damage > 0 && defender?.alive) {
-    defender.health = Math.max(1, defender.health - outcome.damage);
+  /*
+   * Hurt, never killed, and each of them separately: the floor is per survivor rather than on
+   * a total, so a crew of four comes home wrecked and alive. This path never has any, since
+   * the walk cannot name a defender.
+   */
+  const roster = state.survivors ?? (state.survivor ? [state.survivor] : []);
+  for (const one of outcome.hurt ?? []) {
+    const person = roster.find((candidate) => candidate.id === one.id);
+    if (person?.alive && one.damage > 0) person.health = Math.max(1, person.health - one.damage);
   }
 
-  open.stoodBy = defender?.id ?? null;
   open.resolvedAt = at;
   open.taken = outcome.taken;
   open.damage = outcome.damage;

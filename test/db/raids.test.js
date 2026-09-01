@@ -111,10 +111,13 @@ test('a raid stands open, and the page can be asked who holds the fence', async 
     assert.ok(after.food < before.food, 'and they still took something');
 
     const { rows } = await client.query(
-      'select stood_by, resolved_at from raids where settlement_id = $1',
+      `select r.resolved_at, s.character_id, s.damage from raids r
+         left join raid_stands s on s.raid_id = r.id
+        where r.settlement_id = $1`,
       [settlementId],
     );
-    assert.equal(Number(rows[0].stood_by), ids[0], 'the raid records who stood');
+    assert.equal(Number(rows[0].character_id), ids[0], 'the raid records who stood');
+    assert.ok(Number(rows[0].damage) > 0, 'and what it cost them');
     assert.ok(rows[0].resolved_at, 'and is settled');
   });
 });
@@ -215,8 +218,8 @@ test('somebody on the road cannot stand at the fence', async () => {
      * And the one who is home can — which is the half the old code got wrong. The damage used
      * to land on `state.survivor`, the founder, whether or not they were anywhere near it.
      */
-    const out = await answerRaid(client, settlementId, ids[1], T0 + 5 * HOUR);
-    assert.equal(out.name, 'Wren');
+    const out = await answerRaid(client, settlementId, [ids[1]], T0 + 5 * HOUR);
+    assert.deepEqual(out.stood, ['Wren'], 'the one who was home is the one who went out');
   });
 });
 
@@ -229,4 +232,44 @@ test('a window that has shut cannot be answered', async () => {
       /already gone/i,
     );
   });
+});
+
+test('a crew holds more than one person, and every one of them pays for it', async () => {
+  /*
+   * The user's call on 2026-09-01, after playing the version where only one could go out.
+   * Two things have to be true together or the decision is not a decision: more defenders
+   * keep more of the stores, **and** more defenders means more people hurt. Split damage
+   * would make sending everybody strictly better and there would be nothing to weigh.
+   */
+  const outcome = async (howMany) => {
+    let result = null;
+    await withRollback(async (client) => {
+      const { settlementId, ids } = await seed(client, { people: 3 });
+      await give(client, ids[0], 'scrap_spear');
+      await give(client, ids[1], 'scrap_spear');
+      const before = await stores(client, settlementId);
+
+      await advanceSettlement(client, settlementId, T0 + 5 * HOUR);
+      const out = await answerRaid(client, settlementId, ids.slice(0, howMany), T0 + 5 * HOUR);
+      const after = await stores(client, settlementId);
+
+      const { rows } = await client.query(
+        'select count(*)::int as stood from raid_stands s join raids r on r.id = s.raid_id where r.settlement_id = $1',
+        [settlementId],
+      );
+      result = { took: before.food - after.food, hurt: out.hurt.length, rows: rows[0].stood };
+    });
+    return result;
+  };
+
+  const one = await outcome(1);
+  const three = await outcome(3);
+
+  assert.ok(
+    three.took < one.took,
+    `three should hold back more than one — one ${one.took}, three ${three.took}`,
+  );
+  assert.equal(one.hurt, 1, 'one stood, one hurt');
+  assert.equal(three.hurt, 3, 'three stood, three hurt');
+  assert.equal(three.rows, 3, 'and the raid records each of them');
 });

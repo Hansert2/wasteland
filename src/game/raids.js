@@ -99,6 +99,35 @@ const MAX_STAND = 0.9;
  * best-equipped survivor would simply always stand and there would be no question left; kept
  * apart, the call weighs what you save against who can afford to be hurt.
  */
+/**
+ * What a crew holds back between them.
+ *
+ * **Everybody who stands, stands** — decided by the user on 2026-09-01 after playing the
+ * one-defender version. Phase 12 had left this as the thing it did not decide, on the reading
+ * that one survivor stands and the rest are simply not the ones standing. Wrong, and obviously
+ * so once the block was on screen with four names on it.
+ *
+ * `1 - the product of what each fails to hold`, which is the honest model rather than a
+ * chosen curve: each of them independently stops some of it, and what gets through is what
+ * got past all of them. It can never exceed the whole, and the second body is worth less than
+ * the first without any rule saying so.
+ *
+ *     Vera .45   Hansert .45   Wren .20
+ *
+ *     Vera alone          45%
+ *     Vera + Hansert      70%
+ *     all three           76%
+ *     Wren + Hansert      56%
+ *
+ * The alternative was adding them up to a cap, which makes the third body worth nothing and
+ * the second worth everything — a cliff at a number nobody can see.
+ */
+export function standTogether(defenders) {
+  let held = 0;
+  for (const defender of defenders ?? []) held += standFor(defender) * (1 - held);
+  return Math.min(MAX_STAND, held);
+}
+
 export function standFor(defender) {
   if (!defender) return 0;
   const weapon = bestOfKind(defender.inventory, 'weapon');
@@ -164,8 +193,7 @@ export function resolveRaid({
   wealth,
   defence,
   resources,
-  survivor,
-  stood = 0,
+  defenders = [],
   engaged = false,
   seed,
   crew,
@@ -188,12 +216,12 @@ export function resolveRaid({
    */
   if (!engaged && chance(random, repelChance(defence, t.repelBonus))) {
     log.push(`${who} came as far as the fence, thought better of it, and moved on.`);
-    return { repelled: true, taken: {}, damage: 0, log };
+    return { repelled: true, taken: {}, hurt: [], damage: 0, log };
   }
 
   if (wealth < NOT_WORTH_THE_WALK) {
     log.push(`${who} picked over the camp, found nothing worth carrying, and left.`);
-    return { repelled: false, taken: {}, damage: 0, log };
+    return { repelled: false, taken: {}, hurt: [], damage: 0, log };
   }
 
   const softening = Math.min(
@@ -212,8 +240,9 @@ export function resolveRaid({
    * and is priced as the ordinary outcome rather than as a punishment. See
    * `HIDDEN_SHARE_BOOST`.
    */
-  const stand = survivor ? Math.min(MAX_STAND, Math.max(0, Number(stood) || 0)) : 0;
-  const answered = survivor ? 1 - stand : HIDDEN_SHARE_BOOST;
+  const stood = (defenders ?? []).filter((one) => one?.alive);
+  const stand = standTogether(stood);
+  const answered = stood.length > 0 ? 1 - stand : HIDDEN_SHARE_BOOST;
 
   // Hostility widens what they carry off, capped so no grudge takes everything.
   const share = Math.min(0.5, MAX_SHARE_TAKEN * (1 - softening) * t.shareBoost * answered);
@@ -231,24 +260,37 @@ export function resolveRaid({
   log.push(carried ? `${who} took ${carried}.` : `${who} found the stores already bare.`);
 
   /*
-   * The injury is the price of standing, and only of standing.
+   * The injury is the price of standing, and every one of them pays it.
+   *
+   * Not split between them, which was the alternative and would have made committing the
+   * whole camp strictly better than committing one — more defenders, less hurt each, no
+   * decision left. Each takes their own roll, so what a crew buys in stores it pays for in
+   * health across the roster, and *how many to send out there* stays a question.
    *
    * It used to land on whoever was alive, which on a roster meant the founder — wounded by a
-   * raid they were twenty hours down the road from. Nobody is hurt by a raid they hid from
-   * now, which is the trade the whole phase is built on: health for stores, chosen.
+   * raid they were twenty hours down the road from. Nobody is hurt by a raid they hid from.
    *
-   * Still hurt rather than killed. The caller holds them at 1; what happens after is the
-   * player's problem to solve, which is the difference between harsh and unfair.
+   * Still hurt rather than killed. The caller holds each of them at 1; what happens after is
+   * the player's problem to solve, which is the difference between harsh and unfair.
    */
-  let damage = 0;
-  if (survivor?.alive) {
-    damage = Math.round((8 + random() * 22) * (1 - softening));
-    const name = survivor.name ?? 'Whoever was holding the camp';
-    if (damage > 0) log.push(`${name} came off badly — ${damage} damage.`);
-    else log.push(`${name} held the fence and walked away from it.`);
-  } else {
+  const hurt = stood.map((one) => ({
+    id: one.id ?? null,
+    name: one.name ?? 'Somebody',
+    damage: Math.round((8 + random() * 22) * (1 - softening)),
+  }));
+
+  if (hurt.length === 0) {
     log.push('Nobody stood in their way.');
+  } else {
+    for (const one of hurt) {
+      if (one.damage > 0) log.push(`${one.name} came off badly — ${one.damage} damage.`);
+      else log.push(`${one.name} held the fence and walked away from it.`);
+    }
   }
 
-  return { repelled: false, taken, damage, log };
+  // The total, for the raid's own row and for an event that wants one number. What each of
+  // them took is in `hurt`, which is what the table records.
+  const damage = hurt.reduce((sum, one) => sum + one.damage, 0);
+
+  return { repelled: false, taken, hurt, damage, log };
 }

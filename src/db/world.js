@@ -105,7 +105,7 @@ export async function loadWorld(client, settlementId) {
    * anybody remembering to check: raiders do not queue.
    */
   const { rows: openRaids } = await client.query(
-    `select id, at, closes_at, seed, faction, stood_by
+    `select id, at, closes_at, seed, faction
        from raids where settlement_id = $1 and resolved_at is null`,
     [settlementId],
   );
@@ -423,7 +423,6 @@ export async function loadWorld(client, settlementId) {
           closesAt: openRaid.closes_at.getTime(),
           seed: Number(openRaid.seed),
           faction: openRaid.faction,
-          stoodBy: openRaid.stood_by === null ? null : Number(openRaid.stood_by),
           resolvedAt: null,
         }
       : null,
@@ -456,16 +455,15 @@ async function writeRaid(client, settlementId, raid) {
 
   if (raid.id == null) {
     const { rows } = await client.query(
-      `insert into raids (settlement_id, at, closes_at, seed, faction, stood_by,
+      `insert into raids (settlement_id, at, closes_at, seed, faction,
                           resolved_at, taken, damage, log)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) returning id`,
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9) returning id`,
       [
         settlementId,
         new Date(raid.at),
         new Date(raid.closesAt),
         raid.seed,
         raid.faction ?? null,
-        raid.stoodBy ?? null,
         raid.resolvedAt == null ? null : new Date(raid.resolvedAt),
         JSON.stringify(raid.taken ?? {}),
         Math.max(0, Math.round(Number(raid.damage) || 0)),
@@ -479,11 +477,10 @@ async function writeRaid(client, settlementId, raid) {
   if (raid.resolvedAt == null) return;
 
   await client.query(
-    `update raids set stood_by = $2, resolved_at = $3, taken = $4, damage = $5, log = $6
+    `update raids set resolved_at = $2, taken = $3, damage = $4, log = $5
       where id = $1`,
     [
       raid.id,
-      raid.stoodBy ?? null,
       new Date(raid.resolvedAt),
       JSON.stringify(raid.taken ?? {}),
       Math.max(0, Math.round(Number(raid.damage) || 0)),

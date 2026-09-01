@@ -3733,12 +3733,44 @@ or defences stood. That is a progression system the game does not otherwise have
 mean a new camp cannot defend at all until it has been raided, which reads badly. Recorded as
 considered, not chosen.
 
-### What this does not decide
+### A crew, decided 2026-09-01 after playing it
 
-**Whether a crew defends better than one person.** Bodies do not count toward `defence` here —
-one survivor stands and the rest are simply not the ones standing. Whether a second pair of
-hands should soften a raid is a real question and a separable one, and it wants measuring
-against the raid table rather than assuming.
+This section used to end by *not* deciding whether a crew defends better than one person —
+bodies did not count, one survivor stood and the rest were simply not the ones standing. The
+user overturned it within an hour of the block being on screen, and the reason is the block
+itself: four names, one of them able to press anything, and the page was plainly asking the
+wrong question.
+
+**Everybody who stands, stands.** Two rules settle it, and they have to hold together or there
+is nothing to weigh:
+
+**What they hold back is `1 - the product of what each fails to hold`.** Not a chosen curve —
+it is what "each of them independently stops some of it" *means*, it can never exceed the
+whole, and the second body is worth less than the first without any rule saying so.
+
+    Vera .45   Hansert .45   Wren .20
+
+    Vera alone          45%      Wren + Hansert      56%
+    Vera + Hansert      70%      all three           76%
+
+Adding them to a cap was the alternative and was refused: it makes the third body worth
+nothing and the second worth everything, a cliff at a number nobody can see.
+
+**Each of them takes their own injury.** Splitting one raid's worth between them was the
+gentler option and it removes the decision entirely — more defenders, less hurt each, so
+committing the whole camp is strictly better than committing one. Paid separately, a crew buys
+stores with health across the roster and *how many do I send* stays a question. The floor is
+per survivor, so four defenders come home wrecked and alive.
+
+Migration `022` follows from the second rule rather than the first: what a raid has to record
+is a set of people **and what each of them took**, which `raids.stood_by` could not hold.
+
+### What this still does not decide
+
+**Whether standing should soften what a defender takes.** A crew of four fighting together
+plausibly takes less each than one alone. It is left out because it points the wrong way:
+softening with numbers, on top of holding back more with numbers, makes sending everybody the
+answer to every raid.
 
 ## Phase 13 — what a person can carry, and what the camp keeps
 

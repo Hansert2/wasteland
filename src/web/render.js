@@ -575,6 +575,11 @@ ${SURVIVOR_TAB_CSS}
   .stander .keeps { font-family: var(--numer); font-size: 12px; color: var(--dim);
                     font-variant-numeric: tabular-nums; }
   .stander.off .keeps { color: var(--faint); }
+  /* The ceiling and the button on one line: what there is to be had, and the way to have it. */
+  .standers-foot { display: flex; align-items: center; justify-content: space-between;
+                   gap: 18px; flex-wrap: wrap; margin-top: 15px; }
+  .standers-foot .keeps { font-family: var(--numer); font-size: 12px; color: var(--dim);
+                          font-variant-numeric: tabular-nums; }
 
   /*
    * The road still to come. Greyed because none of it can be paid into yet — only the live
@@ -3694,17 +3699,26 @@ function renderRaid(view) {
   const raid = view.underRaid;
   const crew = raid.crew ? `Raiders out of ${raid.crew}` : 'Raiders';
 
+  /*
+   * A crew rather than a champion, decided by the user on 2026-09-01 after playing the
+   * one-defender version: with four names on the block and only one of them able to press
+   * anything, the block was asking the wrong question.
+   *
+   * So it is one form with a box each, not a button each. Everybody ticked goes out, each
+   * holds back their own share of what the raiders take, and **each one takes their own
+   * injury** — which is what keeps *how many do I send* a question rather than an answer.
+   */
   const stand = (one) => {
     const share = Math.round(Number(one.stands ?? 0) * 100);
     const away = one.busy === 'away';
     return `<li class="stander${away ? ' off' : ''}">
-        <form method="post" action="/raid">
-          <input type="hidden" name="who" value="${escape(String(one.id))}">
-          <button type="submit"${away ? ' disabled' : ''}>${escape(one.name ?? 'Survivor')}</button>
-        </form>
-        <span class="keeps">${
-          away ? 'out there' : `keeps back ${share}%`
-        }</span>
+        <label class="pick${away ? ' off' : ''}">
+          <input type="checkbox" name="who" value="${escape(String(one.id))}"${
+            away ? ' disabled' : ''
+          }>
+          <span class="tag">${escape(one.name ?? 'Survivor')}</span>
+        </label>
+        <span class="keeps">${away ? 'out there' : `keeps back ${share}%`}</span>
       </li>`;
   };
 
@@ -3717,9 +3731,18 @@ function renderRaid(view) {
         )}<small>until they go</small></span>
       </div>
       <div class="block-body">
-        <p>${escape(crew)} are in the yard. Whoever stands will come off badly, and the rest of
-          it stays in the stores. Nobody stands and they take more.</p>
-        <ul class="standers">${(view.roster ?? []).map(stand).join('')}</ul>
+        <p>${escape(crew)} are in the yard. Everybody who goes out comes off badly, and each of
+          them holds back some of what would otherwise be carried off. Nobody goes and they
+          take more.</p>
+        <form method="post" action="/raid">
+          <ul class="standers">${(view.roster ?? []).map(stand).join('')}</ul>
+          <div class="standers-foot">
+            <span class="keeps">all of them together &middot; ${Math.round(
+              Number(raid.together ?? 0) * 100,
+            )}%</span>
+            <button type="submit" class="fill">Send them out</button>
+          </div>
+        </form>
       </div>
     </div>`;
 }

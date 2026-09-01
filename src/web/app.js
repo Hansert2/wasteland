@@ -480,7 +480,12 @@ export function createApp() {
        */
       const now = Date.now();
       await advanceSettlement(client, settlementId, now);
-      await answerRaid(client, settlementId, req.body.who || null, now);
+      /*
+       * A checkbox group arrives as one value or as an array, depending on how many were
+       * ticked. `answerRaid` takes either, which is the honest place for that to be handled:
+       * a form with one box checked and a form with four are the same submission.
+       */
+      await answerRaid(client, settlementId, req.body.who ?? [], now);
     });
 
     res.redirect(backToCamp(req));
