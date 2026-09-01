@@ -12,9 +12,10 @@ import {
 import {
   NOT_WORTH_THE_WALK,
   RAID_WINDOW_HOURS,
+  drainPerHour,
   nextRaidAt,
+  raidHour,
   repelChance,
-  resolveRaid,
 } from './raids.js';
 import { chance, makeRandom } from './random.js';
 import { activeAt, nextBoundaryAfter, productionFactors } from './world-events.js';
@@ -374,7 +375,7 @@ function advance(state, from, at, events, config, flights) {
 
   // Raiders arrive before the hour is simulated, so a camp stripped of food starves
   // from that hour rather than from the next one.
-  raid(state, at, events);
+  raid(state, from, at, events);
 
   /*
    * Every trip in flight, in the order they left.
@@ -571,9 +572,10 @@ function completeBuilds(state, at, events) {
  * an empty camp, and the tick may finish them off an hour later, but that death is
  * then something the player could have prevented.
  */
-function raid(state, at, events) {
-  settleOpenRaid(state, at, events);
+function raid(state, from, at, events) {
+  // Opened first, so a raid whose hour is this slice's start bleeds for the whole of it.
   openRaid(state, at, events);
+  drainRaid(state, from, at, events);
 }
 
 /**
@@ -652,12 +654,34 @@ function openRaid(state, at, events) {
    *
    * A camp under `NOT_WORTH_THE_WALK` is picked over and left, which is a raid with no
    * decision in it — asking who stands in front of stores that are not worth carrying would
-   * be the page demanding an answer to nothing. Settled at the hour instead, through the same
-   * arithmetic, so the log a player reads is the one `resolveRaid` writes.
+   * be the page demanding an answer to nothing. Settled at its own hour with no window and no
+   * drain, so the player reads one line about it and never sees a block.
    */
   if (campWealth(settlement.structures, settlement.resources) < NOT_WORTH_THE_WALK) {
-    const picked = { id: null, at: raidAt, closesAt: raidAt, seed, faction };
-    applyRaid(state, picked, [], raidAt, events);
+    const picked = {
+      id: null,
+      at: raidAt,
+      closesAt: raidAt,
+      seed,
+      faction,
+      perHour: {},
+      taken: {},
+      damage: 0,
+      stands: [],
+      resolvedAt: raidAt,
+    };
+    picked.log = [
+      `${FACTIONS[faction]?.name ? `Raiders out of ${FACTIONS[faction].name}` : 'Raiders'} ` +
+        'picked over the camp, found nothing worth carrying, and left.',
+    ];
+    events.push({
+      at: raidAt,
+      type: 'raid',
+      faction,
+      taken: {},
+      damage: 0,
+      log: picked.log,
+    });
     (state.raidsSettled ??= []).push(picked);
     return;
   }
@@ -668,6 +692,19 @@ function openRaid(state, at, events) {
     closesAt: raidAt + RAID_WINDOW_HOURS * HOUR_MS,
     seed,
     faction,
+    /*
+     * What they carry off each hour, worked out once, here. Never recomputed as the stores
+     * fall — see `drainPerHour`, and migration `023` for why a rate that moves cannot be
+     * extrapolated honestly by a counter on a page.
+     */
+    perHour: drainPerHour({
+      resources: settlement.resources,
+      defence,
+      temper,
+    }),
+    taken: {},
+    damage: 0,
+    stands: [],
     resolvedAt: null,
   };
 
@@ -689,74 +726,121 @@ function openRaid(state, at, events) {
 }
 
 /**
- * The window shuts, and nobody answered it.
+ * Raiders carrying things off, hour by hour, for as long as they are here.
  *
- * Everybody hid, which costs a little more of the stores and nobody's health —
- * `HIDDEN_SHARE_BOOST`, and the measurement behind how small that is is in
- * `tools/raid-absence.mjs`. A raid answered inside the window never reaches here; the service
- * settles that one with a defender and writes the same fields.
+ * The rework of 2026-09-01. A raid used to be a single settlement at the moment the window
+ * shut; it is a **rate** now, and this is where it is charged. What the camp loses is a
+ * function of how much of the raid it had somebody at the fence for, which is the whole point:
+ * turning up three hours in still saves the fourth hour.
+ *
+ * Charged across the overlap of this slice with the raid, so the arithmetic is exact rather
+ * than nearly: `nextEventAfter` cuts at the raid's arrival and at its close, and the player's
+ * own actions are slice boundaries because the service advances the settlement before touching
+ * anything. So the crew is constant for the whole of any slice this sees.
  */
-function settleOpenRaid(state, at, events) {
+function drainRaid(state, from, at, events) {
   const open = state.raid;
-  if (!open || open.resolvedAt != null || open.closesAt > at) return;
+  if (!open || open.resolvedAt != null) return;
 
-  applyRaid(state, open, [], open.closesAt, events);
-}
-
-/**
- * Settle a raid, with or without somebody in front of it.
- *
- * One function because the two paths differ in exactly one argument and must not differ in
- * anything else: the stores come off the same way, the injury is floored the same way, and
- * the log is written once. `answer-raid.js` calls the same arithmetic through the service.
- */
-function applyRaid(state, open, defenders, at, events) {
   const settlement = state.settlement;
-  const outcome = resolveRaid({
-    wealth: campWealth(settlement.structures, settlement.resources),
-    defence: campDefence(settlement.structures),
-    resources: settlement.resources,
-    // Always empty from in here. The walk cannot name anybody — that is the service's job —
-    // so every raid the tick settles is one nobody answered.
-    defenders,
-    engaged: true,
-    seed: open.seed,
-    crew: FACTIONS[open.faction]?.name,
-    temper: raidTemper(standingOf(settlement.standings, open.faction)),
-  });
+  const start = Math.max(from, open.at);
+  const stop = Math.min(at, open.closesAt);
+  const hours = (stop - start) / HOUR_MS;
 
-  for (const [kind, amount] of Object.entries(outcome.taken)) {
-    const resource = settlement.resources[kind];
-    if (resource) resource.amount = clamp(resource.amount - amount, 0, resource.cap);
+  if (hours > 0) {
+    const roster = state.survivors ?? (state.survivor ? [state.survivor] : []);
+    const standing = (open.stands ?? []).filter((row) => row.since != null);
+    const crew = standing
+      .map((row) => roster.find((one) => one.id === row.characterId))
+      .filter((one) => one?.alive);
+
+    const outcome = raidHour({
+      perHour: open.perHour,
+      defenders: crew,
+      defence: campDefence(settlement.structures),
+      temper: raidTemper(standingOf(settlement.standings, open.faction)),
+      hours,
+    });
+
+    for (const [kind, amount] of Object.entries(outcome.taken)) {
+      const resource = settlement.resources[kind];
+      if (!resource) continue;
+      // What was actually there, so the running total never claims more than the camp had.
+      const took = Math.min(resource.amount, amount);
+      resource.amount = clamp(resource.amount - took, 0, resource.cap);
+      open.taken[kind] = (open.taken[kind] ?? 0) + took;
+    }
+
+    for (const one of outcome.hurt) {
+      const person = roster.find((candidate) => candidate.id === one.id);
+      // Hurt, never killed, and the floor is per survivor: a crew comes home wrecked and alive.
+      if (person?.alive) person.health = Math.max(1, person.health - one.damage);
+
+      const row = (open.stands ?? []).find((stand) => stand.characterId === one.id);
+      if (!row) continue;
+      row.hours = (row.hours ?? 0) + hours;
+      row.damage = (row.damage ?? 0) + one.damage;
+      for (const [kind, amount] of Object.entries(one.prevented)) {
+        row.prevented[kind] = (row.prevented[kind] ?? 0) + amount;
+      }
+    }
+
+    open.damage = (open.stands ?? []).reduce((sum, row) => sum + (row.damage ?? 0), 0);
   }
 
   /*
-   * Hurt, never killed, and each of them separately: the floor is per survivor rather than on
-   * a total, so a crew of four comes home wrecked and alive. This path never has any, since
-   * the walk cannot name a defender.
+   * And they go, whether or not anybody came out to see them off. There is no separate
+   * "nobody answered" outcome any more: a raid nobody met is simply one that was undefended
+   * for four hours, which the rate above has already charged.
    */
-  const roster = state.survivors ?? (state.survivor ? [state.survivor] : []);
-  for (const one of outcome.hurt ?? []) {
-    const person = roster.find((candidate) => candidate.id === one.id);
-    if (person?.alive && one.damage > 0) person.health = Math.max(1, person.health - one.damage);
+  if (at >= open.closesAt) {
+    open.resolvedAt = open.closesAt;
+    open.log = raidLog(open);
+    events.push({
+      at: open.closesAt,
+      type: 'raid',
+      faction: open.faction,
+      taken: open.taken,
+      damage: open.damage,
+      log: open.log,
+    });
   }
-
-  open.resolvedAt = at;
-  open.taken = outcome.taken;
-  open.damage = outcome.damage;
-  open.log = outcome.log;
-
-  events.push({
-    at,
-    type: 'raid',
-    faction: open.faction,
-    taken: outcome.taken,
-    damage: outcome.damage,
-    log: outcome.log,
-  });
-
-  return outcome;
 }
+
+/** What the player reads afterwards, written once when the raiders go. */
+function raidLog(open) {
+  const crew = FACTIONS[open.faction]?.name;
+  const who = crew ? `Raiders out of ${crew}` : 'Raiders';
+  const carried = Object.entries(open.taken ?? {})
+    .filter(([, amount]) => amount >= 1)
+    .map(([kind, amount]) => `${Math.round(amount)} ${kind}`)
+    .join(', ');
+
+  const log = [carried ? `${who} took ${carried}.` : `${who} left with nothing worth carrying.`];
+
+  const stood = (open.stands ?? []).filter((row) => (row.hours ?? 0) > 0);
+  if (stood.length === 0) {
+    log.push('Nobody stood in their way.');
+  } else {
+    for (const row of stood) {
+      log.push(
+        `${row.name ?? 'Somebody'} held the fence for ${formatSpan(row.hours)} and took ` +
+          `${Math.round(row.damage ?? 0)} damage.`,
+      );
+    }
+  }
+  return log;
+}
+
+/** Hours as a player would say them, for a log line rather than a clock. */
+function formatSpan(hours) {
+  const minutes = Math.round((Number(hours) || 0) * 60);
+  if (minutes < 60) return `${minutes}m`;
+  const whole = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest === 0 ? `${whole}h` : `${whole}h ${rest}m`;
+}
+
 
 /**
  * The wealth a raid schedule is allowed to depend on: structures, never stores.
@@ -769,7 +853,7 @@ function applyRaid(state, open, defenders, at, events) {
  * boundaries — so this is stable by construction.
  *
  * It reads better too: what raiders notice from outside is the buildings. What they
- * carry off depends on the stores, and `resolveRaid` still sees those in full.
+ * carry off depends on the stores, and `drainPerHour` still sees those in full.
  */
 function visibleWealth(settlement) {
   return campWealth(settlement.structures);
@@ -813,6 +897,17 @@ function isDueBack(state, expedition, at) {
  */
 export function workingAt(state, survivor) {
   if (tripOf(state, survivor) !== null) return 'away';
+
+  /*
+   * At the fence, which is a job like any other and charged like one.
+   *
+   * Decided with the user on 2026-09-01: standing costs hours as well as health. Nothing here
+   * had to be written to make that true — an occupation is what `simulateSurvivor` charges
+   * `staminaPerHourWorked` for, so saying that defending is one is the whole of it.
+   */
+  if ((state.raid?.stands ?? []).some((row) => row.since != null && row.characterId === survivor.id)) {
+    return 'defending';
+  }
 
   /*
    * Whose job it is, and never "nobody's".

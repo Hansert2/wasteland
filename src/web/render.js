@@ -575,7 +575,15 @@ ${SURVIVOR_TAB_CSS}
   .stander .keeps { font-family: var(--numer); font-size: 12px; color: var(--dim);
                     font-variant-numeric: tabular-nums; }
   .stander.off .keeps { color: var(--faint); }
-  /* The ceiling and the button on one line: what there is to be had, and the way to have it. */
+  /* What has gone, and who is out there stopping more of it going. */
+  .looted, .fencers { margin-top: 15px; }
+  .looted .stat-head, .fencers .stat-head { display: block; margin-bottom: 7px; }
+  .fencers ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; }
+  .fencer { display: flex; align-items: baseline; justify-content: space-between; gap: 16px;
+            flex-wrap: wrap; }
+  .fencer .who { color: var(--bone); }
+
+  /* What the fence is worth and the way to change it, on one line. */
   .standers-foot { display: flex; align-items: center; justify-content: space-between;
                    gap: 18px; flex-wrap: wrap; margin-top: 15px; }
   .standers-foot .keeps { font-family: var(--numer); font-size: 12px; color: var(--dim);
@@ -2630,6 +2638,7 @@ export const TIMERS = `
 
   let live = [];
   let stores = [];
+  let counters = [];
   let clocks = [];
   let nowlines = [];
   let since = Date.now();
@@ -2661,6 +2670,15 @@ export const TIMERS = `
     // weather, which is why this is a straight line and not a simulation — the moment
     // it would need to be more than that, fresh state has arrived anyway.
     stores = [...document.querySelectorAll('[data-amount]')];
+    /*
+     * Figures that climb rather than drain, and stop climbing at a stated instant: what a raid
+     * has carried off so far, and what each person at the fence has held back or taken.
+     *
+     * "data-per-hour" rather than "data-rate", which belongs to the stores and whose count the
+     * page contract asserts against theirs. Two things sharing an attribute name is how a test
+     * about one of them starts failing for the other.
+     */
+    counters = [...document.querySelectorAll('[data-count]')];
     // The camp clock. Not UTC since migration 015: each element carries its camp's own
     // offset, and the tick below shifts the browser's Date by it rather than reading the
     // viewer's locale — so the strip shows the camp's hour on any machine anywhere.
@@ -2777,6 +2795,16 @@ export const TIMERS = `
       const fill = el.closest('.store');
       const track = fill && fill.querySelector('[data-fill]');
       if (track && cap > 0) track.style.width = (100 * clamped) / cap + '%';
+    }
+
+    for (const el of counters) {
+      // A rate that ends. Past the stop the figure is whatever it reached, which is what
+      // makes this safe to leave on a page nobody reloads for an hour after a raid.
+      const stop = Number(el.dataset.stop);
+      const upto = stop ? Math.min(Date.now(), stop) : Date.now();
+      const ran = Math.max(0, (upto - Number(el.dataset.since)) / 3600000);
+      const value = Number(el.dataset.count) + Number(el.dataset.perHour) * ran;
+      el.textContent = value.toFixed(Number(el.dataset.decimals) || 0);
     }
 
     // The camp's own hour, not Greenwich's: the offset rides on the element because it
@@ -3677,70 +3705,118 @@ function renderForecast(forecast) {
  * spend them — which is the point: a warning turns a hoard into a decision.
  */
 /**
- * The camp, being robbed, while somebody is looking at it.
+ * The camp being robbed, with the clock running.
  *
- * Phase 12, and the only block on this page that asks a question about the *camp* rather than
- * about a trip. Raiders are in the yard for four hours and the player names who goes out to
- * meet them: that survivor takes the injury and the raiders leave with less. Say nothing and
- * everybody hid, which costs a little more of the stores and nobody's health.
+ * Reworked 2026-09-01. A raid used to be a question with one answer in it — press a name, the
+ * raid settles, done. It has a duration now: raiders are in the yard for four hours carrying
+ * things off the whole time, and the player can put people at the fence and pull them back at
+ * any point in it. So this block is not a prompt, it is **an instrument you watch and act on**.
  *
- * ### Why every survivor keeps a button
+ * Three things are live, and all three tick from the same pair of numbers — a total that was
+ * true at a stated instant and a rate per hour. That is only honest because the drain is fixed
+ * when raiders arrive: a rate that chased the falling stores could not be extrapolated forward
+ * by a page that has not spoken to the server in ten minutes.
  *
- * Including the ones who would be no use. A bare-handed survivor holds on to a fifth and
- * still comes off badly, which is a bad trade freely available — and the page's rule
- * everywhere else is that an option you cannot take keeps its place and says why, because a
- * name that vanishes reads as a bug rather than as a person who is twenty hours away.
- *
- * The share each would keep is printed on their own button rather than explained once above
- * them. It is the whole of the decision, it differs per person, and a caption that said
- * "better armed survivors keep more" would make the player go and work out who that is.
+ * The people are one form, checked meaning "out there now". Ticking somebody and submitting
+ * sends them; unticking and submitting brings them back. There is no separate withdraw button
+ * because withdrawing is not a separate act — it is the same list, shorter.
  */
 function renderRaid(view) {
   const raid = view.underRaid;
   const crew = raid.crew ? `Raiders out of ${raid.crew}` : 'Raiders';
+  const since = new Date(raid.takenAt).getTime();
+  const stop = new Date(raid.closesAt).getTime();
 
   /*
-   * A crew rather than a champion, decided by the user on 2026-09-01 after playing the
-   * one-defender version: with four names on the block and only one of them able to press
-   * anything, the block was asking the wrong question.
-   *
-   * So it is one form with a box each, not a button each. Everybody ticked goes out, each
-   * holds back their own share of what the raiders take, and **each one takes their own
-   * injury** — which is what keeps *how many do I send* a question rather than an answer.
+   * A figure that climbs on its own. `data-count` is what it was at `data-since`, `data-rate`
+   * is per hour, and `data-stop` is where the climbing ends — see the counter in the client
+   * script. Rendered with a real value too, so a page with no script still says something true
+   * about the moment it was drawn.
    */
-  const stand = (one) => {
-    const share = Math.round(Number(one.stands ?? 0) * 100);
+  const live = (from, rate, decimals = 0) =>
+    `<span data-count="${from}" data-per-hour="${rate}" data-since="${since}"
+           data-stop="${stop}" data-decimals="${decimals}">${n(from, decimals)}</span>`;
+
+  const kinds = Object.keys(raid.perHour ?? {});
+
+  const takenRows = kinds
+    .map(
+      (kind) =>
+        `<span class="stat-row"><span class="k">${escape(kind)}</span><span class="v">${live(
+          Number(raid.taken?.[kind] ?? 0),
+          Number(raid.losingPerHour?.[kind] ?? 0),
+        )}</span></span>`,
+    )
+    .join('');
+
+  /*
+   * What each person at the fence has been worth, and what it has cost them — the two figures
+   * the decision to pull somebody back is actually made on. Both climb while they stand there.
+   */
+  const atTheFence = (raid.defending ?? []).map((one) => {
+    const held = kinds
+      .map((kind) => Number(one.prevented?.[kind] ?? 0))
+      .reduce((sum, part) => sum + part, 0);
+    const heldRate = kinds
+      .map((kind) => Number(raid.perHour?.[kind] ?? 0))
+      .reduce((sum, part) => sum + part, 0) * Number(raid.stand ?? 0)
+      / Math.max(1, (raid.defending ?? []).length);
+
+    return `<li class="fencer">
+        <span class="who">${escape(one.name ?? 'Survivor')}</span>
+        <span class="keeps">held back ${live(held, heldRate)} &middot; took ${live(
+          Number(one.damage ?? 0),
+          Number(view.vitals?.raidDamagePerHour ?? 0),
+        )}</span>
+      </li>`;
+  });
+
+  const pick = (one) => {
     const away = one.busy === 'away';
+    const out = (raid.defending ?? []).some((d) => String(d.id) === String(one.id));
     return `<li class="stander${away ? ' off' : ''}">
         <label class="pick${away ? ' off' : ''}">
           <input type="checkbox" name="who" value="${escape(String(one.id))}"${
             away ? ' disabled' : ''
-          }>
+          }${out ? ' checked' : ''}>
           <span class="tag">${escape(one.name ?? 'Survivor')}</span>
         </label>
-        <span class="keeps">${away ? 'out there' : `keeps back ${share}%`}</span>
+        <span class="keeps">${
+          away ? 'out there' : `keeps back ${Math.round(Number(one.stands ?? 0) * 100)}%`
+        }</span>
       </li>`;
   };
 
-  return `<div class="block wants contact">
+  return `<div class="block wants raiding">
       <div class="block-head">
-        <span class="tag">At the fence</span>
+        <span class="tag">${escape(view.name ?? 'The camp')} is being raided</span>
         <span class="clock deadline">${countdown(
           raid.closesAt,
           'gone',
         )}<small>until they go</small></span>
       </div>
       <div class="block-body">
-        <p>${escape(crew)} are in the yard. Everybody who goes out comes off badly, and each of
-          them holds back some of what would otherwise be carried off. Nobody goes and they
-          take more.</p>
+        <p>${escape(crew)} are in the yard and they are carrying things off while you read
+          this. Anybody you send out slows them and comes off worse for it; you can call them
+          back whenever you like.</p>
+
+        <div class="looted">
+          <span class="stat-head">taken so far</span>
+          ${takenRows}
+        </div>
+
+        ${
+          atTheFence.length > 0
+            ? `<div class="fencers"><span class="stat-head">at the fence</span>
+                 <ul>${atTheFence.join('')}</ul></div>`
+            : ''
+        }
+
         <form method="post" action="/raid">
-          <ul class="standers">${(view.roster ?? []).map(stand).join('')}</ul>
+          <ul class="standers">${(view.roster ?? []).map(pick).join('')}</ul>
           <div class="standers-foot">
-            <span class="keeps">all of them together &middot; ${Math.round(
-              Number(raid.together ?? 0) * 100,
-            )}%</span>
-            <button type="submit" class="fill">Send them out</button>
+            <span class="keeps">holding back ${Math.round(Number(raid.stand ?? 0) * 100)}%</span>
+            <button type="submit" class="fill">Set the fence</button>
           </div>
         </form>
       </div>

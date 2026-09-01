@@ -131,6 +131,30 @@ test('every store carries the three attributes that let it climb between loads',
   }
 });
 
+test('every live counter carries what it needs to keep climbing', async () => {
+  /*
+   * The raid block's figures — what has been carried off, what each person at the fence has
+   * held back and taken — climb between page loads from a total, a rate and an instant. Same
+   * silent failure as a store with no `data-rate`: the number renders, looks right, and never
+   * moves again.
+   *
+   * `data-per-hour` and not `data-rate`, deliberately: the stores own that name and the test
+   * above counts it against them.
+   */
+  for (const [name, html] of Object.entries(STATES)) {
+    const counters = [...html.matchAll(/data-count="[^"]*"/g)].length;
+    if (counters === 0) continue;
+
+    for (const attr of ['data-per-hour', 'data-since', 'data-stop']) {
+      assert.equal(
+        [...html.matchAll(new RegExp(`${attr}="[^"]*"`, 'g'))].length,
+        counters,
+        `${name}: ${attr} does not appear on every live counter`,
+      );
+    }
+  }
+});
+
 test('the browser and the server format a duration with the same function', async () => {
   // clock() is interpolated into the client script rather than copied, and that is only
   // safe while it closes over nothing. A redesign that reaches for a helper from the

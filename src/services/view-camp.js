@@ -41,7 +41,7 @@ import { radThresholdFor, skillsOf, wandererFor } from '../game/wanderers.js';
 import { stateAt, timelineOf } from '../game/timeline.js';
 import { CONFIG } from '../game/constants.js';
 import { radDamagePerHourAt, recoveryOf } from '../game/tick.js';
-import { standFor, standTogether } from '../game/raids.js';
+import { RAID_DAMAGE_PER_HOUR, standFor, standTogether } from '../game/raids.js';
 import {
   LINKS,
   TRADE_POST_LINKS,
@@ -843,6 +843,9 @@ function vitalsOf(radDecayPerHour) {
     staminaRecoveryHungerPerPoint: CONFIG.staminaRecoveryHungerPerPoint,
     // And the fourth: what an hour under is worth, which is the whole of what sleep is.
     staminaSleepPerHour: CONFIG.staminaSleepPerHour,
+    // What an hour at the fence costs, so the raid block can print a rate rather than a copy
+    // of one. See `RAID_DAMAGE_PER_HOUR`.
+    raidDamagePerHour: RAID_DAMAGE_PER_HOUR,
     sleepHours: CONFIG.sleepHours,
     radDecayPerHour,
     radDecayBasePerHour: CONFIG.radDecayPerHour,
@@ -1660,6 +1663,19 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
     )?.name,
   });
 
+  /*
+   * What the fence is holding back at this instant, from the same function the walk charges
+   * with. Worked out here rather than inside the payload because two of its fields want it.
+   */
+  const standingNow = state.raid
+    ? standTogether(
+        (state.raid.stands ?? [])
+          .filter((row) => row.since != null)
+          .map((row) => (state.survivors ?? []).find((one) => one.id === row.characterId))
+          .filter((one) => one?.alive),
+      )
+    : 0;
+
   return {
     name: settlements[0].name,
     foundedAt: settlements[0].founded_at,
@@ -1682,6 +1698,36 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
             at: new Date(state.raid.at),
             closesAt: new Date(state.raid.closesAt),
             crew: FACTIONS[state.raid.faction]?.name ?? null,
+            /*
+             * Everything the block counts, and it counts live.
+             *
+             * `taken` is true as of `takenAt`, `perHour` is what they are carrying off with
+             * the fence as it currently stands, and the page extrapolates between the two —
+             * the same trick the stores line already plays. It is only honest because the rate
+             * is fixed when raiders arrive and does not chase the falling stores.
+             */
+            takenAt: new Date(now),
+            taken: state.raid.taken ?? {},
+            perHour: state.raid.perHour ?? {},
+            // What is going out of the door right now: the rate, less whatever the people at
+            // the fence are holding back.
+            losingPerHour: Object.fromEntries(
+              Object.entries(state.raid.perHour ?? {}).map(([kind, rate]) => [
+                kind,
+                rate * (1 - standingNow),
+              ]),
+            ),
+            stand: standingNow,
+            defending: (state.raid.stands ?? [])
+              .filter((row) => row.since != null)
+              .map((row) => ({
+                id: row.characterId,
+                name: row.name,
+                since: new Date(row.since),
+                hours: Number(row.hours ?? 0),
+                damage: Number(row.damage ?? 0),
+                prevented: row.prevented ?? {},
+              })),
             /*
              * What the whole camp would hold back if everybody able to went out.
              *

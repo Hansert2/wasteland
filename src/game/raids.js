@@ -1,4 +1,4 @@
-import { makeRandom, chance } from './random.js';
+import { makeRandom } from './random.js';
 import { bestOfKind } from './equipment.js';
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -63,6 +63,97 @@ export const RAID_WINDOW_HOURS = 4;
  * penalty for having a life. The weight of the mechanic sits in `standFor` instead.
  */
 const HIDDEN_SHARE_BOOST = 1.15;
+
+/**
+ * What a defender takes for every hour they are at the fence.
+ *
+ * Derived rather than picked, from the raid this replaced: a single press cost 8 to 30 damage,
+ * averaging 19, and a raid lasts `RAID_WINDOW_HOURS`. So five an hour means **standing through
+ * a whole raid costs about what standing once used to**, and standing for one hour of it costs
+ * a quarter of that. The watchtower's softening applies to it exactly as it did to the hit.
+ *
+ * Which is what makes pulling somebody out a real decision rather than damage control: an hour
+ * at the fence has a price, and you can stop paying it.
+ */
+export const RAID_DAMAGE_PER_HOUR = 5;
+
+/**
+ * What the raiders carry off each hour with nobody in their way.
+ *
+ * Fixed at the hour they arrive and never recomputed — see migration `023`. The share is the
+ * one `resolveRaid` has always used, spread across the window, so **four undefended hours come
+ * to exactly what a raid took when it was a single press.** No balance figure moves, and a
+ * rate that does not move is the only kind a live counter can honestly extrapolate forward.
+ *
+ * `HIDDEN_SHARE_BOOST` is folded in here rather than kept as its own idea. Under a raid with a
+ * duration, "nobody answered" and "nobody is defending right now" are the same state, so the
+ * boost simply is the base rate.
+ */
+export function drainPerHour({ resources, defence, temper }) {
+  const t = { softening: 0, shareBoost: 1, ...temper };
+  const softening = Math.min(
+    MAX_SOFTENING,
+    Math.max(0, Number(defence) || 0) / DEFENCE_FOR_SOFTENING + t.softening,
+  );
+  const share = Math.min(
+    0.5,
+    MAX_SHARE_TAKEN * (1 - softening) * t.shareBoost * HIDDEN_SHARE_BOOST,
+  );
+
+  const perHour = {};
+  for (const [kind, resource] of Object.entries(resources ?? {})) {
+    const held = Number(resource?.amount) || 0;
+    if (held > 0) perHour[kind] = (held * share) / RAID_WINDOW_HOURS;
+  }
+  return perHour;
+}
+
+/**
+ * One slice of a raid: what is carried off, what is kept back, and what it costs to keep it.
+ *
+ * The whole of the running mechanic, and pure — the tick hands it the hour and the crew and
+ * writes down what comes back. Nothing here reads a clock or a database.
+ *
+ * `prevented` is attributed in proportion to each defender's own share of what the crew held
+ * back. With `standTogether` being multiplicative there is no single right answer to "which of
+ * the three stopped that sack of grain", and proportional is the one a player can follow: the
+ * one with the spear is credited more than the one without, and the parts sum to the whole.
+ */
+export function raidHour({ perHour, defenders, defence, temper, hours }) {
+  const t = { softening: 0, ...temper };
+  const softening = Math.min(
+    MAX_SOFTENING,
+    Math.max(0, Number(defence) || 0) / DEFENCE_FOR_SOFTENING + t.softening,
+  );
+
+  const crew = (defenders ?? []).filter((one) => one?.alive);
+  const stand = standTogether(crew);
+  const span = Math.max(0, Number(hours) || 0);
+
+  const taken = {};
+  const kept = {};
+  for (const [kind, rate] of Object.entries(perHour ?? {})) {
+    taken[kind] = rate * (1 - stand) * span;
+    kept[kind] = rate * stand * span;
+  }
+
+  const weights = crew.map((one) => standFor(one));
+  const total = weights.reduce((sum, one) => sum + one, 0);
+
+  const hurt = crew.map((one, index) => ({
+    id: one.id ?? null,
+    name: one.name ?? 'Somebody',
+    damage: RAID_DAMAGE_PER_HOUR * (1 - softening) * span,
+    prevented: Object.fromEntries(
+      Object.entries(kept).map(([kind, amount]) => [
+        kind,
+        total > 0 ? (amount * weights[index]) / total : 0,
+      ]),
+    ),
+  }));
+
+  return { taken, kept, stand, hurt };
+}
 
 /** Standing bare-handed is worth something, and not much. */
 const BARE_STAND = 0.2;
@@ -180,117 +271,28 @@ export function nextRaidAt(since, wealth, seed, index, tempo = 1) {
 /**
  * How often raiders come as far as the fence and think better of it.
  *
- * Exported because the camp page has to answer "is the tower worth another level"
- * with the same number the raid itself will roll against. A second copy of
- * `defence / 40` living in the advice would drift the first time this is tuned, and
- * would drift silently — the page would promise a figure raids no longer use.
+ * Exported because the camp page has to answer "is the tower worth another level" with the
+ * same number the raid itself will roll against. A second copy of `defence / 40` living in the
+ * advice would drift the first time this is tuned, and would drift silently — the page would
+ * promise a figure raids no longer use.
+ *
+ * Rolled when raiders arrive rather than when a raid settles, since the rework: a raid the
+ * player is looking at cannot turn out afterwards never to have happened.
  */
 export function repelChance(defence, bonus = 0) {
   return Math.min(MAX_REPEL_CHANCE, Math.max(0, Number(defence) || 0) / DEFENCE_FOR_REPEL + bonus);
 }
 
-export function resolveRaid({
-  wealth,
-  defence,
-  resources,
-  defenders = [],
-  engaged = false,
-  seed,
-  crew,
-  temper,
-}) {
-  const random = makeRandom(seed);
-  const log = [];
-  const who = crew ? `Raiders out of ${crew}` : 'Raiders';
-  const t = { repelBonus: 0, softening: 0, shareBoost: 1, ...temper };
+/*
+ * `resolveRaid` lived here until 2026-09-01 and is gone rather than deprecated.
+ *
+ * It settled a raid in one call: repel, share, damage, log. Every one of those has moved to
+ * where it belongs now that a raid has a duration — the repel is rolled when raiders arrive
+ * (`openRaid`, on a stream of its own, so a raid the player is looking at cannot turn out
+ * never to have happened), the share became `drainPerHour`, and the damage and the log are
+ * charged and written by the hour in the walk.
+ *
+ * Deleted rather than left for the tools, because a function the game no longer calls is a
+ * function that drifts from the game and then gets measured as though it had not.
+ */
 
-  /*
-   * A tower does not merely soften a raid; often enough it means there is no raid. This is
-   * the watchtower's whole job — and a friendly crew finds its own reasons to think better of
-   * it, which is standing doing the same job for free.
-   *
-   * `engaged` is for the caller that has already asked this question. Once a raid opens a
-   * window the player is looking at, it cannot turn out afterwards to have never happened:
-   * they would have been asked who stands in front of nothing. So the tick rolls the repel
-   * when the raid arrives, on a stream of its own, and says so here.
-   */
-  if (!engaged && chance(random, repelChance(defence, t.repelBonus))) {
-    log.push(`${who} came as far as the fence, thought better of it, and moved on.`);
-    return { repelled: true, taken: {}, hurt: [], damage: 0, log };
-  }
-
-  if (wealth < NOT_WORTH_THE_WALK) {
-    log.push(`${who} picked over the camp, found nothing worth carrying, and left.`);
-    return { repelled: false, taken: {}, hurt: [], damage: 0, log };
-  }
-
-  const softening = Math.min(
-    MAX_SOFTENING,
-    Math.max(0, defence) / DEFENCE_FOR_SOFTENING + t.softening,
-  );
-
-  /*
-   * Two gates, and they answer different questions, which is what keeps both worth having.
-   *
-   * The watchtower decided whether they came at all, above. This is what they leave with, and
-   * it is the half the player has a hand in: somebody stood, or nobody did.
-   *
-   * `stand` is what the defender's gear holds on to — see `standFor`. Nobody standing is not
-   * merely the absence of that; hiding costs a little extra on top, which is the user's call
-   * and is priced as the ordinary outcome rather than as a punishment. See
-   * `HIDDEN_SHARE_BOOST`.
-   */
-  const stood = (defenders ?? []).filter((one) => one?.alive);
-  const stand = standTogether(stood);
-  const answered = stood.length > 0 ? 1 - stand : HIDDEN_SHARE_BOOST;
-
-  // Hostility widens what they carry off, capped so no grudge takes everything.
-  const share = Math.min(0.5, MAX_SHARE_TAKEN * (1 - softening) * t.shareBoost * answered);
-
-  const taken = {};
-  for (const [kind, resource] of Object.entries(resources ?? {})) {
-    const held = Number(resource?.amount) || 0;
-    const amount = Math.floor(held * share * (0.5 + random()));
-    if (amount > 0) taken[kind] = amount;
-  }
-
-  const carried = Object.entries(taken)
-    .map(([kind, amount]) => `${amount} ${kind}`)
-    .join(', ');
-  log.push(carried ? `${who} took ${carried}.` : `${who} found the stores already bare.`);
-
-  /*
-   * The injury is the price of standing, and every one of them pays it.
-   *
-   * Not split between them, which was the alternative and would have made committing the
-   * whole camp strictly better than committing one — more defenders, less hurt each, no
-   * decision left. Each takes their own roll, so what a crew buys in stores it pays for in
-   * health across the roster, and *how many to send out there* stays a question.
-   *
-   * It used to land on whoever was alive, which on a roster meant the founder — wounded by a
-   * raid they were twenty hours down the road from. Nobody is hurt by a raid they hid from.
-   *
-   * Still hurt rather than killed. The caller holds each of them at 1; what happens after is
-   * the player's problem to solve, which is the difference between harsh and unfair.
-   */
-  const hurt = stood.map((one) => ({
-    id: one.id ?? null,
-    name: one.name ?? 'Somebody',
-    damage: Math.round((8 + random() * 22) * (1 - softening)),
-  }));
-
-  if (hurt.length === 0) {
-    log.push('Nobody stood in their way.');
-  } else {
-    for (const one of hurt) {
-      if (one.damage > 0) log.push(`${one.name} came off badly — ${one.damage} damage.`);
-      else log.push(`${one.name} held the fence and walked away from it.`);
-    }
-  }
-
-  // The total, for the raid's own row and for an event that wants one number. What each of
-  // them took is in `hurt`, which is what the table records.
-  const damage = hurt.reduce((sum, one) => sum + one.damage, 0);
-
-  return { repelled: false, taken, hurt, damage, log };
-}

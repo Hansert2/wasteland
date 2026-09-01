@@ -105,11 +105,26 @@ export async function loadWorld(client, settlementId) {
    * anybody remembering to check: raiders do not queue.
    */
   const { rows: openRaids } = await client.query(
-    `select id, at, closes_at, seed, faction
+    `select id, at, closes_at, seed, faction, per_hour, taken, damage
        from raids where settlement_id = $1 and resolved_at is null`,
     [settlementId],
   );
   const openRaid = openRaids[0];
+
+  /*
+   * And who is at the fence, with what they have already stood for.
+   *
+   * Carried into the walk because the drain is charged per hour against whoever is out there,
+   * and `applyTick` may not make a query — the same reason `builtBy` rides on a structure.
+   */
+  const { rows: standRows } = openRaid
+    ? await client.query(
+        `select s.character_id, s.since, s.hours, s.damage, s.prevented, c.name
+           from raid_stands s join characters c on c.id = s.character_id
+          where s.raid_id = $1 order by c.born_at, c.id`,
+        [openRaid.id],
+      )
+    : { rows: [] };
 
   const character = characters[0];
 
@@ -423,6 +438,19 @@ export async function loadWorld(client, settlementId) {
           closesAt: openRaid.closes_at.getTime(),
           seed: Number(openRaid.seed),
           faction: openRaid.faction,
+          perHour: openRaid.per_hour ?? {},
+          taken: openRaid.taken ?? {},
+          damage: Number(openRaid.damage ?? 0),
+          stands: standRows.map((row) => ({
+            characterId: Number(row.character_id),
+            name: row.name,
+            // Null when they are not at the fence now. The three totals beside it are theirs
+            // across however many times they have been.
+            since: row.since === null ? null : row.since.getTime(),
+            hours: Number(row.hours ?? 0),
+            damage: Number(row.damage ?? 0),
+            prevented: row.prevented ?? {},
+          })),
           resolvedAt: null,
         }
       : null,
@@ -455,15 +483,16 @@ async function writeRaid(client, settlementId, raid) {
 
   if (raid.id == null) {
     const { rows } = await client.query(
-      `insert into raids (settlement_id, at, closes_at, seed, faction,
+      `insert into raids (settlement_id, at, closes_at, seed, faction, per_hour,
                           resolved_at, taken, damage, log)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9) returning id`,
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) returning id`,
       [
         settlementId,
         new Date(raid.at),
         new Date(raid.closesAt),
         raid.seed,
         raid.faction ?? null,
+        JSON.stringify(raid.perHour ?? {}),
         raid.resolvedAt == null ? null : new Date(raid.resolvedAt),
         JSON.stringify(raid.taken ?? {}),
         Math.max(0, Math.round(Number(raid.damage) || 0)),
@@ -471,22 +500,39 @@ async function writeRaid(client, settlementId, raid) {
       ],
     );
     raid.id = rows[0].id;
-    return;
+  } else {
+    /*
+     * Written every save now, not only at the end. A raid in progress has a running total the
+     * page reads: leaving it until the raiders left would mean a counter that sat at nothing
+     * for four hours and then jumped.
+     */
+    await client.query(
+      `update raids set resolved_at = $2, taken = $3, damage = $4, log = $5 where id = $1`,
+      [
+        raid.id,
+        raid.resolvedAt == null ? null : new Date(raid.resolvedAt),
+        JSON.stringify(raid.taken ?? {}),
+        Math.max(0, Math.round(Number(raid.damage) || 0)),
+        JSON.stringify(raid.log ?? []),
+      ],
+    );
   }
 
-  if (raid.resolvedAt == null) return;
-
-  await client.query(
-    `update raids set resolved_at = $2, taken = $3, damage = $4, log = $5
-      where id = $1`,
-    [
-      raid.id,
-      new Date(raid.resolvedAt),
-      JSON.stringify(raid.taken ?? {}),
-      Math.max(0, Math.round(Number(raid.damage) || 0)),
-      JSON.stringify(raid.log ?? []),
-    ],
-  );
+  // What each of them has stood for. Only the walk's three totals: `since` belongs to the
+  // service, which is the only thing that moves people to the fence and back.
+  for (const stand of raid.stands ?? []) {
+    await client.query(
+      `update raid_stands set hours = $3, damage = $4, prevented = $5
+        where raid_id = $1 and character_id = $2`,
+      [
+        raid.id,
+        stand.characterId,
+        Math.max(0, Number(stand.hours) || 0),
+        Math.max(0, Math.round(Number(stand.damage) || 0)),
+        JSON.stringify(stand.prevented ?? {}),
+      ],
+    );
+  }
 }
 
 export async function saveWorld(client, state) {

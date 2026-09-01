@@ -644,30 +644,38 @@ const raidedState = (overrides = {}, settlement = {}) => {
   return state;
 };
 
-test('raiders arrive on the hour and nothing is decided yet', () => {
+test('raiders start carrying things off the moment they arrive', () => {
   /*
-   * Phase 12. A raid used to settle in the same instant it arrived, inside a walk nobody was
-   * present for. It opens a window now, and two hours into it the stores are untouched: the
-   * question of who stands is still on the table.
+   * The rework of 2026-09-01. A raid used to be a single settlement when its window shut, so
+   * two hours into one the stores were untouched and everything happened at the end. It is a
+   * rate now: they are here for four hours and they are taking things the whole time.
    */
   const before = raidedState();
   const scrapBefore = before.settlement.resources.scrap.amount;
 
-  const { state, events } = applyTick(before, T0 + hours(6));
+  const twoHoursIn = applyTick(before, T0 + hours(6)).state;
+  const afterwards = applyTick(raidedState(), T0 + hours(9)).state;
 
-  assert.equal(events.filter((e) => e.type === 'raid').length, 0, 'nothing has happened yet');
-  assert.ok(state.raid, 'the camp is being raided');
-  assert.equal(state.raid.at, T0 + hours(4), 'at their hour, not at login');
-  assert.equal(state.raid.closesAt, T0 + hours(8), 'and it stands open for the window');
-  assert.equal(state.raid.resolvedAt, null);
-  assert.equal(
-    state.settlement.resources.scrap.amount,
-    scrapBefore,
-    'and they have carried nothing off while the answer is still open',
+  const takenSoFar = scrapBefore - twoHoursIn.settlement.resources.scrap.amount;
+  const takenInAll = scrapBefore - afterwards.settlement.resources.scrap.amount;
+
+  assert.ok(takenSoFar > 0, 'two hours in, they have already carried something off');
+  assert.ok(twoHoursIn.raid, 'and they are still here');
+  assert.equal(twoHoursIn.raid.resolvedAt, null);
+  assert.equal(twoHoursIn.raid.at, T0 + hours(4), 'at their hour, not at login');
+  assert.equal(twoHoursIn.raid.closesAt, T0 + hours(8), 'and they stay for the window');
+
+  /*
+   * Half the raid, half the loss — the rate is fixed when they arrive and does not move as the
+   * stores fall, which is what lets a counter on the page extrapolate it honestly.
+   */
+  assert.ok(
+    Math.abs(takenSoFar / takenInAll - 0.5) < 0.01,
+    `two of four hours should cost half — ${takenSoFar} of ${takenInAll}`,
   );
 });
 
-test('a raid nobody answered settles itself when the window shuts', () => {
+test('a raid nobody met costs four hours of it, and hurts nobody', () => {
   const before = raidedState();
   const scrapBefore = before.settlement.resources.scrap.amount;
 
@@ -675,15 +683,11 @@ test('a raid nobody answered settles itself when the window shuts', () => {
   const raids = events.filter((e) => e.type === 'raid');
 
   assert.equal(raids.length, 1);
-  assert.equal(raids[0].at, T0 + hours(8), 'at the hour the window shut, not the hour they came');
+  assert.equal(raids[0].at, T0 + hours(8), 'the log lands when they go, not when they came');
   assert.ok(state.settlement.resources.scrap.amount < scrapBefore, 'they took something');
   assert.equal(state.raid.resolvedAt, T0 + hours(8), 'and the raid is done with');
 
-  /*
-   * And nobody was hurt, which is the trade the phase is built on: everybody hid, so the
-   * raiders took a little more and left the camp whole. Health is spent by standing, and
-   * only by standing.
-   */
+  // Nobody stood, so nobody paid for it in health. The stores paid for all of it.
   assert.equal(raids[0].damage, 0, 'a raid nobody stood in front of hurts nobody');
   assert.match(raids[0].log.join(' '), /Nobody stood in their way/);
 });

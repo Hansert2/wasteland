@@ -28,6 +28,7 @@ const OCCUPATIONS = {
   fitting: 'fitting something',
   crafting: 'at the bench',
   sleeping: 'asleep',
+  defending: 'at the fence',
 };
 
 /**
@@ -75,6 +76,24 @@ export async function occupations(client, settlementId, now = Date.now()) {
   // What there is to name is the hour they wake, and that is a countdown rather than a
   // string — the survivor's own block prints it from `sleepUntil`. This says only who.
   for (const row of sleeping) busy.set(Number(row.id), { kind: 'sleeping', what: null });
+
+  /*
+   * At the fence, which is a job — decided with the user on 2026-09-01 when a raid gained a
+   * duration. Standing costs hours as well as health, so somebody out there cannot be sent
+   * anywhere, and pulling them back is how those hours are bought back.
+   *
+   * `since is not null` and nothing else: a stand row with a null `since` is somebody who
+   * *was* out there, and their totals are history rather than an occupation.
+   */
+  const { rows: defending } = await client.query(
+    `select s.character_id from raid_stands s
+       join raids r on r.id = s.raid_id
+      where r.settlement_id = $1 and r.resolved_at is null and s.since is not null`,
+    [settlementId],
+  );
+  for (const row of defending) {
+    busy.set(Number(row.character_id), { kind: 'defending', what: null });
+  }
 
   /*
    * A job counts as occupying only while it is unfinished. The tick is what marks a build
