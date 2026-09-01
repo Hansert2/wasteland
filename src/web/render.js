@@ -5140,12 +5140,26 @@ function renderRoad(road) {
     );
   }
 
-  // Said once, while it is still news. After a link or two the rule is obvious from
-  // having done it, and a page that keeps explaining itself is a page nobody reads.
-  const rule =
-    road.reached.length === 0
-      ? `<p class="road-note">Fuel goes in and does not come out. Cover the cost and the
-           place stays reached.</p>`
+  /*
+   * The road behind you, and only if there is any.
+   *
+   * With nothing reached this was a heading reading "0 of 7 reached" over a rule nobody had
+   * broken yet — a block whose entire content was the fact that it was empty. Cut on
+   * 2026-09-01. Once a link is behind you the table is the record of it and the count is
+   * worth having, so it comes back the moment it has something to hold.
+   *
+   * The rule it used to carry went with it. Where it lives now is a note on the gauge: it is
+   * the one thing here a figure cannot say, and it matters at the instant somebody is about
+   * to spend, not in a paragraph above the place they spend it.
+   */
+  const behind =
+    road.reached.length > 0
+      ? `${block(
+          `The road &mdash; ${road.reached.length} of ${road.links} reached`,
+          `<table>${reached}</table>`,
+          { flush: true },
+        )}
+    `
       : '';
 
   /*
@@ -5195,18 +5209,20 @@ function renderRoad(road) {
     ['opens', linkFacts(road.next)],
   ];
 
-  return `${block(
-    `The road &mdash; ${road.reached.length} of ${road.links} reached`,
-    `${rule}${reached ? `<table>${reached}</table>` : ''}`,
-    { flush: true },
-  )}
-    <div class="block wants next-link">
+  return `${behind}<div class="block wants next-link">
       <h2>Working toward ${escape(road.next.neighbour)}</h2>
       <div class="block-body">
-        <div class="paying">
+        <div class="paying noted">
           <div class="gauge-top"><span class="tag">paid</span>
             <span class="val">${n(road.next.fuel, 0)} / ${n(road.next.cost, 0)}</span></div>
           <div class="track">${paid > 0 ? `<i style="width:${(paid * 100).toFixed(1)}%"></i>` : ''}</div>
+          ${/*
+            * The one thing on this block a row cannot say, where somebody about to spend will
+            * meet it. It was a paragraph over the whole view; a player who has paid into a
+            * link once knows it, and one who has not is standing on the button.
+            */ ''}
+          <span class="note">Fuel goes in and does not come out. Cover the cost and the place
+            stays reached.</span>
         </div>
         ${facts
           .map(
