@@ -2813,6 +2813,110 @@ moment is the one thing on the page carrying a deadline, and that block's existi
 that the deadline goes first. Others queue behind it with their time named. One box per open
 moment was the alternative and was declined: three alarm boxes at once is the page shouting.
 
+### Measured 2026-09-01, and it moved the design
+
+Two instruments, `tools/raid-window.mjs` and `tools/raid-absence.mjs`. Both are pure —
+`nextRaidAt` schedules and `resolveRaid` settles — so they measure the game rather than a
+model of it.
+
+#### The window: 4 hours, and wealth has nothing to do with it
+
+    cadence                     2h    3h    4h    6h
+    once a day, evening         8%   12%   17%   24%
+    morning and evening        18%   25%   33%   50%
+    three times                25%   36%   50%   71%
+    five times                 40%   53%   66%   82%
+
+A hoard raided every 48 hours and a young camp raided every 160 give the same column. The
+catch rate is *window over the gap between check-ins* and has nothing to do with the gap
+between raids — so the window is chosen against a cadence or against nothing.
+
+**Four hours**, which puts a twice-a-day player at one raid in three, the stated aim.
+
+**And a third of raids arrive between 23:00 and 07:00, which no sane window reaches.** The
+camp clock is set from the founding browser, so a game hour is the player's hour. Put to the
+user and settled: **raiders keep the small hours.** Being raided in the night is the setting
+working, not a mechanic failing.
+
+#### The absence: the bound was worth writing and does not bite
+
+    away for      raids   today   +15%   +30%   +50%   (food)
+    a week          1.4     133    153    173    200
+    a month         7.3     702    807    910   1049
+
+**The compounding this section demanded be measured does not happen.** `1.15x` stays `1.15x`
+at every span, because a produced store refills between visits and the share is taken of a
+full pile either way. Fuel goes the other way — 80 against 87 across a month, +9% for a +50%
+factor — because nothing in the camp makes fuel, so the pile is already gone and a harsher
+share only takes it sooner.
+
+#### Which turns the contentious number into the uninteresting one
+
+A week at +30% costs forty more food than today, against a storage cap of 350. The hider also
+dodges an injury of 8 to 30. **At any factor in this range an absent player is arguably better
+off than they are under today's raid** — so the harsher share cannot be what makes the choice
+worth making, and the objection this section opened with is answered by arithmetic rather than
+by care.
+
+Settled with the user on that reading:
+
+- **Hiding is `shareBoost` 1.15.** Small on purpose. With a four-hour window it is what
+  happens to two thirds of raids, so it is not a penalty for missing a decision — **it is the
+  new ordinary cost of a raid**, and it should be priced as one.
+- **The weight goes on what standing saves**, which is the number a player actually feels.
+
+#### What standing saves
+
+A raid takes roughly 95 food, 95 water, 95 scrap and 22 fuel from a camp at its cap. So the
+defender's reduction is worth an injury at ordinary skill and worth a great deal above it:
+
+    share is multiplied by (1 - stand)
+
+    combat   stand   what a raid still takes
+       1      0.05   nearly all of it
+       4      0.50   half
+       5      0.65
+       6      0.80
+       7      0.95   nearly nothing
+
+`stand = clamp(0.5 + (combat - ORDINARY) * 0.15, 0.05, 0.95)`, which puts the halving on the
+ordinary survivor and reaches the user's *fend it off entirely* at the top of the pool. A poor
+fighter who stands saves almost nothing **and still takes the injury** — a bad choice, freely
+available, which is what makes it a decision rather than a button.
+
+**Combat does not reduce the damage the defender takes.** Deliberate: if it reduced both, the
+best fighter would simply always stand and there is no question left. Keeping them apart makes
+the call two-sided — *who saves the most* against *who can afford the injury* — which is the
+same shape as the dispatch question the roster already asks.
+
+### The blocker nobody had noticed: combat does not exist
+
+`skill_combat` is `smallint not null default 1` in migration `001`, and the string "combat"
+appears nowhere else in `src/` or `migrations/` at all. It is not merely unread — **it is
+never written**. Every survivor in every existing camp is a 1, and the wanderer pool does not
+set it.
+
+So Phase 12 cannot rest on combat until combat varies, and how it comes to vary touches the
+one piece of content this file argues hardest about. The pool is seven wanderers, three
+mirrored pairs plus a 4/4, averaging exactly `ORDINARY` on both axes — an arithmetic chosen so
+that a spread costs the economy nothing, and so that a wanderer is *strong in one axis and
+poor in the other* rather than simply good.
+
+**Proposed, and wanting the user's nod before it is built:**
+
+- **Combat is a third axis rolled independently of the mirrored two.** The pool's argument is
+  about scavenging and medicine being anti-correlated; a combat number alongside them does not
+  disturb that, where folding combat into the mirror would break the average and turn "strong
+  in one" into "good at things".
+- **Every survivor alive today becomes `ORDINARY`.** Not a random backfill: the column has
+  never varied, so *everyone has always been ordinary at this* is the one true statement about
+  them. Rolling dice retroactively would invent facts about people the player already knows.
+
+The alternative worth naming: combat could be **earned** rather than issued — raids survived,
+or defences stood. That is a progression system the game does not otherwise have, and it would
+mean a new camp cannot defend at all until it has been raided, which reads badly. Recorded as
+considered, not chosen.
+
 ### What this does not decide
 
 **Which survivor a verb belongs to.** Dispatch, crafting and using an item all take "the
