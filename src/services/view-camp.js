@@ -1315,13 +1315,37 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
           cost: nextCost,
           fuel: Number(openRow?.fuel ?? 0),
           ...linkGives(nextIndex),
-          // Named, because the player is choosing a known thing — but only this one.
-          // The links past it are a count rather than a list, so there is a picture of
-          // the whole road without reading the end of it first.
           neighbour: neighbourFor(WORLD_SEED, nextIndex, now).name,
           place: linkGives(nextIndex).region ? placeOf(linkGives(nextIndex).region) : null,
         },
     beyond: nextCost === null ? 0 : LINKS - nextIndex,
+    /*
+     * The links past the live one, as options that refuse rather than as a count.
+     *
+     * This was `beyond: 6 more after that` and nothing else — a deliberate call, on the
+     * reasoning that a player should get a picture of the road without reading the end of it
+     * first. It is overturned by the page's own rule, which is stated everywhere else and was
+     * not being followed here: **an option you cannot take keeps its place and says why.** The
+     * bench rows do it, the moment options do it, a fitting four levels out of reach does it.
+     * A road that hides its own length is the one block that answers "what is this for?" with
+     * a number.
+     *
+     * What is shown is a name and a price, which is what makes something an option. What is
+     * *not* shown is who is there now — `neighbourFor` knows, and two neighbours in five are
+     * already gone — because that is what you pay to find out. An option needs a label and a
+     * cost; the news is the thing you buy.
+     */
+    ahead: Array.from({ length: Math.max(0, LINKS - nextIndex) }, (_, step) => {
+      const index = nextIndex + step + 1;
+      const gives = linkGives(index);
+      return {
+        index,
+        cost: linkCost(index),
+        name: neighbourFor(WORLD_SEED, index, now).name,
+        ...gives,
+        place: gives?.region ? placeOf(gives.region) : null,
+      };
+    }),
     // What there is to send. The box asked for a number and never said what the
     // camp had, so the arithmetic was left to the player on the one page that
     // already knew the answer.

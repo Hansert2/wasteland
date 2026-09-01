@@ -576,6 +576,26 @@ ${SURVIVOR_TAB_CSS}
                     font-variant-numeric: tabular-nums; }
   .stander.off .keeps { color: var(--faint); }
 
+  /*
+   * The road still to come. Greyed because none of it can be paid into yet — only the live
+   * link takes fuel — and laid out on the same grid as the reached rows above so the whole
+   * thing reads as one road rather than as a block and a list.
+   */
+  .ahead { list-style: none; margin: 0; padding: 14px 18px 4px; display: grid; gap: 9px; }
+  .ahead .link { display: grid; grid-template-columns: 2ch minmax(0, 1fr) auto; gap: 4px 12px;
+                 align-items: baseline; }
+  .ahead .idx { font-family: var(--numer); font-size: 11px; color: var(--rule);
+                font-variant-numeric: tabular-nums; }
+  .ahead .name { color: var(--faint); }
+  .ahead .cost { font-family: var(--numer); font-size: 12px; color: var(--faint);
+                 font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .ahead .what { grid-column: 2 / -1; font-size: 13px; color: var(--fainter);
+                 line-height: 1.45; }
+  @media (max-width: 560px) {
+    .ahead .link { grid-template-columns: 2ch minmax(0, 1fr); }
+    .ahead .cost { grid-column: 2; }
+  }
+
   .out { margin: 5px 0 0; color: var(--dim); font-size: 13px; }
   .out .short { color: var(--faint); }
 
@@ -5089,10 +5109,32 @@ function renderRoad(road) {
            stays reached.</p>`
       : '';
 
-  const beyond =
-    road.beyond > 0
-      ? `${road.beyond} more after that.`
-      : 'The last one.';
+  /*
+   * What is still ahead, as options that refuse.
+   *
+   * It was a footer reading "6 more after that", which is the road's whole remaining length
+   * written as a number. Every other block on this page keeps an option it cannot offer and
+   * says why — the bench rows, the moment options, a fitting four levels out of reach — and
+   * this was the one that hid them.
+   *
+   * A name and a price each, because that is what makes something an option. Not who is
+   * there: `neighbourFor` knows and two neighbours in five have already gone, but that is
+   * what the fuel buys. Only the live link has a form; these have a number and no way to
+   * spend it, which is exactly what greyed means.
+   */
+  const ahead =
+    road.ahead && road.ahead.length > 0
+      ? `<ul class="ahead">${road.ahead
+          .map(
+            (link) => `<li class="link off">
+              <span class="idx">${link.index}</span>
+              <span class="name">${escape(link.name)}</span>
+              <span class="what">${linkGot(link) || 'somewhere to reach'}</span>
+              <span class="cost">${n(link.cost, 0)} fuel</span>
+            </li>`,
+          )
+          .join('')}</ul>`
+      : '<p class="road-note">Nothing past this one. It is the last.</p>';
 
   return `${block(
     `The road &mdash; ${road.reached.length} of ${road.links} reached`,
@@ -5110,8 +5152,22 @@ function renderRoad(road) {
         }</p>
         ${addFuel(road)}
       </div>
-      <div class="block-foot"><span class="tag">Beyond</span>
-        <span class="val">${beyond}</span></div>
+      ${/*
+        * The strip heads the list rather than closing the block, which is a small departure
+        * from what `block-foot` usually is and the right one here: the total is the fact you
+        * want before reading six rows, not after. Its border and ground make it read as a
+        * rule across the block either way.
+        */ ''}
+      <div class="block-foot"><span class="tag">Ahead</span>
+        <span class="val">${
+          road.ahead?.length
+            ? `${road.ahead.length} more, ${n(
+                road.ahead.reduce((sum, link) => sum + link.cost, 0),
+                0,
+              )} fuel between them`
+            : 'the last of them'
+        }</span></div>
+      ${ahead}
     </div>`;
 }
 
