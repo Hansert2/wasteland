@@ -2,6 +2,7 @@ import { newSeed } from '../game/random.js';
 import { InputError } from '../errors.js';
 import { occupations, mustBeFree } from './who-is-free.js';
 import { CONFIG } from '../game/constants.js';
+import { shortcutsFrom, travelHoursFor } from '../game/road.js';
 
 /** "45m", "6h", "6h 30m" — the same reading the dispatch table gives the same number. */
 function formatHours(hours) {
@@ -64,11 +65,27 @@ export async function dispatchExpedition(
   mustBeFree(busy, character, 'go anywhere');
 
   const { rows: regions } = await client.query(
-    'select id, name, travel_hours, requires_link from regions where slug = $1',
+    'select id, slug, name, travel_hours, requires_link from regions where slug = $1',
     [String(regionSlug ?? '')],
   );
   const region = regions[0];
   if (!region) throw new InputError('There is no such place on the map.');
+
+  /*
+   * How far it actually is for *this* camp.
+   *
+   * Three of the road's links are shortcuts rather than destinations — they open nowhere and
+   * take a fifth off a walk the camp already makes. So the distance to a place is a fact
+   * about the camp as well as about the map, and this is where that is decided: the gate
+   * writes `returns_at`, and everything afterwards reads the trip's own ends.
+   */
+  const { rows: reachedLinks } = await client.query(
+    `select link_index from road_links
+      where settlement_id = $1 and completed_at is not null`,
+    [settlementId],
+  );
+  const shortened = shortcutsFrom(reachedLinks.map((row) => Number(row.link_index)));
+  const travelHours = travelHoursFor(region.slug, Number(region.travel_hours), shortened);
 
   // A place the road has not reached yet is refused here and not only hidden on the
   // page, for the reason written above the pack check in answerMoment: the page is a
@@ -102,17 +119,17 @@ export async function dispatchExpedition(
    * Checked here rather than only hidden on the page for the reason written above the road
    * check: the page is a render of a moment ago and a form is whatever was posted to it.
    */
-  const needed = CONFIG.staminaPerHourWorked * Number(region.travel_hours);
+  const needed = CONFIG.staminaPerHourWorked * travelHours;
   const held = Number(character.stamina);
   if (held < needed) {
     const spare = Math.floor(held / CONFIG.staminaPerHourWorked);
     throw new InputError(
       `${character.name ?? 'They'} has about ${spare}h of walking left and ${region.name} ` +
-        `is ${formatHours(Number(region.travel_hours))} out. Let them rest.`,
+        `is ${formatHours(travelHours)} out. Let them rest.`,
     );
   }
 
-  const returnsAt = new Date(now + region.travel_hours * HOUR_MS);
+  const returnsAt = new Date(now + travelHours * HOUR_MS);
 
   /*
    * The sky the trip is leaving under, frozen onto the trip — see migration 017.

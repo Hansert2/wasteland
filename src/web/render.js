@@ -5078,6 +5078,16 @@ function linkFacts(link) {
     if (link.place.moments > 0) parts.push(`${link.place.moments} contacts`);
   }
   if (link.tradePost) parts.push('trader');
+  /*
+   * What the three that open nowhere are actually for.
+   *
+   * They read "neighbours only" until 2026-09-01, when the player asked what they were —
+   * which is the answer, really: 873 fuel between them and nothing to show. They take a fifth
+   * off a walk the camp already makes, and this is the page finally saying which walk.
+   */
+  if (link.shortens) {
+    parts.push(`${escape(duration(link.shortens.from - link.shortens.to))} off ${escape(link.shortens.name)}`);
+  }
   if (parts.length === 0) parts.push('neighbours only');
 
   return parts.join(' &middot; ');
@@ -5129,6 +5139,14 @@ function linkGot(link) {
 
     parts.push(
       `somewhere new to send people &mdash; ${escape(duration(link.place.travelHours))} out, danger ${link.place.danger}, ${contact}`,
+    );
+  }
+
+  if (link.shortens) {
+    parts.push(
+      `${escape(duration(link.shortens.from - link.shortens.to))} off every walk to ${escape(
+        link.shortens.name,
+      )}`,
     );
   }
 

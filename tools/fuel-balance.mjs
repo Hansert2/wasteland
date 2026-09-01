@@ -33,7 +33,7 @@ import { POTENCY_TO_POINTS } from '../src/services/use-item.js';
 import { momentsFor } from '../src/game/moments.js';
 import { resolveExpedition } from '../src/game/expeditions.js';
 import { CONFIG } from '../src/game/constants.js';
-import { LINKS, linkCost, roadCost } from '../src/game/road.js';
+import { LINKS, linkCost, roadCost, shortcutsFrom, travelHoursFor } from '../src/game/road.js';
 import { UPGRADES } from '../src/game/structures.js';
 import { ORDINARY } from '../src/game/wanderers.js';
 import { daylightFraction } from '../src/game/daylight.js';
@@ -59,17 +59,48 @@ const { rows: scrubberRecipeRows } = await pool.query(
 const scrubberItem = scrubberItemRows[0];
 const scrubberRecipe = scrubberRecipeRows[0];
 
-/** The shape `resolveExpedition` and the tick both want. */
-const regions = rows.map((row) => ({
-  slug: row.slug,
-  name: row.name,
-  danger: row.danger,
-  travelHours: Number(row.travel_hours),
-  travel_hours: Number(row.travel_hours),
-  loot: row.loot,
-  finds: row.finds,
-  radiationPerTrip: Number(row.radiation_per_trip),
-}));
+/**
+ * The shape `resolveExpedition` and the tick both want.
+ *
+ * **Pass `--shortcuts` to measure the road's three shortcut links as though they were all
+ * reached.** They take `SHORTCUT_FRACTION` off the walk to Coastal Wreckage, the Deep Zone
+ * and The Waterworks, and fuel per day is haul over cycle time — so this is the one number
+ * that says what they are worth and what they do to the danger-4 against danger-5 gap the
+ * balance work of 2026-08-27 and 2026-08-30 spent itself on.
+ *
+ * A flag rather than a second file, because the only honest comparison is the same seeds and
+ * the same everything else through the same arithmetic.
+ */
+const withShortcuts = process.argv.includes('--shortcuts');
+const shortened = withShortcuts
+  ? shortcutsFrom([...Array(LINKS).keys()].map((n) => n + 1))
+  : new Set();
+
+const regions = rows.map((row) => {
+  const hours = travelHoursFor(row.slug, Number(row.travel_hours), shortened);
+  return {
+    slug: row.slug,
+    name: row.name,
+    danger: row.danger,
+    travelHours: hours,
+    travel_hours: hours,
+    loot: row.loot,
+    finds: row.finds,
+    radiationPerTrip: Number(row.radiation_per_trip),
+  };
+});
+
+if (withShortcuts) {
+  console.log('');
+  console.log('with every shortcut link reached:');
+  for (const slug of shortened) {
+    const row = rows.find((candidate) => candidate.slug === slug);
+    if (row) {
+      const to = travelHoursFor(slug, Number(row.travel_hours), shortened);
+      console.log(`  ${row.name.padEnd(20)} ${row.travel_hours}h -> ${to.toFixed(1)}h`);
+    }
+  }
+}
 
 const paysFuel = regions.filter((r) => Array.isArray(r.loot?.fuel));
 

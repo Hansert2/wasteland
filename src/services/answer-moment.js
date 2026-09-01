@@ -15,6 +15,21 @@ const HOUR_MS = 60 * 60 * 1000;
  * "is this window open right now" is asked of a clock that is current — the same
  * arrangement `tradeWithCaravan` relies on for "is a caravan at the gate".
  */
+/**
+ * A trip as its moments see it: how long it ran, and how long the place is.
+ *
+ * The two used to be one number. A shortcut takes a fifth off the walk to a place for a camp
+ * that has reached the link, so the region says eighteen hours while the trip ran fourteen —
+ * and the windows have to be placed across the hours that actually passed, or a moment opens
+ * after the survivor is already home. The count comes from the region, because how much there
+ * is to meet somewhere is a fact about the somewhere.
+ */
+const spanOf = (trip) => ({
+  slug: trip.slug,
+  travelHours: (trip.returns_at.getTime() - trip.departed_at.getTime()) / 3_600_000,
+  baseTravelHours: Number(trip.travel_hours),
+});
+
 export async function answerMoment(client, settlementId, { index, option }, now = Date.now()) {
   await client.query('select id from settlements where id = $1 for update', [settlementId]);
 
@@ -74,14 +89,11 @@ export async function answerMoment(client, settlementId, { index, option }, now 
     active.find((trip) => {
       const answered = new Set((trip.choices ?? []).map((choice) => Number(choice.index)));
       if (answered.has(wanted)) return false;
-      return momentsFor(
-        { slug: trip.slug, travelHours: Number(trip.travel_hours) },
-        Number(trip.seed),
-      ).some((moment) => moment.index === wanted);
+      return momentsFor(spanOf(trip), Number(trip.seed)).some((moment) => moment.index === wanted);
     }) ?? active[0];
 
-  const travelHours = Number(expedition.travel_hours);
-  const moments = momentsFor({ slug: expedition.slug, travelHours }, Number(expedition.seed));
+  const travelHours = spanOf(expedition).travelHours;
+  const moments = momentsFor(spanOf(expedition), Number(expedition.seed));
 
   const moment = moments[Number(index)];
   if (!moment) throw new InputError('Nothing happened out there.');

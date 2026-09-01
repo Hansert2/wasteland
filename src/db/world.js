@@ -287,9 +287,21 @@ export async function loadWorld(client, settlementId) {
           slug: row.slug,
           name: row.name,
           danger: row.danger,
-          // Carried because moments are placed across the trip, so resolution cannot
-          // work out when anything was offered without knowing how long it was.
-          travelHours: Number(row.travel_hours),
+          /*
+           * How long this trip *is*, taken from its own two ends rather than from the
+           * region's column.
+           *
+           * They used to be the same number and are not any more: a shortcut makes the walk
+           * to a place shorter for a camp that has reached the link, so the region says 18
+           * hours while the trip ran 14.4. The stored ends are the truth — the gate wrote
+           * them, the tick settles against them, and a trip dispatched before a shortcut
+           * existed keeps the walk it was actually sent on.
+           *
+           * The region's own figure comes along as `baseTravelHours`, because how many
+           * moments a place holds is a fact about the place. See `momentsFor`.
+           */
+          travelHours: (row.returns_at.getTime() - row.departed_at.getTime()) / 3_600_000,
+          baseTravelHours: Number(row.travel_hours),
           loot: row.loot,
           finds: row.finds,
           radiationPerTrip: row.radiation_per_trip,

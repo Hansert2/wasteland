@@ -722,7 +722,22 @@ export function walkHomeHours(hours, travelHours) {
  */
 export function momentsFor(region, seed) {
   const travelHours = Number(region?.travelHours) || 0;
-  const count = momentCount(travelHours);
+  /*
+   * How many, from the place. When, from the trip.
+   *
+   * A shortcut makes a walk shorter without making the place emptier — the same rule the dose
+   * already follows, where `rollRadiation` reads the region and ignores the clock entirely.
+   * Without this a 236-fuel shortcut to the Deep Zone would have dropped it under the
+   * fifteen-hour band and *deleted one of its contacts*, which is paying to be given less.
+   *
+   * The windows still scale with the real trip, so on a shortened run the same four are
+   * packed into fewer hours and each is a little tighter to catch. That is the honest cost of
+   * arriving sooner, and it is bought back by there being more runs in a day.
+   *
+   * Defaults to the trip's own hours, so every caller that has never heard of a shortcut is
+   * unchanged.
+   */
+  const count = momentCount(Number(region?.baseTravelHours ?? travelHours) || 0);
   if (count === 0) return [];
 
   const random = makeRandom(mix(seed, MOMENTS_SALT));

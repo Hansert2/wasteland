@@ -60,8 +60,10 @@ export function roadCost() {
  *
  * Fixed by index rather than rolled, so the page can always say what the next link
  * gives and the player is choosing a known thing. Four of the seven are destinations,
- * two of those also carry a standing trade post, and three are worth only the news —
- * because a road where every step pays is a shop rather than a road.
+ * two of those also carry a standing trade post, and the other three are shortcuts —
+ * they open nowhere and shorten a walk the camp already makes. See `SHORTCUTS`, and note
+ * that a shortcut is not a payment: a road where every step pays is a shop rather than a
+ * road, and this is the one thing a road is actually for.
  *
  * The first link is a destination on purpose: it is the player's first taste of what
  * the road is for, and 70 fuel is too much to spend on a sentence.
@@ -91,6 +93,85 @@ const TRADE_POSTS = new Set([3, 7]);
 /** The same set, for the service that has to ask the database about them. */
 export const TRADE_POST_LINKS = [...TRADE_POSTS];
 
+/**
+ * The three links that are worth only the news, and what they are worth instead.
+ *
+ * Played on 2026-09-01, and the verdict was the question itself: *"what are the neighbours
+ * only roads again?"* Three of the seven cost 873 fuel between them — 39% of the whole road,
+ * and the expensive end of it, because the cost grows by half a link at a time whatever the
+ * link opens. Nearly two fifths of the longest grind in the game bought three sentences, and
+ * a player who has to ask what they were is a player who was not paid.
+ *
+ * The design argument they were built on still stands and is not being repealed: *a road
+ * where every step pays is a shop rather than a road.* A shortcut is not a payment. It gives
+ * no goods, opens no place and adds nothing to a haul — it makes a walk you already make
+ * shorter, which is the one thing a road is actually for.
+ *
+ * **Each one shortens a place the camp can already reach when it buys the link.** The
+ * pairings are the user's, and the reasoning is that shortening somewhere you cannot go yet
+ * is worth nothing on the day you pay for it:
+ *
+ *     2  Sennen Cross   105 fuel   Coastal Wreckage   12h -> 9.6h
+ *     4  Kettle Bridge  236 fuel   The Deep Zone      18h -> 14.4h
+ *     6  Drybank        532 fuel   The Waterworks     20h -> 16h
+ *
+ * The first two are the longest walks a camp can make without the road at all, and the two
+ * the fuel economy is decided between. The third is a road destination, reached at link 5 and
+ * so already in hand by the time link 6 is bought.
+ */
+const SHORTCUTS = {
+  2: 'coastal_wreckage',
+  4: 'the_deep_zone',
+  6: 'the_waterworks',
+};
+
+/**
+ * How much of the walk a shortcut takes off.
+ *
+ * A share rather than a fixed number of hours, so the long walks get the most help — which is
+ * where the hours actually hurt. A flat three hours would be worth proportionally more on a
+ * short trip than a long one, which is backwards.
+ *
+ * What it buys is stamina, and that is the point: a Deep Zone run costs 18 x 3.8 = 68 points
+ * of a hundred-point gauge, and 14.4 x 3.8 = 55. The dose does not move — `rollRadiation`
+ * reads the region and ignores the clock, because a dose is a fact about the place.
+ */
+export const SHORTCUT_FRACTION = 0.2;
+
+/** The region a link shortens, or null for the four that open somewhere instead. */
+export function shortcutFor(index) {
+  return SHORTCUTS[Number(index)] ?? null;
+}
+
+/**
+ * The walk this camp actually faces, given the links it has reached.
+ *
+ * Pure, and takes the reached slugs rather than a settlement, so the page, the gate and the
+ * loader can all ask it without three different ideas of what "reached" means.
+ */
+export function travelHoursFor(slug, baseHours, shortened) {
+  const base = Number(baseHours) || 0;
+  if (!shortened?.has?.(slug)) return base;
+
+  /*
+   * Rounded to the minute, because a derived distance should be as clean as an authored one.
+   * Every walk in `seed.js` is a tidy number and a fifth off twelve hours is
+   * 9.600000000000001 — which reaches a timestamp harmlessly and an instrument's column
+   * looking like a bug. Two decimals is under a minute at any walk on this map.
+   */
+  return Math.round(base * (1 - SHORTCUT_FRACTION) * 100) / 100;
+}
+
+/** Which regions a set of reached link indexes has shortened. */
+export function shortcutsFrom(reachedIndexes) {
+  const slugs = new Set();
+  for (const index of reachedIndexes ?? []) {
+    const slug = shortcutFor(index);
+    if (slug) slugs.add(slug);
+  }
+  return slugs;
+}
+
 export function linkGives(index) {
   if (linkCost(index) === null) return null;
   const n = Number(index);
@@ -100,6 +181,8 @@ export function linkGives(index) {
     tradePost: TRADE_POSTS.has(n),
     // The region slug a destination opens, so the caller never has to know the map.
     region: DESTINATIONS[n]?.slug ?? null,
+    // And the one it shortens, for the three that open nowhere.
+    shortcut: SHORTCUTS[n] ?? null,
   };
 }
 

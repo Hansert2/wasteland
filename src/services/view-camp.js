@@ -42,7 +42,16 @@ import { stateAt, timelineOf } from '../game/timeline.js';
 import { CONFIG } from '../game/constants.js';
 import { radDamagePerHourAt, recoveryOf } from '../game/tick.js';
 import { standFor } from '../game/raids.js';
-import { LINKS, TRADE_POST_LINKS, linkCost, linkGives, neighbourFor } from '../game/road.js';
+import {
+  LINKS,
+  TRADE_POST_LINKS,
+  linkCost,
+  linkGives,
+  SHORTCUT_FRACTION,
+  neighbourFor,
+  shortcutsFrom,
+  travelHoursFor,
+} from '../game/road.js';
 import { WORLD_SEED, loadWorldEvents } from '../db/world-events.js';
 import { FACTIONS, caravanVisit, postKeeper, priceAt, standingOf } from '../game/factions.js';
 import {
@@ -1264,6 +1273,10 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
     roadRows.filter((row) => row.completed_at !== null).map((row) => Number(row.link_index)),
   );
 
+  // And which walks this camp's road has shortened, which is a fact about the camp rather
+  // than about the map — see `SHORTCUTS`.
+  const shortened = shortcutsFrom(opened);
+
   /**
    * What a place actually is, so the road can say it before it is paid for.
    *
@@ -1288,13 +1301,32 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
     };
   };
 
+  /*
+   * What a shortcut is worth, in the words the page needs: the place, and the hours off it.
+   *
+   * Both ends rather than the saving alone, because "2h 24m off Coastal Wreckage" answers a
+   * different question from "12h becomes 9h 36m" and the block has room for the first only.
+   * Read from the region rows, so a balance pass that moves a region's hours moves this.
+   */
+  const shortensOf = (slug) => {
+    if (!slug) return null;
+    const region = regionRows.find((candidate) => candidate.slug === slug);
+    if (!region) return null;
+
+    const from = Number(region.travel_hours);
+    return { name: region.name, slug, from, to: from * (1 - SHORTCUT_FRACTION) };
+  };
+
   const reached = roadRows
     .filter((row) => row.completed_at !== null)
     .map((row) => {
       const who = neighbourFor(WORLD_SEED, Number(row.link_index), now);
+      const gives = linkGives(Number(row.link_index));
       return {
         ...who,
-        place: who.region ? placeOf(who.region) : null,
+        ...gives,
+        place: gives?.region ? placeOf(gives.region) : null,
+        shortens: shortensOf(gives?.shortcut),
         completedAt: row.completed_at,
       };
     });
@@ -1317,6 +1349,7 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
           ...linkGives(nextIndex),
           neighbour: neighbourFor(WORLD_SEED, nextIndex, now).name,
           place: linkGives(nextIndex).region ? placeOf(linkGives(nextIndex).region) : null,
+          shortens: shortensOf(linkGives(nextIndex).shortcut),
         },
     beyond: nextCost === null ? 0 : LINKS - nextIndex,
     /*
@@ -1344,6 +1377,7 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
         name: neighbourFor(WORLD_SEED, index, now).name,
         ...gives,
         place: gives?.region ? placeOf(gives.region) : null,
+        shortens: shortensOf(gives?.shortcut),
       };
     }),
     // What there is to send. The box asked for a number and never said what the
@@ -1370,7 +1404,20 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
       .filter((region) => region.requires_link === null || opened.has(Number(region.requires_link)))
       .map((region) => ({
         ...region,
+        /*
+         * How many the place holds, from the place's own hours — never from the shortened
+         * walk. A shortcut takes a fifth off the road to somewhere; it does not empty it.
+         * Read before the override below, which is the only reason the order matters.
+         */
         moments: momentCount(Number(region.travel_hours)),
+        /*
+         * And how far it is *for this camp*, which the table then shows, the plan prices and
+         * the gate charges stamina for. Overwriting the column rather than adding a second
+         * one is deliberate: every reader downstream wants the walk they would actually be
+         * sent on, and a second field is a second thing to forget.
+         */
+        travel_hours: travelHoursFor(region.slug, Number(region.travel_hours), shortened),
+        shortened: shortened.has(region.slug),
       }));
 
   /**
