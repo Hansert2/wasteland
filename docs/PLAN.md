@@ -3740,6 +3740,124 @@ one survivor stands and the rest are simply not the ones standing. Whether a sec
 hands should soften a raid is a real question and a separable one, and it wants measuring
 against the raid table rather than assuming.
 
+## Phase 13 — what a person can carry, and what the camp keeps
+
+*Against: a pack with no bottom, and no way to move anything out of it.*
+
+Designed 2026-09-01 with the user. Not built.
+
+### Three reasons, and the first is a fault rather than a feature
+
+**1. Parts scatter and nothing can move them.** `consumeInputs` takes a recipe's materials
+from *the crafter's* pack, and finds land on whoever walked. So the scavenged parts for a
+plate vest end up spread across three survivors and the bench refuses, with no verb in the
+game that can put them together. There is no transfer of any kind. That is a present,
+felt fault and it is the strongest argument here.
+
+**2. A pack has no bottom.** Nothing limits what a survivor carries, so "what do I take"
+is not a question anybody has ever been asked.
+
+**3. A pack dies with its owner.** `inventory_items` cascades on delete and migration `001`
+says so on purpose: *carried inventory belongs to the survivor and dies with them.* Nothing
+in the game can bank an item against that. The camp outlives its people everywhere else.
+
+### The four decisions, all the user's
+
+**Weight is carried items only.** A trip's `loot` — scrap, fuel, food, water — goes to the
+camp's `resources` and always has; only `finds` become items. So capacity constrains what a
+person carries and touches the haul not at all, which is what lets this ship without
+re-measuring the economy. **The alternative was refused deliberately**: weighing the haul
+would put a ceiling on fuel per day, and fuel per day is the axis the road's 396 days, the
+fittings' 252 and the whole danger-4 against danger-5 argument are measured on.
+
+**The box banks against death.** Items in it are not lost when a survivor is. That is the
+box's reason to exist beyond tidiness, and it is the game's own rule about settlements
+applied to things for the first time.
+
+**Transfers are free at camp and frozen during a raid.** The second half is not a detail. The
+raid built on 2026-09-01 rests on `standFor` reading the weapon somebody is *carrying*, and
+its whole character comes from there being no way to hand it over — *who has the spear is a
+lasting fact about a person, one you built rather than rolled*. Free transfers would make gear
+fungible and collapse "who stands" into "who can afford the injury", with the spear posted to
+them. Frozen while a raid is open, the tension survives exactly where it matters and nowhere
+else, which is the same shape as *somebody away cannot defend*.
+
+**A flat cap for everybody.** No pack item, no per-survivor difference. A rucksack that
+raises capacity while occupying capacity is a knot, and it would be one more thing that has to
+be in the right hands. The decision stays *what do I take* rather than *who has the good bag*.
+
+### The cap is derived, and here is the rule
+
+The same method `staminaPerHourWorked` used — a rule about the map rather than a number off a
+sweep:
+
+> **A survivor can carry their kit, what they will need on the longest walk, and what that
+> walk is likely to find.**
+
+So the measurement, before any number is written down: **the distribution of `finds` per trip
+across the regions**, at the 90th percentile rather than the mean, plus the weight of a
+working kit — a weapon, armour, and consumables enough for a Harrow End run. The cap is the
+sum. A cap that makes the ordinary trip drop something is a cap that punishes playing
+properly; a cap that never binds is a column nobody reads.
+
+Weights themselves are content, per item, and want the same anchoring pass: a tablet against a
+spear against a plate vest. A stack weighs `qty × weight`, which needs saying once.
+
+### What happens when a full pack meets a find
+
+They are on the road; the box is at home. **They leave it, and the log says what.** That is
+the moment the cap exists for, and it should be rare rather than routine — which the
+derivation above is what guarantees.
+
+### Four interactions, and three of them are the good kind
+
+**`equipmentOf` reads what is carried**, so storing your spear disarms you on the next trip.
+Coherent, and it makes the box a real choice rather than a shelf.
+
+**`standFor` reads the same thing**, so a spear in the box defends nobody. Also coherent, and
+it is what keeps the raid honest once transfers exist.
+
+**The tick's safety valve reaches into the pack**, not the box: before lethal damage a
+survivor eats whatever they are carrying. So **banking your emergency rations is how you die
+with a full larder.** That is a genuine tension and worth keeping rather than smoothing — the
+box is safe from death and useless in an emergency, and both halves of that are true at once.
+
+**The bench draws from the crafter's pack**, which is the fault this phase opens with. If the
+box is not reachable from the bench, the fix for scattered parts is to shuttle them to
+whoever is crafting, every time — busywork replacing an impossibility. **Recommended and
+wanting the user's nod: the bench may draw from the box.** The recipe's argument survives it
+— *the interesting half of a recipe is the thing you had to go and find* is about where a
+material came from, not about which pocket it is in.
+
+### Schema
+
+    items          + weight, numeric, not null
+    store_items    settlement_id, item_id, qty, unique (settlement_id, item_id)
+
+A table of its own rather than a nullable `character_id` on `inventory_items`: the two are
+different things with different lifetimes, and the cascade that destroys a pack is exactly
+what must not reach the box.
+
+Nothing changes about death. A pack still dies with its owner; the box is opt-in, and the
+decision to bank is the player's.
+
+### One verb
+
+`moveItem(from, to, slug, qty)` where each end is a survivor or the box. Refuses when either
+survivor is away, when a raid is open, and when the receiving side has no room. One verb
+rather than three, because store, take and hand-over are the same act with different ends.
+
+### What this does not decide
+
+**Whether the box has a cap of its own.** Uncapped to begin with: the constraint this phase
+is about is the road, not the shed. If hoarding turns out to be the game, the lever is the
+shelter, which already sets a storage ceiling for resources and could set one here.
+
+**Whether weight should cost stamina.** A heavy pack slowing a walk is the richest version of
+this and it reopens a derivation: `staminaPerHourWorked` is a hundred points over the longest
+walk on the map, and a weight multiplier on top makes that ceiling a function of what somebody
+packed. Separable, and it wants its own measurement.
+
 ## The dispatch table was quoting a dose it did not charge — 2026-08-30
 
 Asked by the user: should a higher dose be acquired when away? The answer was no, and
