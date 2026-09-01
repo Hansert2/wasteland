@@ -581,6 +581,27 @@ ${SURVIVOR_TAB_CSS}
    * link takes fuel — and laid out on the same grid as the reached rows above so the whole
    * thing reads as one road rather than as a block and a list.
    */
+  /*
+   * The link's block on the ground of the place it opens.
+   *
+   * The .82 veil and the 72% crop are the dispatch rows' numbers, unchanged and deliberately
+   * so: the veil opacity is a figure the *text* decides, and the quiet greys in here are the
+   * same quiet greys that were measured against a white sky over there. No hover lift: a
+   * dispatch row brightens because it is a row you are choosing between, and this is the one
+   * link there is.
+   *
+   * The strip and the list below keep their own opaque grounds, so the picture stops where
+   * the thing you can act on stops.
+   */
+  .next-link.plated {
+    background-image: linear-gradient(rgba(23, 22, 20, .82), rgba(23, 22, 20, .82)),
+                      var(--plate);
+    background-size: cover;
+    background-position: center 72%;
+    background-repeat: no-repeat;
+  }
+  .next-link .ahead { background: var(--panel); }
+
   /* The live link's own gauge: the same track and figure the survivor blocks use. */
   .paying { margin-bottom: 13px; }
   .paying .val { font-size: 18px; }
@@ -5209,7 +5230,18 @@ function renderRoad(road) {
     ['opens', linkFacts(road.next)],
   ];
 
-  return `${behind}<div class="block wants next-link">
+  /*
+   * Standing on the place it opens, the way a dispatch row and a trip's readout do.
+   *
+   * The same argument as both: the road block and the region table are two views of one
+   * place, and a photograph that is a picture in one and absent in the other makes them read
+   * as different kinds of thing. A link you are paying into is a place you are buying, so it
+   * gets the ground of that place.
+   *
+   * Only the four links that open a region have a plate; `plateGround` answers with nothing
+   * for the neighbours, and the block falls back to plain panel without a special case here.
+   */
+  return `${behind}<div class="block wants next-link plated"${plateGround(road.next.region)}>
       <h2>Working toward ${escape(road.next.neighbour)}</h2>
       <div class="block-body">
         <div class="paying noted">
