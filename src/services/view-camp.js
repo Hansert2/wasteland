@@ -41,6 +41,7 @@ import { radThresholdFor, skillsOf, wandererFor } from '../game/wanderers.js';
 import { stateAt, timelineOf } from '../game/timeline.js';
 import { CONFIG } from '../game/constants.js';
 import { radDamagePerHourAt, recoveryOf } from '../game/tick.js';
+import { standFor } from '../game/raids.js';
 import { LINKS, TRADE_POST_LINKS, linkCost, linkGives, neighbourFor } from '../game/road.js';
 import { WORLD_SEED, loadWorldEvents } from '../db/world-events.js';
 import { FACTIONS, caravanVisit, postKeeper, priceAt, standingOf } from '../game/factions.js';
@@ -1597,6 +1598,21 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
     // The radio's entire effect. Without it the hour is in the database and none of
     // the player's business; with it, it is the most useful thing on the page.
     raidExpectedAt: fitted.has('radio') ? settlements[0].next_raid_at : null,
+    /*
+     * The raid happening *now*, which is a different fact from the one above.
+     *
+     * `raidExpectedAt` is the radio's forecast and is null without one. This is the camp
+     * being robbed while the player watches, and it is never hidden by a missing fitting —
+     * you do not need a radio to notice raiders in the yard.
+     */
+    underRaid:
+      state.raid && state.raid.resolvedAt == null
+        ? {
+            at: new Date(state.raid.at),
+            closesAt: new Date(state.raid.closesAt),
+            crew: FACTIONS[state.raid.faction]?.name ?? null,
+          }
+        : null,
     caravan,
     road,
     post,
@@ -1854,6 +1870,13 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
         skills: skillsOf(person, CONFIG.radThreshold),
         // Phase 10's gauge, and the reason the column stopped being dead schema.
         stamina: Number(person.stamina),
+        /*
+         * What this person would hold on to at the fence, from the same function the raid
+         * settles with. A share rather than a description, because the page has to be able
+         * to say why one survivor is the one to send out there — and "0.45" against "0.2" is
+         * the whole of the answer, where "carries a spear" makes the player work it out.
+         */
+        stands: standFor(person),
         /*
          * When they wake, for the block to count down to.
          *

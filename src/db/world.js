@@ -100,6 +100,17 @@ export async function loadWorld(client, settlementId) {
       order by born_at, id`,
     [settlementId],
   );
+  /*
+   * At most one, which the schema guarantees with a partial unique index rather than by
+   * anybody remembering to check: raiders do not queue.
+   */
+  const { rows: openRaids } = await client.query(
+    `select id, at, closes_at, seed, faction, stood_by
+       from raids where settlement_id = $1 and resolved_at is null`,
+    [settlementId],
+  );
+  const openRaid = openRaids[0];
+
   const character = characters[0];
 
   let survivor = null;
@@ -386,6 +397,24 @@ export async function loadWorld(client, settlementId) {
           output: { slug: order.slug, qty: order.output_qty },
         }
       : null,
+    /*
+     * The raid standing open, if there is one.
+     *
+     * Only the unresolved one is loaded. A settled raid is history — it has an event in the
+     * log and its taking is already off the stores — and carrying it into the tick would
+     * invite the walk to settle it a second time.
+     */
+    raid: openRaid
+      ? {
+          id: openRaid.id,
+          at: openRaid.at.getTime(),
+          closesAt: openRaid.closes_at.getTime(),
+          seed: Number(openRaid.seed),
+          faction: openRaid.faction,
+          stoodBy: openRaid.stood_by === null ? null : Number(openRaid.stood_by),
+          resolvedAt: null,
+        }
+      : null,
     fitting: pending
       ? {
           id: pending.id,
@@ -402,6 +431,55 @@ export async function loadWorld(client, settlementId) {
 }
 
 /** Write a post-tick state back. Assumes the caller holds a transaction. */
+/**
+ * Insert a raid the walk invented, or finish one that was already standing.
+ *
+ * Which of the two is decided by whether it has an id yet, and nothing else — an open raid
+ * loaded from the table has one, a raid `openRaid` created this walk does not. An open raid
+ * with an id and nothing settled needs no write at all: none of its columns move until it is
+ * answered or its window shuts.
+ */
+async function writeRaid(client, settlementId, raid) {
+  if (!raid) return;
+
+  if (raid.id == null) {
+    const { rows } = await client.query(
+      `insert into raids (settlement_id, at, closes_at, seed, faction, stood_by,
+                          resolved_at, taken, damage, log)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) returning id`,
+      [
+        settlementId,
+        new Date(raid.at),
+        new Date(raid.closesAt),
+        raid.seed,
+        raid.faction ?? null,
+        raid.stoodBy ?? null,
+        raid.resolvedAt == null ? null : new Date(raid.resolvedAt),
+        JSON.stringify(raid.taken ?? {}),
+        Math.max(0, Math.round(Number(raid.damage) || 0)),
+        JSON.stringify(raid.log ?? []),
+      ],
+    );
+    raid.id = rows[0].id;
+    return;
+  }
+
+  if (raid.resolvedAt == null) return;
+
+  await client.query(
+    `update raids set stood_by = $2, resolved_at = $3, taken = $4, damage = $5, log = $6
+      where id = $1`,
+    [
+      raid.id,
+      raid.stoodBy ?? null,
+      new Date(raid.resolvedAt),
+      JSON.stringify(raid.taken ?? {}),
+      Math.max(0, Math.round(Number(raid.damage) || 0)),
+      JSON.stringify(raid.log ?? []),
+    ],
+  );
+}
+
 export async function saveWorld(client, state) {
   const settlementId = state.settlement.id;
 
@@ -504,6 +582,28 @@ export async function saveWorld(client, state) {
       ],
     );
   }
+
+  /*
+   * The raid, which is the one thing here the walk can *create* as well as finish.
+   *
+   * A trip, a build and a fitting all exist as rows before the tick ever sees them — a
+   * service put them there. Raiders let themselves in: `openRaid` invents one mid-walk, so
+   * this is an insert when it has no id yet and an update when it has.
+   *
+   * Both can happen in one save. A month offline opens and settles several, and only the
+   * last of them can still be open — the walk resolves each before the next arrives, because
+   * `openRaid` refuses to start one while another stands.
+   */
+  /*
+   * Every raid the walk touched, oldest first, then whichever one is still standing.
+   *
+   * This is the one row here the tick can *create* as well as finish. A trip, a build and a
+   * fitting all exist before the tick sees them, because a service put them there; raiders
+   * let themselves in.
+   */
+  for (const settled of state.raidsSettled ?? []) await writeRaid(client, settlementId, settled);
+  await writeRaid(client, settlementId, state.raid);
+  state.raidsSettled = [];
 
   const fitting = state.fitting;
   if (fitting && fitting.installedAt != null) {

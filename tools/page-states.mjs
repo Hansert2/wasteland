@@ -222,6 +222,51 @@ export async function buildStates(client, now = Date.now()) {
     states['asleep'] = campPage(await viewCamp(client, id, now + 0.1 * HOUR));
   }
 
+  /*
+   * 6c. Raiders in the yard, which is the one block that asks a question about the camp.
+   *
+   * A raid is the only state on this page with a deadline that is not a trip's, and the only
+   * one where every survivor is an option rather than a figure — so it is markup nothing else
+   * here reaches. Two people, and one of them armed, because the block's whole job is to make
+   * the difference between them legible: what each keeps back is printed on their own button.
+   */
+  {
+    const id = await camp(client, now);
+    await raiseSuccessor(client, id, { now });
+    await client.query(
+      `insert into characters (settlement_id, name, born_at) values ($1, 'Wren', $2)`,
+      [id, new Date(now - HOUR)],
+    );
+    await client.query(
+      `insert into inventory_items (character_id, item_id, qty)
+       select c.id, i.id, 1 from characters c, items i
+        where c.settlement_id = $1 and c.name <> 'Wren' and i.slug = 'scrap_spear'`,
+      [id],
+    );
+    /*
+     * Stocked first, and it is not decoration: a camp under `NOT_WORTH_THE_WALK` is picked
+     * over and left without a window ever opening, so a fresh camp's empty larder produced a
+     * page with no raid block on it at all. Raiders ask what a place is worth before they ask
+     * who is in it.
+     */
+    await client.query(
+      `update resources set amount = 260 where settlement_id = $1 and kind <> 'fuel'`,
+      [id],
+    );
+    /*
+     * Due half an hour *ahead*, and read an hour on. A camp founded at `now` and viewed at
+     * `now` has no elapsed time for the walk to cover, so a raid dated in the past is never
+     * reached — the first version of this fixture set it an hour back and rendered a page
+     * with no raid on it. The hour that passes is what opens it; the window is four, so it
+     * is still standing when the page is drawn.
+     */
+    await client.query('update settlements set next_raid_at = $2 where id = $1', [
+      id,
+      new Date(now + 0.5 * HOUR),
+    ]);
+    states['under-raid'] = campPage(await viewCamp(client, id, now + HOUR));
+  }
+
   // 7. The ledger, and the empty camp that follows a death.
   {
     const id = await camp(client, now);

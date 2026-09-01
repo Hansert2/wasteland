@@ -9,7 +9,15 @@ import {
   raidTemper,
   standingOf,
 } from './factions.js';
-import { nextRaidAt, resolveRaid } from './raids.js';
+import {
+  NOT_WORTH_THE_WALK,
+  RAID_WINDOW_HOURS,
+  nextRaidAt,
+  repelChance,
+  resolveRaid,
+  standFor,
+} from './raids.js';
+import { chance, makeRandom } from './random.js';
 import { activeAt, nextBoundaryAfter, productionFactors } from './world-events.js';
 import { travelFactors } from './daylight.js';
 import {
@@ -325,6 +333,12 @@ function nextEventAfter(state, cursor) {
     next = Math.min(next, state.settlement.nextRaidAt);
   }
 
+  // An open raid's window, for the same reason as every other completion here: what the
+  // raiders leave with changes at that instant, so the walk has to land on it.
+  if (state.raid && state.raid.resolvedAt == null && state.raid.closesAt > cursor) {
+    next = Math.min(next, state.raid.closesAt);
+  }
+
   // A caravan has two timestamps, and both are boundaries: production during the
   // visit is no different, but the arrival and departure events must land at their
   // hours, and the departure is where the next visit gets booked.
@@ -559,40 +573,56 @@ function completeBuilds(state, at, events) {
  * then something the player could have prevented.
  */
 function raid(state, at, events) {
+  settleOpenRaid(state, at, events);
+  openRaid(state, at, events);
+}
+
+/**
+ * Raiders arrive, and nothing is decided yet.
+ *
+ * Phase 12. A raid used to resolve here, inside a walk the player is not present for, and
+ * tell them about it afterwards — the one event in the game that acts on the camp rather than
+ * on a trip, and the only one with no answer to it. It opens a window now: the camp is *being
+ * raided* for `RAID_WINDOW_HOURS`, and whoever is looking may name who holds the fence.
+ *
+ * **The repel is rolled here rather than at resolution**, on its own stream. Once a window is
+ * open the player is looking at it, and a raid cannot turn out afterwards to have never
+ * happened — they would have been asked who stands in front of nothing.
+ *
+ * The next raid is booked immediately, from this raid's hour. That keeps the schedule
+ * independent of when this one is answered: a player who takes three hours to decide does not
+ * push the whole future back by three hours.
+ */
+function openRaid(state, at, events) {
   const settlement = state.settlement;
   if (settlement.nextRaidAt == null || settlement.nextRaidAt > at) return;
+  // One at a time, which is the rule the schema states as a partial unique index. Raiders
+  // do not queue.
+  if (state.raid && state.raid.resolvedAt == null) return;
 
-  const wealth = campWealth(settlement.structures, settlement.resources);
-  const defence = campDefence(settlement.structures);
+  /*
+   * The one before this is history, and history has to be kept somewhere the save can see.
+   *
+   * `state.raid` holds one raid, and a month offline opens and settles several. Without this
+   * the walk would overwrite each settled raid with the next and only the last would ever
+   * reach the table — the stores and the events would be right and the record would be a
+   * month with one raid in it.
+   */
+  if (state.raid && state.raid.resolvedAt != null) {
+    (state.raidsSettled ??= []).push(state.raid);
+    state.raid = null;
+  }
 
-  // Raiders answer to somebody, and standing with that somebody matters — at the
-  // fence, alongside the watchtower. Standing is constant across a tick (only trades
-  // and successions move it, and both happen outside), so this is slice-stable.
+  const raidAt = settlement.nextRaidAt;
+  const seed = Number(settlement.raidSeed ?? 0) + (settlement.raidCount ?? 0);
   const faction = raidFaction(settlement.raidSeed ?? 0, settlement.raidCount ?? 0);
   const standing = standingOf(settlement.standings, faction);
-
-  const outcome = resolveRaid({
-    wealth,
-    defence,
-    resources: settlement.resources,
-    survivor: state.survivor,
-    seed: Number(settlement.raidSeed ?? 0) + (settlement.raidCount ?? 0),
-    crew: FACTIONS[faction]?.name,
-    temper: raidTemper(standing),
-  });
-
-  for (const [kind, amount] of Object.entries(outcome.taken)) {
-    const resource = settlement.resources[kind];
-    if (resource) resource.amount = clamp(resource.amount - amount, 0, resource.cap);
-  }
-
-  if (outcome.damage > 0 && state.survivor?.alive) {
-    state.survivor.health = Math.max(1, state.survivor.health - outcome.damage);
-  }
+  const temper = raidTemper(standing);
+  const defence = campDefence(settlement.structures);
 
   settlement.raidCount = (settlement.raidCount ?? 0) + 1;
   settlement.nextRaidAt = nextRaidAt(
-    at,
+    raidAt,
     visibleWealth(settlement),
     settlement.raidSeed ?? 0,
     settlement.raidCount,
@@ -601,14 +631,128 @@ function raid(state, at, events) {
     raidTempo(standingWithRaiders(settlement, settlement.raidCount)),
   );
 
+  // A stream of its own, so that skipping this roll at resolution does not shift every
+  // draw after it. The outcome stays a pure function of the seed either way.
+  if (chance(makeRandom(seed + 104729), repelChance(defence, temper.repelBonus))) {
+    events.push({
+      at: raidAt,
+      type: 'raid_repelled',
+      faction,
+      taken: {},
+      damage: 0,
+      log: [
+        `${FACTIONS[faction]?.name ? `Raiders out of ${FACTIONS[faction].name}` : 'Raiders'} ` +
+          'came as far as the fence, thought better of it, and moved on.',
+      ],
+    });
+    return;
+  }
+
+  /*
+   * And nothing worth defending is not worth asking about.
+   *
+   * A camp under `NOT_WORTH_THE_WALK` is picked over and left, which is a raid with no
+   * decision in it — asking who stands in front of stores that are not worth carrying would
+   * be the page demanding an answer to nothing. Settled at the hour instead, through the same
+   * arithmetic, so the log a player reads is the one `resolveRaid` writes.
+   */
+  if (campWealth(settlement.structures, settlement.resources) < NOT_WORTH_THE_WALK) {
+    const picked = { id: null, at: raidAt, closesAt: raidAt, seed, faction, stoodBy: null };
+    applyRaid(state, picked, null, raidAt, events);
+    (state.raidsSettled ??= []).push(picked);
+    return;
+  }
+
+  state.raid = {
+    id: null,
+    at: raidAt,
+    closesAt: raidAt + RAID_WINDOW_HOURS * HOUR_MS,
+    seed,
+    faction,
+    stoodBy: null,
+    resolvedAt: null,
+  };
+
+  /*
+   * And the camp wakes.
+   *
+   * The one exception to "there is no waking them", decided with the user, and the right kind
+   * of exception: a rule with a single dramatic one reads as a rule where a rule with none
+   * reads as an oversight. It costs the sleeper the rest of their sleep and the recovery it
+   * was going to buy, and it happens whether or not anybody answers — it is the raid that
+   * wakes them, not the choice.
+   */
+  for (const person of state.survivors ?? (state.survivor ? [state.survivor] : [])) {
+    if (person.alive && Number.isFinite(person.sleepUntil) && person.sleepUntil > raidAt) {
+      person.sleepUntil = null;
+      events.push({ at: raidAt, type: 'woken', who: person.name ?? null });
+    }
+  }
+}
+
+/**
+ * The window shuts, and nobody answered it.
+ *
+ * Everybody hid, which costs a little more of the stores and nobody's health —
+ * `HIDDEN_SHARE_BOOST`, and the measurement behind how small that is is in
+ * `tools/raid-absence.mjs`. A raid answered inside the window never reaches here; the service
+ * settles that one with a defender and writes the same fields.
+ */
+function settleOpenRaid(state, at, events) {
+  const open = state.raid;
+  if (!open || open.resolvedAt != null || open.closesAt > at) return;
+
+  applyRaid(state, open, null, open.closesAt, events);
+}
+
+/**
+ * Settle a raid, with or without somebody in front of it.
+ *
+ * One function because the two paths differ in exactly one argument and must not differ in
+ * anything else: the stores come off the same way, the injury is floored the same way, and
+ * the log is written once. `answer-raid.js` calls the same arithmetic through the service.
+ */
+function applyRaid(state, open, defender, at, events) {
+  const settlement = state.settlement;
+  const outcome = resolveRaid({
+    wealth: campWealth(settlement.structures, settlement.resources),
+    defence: campDefence(settlement.structures),
+    resources: settlement.resources,
+    survivor: defender,
+    stood: standFor(defender),
+    engaged: true,
+    seed: open.seed,
+    crew: FACTIONS[open.faction]?.name,
+    temper: raidTemper(standingOf(settlement.standings, open.faction)),
+  });
+
+  for (const [kind, amount] of Object.entries(outcome.taken)) {
+    const resource = settlement.resources[kind];
+    if (resource) resource.amount = clamp(resource.amount - amount, 0, resource.cap);
+  }
+
+  // Hurt, never killed: the settled rule, and the only one of these figures that has never
+  // moved. Only somebody who stood can be hurt at all now.
+  if (outcome.damage > 0 && defender?.alive) {
+    defender.health = Math.max(1, defender.health - outcome.damage);
+  }
+
+  open.stoodBy = defender?.id ?? null;
+  open.resolvedAt = at;
+  open.taken = outcome.taken;
+  open.damage = outcome.damage;
+  open.log = outcome.log;
+
   events.push({
     at,
-    type: outcome.repelled ? 'raid_repelled' : 'raid',
-    faction,
+    type: 'raid',
+    faction: open.faction,
     taken: outcome.taken,
     damage: outcome.damage,
     log: outcome.log,
   });
+
+  return outcome;
 }
 
 /**

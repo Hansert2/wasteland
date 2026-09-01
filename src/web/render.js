@@ -565,6 +565,14 @@ ${SURVIVOR_TAB_CSS}
   .pick.off .tag { color: var(--rule); }
   .pick.off input { cursor: default; }
 
+  /* Who stands at the fence: a name to press and what pressing it saves. */
+  .standers { list-style: none; margin: 12px 0 0; padding: 0; display: flex;
+              flex-wrap: wrap; gap: 10px 18px; }
+  .stander { display: flex; align-items: baseline; gap: 8px; }
+  .stander .keeps { font-family: var(--numer); font-size: 12px; color: var(--dim);
+                    font-variant-numeric: tabular-nums; }
+  .stander.off .keeps { color: var(--faint); }
+
   .out { margin: 5px 0 0; color: var(--dim); font-size: 13px; }
   .out .short { color: var(--faint); }
 
@@ -3175,7 +3183,7 @@ export function campPage(view, { error, pane = 'camp' } = {}) {
     shell(view, pane, {
       error,
       inner: `
-    ${section('raid', renderRaidWarning(view.raidExpectedAt))}
+    ${section('raid', view.underRaid ? renderRaid(view) : renderRaidWarning(view.raidExpectedAt))}
     ${section('sky', renderWeather(view.weather))}
     ${section('forecast', renderForecast(view.forecast))}
 
@@ -3600,6 +3608,59 @@ function renderForecast(forecast) {
  * deadline. Stores are all a raid can take, so the useful response to this is to
  * spend them — which is the point: a warning turns a hoard into a decision.
  */
+/**
+ * The camp, being robbed, while somebody is looking at it.
+ *
+ * Phase 12, and the only block on this page that asks a question about the *camp* rather than
+ * about a trip. Raiders are in the yard for four hours and the player names who goes out to
+ * meet them: that survivor takes the injury and the raiders leave with less. Say nothing and
+ * everybody hid, which costs a little more of the stores and nobody's health.
+ *
+ * ### Why every survivor keeps a button
+ *
+ * Including the ones who would be no use. A bare-handed survivor holds on to a fifth and
+ * still comes off badly, which is a bad trade freely available — and the page's rule
+ * everywhere else is that an option you cannot take keeps its place and says why, because a
+ * name that vanishes reads as a bug rather than as a person who is twenty hours away.
+ *
+ * The share each would keep is printed on their own button rather than explained once above
+ * them. It is the whole of the decision, it differs per person, and a caption that said
+ * "better armed survivors keep more" would make the player go and work out who that is.
+ */
+function renderRaid(view) {
+  const raid = view.underRaid;
+  const crew = raid.crew ? `Raiders out of ${raid.crew}` : 'Raiders';
+
+  const stand = (one) => {
+    const share = Math.round(Number(one.stands ?? 0) * 100);
+    const away = one.busy === 'away';
+    return `<li class="stander${away ? ' off' : ''}">
+        <form method="post" action="/raid">
+          <input type="hidden" name="who" value="${escape(String(one.id))}">
+          <button type="submit"${away ? ' disabled' : ''}>${escape(one.name ?? 'Survivor')}</button>
+        </form>
+        <span class="keeps">${
+          away ? 'out there' : `keeps back ${share}%`
+        }</span>
+      </li>`;
+  };
+
+  return `<div class="block wants contact">
+      <div class="block-head">
+        <span class="tag">At the fence</span>
+        <span class="clock deadline">${countdown(
+          raid.closesAt,
+          'gone',
+        )}<small>until they go</small></span>
+      </div>
+      <div class="block-body">
+        <p>${escape(crew)} are in the yard. Whoever stands will come off badly, and the rest of
+          it stays in the stores. Nobody stands and they take more.</p>
+        <ul class="standers">${(view.roster ?? []).map(stand).join('')}</ul>
+      </div>
+    </div>`;
+}
+
 function renderRaidWarning(expectedAt) {
   // No radio, so no hour — and that is a fact about the camp rather than a blank. The
   // line says what is missing and what happens without it, which is the difference

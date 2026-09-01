@@ -644,28 +644,72 @@ const raidedState = (overrides = {}, settlement = {}) => {
   return state;
 };
 
-test('raiders arrive on the hour and carry off part of the stores', () => {
+test('raiders arrive on the hour and nothing is decided yet', () => {
+  /*
+   * Phase 12. A raid used to settle in the same instant it arrived, inside a walk nobody was
+   * present for. It opens a window now, and two hours into it the stores are untouched: the
+   * question of who stands is still on the table.
+   */
   const before = raidedState();
   const scrapBefore = before.settlement.resources.scrap.amount;
 
   const { state, events } = applyTick(before, T0 + hours(6));
+
+  assert.equal(events.filter((e) => e.type === 'raid').length, 0, 'nothing has happened yet');
+  assert.ok(state.raid, 'the camp is being raided');
+  assert.equal(state.raid.at, T0 + hours(4), 'at their hour, not at login');
+  assert.equal(state.raid.closesAt, T0 + hours(8), 'and it stands open for the window');
+  assert.equal(state.raid.resolvedAt, null);
+  assert.equal(
+    state.settlement.resources.scrap.amount,
+    scrapBefore,
+    'and they have carried nothing off while the answer is still open',
+  );
+});
+
+test('a raid nobody answered settles itself when the window shuts', () => {
+  const before = raidedState();
+  const scrapBefore = before.settlement.resources.scrap.amount;
+
+  const { state, events } = applyTick(before, T0 + hours(9));
   const raids = events.filter((e) => e.type === 'raid');
 
   assert.equal(raids.length, 1);
-  assert.equal(raids[0].at, T0 + hours(4), 'at their hour, not at login');
+  assert.equal(raids[0].at, T0 + hours(8), 'at the hour the window shut, not the hour they came');
   assert.ok(state.settlement.resources.scrap.amount < scrapBefore, 'they took something');
-  assert.ok(raids[0].log.join(' ').length > 0, 'and the player is told what happened');
+  assert.equal(state.raid.resolvedAt, T0 + hours(8), 'and the raid is done with');
+
+  /*
+   * And nobody was hurt, which is the trade the phase is built on: everybody hid, so the
+   * raiders took a little more and left the camp whole. Health is spent by standing, and
+   * only by standing.
+   */
+  assert.equal(raids[0].damage, 0, 'a raid nobody stood in front of hurts nobody');
+  assert.match(raids[0].log.join(' '), /Nobody stood in their way/);
 });
 
-test('a raid wounds but never kills, however badly it goes', () => {
-  // The settled rule. Losing a survivor to something you could not have seen while
-  // offline is the one death that would feel unfair.
+test('an unanswered raid never touches anybody, however badly it goes', () => {
+  /*
+   * The settled rule was that a raid wounds and never kills — losing somebody to a thing you
+   * could not have seen while offline is the one death that would feel unfair. Phase 12 makes
+   * it stronger on this path: a raid nobody answered does no damage at all, because the
+   * injury is the price of standing.
+   *
+   * **The floor itself is asserted where a defender can exist**, which is the service —
+   * `test/db/raids.test.js`. Nothing in the tick can name one, so a version of this test that
+   * ran here would pass by never dealing damage, which is exactly how a test stops testing.
+   */
   for (let seed = 0; seed < 200; seed++) {
     const state = raidedState({ survivor: { health: 1 } }, { overrides: { raidSeed: seed } });
-    const { state: after } = applyTick(state, T0 + hours(5));
+    const { state: after, events } = applyTick(state, T0 + hours(9));
 
     assert.equal(after.survivor.alive, true, `seed ${seed} killed them outright`);
     assert.ok(after.survivor.health >= 1, `seed ${seed} took them below 1`);
+    // Read off the event rather than off the gauge: nine hours of rest heals somebody at 1
+    // health, so a survivor who ended higher than they started proves nothing either way.
+    for (const raid of events.filter((e) => e.type === 'raid')) {
+      assert.equal(raid.damage, 0, `seed ${seed} hurt somebody who hid`);
+    }
   }
 });
 
@@ -680,7 +724,8 @@ test('a watchtower turns raids away, and softens the ones it does not', () => {
           overrides: { raidSeed: seed } },
       );
       const scrapBefore = state.settlement.resources.scrap.amount;
-      const { state: after, events } = applyTick(state, T0 + hours(5));
+      // Past the window, because what they leave with is settled when it shuts.
+      const { state: after, events } = applyTick(state, T0 + hours(9));
 
       if (events.some((e) => e.type === 'raid_repelled')) repelled += 1;
       taken += scrapBefore - after.settlement.resources.scrap.amount;
@@ -717,7 +762,13 @@ test('a long absence resolves a sequence of raids, not one big one', () => {
   const raids = events.filter((e) => e.type === 'raid' || e.type === 'raid_repelled');
 
   assert.ok(raids.length > 1, `expected several raids in a month, got ${raids.length}`);
-  assert.equal(state.settlement.raidCount, raids.length, 'the count keeps up');
+  /*
+   * The count moves when raiders *arrive*, and an event lands when the raid *settles* — so at
+   * any instant the two differ by the one that may still be standing open. Asserting they are
+   * equal was right while a raid began and ended in the same instant.
+   */
+  const open = state.raid && state.raid.resolvedAt == null ? 1 : 0;
+  assert.equal(state.settlement.raidCount, raids.length + open, 'the count keeps up');
 
   const hours = raids.map((r) => r.at);
   assert.deepEqual(hours, [...hours].sort((a, b) => a - b), 'and they arrive in order');
@@ -896,7 +947,7 @@ test('standing with a crew changes how their raids land, not whether raids exist
 });
 
 test('a raid event names the crew it answers to', () => {
-  const { events } = applyTick(raidedState(), T0 + hours(5));
+  const { events } = applyTick(raidedState(), T0 + hours(9));
   const raid = events.find((e) => e.type === 'raid' || e.type === 'raid_repelled');
 
   assert.ok(raid.faction, 'attributed');

@@ -19,6 +19,7 @@ import { dispatchExpedition } from '../services/dispatch-expedition.js';
 import { startBuild } from '../services/start-build.js';
 import { startCraft } from '../services/start-craft.js';
 import { startSleep } from '../services/start-sleep.js';
+import { answerRaid } from '../services/answer-raid.js';
 import { setCampClock } from '../services/set-camp-clock.js';
 import { useItem } from '../services/use-item.js';
 import { takeInWanderer } from '../services/take-in-wanderer.js';
@@ -462,6 +463,24 @@ export function createApp() {
       const now = Date.now();
       await advanceSettlement(client, settlementId, now);
       await startSleep(client, settlementId, req.body.who || null, req.body.hours, now);
+    });
+
+    res.redirect(backToCamp(req));
+  });
+
+  app.post('/raid', requireAuth, async (req, res) => {
+    await withTransaction(async (client) => {
+      const settlementId = await settlementIdForPlayer(client, req.playerId);
+      if (!settlementId) throw new InputError('This account has no camp.');
+
+      /*
+       * Advance first, and it matters more here than anywhere else in the game: the thing
+       * being answered has a deadline. Without this the service would settle a raid whose
+       * window the clock has already shut, and the tick would then have nothing to close.
+       */
+      const now = Date.now();
+      await advanceSettlement(client, settlementId, now);
+      await answerRaid(client, settlementId, req.body.who || null, now);
     });
 
     res.redirect(backToCamp(req));
