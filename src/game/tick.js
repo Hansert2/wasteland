@@ -743,6 +743,27 @@ function drainRaid(state, from, at, events) {
   if (!open || open.resolvedAt != null) return;
 
   const settlement = state.settlement;
+
+  /*
+   * A raid that arrived before it had a rate.
+   *
+   * Every raid opened since 2026-09-01 fixes its drain when the raiders do, but one already
+   * standing when that shipped has none — and would sit in the yard for four hours taking
+   * nothing. Filled in on first sight instead of backfilled in SQL, which keeps one copy of
+   * the formula: the migration would have had to restate it, and a formula written twice is a
+   * formula that disagrees with itself the first time either is tuned.
+   *
+   * It is priced off the stores as they are now rather than as they were when the raiders
+   * came, which is the honest reading of a raid that has so far taken nothing.
+   */
+  if (Object.keys(open.perHour ?? {}).length === 0) {
+    open.perHour = drainPerHour({
+      resources: settlement.resources,
+      defence: campDefence(settlement.structures),
+      temper: raidTemper(standingOf(settlement.standings, open.faction)),
+    });
+  }
+
   const start = Math.max(from, open.at);
   const stop = Math.min(at, open.closesAt);
   const hours = (stop - start) / HOUR_MS;

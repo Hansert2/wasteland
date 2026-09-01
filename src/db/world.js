@@ -507,13 +507,17 @@ async function writeRaid(client, settlementId, raid) {
      * for four hours and then jumped.
      */
     await client.query(
-      `update raids set resolved_at = $2, taken = $3, damage = $4, log = $5 where id = $1`,
+      `update raids set resolved_at = $2, taken = $3, damage = $4, log = $5, per_hour = $6
+        where id = $1`,
       [
         raid.id,
         raid.resolvedAt == null ? null : new Date(raid.resolvedAt),
         JSON.stringify(raid.taken ?? {}),
         Math.max(0, Math.round(Number(raid.damage) || 0)),
         JSON.stringify(raid.log ?? []),
+        // Written back too, because the walk fills it in for a raid that predates it having
+        // one. Unchanged on every other save.
+        JSON.stringify(raid.perHour ?? {}),
       ],
     );
   }

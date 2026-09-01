@@ -575,13 +575,43 @@ ${SURVIVOR_TAB_CSS}
   .stander .keeps { font-family: var(--numer); font-size: 12px; color: var(--dim);
                     font-variant-numeric: tabular-nums; }
   .stander.off .keeps { color: var(--faint); }
-  /* What has gone, and who is out there stopping more of it going. */
-  .looted, .fencers { margin-top: 15px; }
-  .looted .stat-head, .fencers .stat-head { display: block; margin-bottom: 7px; }
-  .fencers ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; }
-  .fencer { display: flex; align-items: baseline; justify-content: space-between; gap: 16px;
-            flex-wrap: wrap; }
-  .fencer .who { color: var(--bone); }
+  /*
+   * A raid, which is the one block on this page that is an instrument rather than a reading.
+   *
+   * The share is the hero because it is the only figure here the player moves: the track under
+   * it is the same one the survivor gauges and the road's live link use, so a number that
+   * fills up looks the same wherever it appears. What has gone sits under it as a line rather
+   * than a stack, because it is the raid's business and not the player's.
+   */
+  .holding { margin-bottom: 16px; }
+  .holding .val { font-size: 20px; }
+  .holding .gone { margin: 10px 0 0; font-family: var(--numer); font-size: 12.5px;
+                   line-height: 1.5; color: var(--dim); font-variant-numeric: tabular-nums; }
+
+  /*
+   * One row per survivor, ticked when they are out there. Three columns on a grid rather than
+   * a flex row: the shares line up under each other and the tallies start in the same place,
+   * so a list that is changing under you can still be read down.
+   */
+  .fencers { list-style: none; margin: 0; padding: 0; display: grid; gap: 9px; }
+  .fencer { display: grid; grid-template-columns: minmax(0, 1fr) 4ch auto; gap: 4px 14px;
+            align-items: baseline; }
+  .fencer .share { font-family: var(--numer); font-size: 12px; color: var(--dim);
+                   font-variant-numeric: tabular-nums; text-align: right; }
+  .fencer.off .share { color: var(--faint); font-size: 11px; text-align: right;
+                       white-space: nowrap; }
+  .fencer .tally { grid-column: 1 / -1; display: flex; gap: 14px; font-family: var(--numer);
+                   font-size: 11.5px; color: var(--faint); font-variant-numeric: tabular-nums; }
+  .fencer .tally:empty { display: none; }
+  /* Out there: the name carries the weight, which is the whole readout on this row. */
+  .fencer.outthere .tag { color: var(--bone); }
+  .fencer.outthere .share { color: var(--oxide-light); }
+  .fencer .held { color: var(--dim); }
+
+  @media (max-width: 560px) {
+    .fencer { grid-template-columns: minmax(0, 1fr) auto; }
+    .fencer .tally { gap: 10px; }
+  }
 
   /* What the fence is worth and the way to change it, on one line. */
   .standers-foot { display: flex; align-items: center; justify-content: space-between;
@@ -3707,31 +3737,35 @@ function renderForecast(forecast) {
 /**
  * The camp being robbed, with the clock running.
  *
- * Reworked 2026-09-01. A raid used to be a question with one answer in it — press a name, the
- * raid settles, done. It has a duration now: raiders are in the yard for four hours carrying
- * things off the whole time, and the player can put people at the fence and pull them back at
- * any point in it. So this block is not a prompt, it is **an instrument you watch and act on**.
+ * Reworked twice on 2026-09-01. The mechanic first: a raid is a state the camp is in for four
+ * hours rather than a question with one answer, so this is an instrument you watch and act on
+ * rather than a prompt. Then the block itself, because the first cut of it had **three lists
+ * of the same four people** — a stat block of what had been taken, a list of who was at the
+ * fence, and a list of who could be — and a paragraph explaining what all of it meant.
  *
- * Three things are live, and all three tick from the same pair of numbers — a total that was
- * true at a stated instant and a rate per hour. That is only honest because the drain is fixed
- * when raiders arrive: a rate that chased the falling stores could not be extrapolated forward
- * by a page that has not spoken to the server in ten minutes.
+ * One list now. A survivor is a row; a row that is ticked is somebody out there, and it grows
+ * the two figures that decide whether to leave them there. Nothing appears or disappears when
+ * you send somebody, which is what makes the list scannable while it changes under you.
  *
- * The people are one form, checked meaning "out there now". Ticking somebody and submitting
- * sends them; unticking and submitting brings them back. There is no separate withdraw button
- * because withdrawing is not a separate act — it is the same list, shorter.
+ * ### The hero is the share, not the loss
+ *
+ * What a player controls is how much of the drain is being held back, so that is the figure at
+ * the top with the track under it — the same gauge idiom the road's live link and the survivor
+ * blocks use. What is *going* is a fact about the raid rather than about them, and sits under
+ * it in one line. Four stat rows for four resources was a footnote where a headline belonged.
  */
 function renderRaid(view) {
   const raid = view.underRaid;
   const crew = raid.crew ? `Raiders out of ${raid.crew}` : 'Raiders';
   const since = new Date(raid.takenAt).getTime();
   const stop = new Date(raid.closesAt).getTime();
+  const stand = Number(raid.stand ?? 0);
 
   /*
-   * A figure that climbs on its own. `data-count` is what it was at `data-since`, `data-rate`
-   * is per hour, and `data-stop` is where the climbing ends — see the counter in the client
-   * script. Rendered with a real value too, so a page with no script still says something true
-   * about the moment it was drawn.
+   * A figure that climbs on its own. `data-count` is what it was at `data-since`, and
+   * `data-per-hour` is the rate until `data-stop` — see the counter in the client script.
+   * Rendered with a real value too, so a page with no script still says something true about
+   * the moment it was drawn.
    */
   const live = (from, rate, decimals = 0) =>
     `<span data-count="${from}" data-per-hour="${rate}" data-since="${since}"
@@ -3739,51 +3773,52 @@ function renderRaid(view) {
 
   const kinds = Object.keys(raid.perHour ?? {});
 
-  const takenRows = kinds
+  // One line, in the numeric face, joined the way this page joins facts that share a line.
+  const taken = kinds
     .map(
       (kind) =>
-        `<span class="stat-row"><span class="k">${escape(kind)}</span><span class="v">${live(
-          Number(raid.taken?.[kind] ?? 0),
-          Number(raid.losingPerHour?.[kind] ?? 0),
-        )}</span></span>`,
+        `${live(Number(raid.taken?.[kind] ?? 0), Number(raid.losingPerHour?.[kind] ?? 0))} ${escape(
+          kind,
+        )}`,
     )
-    .join('');
+    .join(' &middot; ');
+
+  const out = new Map((raid.defending ?? []).map((one) => [String(one.id), one]));
 
   /*
-   * What each person at the fence has been worth, and what it has cost them — the two figures
-   * the decision to pull somebody back is actually made on. Both climb while they stand there.
+   * What one person at the fence has been worth and what it has cost them — the two figures a
+   * decision to pull them back is actually made on, and both still climbing while they stand.
+   *
+   * Their share of the crew's holding rather than the whole of it: three people out there are
+   * each credited with their part, and the parts add up to what the camp actually kept.
    */
-  const atTheFence = (raid.defending ?? []).map((one) => {
-    const held = kinds
-      .map((kind) => Number(one.prevented?.[kind] ?? 0))
-      .reduce((sum, part) => sum + part, 0);
-    const heldRate = kinds
-      .map((kind) => Number(raid.perHour?.[kind] ?? 0))
-      .reduce((sum, part) => sum + part, 0) * Number(raid.stand ?? 0)
-      / Math.max(1, (raid.defending ?? []).length);
+  const worth = (one) => {
+    const held = kinds.reduce((sum, kind) => sum + Number(one.prevented?.[kind] ?? 0), 0);
+    const crewSize = Math.max(1, (raid.defending ?? []).length);
+    const heldRate =
+      (kinds.reduce((sum, kind) => sum + Number(raid.perHour?.[kind] ?? 0), 0) * stand) / crewSize;
 
-    return `<li class="fencer">
-        <span class="who">${escape(one.name ?? 'Survivor')}</span>
-        <span class="keeps">held back ${live(held, heldRate)} &middot; took ${live(
-          Number(one.damage ?? 0),
-          Number(view.vitals?.raidDamagePerHour ?? 0),
-        )}</span>
-      </li>`;
-  });
+    return `<span class="held">held ${live(held, heldRate)}</span>
+            <span class="took">took ${live(
+              Number(one.damage ?? 0),
+              Number(view.vitals?.raidDamagePerHour ?? 0),
+            )}</span>`;
+  };
 
-  const pick = (one) => {
+  const row = (one) => {
     const away = one.busy === 'away';
-    const out = (raid.defending ?? []).some((d) => String(d.id) === String(one.id));
-    return `<li class="stander${away ? ' off' : ''}">
+    const standing = out.get(String(one.id));
+    return `<li class="fencer${away ? ' off' : ''}${standing ? ' outthere' : ''}">
         <label class="pick${away ? ' off' : ''}">
           <input type="checkbox" name="who" value="${escape(String(one.id))}"${
             away ? ' disabled' : ''
-          }${out ? ' checked' : ''}>
+          }${standing ? ' checked' : ''}>
           <span class="tag">${escape(one.name ?? 'Survivor')}</span>
         </label>
-        <span class="keeps">${
-          away ? 'out there' : `keeps back ${Math.round(Number(one.stands ?? 0) * 100)}%`
+        <span class="share">${
+          away ? 'on the road' : `${Math.round(Number(one.stands ?? 0) * 100)}%`
         }</span>
+        <span class="tally">${standing ? worth(standing) : ''}</span>
       </li>`;
   };
 
@@ -3796,26 +3831,17 @@ function renderRaid(view) {
         )}<small>until they go</small></span>
       </div>
       <div class="block-body">
-        <p>${escape(crew)} are in the yard and they are carrying things off while you read
-          this. Anybody you send out slows them and comes off worse for it; you can call them
-          back whenever you like.</p>
-
-        <div class="looted">
-          <span class="stat-head">taken so far</span>
-          ${takenRows}
+        <div class="holding">
+          <div class="gauge-top"><span class="tag">holding back</span>
+            <span class="val">${Math.round(stand * 100)}%</span></div>
+          <div class="track">${stand > 0 ? `<i style="width:${(stand * 100).toFixed(1)}%"></i>` : ''}</div>
+          <p class="gone">${escape(crew)} have taken ${taken}</p>
         </div>
 
-        ${
-          atTheFence.length > 0
-            ? `<div class="fencers"><span class="stat-head">at the fence</span>
-                 <ul>${atTheFence.join('')}</ul></div>`
-            : ''
-        }
-
         <form method="post" action="/raid">
-          <ul class="standers">${(view.roster ?? []).map(pick).join('')}</ul>
+          <ul class="fencers">${(view.roster ?? []).map(row).join('')}</ul>
           <div class="standers-foot">
-            <span class="keeps">holding back ${Math.round(Number(raid.stand ?? 0) * 100)}%</span>
+            <span class="keeps">send anybody, call them back whenever</span>
             <button type="submit" class="fill">Set the fence</button>
           </div>
         </form>
