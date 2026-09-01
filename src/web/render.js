@@ -45,8 +45,11 @@
  * got the box, and could not see it. The page went and got the thing, then hid it.
  */
 const PANES = {
-  camp: ['raid', 'sky', 'forecast', 'events', 'direction', 'structures', 'caravan', 'roster'],
-  survivor: ['gate', 'survivor', 'expedition', 'workshop', 'forecast'],
+  camp: [
+    'raid', 'sky', 'forecast', 'events', 'direction', 'structures', 'workshop', 'caravan',
+    'roster',
+  ],
+  survivor: ['gate', 'survivor', 'expedition', 'forecast'],
   road: ['road'],
   trade: ['caravan', 'post', 'standings'],
 };
@@ -3213,9 +3216,9 @@ export function campPage(view, { error, pane = 'camp' } = {}) {
       * full width it always wanted. No wrapper: the roster is one block with the people as
       * rows in it, so there is nothing here left to arrange.
       *
-      * Order is what puts the roster on top, and it costs nothing elsewhere: none of
-      * these four sections appears on any other view, so filtered through PANES every
-      * other page is byte-for-byte what it was.
+      * Order is what puts the roster on top. That cost nothing elsewhere while all four of
+      * these were survivor-only; the bench has since moved to the camp view and out of this
+      * group, which is why it is no longer in the stream just below.
       */ ''}
     ${section(
       'survivor',
@@ -3228,8 +3231,6 @@ export function campPage(view, { error, pane = 'camp' } = {}) {
       'expedition',
       view.roster?.length ? renderExpeditions(view) : quiet('Away', NOTHING.expedition),
     )}
-    ${section('workshop', renderWorkshop(view))}
-
     ${section(
       'structures',
       renderStructures(
@@ -3244,6 +3245,20 @@ export function campPage(view, { error, pane = 'camp' } = {}) {
         whoSelector(view, { field: 'work', label: 'working' }),
       ),
     )}
+    ${/*
+      * The bench under the structures, and on the camp view rather than the survivors'.
+      *
+      * It was beside the people because crafting is something a survivor does. So is
+      * building, and that has always lived here — what the two blocks actually share is the
+      * *camp*: a workshop level gates the recipes, one crew queue serves both, and the
+      * question "what should we be making" is asked in the same breath as "what should we be
+      * raising". A player deciding either was reading two views to do it.
+      *
+      * Order matters because a pane is a CSS filter over one stream, not a page of its own —
+      * so this sits below structures on screen by sitting below it here.
+      */ ''}
+    ${section('workshop', renderWorkshop(view))}
+
     ${section('road', renderRoad(view.road))}
 
     ${section('caravan', renderCaravan(view.caravan, Boolean(view.survivor)))}
