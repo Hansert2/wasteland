@@ -581,6 +581,13 @@ ${SURVIVOR_TAB_CSS}
    * link takes fuel — and laid out on the same grid as the reached rows above so the whole
    * thing reads as one road rather than as a block and a list.
    */
+  /* The live link's own gauge: the same track and figure the survivor blocks use. */
+  .paying { margin-bottom: 13px; }
+  .paying .val { font-size: 18px; }
+  .next-link .stat-row { margin-top: 7px; }
+  .next-link form.row { margin-top: 15px; }
+  .next-link .road-note { margin-top: 13px; }
+
   .ahead { list-style: none; margin: 0; padding: 14px 18px 4px; display: grid; gap: 9px; }
   .ahead .link { display: grid; grid-template-columns: 2ch minmax(0, 1fr) auto; gap: 4px 12px;
                  align-items: baseline; }
@@ -5029,12 +5036,45 @@ function renderPost(post, alive) {
  * With no fuel at all there is no form, for the same reason a recipe you cannot afford
  * has no button: an input that can only be refused is not an offer.
  */
+/**
+ * What a link opens, as facts rather than as a sentence.
+ *
+ * `linkGot` says it in prose — "somewhere new to send people &mdash; 8h out, danger 3, 3
+ * contacts" — which is right where the road is telling you a story about a place you have
+ * already reached. It is wrong where the road is a thing you are buying. Played on
+ * 2026-09-01: *"too many sentences and commas."*
+ *
+ * The page's own rule, written above `stats`: **a number belongs in a row, and prose is for
+ * what a number cannot say.** How far, how dangerous and how much there is to answer are all
+ * numbers. Middots, because that is how this page already joins facts that share a line.
+ */
+function linkFacts(link) {
+  const parts = [];
+
+  if (link.place) {
+    parts.push(escape(duration(link.place.travelHours)));
+    parts.push(`danger ${link.place.danger}`);
+    if (link.place.moments > 0) parts.push(`${link.place.moments} contacts`);
+  }
+  if (link.tradePost) parts.push('trader');
+  if (parts.length === 0) parts.push('neighbours only');
+
+  return parts.join(' &middot; ');
+}
+
 function addFuel(road) {
   const wanted = road.next.cost - road.next.fuel;
   const most = Math.floor(Math.min(road.available, wanted));
 
+  /*
+   * Only the half that sends the player somewhere.
+   *
+   * It read "No fuel in the stores. Only expeditions bring it back." — and the stores row
+   * above now states that in a figure, so the first sentence had become the same fact in
+   * words with a zero next to it. What a row cannot say is where fuel comes from.
+   */
   if (most < 1) {
-    return `<p><small>No fuel in the stores. Only expeditions bring it back.</small></p>`;
+    return `<p class="road-note">Only expeditions bring fuel back.</p>`;
   }
 
   return `<form method="post" action="/road" class="row">
@@ -5104,9 +5144,8 @@ function renderRoad(road) {
   // having done it, and a page that keeps explaining itself is a page nobody reads.
   const rule =
     road.reached.length === 0
-      ? `<p class="road-note">Fuel you put toward a place is spent — you cannot take it
-           back. It counts toward reaching that place, and once the cost is covered it
-           stays reached.</p>`
+      ? `<p class="road-note">Fuel goes in and does not come out. Cover the cost and the
+           place stays reached.</p>`
       : '';
 
   /*
@@ -5129,12 +5168,32 @@ function renderRoad(road) {
             (link) => `<li class="link off">
               <span class="idx">${link.index}</span>
               <span class="name">${escape(link.name)}</span>
-              <span class="what">${linkGot(link) || 'somewhere to reach'}</span>
+              <span class="what">${linkFacts(link)}</span>
               <span class="cost">${n(link.cost, 0)} fuel</span>
             </li>`,
           )
           .join('')}</ul>`
       : '<p class="road-note">Nothing past this one. It is the last.</p>';
+
+  /*
+   * The live link as a gauge, which is what it always was.
+   *
+   * It read as three sentences — what the place is, what has been paid, what is in the
+   * stores — and the player's verdict was the right one: too many sentences and commas. Every
+   * one of those facts is a figure, and this page has an idiom for a figure that fills up.
+   * The track and the label-and-value rows are the same ones the survivor gauges use, so the
+   * road now reads the way the rest of the game does rather than like a paragraph about it.
+   *
+   * `wants` is the number a player actually acts on — what is left, not what is done — so it
+   * leads. The track carries the shape and the row carries the figure.
+   */
+  const paid = Math.max(0, Math.min(1, road.next.fuel / Math.max(1, road.next.cost)));
+  const wants = Math.max(0, road.next.cost - road.next.fuel);
+  const facts = [
+    ['still wants', `${n(wants, 0)} fuel`],
+    ['in the stores', `${n(road.available, 0)} fuel`],
+    ['opens', linkFacts(road.next)],
+  ];
 
   return `${block(
     `The road &mdash; ${road.reached.length} of ${road.links} reached`,
@@ -5144,12 +5203,17 @@ function renderRoad(road) {
     <div class="block wants next-link">
       <h2>Working toward ${escape(road.next.neighbour)}</h2>
       <div class="block-body">
-        <p>${linkGot(road.next)}</p>
-        <p class="state">Paid so far ${n(road.next.fuel, 0)} of ${n(road.next.cost, 0)} fuel.${
-          // Said once. With no fuel at all `addFuel` says so and says why, and a stores
-          // line beside it would only be the same sentence with a zero in it.
-          road.available >= 1 ? ` ${n(road.available, 0)} in the stores.` : ''
-        }</p>
+        <div class="paying">
+          <div class="gauge-top"><span class="tag">paid</span>
+            <span class="val">${n(road.next.fuel, 0)} / ${n(road.next.cost, 0)}</span></div>
+          <div class="track">${paid > 0 ? `<i style="width:${(paid * 100).toFixed(1)}%"></i>` : ''}</div>
+        </div>
+        ${facts
+          .map(
+            ([key, value]) =>
+              `<span class="stat-row"><span class="k">${escape(key)}</span><span class="v">${value}</span></span>`,
+          )
+          .join('')}
         ${addFuel(road)}
       </div>
       ${/*
