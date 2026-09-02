@@ -631,8 +631,12 @@ ${SURVIVOR_TAB_CSS}
    * than what it cost them, which is the wrong way round for a control you press to *stop*
    * paying: the injury is the half of the trade being decided on.
    */
-  .fencer .tally { display: flex; gap: 16px; font-family: var(--numer); font-size: 12px;
-                   color: var(--dim); font-variant-numeric: tabular-nums; }
+  .fencer .tally { display: flex; flex-wrap: wrap; gap: 4px 16px; font-family: var(--numer);
+                   font-size: 12px; color: var(--dim); font-variant-numeric: tabular-nums; }
+  /* What is in their hands, which is the whole of why one row differs from the next. */
+  .fencer .arms { color: var(--faint); }
+  .fencer .hurt { color: var(--oxide-light); }
+  .fencer .share.noted { cursor: help; }
   /* Out there: the name takes the weight and the share takes the accent. */
   .fencer.outthere .tag { color: var(--bone); }
   .fencer.outthere .share { color: var(--oxide-light); }
@@ -3859,14 +3863,32 @@ function renderRaid(view) {
    * Their share of the crew's holding rather than the whole of it: three people out there are
    * each credited with their part, and the parts add up to what the camp actually kept.
    */
+  /*
+   * What one person at the fence has saved, in the things they saved rather than in a total.
+   *
+   * It read "held 74", which is food and fuel and scrap and water added together — a number in
+   * no unit at all, and the only place in this game that adds resources up. The log has never
+   * done it: it says "took 67 food, 75 water, 46 scrap", so this says it the same way.
+   *
+   * Their share of what the crew held, per resource. With `standTogether` being multiplicative
+   * there is no single right answer to which of three stopped a particular sack of grain, and
+   * proportional is the one a player can follow: the parts add up to what the camp kept.
+   */
   const worth = (one) => {
-    const held = kinds.reduce((sum, kind) => sum + Number(one.prevented?.[kind] ?? 0), 0);
     const crewSize = Math.max(1, (raid.defending ?? []).length);
-    const heldRate =
-      (kinds.reduce((sum, kind) => sum + Number(raid.perHour?.[kind] ?? 0), 0) * stand) / crewSize;
+    const saved = kinds
+      .filter((kind) => Number(one.prevented?.[kind] ?? 0) >= 0.5)
+      .map(
+        (kind) =>
+          `${live(
+            Number(one.prevented?.[kind] ?? 0),
+            (Number(raid.perHour?.[kind] ?? 0) * stand) / crewSize,
+          )} ${escape(kind)}`,
+      )
+      .join(' &middot; ');
 
-    return `<span class="held">held ${live(held, heldRate)}</span>
-            <span class="took">took ${live(
+    return `${saved ? `<span class="saved">saved ${saved}</span>` : ''}
+            <span class="hurt">damage ${live(
               Number(one.damage ?? 0),
               Number(view.vitals?.raidDamagePerHour ?? 0),
             )}</span>`;
@@ -3883,10 +3905,33 @@ function renderRaid(view) {
           }${standing ? ' checked' : ''}>
           <span class="tag">${escape(one.name ?? 'Survivor')}</span>
         </label>
-        <span class="share">${
+        ${/*
+           * The share, with what it is made of one hover away rather than repeated on every
+           * row: everybody's fifth for turning up at all is the same fifth, and printing it
+           * four times is four copies of one fact. What *differs* between two survivors is the
+           * thing in their hands, so that goes on the row itself, in words.
+           */ ''}
+        <span class="share noted">${
           away ? 'on the road' : `${Math.round(Number(one.stands ?? 0) * 100)}%`
+        }${
+          away
+            ? ''
+            : stats(`${one.name ?? 'They'} at the fence`, [
+                ['standing there', `+${Math.round(Number(view.vitals?.raidBareStand ?? 0) * 100)}%`],
+                ...(one.armedWith
+                  ? [[one.armedWith.name, `+${Math.round(Number(one.armedWith.potency ?? 0))}%`]]
+                  : [['carrying no weapon', '+0%']]),
+                ['holds back', `${Math.round(Number(one.stands ?? 0) * 100)}% of the raid`],
+                ['costs', `${rate(view.vitals?.raidDamagePerHour ?? 0)} damage an hour`],
+              ])
         }</span>
-        <span class="tally">${standing ? worth(standing) : ''}</span>
+        <span class="tally">${
+          away
+            ? ''
+            : `<span class="arms">${escape(
+                one.armedWith ? String(one.armedWith.name).toLowerCase() : 'unarmed',
+              )}</span>${standing ? worth(standing) : ''}`
+        }</span>
       </li>`;
   };
 

@@ -846,6 +846,8 @@ function vitalsOf(radDecayPerHour) {
     // What an hour at the fence costs, so the raid block can print a rate rather than a copy
     // of one. See `RAID_DAMAGE_PER_HOUR`.
     raidDamagePerHour: RAID_DAMAGE_PER_HOUR,
+    // What standing bare-handed is worth, so the page can say what the rest came from.
+    raidBareStand: standFor({ inventory: [] }),
     sleepHours: CONFIG.sleepHours,
     radDecayPerHour,
     radDecayBasePerHour: CONFIG.radDecayPerHour,
@@ -2024,6 +2026,17 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
          * the whole of the answer, where "carries a spear" makes the player work it out.
          */
         stands: standFor(person),
+        /*
+         * And what makes that figure what it is, which is the only part of it that differs
+         * between two survivors. Everybody holds a fifth back by standing there at all; the
+         * rest is whatever they happen to be carrying, so the weapon *is* the explanation.
+         *
+         * Read off the page's own pack rather than the simulation's, because this one has the
+         * item's name on it and the other has only its slug and potency.
+         */
+        armedWith: (packsByOwner.get(Number(person.id)) ?? [])
+          .filter((item) => item.kind === 'weapon' && item.qty > 0)
+          .sort((a, b) => Number(b.potency ?? 0) - Number(a.potency ?? 0))[0] ?? null,
         /*
          * When they wake, for the block to count down to.
          *
