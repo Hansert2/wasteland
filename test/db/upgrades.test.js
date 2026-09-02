@@ -519,12 +519,13 @@ test('a bed makes room, and somebody is at the gate the next morning', async () 
 
 test('every block that occupies somebody says who, and keeps its own answer', async () => {
   /*
-   * Three verbs occupy a person — going, building or fitting, and the bench — so three
-   * blocks ask who. Each keeps its own: the bench's answer is not the dispatch table's, and
-   * a page where changing one changed all three would be one decision wearing three labels.
+   * Three verbs occupy a person — going, building or fitting, and the bench — and each keeps
+   * its own answer: the bench's is not the structures table's, and a page where changing one
+   * changed all three would be one decision wearing three labels.
    *
-   * Chosen once per block rather than once per row, which is the decision of 2026-08-31: a
-   * roster repeated on eleven region rows is the same question asked eleven ways.
+   * **All three ask on the row now**, as of 2026-09-02: Send on a road, Build and Fit on a
+   * structure. The names hang off the control you were already reaching for, so no block
+   * carries a selector in its strip except the bench, which still has one.
    */
   await withRollback(async (client) => {
     const settlementId = await setup(client);
@@ -541,26 +542,32 @@ test('every block that occupies somebody says who, and keeps its own answer', as
     const view = await viewCamp(client, settlementId);
     const html = campPage(view, { pane: 'camp' }) + campPage(view, { pane: 'survivor' });
 
-    const fields = [...html.matchAll(/data-whopicks="([a-z]+)"/g)].map((m) => m[1]);
-    assert.deepEqual(
-      [...new Set(fields)].sort(),
-      ['bench', 'send', 'work'],
-      'three blocks ask, and they are the three that occupy somebody',
-    );
+    assert.doesNotMatch(html, /data-whopicks=/, 'no block asks in its strip any more');
+    assert.doesNotMatch(html, /data-whofield=/, 'and no row carries an answer set somewhere else');
 
-    // Every row carries a hidden field tagged with its own block, which is what keeps the
-    // three answers apart when the client copies a selection into them.
-    for (const field of ['bench', 'send', 'work']) {
+    /*
+     * Each asks on its own row, with every name a submit button of its own. No hidden field
+     * and no script: the browser posts the `who` belonging to whichever name was pressed.
+     */
+    for (const verb of ['Send', 'Build', 'Fit', 'Make']) {
       assert.ok(
-        html.includes(`data-whofield="${field}"`),
-        `${field} rows carry the block's answer`,
+        html.includes(`class="lead">${verb}`),
+        `${verb} is not offered on the row that needs it`,
       );
     }
+    assert.match(
+      html,
+      /<button type="submit" name="who" value="\d+">/,
+      'and a name to press is a submit button carrying that person',
+    );
 
-    // And both survivors are offered, since neither is busy.
-    const picker = /<select data-whopicks="work"[^>]*>([\s\S]*?)<\/select>/.exec(html);
-    assert.ok(picker, 'the structures block has a selector');
-    assert.equal((picker[1].match(/<option/g) ?? []).length, 2, 'both free survivors offered');
+    // Both survivors can be pressed somewhere, since neither is busy.
+    const offered = [
+      ...new Set(
+        [...html.matchAll(/<button type="submit" name="who" value="(\d+)">/g)].map((m) => m[1]),
+      ),
+    ];
+    assert.equal(offered.length, 2, 'both free survivors can be pressed');
   });
 });
 
@@ -598,37 +605,33 @@ test('somebody already working is shown as working, and cannot be chosen', async
     const html = campPage(view, { pane: 'camp' }) + campPage(view, { pane: 'survivor' });
 
     /*
-     * Going is asked on the survivor's own card now, so it is a radio rather than an option
-     * in a list — but under the same rule: the control keeps its place and refuses, because
-     * a name that vanishes reads as a bug where one that is there and will not be picked
-     * reads as a person who is occupied.
+     * Going is asked on the road now, so the refusal is a name in the Send menu rather than
+     * a radio on a card — under the same rule either way: the control keeps its place and
+     * refuses, because a name that vanishes reads as a bug where one that is there and will
+     * not be pressed reads as a person who is occupied.
+     *
+     * `[^]` rather than the usual any-character class: this pattern is built in a template
+     * literal, where a lone backslash-s collapses to a bare s before RegExp ever sees it.
      */
-    /*
-     * Anchored on the name inside the div rather than on the whole element: what has somebody
-     * is a chip on the name line now, so `who-name` holds the name *and* "fitting · filtration"
-     * with its countdown. The card is still found by whose name opens it.
-     */
-    const theirCard = new RegExp(
-      `<div class="who-name">Odd[^]*?<label class="pick( off)?">[^]*?value="${odd}"([^>]*)>`,
+    const inMenu = new RegExp(
+      `<ul class="names">[^]*?<button type="button" disabled>Odd<span class="why">([^<]*)</span>`,
     ).exec(html);
-    assert.ok(theirCard, 'their card offers the choice at all');
-    assert.equal(theirCard[1], ' off', 'and marks it as one they cannot take');
-    assert.match(theirCard[2], /disabled/, 'so the browser refuses before the service has to');
+    assert.ok(inMenu, 'the Send menu still lists them');
+    assert.equal(inMenu[1], 'fitting', 'and says what has them, where no card is beside it');
+    assert.doesNotMatch(
+      html,
+      new RegExp(`<button type="submit" name="who" value="${odd}">`),
+      'and offers no way to send them',
+    );
 
-    for (const field of ['work', 'bench']) {
-      // [^] rather than the usual any-character class, because this pattern is built in a
-      // template literal, where a lone backslash-s collapses to a bare s before RegExp
-      // ever sees it and the class quietly stops matching anything.
-      const picker = new RegExp(
-        `<select data-whopicks="${field}"[^>]*>([^]*?)</select>`,
-      ).exec(html);
-      assert.ok(picker, `${field} has a selector`);
-
-      const theirs = new RegExp(`<option value="${odd}"([^>]*)>`).exec(picker[1]);
-      assert.ok(theirs, `${field} still lists them`);
-      assert.match(theirs[1], /disabled/, `${field} does not let them be chosen`);
-      assert.match(picker[1], /Odd — fitting/, `${field} says what they are doing`);
-    }
+    /*
+     * And every other verb refuses them the same way, in its own menu. [^] rather than the
+     * usual any-character class: this pattern is built in a template literal, where a lone
+     * backslash-s collapses to a bare s before RegExp ever sees it.
+     */
+    const refusals = [...html.matchAll(/<button type="button" disabled>Odd<span class="why">([^<]*)</g)];
+    assert.ok(refusals.length >= 4, `only ${refusals.length} menus refuse them`);
+    for (const [, why] of refusals) assert.equal(why, 'fitting', 'and each says what has them');
 
     /*
      * And the block says it first.
@@ -719,18 +722,18 @@ test('the bed row says what it costs, and which ceiling is holding it', async ()
   });
 });
 
-test('the card that reads as chosen is the one the table would actually send', async () => {
+test('the road offers every name, and only the free ones can be pressed', async () => {
   /*
-   * The invariant that lets "who goes" live on the person.
+   * The invariant that lets who-goes live on the road.
    *
-   * The choice is a radio outside every form: it submits nothing, and the eleven dispatch
-   * forms carry the id in a hidden field the client keeps in step with it. So the page has
-   * to agree with itself before a line of script runs — the card drawn as picked and the id
-   * sitting in the hidden fields are chosen by two different functions, and if they ever
-   * disagree a player with JavaScript off sends somebody they did not pick.
+   * It used to live on the person: a radio outside every form, and eleven hidden fields the
+   * client kept in step with it, so the card drawn as picked and the id in those fields had
+   * to agree before a line of script ran or somebody with JavaScript off sent a person they
+   * did not pick. **That whole class of disagreement is gone**: a name is a submit button
+   * carrying its own id, and the browser posts the one that was pressed.
    *
-   * The button names them for the same reason: the table used to ask who in a dropdown in
-   * its own caption, and now it only reports the answer.
+   * What has to hold now is smaller and stronger — every free survivor is offered on every
+   * road, and nobody occupied can be pressed anywhere.
    */
   await withRollback(async (client) => {
     const settlementId = await setup(client);
@@ -752,22 +755,22 @@ test('the card that reads as chosen is the one the table would actually send', a
     const view = await viewCamp(client, settlementId);
     const html = campPage(view, { pane: 'survivor' });
 
-    const checked = /<input type="radio"[^>]*value="(\d+)"[^>]*checked/.exec(html);
-    assert.ok(checked, 'exactly one card is drawn as going');
-    assert.equal(Number(checked[1]), Number(rows[0].id), 'and it is the one who is free');
+    const sendable = [
+      ...new Set(
+        [...html.matchAll(/<button type="submit" name="who" value="(\d+)">/g)].map((m) => m[1]),
+      ),
+    ];
+    assert.deepEqual(sendable, [String(rows[0].id)], 'only the free one can be sent');
 
-    const carried = [...new Set([...html.matchAll(/data-whofield="send" value="(\d+)"/g)].map((m) => m[1]))];
-    assert.deepEqual(carried, [checked[1]], 'every row carries that same person, and only them');
+    const menus = (html.match(/<button type="button" class="lead">Send/g) ?? []).length;
+    const roads = (html.match(/action="\/expedition"/g) ?? []).length;
+    assert.equal(menus, roads, 'every road asks, and asks the same way');
 
-    assert.match(
-      html,
-      /<button type="submit">Send <span data-nameof="send">Odd<\/span>/,
-      'and the button says whose trip it is about to start',
-    );
+    // The occupied are listed and refused rather than dropped.
+    assert.match(html, new RegExp(`<button type="button" disabled>${founder.name}`));
 
-    // The block is a catalogue of places now, and stopped asking a question about somebody
-    // standing in another block.
-    assert.doesNotMatch(html, /<select data-whopicks="send"/, 'the dropdown is gone');
+    assert.doesNotMatch(html, /data-whopicks="send"/, 'the dropdown is gone');
+    assert.doesNotMatch(html, /name="sending"/, 'and so is the radio on the card');
     assert.match(html, /<h2>The roads out/, 'and the block is named for what is left in it');
   });
 });

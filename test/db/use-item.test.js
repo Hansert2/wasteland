@@ -265,6 +265,38 @@ test('a pack belongs to the person whose block it is in', async () => {
   });
 });
 
+test('the page offers the verb to the person who would actually take it', async () => {
+  /*
+   * The service was taught whose pack it is; the page was not, and the two disagreed. Whether
+   * a row offered Use came from `state.survivor` — the founder-era singular — so every row on
+   * every card was judged by the first survivor: with them at full health nobody could take a
+   * ration, and with them hurt every pack advertised a mend `useItem` refuses for its owner.
+   */
+  await withRollback(async (client) => {
+    const { settlementId, characterId: first } = await seed(client, { health: 100 });
+    const { rows } = await client.query(
+      `insert into characters (settlement_id, name, born_at, health, radiation)
+       values ($1, 'Odd', now(), 40, 0) returning id`,
+      [settlementId],
+    );
+    const hurt = rows[0].id;
+
+    await give(client, first, 'preserved_meal');
+    await give(client, hurt, 'preserved_meal');
+
+    const view = await viewCamp(client, settlementId);
+    const rowFor = (id) =>
+      view.inventory.find(
+        (item) => Number(item.character_id) === Number(id) && item.slug === 'preserved_meal',
+      );
+
+    assert.equal(rowFor(first).use, null, 'the whole one is offered nothing');
+    assert.equal(rowFor(first).idle, 'nothing to mend', 'and told why');
+    assert.ok(rowFor(hurt).use, 'the hurt one is offered the ration in their own pack');
+    assert.match(rowFor(hurt).use.effect, /health/);
+  });
+});
+
 test('hands full of beam cannot open a pack, but hands on the road can', async () => {
   /*
    * The rule as given: a survivor who is building is occupied for anything else. The one

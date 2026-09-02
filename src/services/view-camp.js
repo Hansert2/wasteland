@@ -40,7 +40,10 @@ import { directionFor } from '../game/direction.js';
 import { radThresholdFor, skillsOf, wandererFor } from '../game/wanderers.js';
 import { stateAt, timelineOf } from '../game/timeline.js';
 import { CONFIG } from '../game/constants.js';
-import { CARRY_CAP_GRAMS, saysWeight, weighPack } from '../game/carrying.js';
+import { CARRY_CAP_GRAMS, saysLoad, saysWeight, weighPack } from '../game/carrying.js';
+
+/** The order the stores are read in, top to bottom, on every page. */
+const STORES = ['food', 'water', 'scrap', 'fuel'];
 import { radDamagePerHourAt, recoveryOf } from '../game/tick.js';
 import { RAID_DAMAGE_PER_HOUR, standFor, standTogether } from '../game/raids.js';
 import {
@@ -812,7 +815,30 @@ function driversFor(person, {
     );
   }
 
-  return { health, hunger, radiation, stamina };
+  /*
+   * And the net of it, one number per gauge, so the page can carry the figure forward
+   * between loads the way the stores already do.
+   *
+   * **Taken from the same values the marks are printed from**, and for the same reason: a
+   * rate worked out a second time is a page that says "+2/h" over a survivor healing at 3.8.
+   * Every term here is one of the terms above.
+   *
+   * It is a projection and not a promise. Like a store climbing towards its cap, it holds
+   * until something the client cannot see changes — a threshold crossed, the stores running
+   * out — and the next swap replaces it with what the tick actually did.
+   */
+  const rates = {
+    health:
+      (person.health < 100 && person.hunger < config.regenHungerCeiling &&
+      strain?.state === 'mending'
+        ? Number(strain.healingPerHour)
+        : 0) - (strain?.state === 'burning' ? Number(strain.damagePerHour) : 0),
+    hunger: asleep || !fed ? config.hungerRisePerHour : -config.hungerFallPerHour,
+    radiation: person.radiation > 0 ? -radDecayPerHour : 0,
+    stamina: working ? -config.staminaPerHourWorked : resting ? recoveredPerHour : 0,
+  };
+
+  return { health, hunger, radiation, stamina, rates };
 }
 
 /**
@@ -1012,12 +1038,31 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
 
   const packsByOwner = new Map();
 
+  // Everybody's condition by id, so a row can be judged by the person carrying it.
+  const condition = new Map(
+    (state.survivors ?? []).map((person) => [
+      Number(person.id),
+      { health: Number(person.health), radiation: Number(person.radiation) },
+    ]),
+  );
+
   const inventory = inventoryRows.map((row) => {
     // The constant `useItem` applies, not a copy of it: the page must not advertise a
     // dose the service would not deliver.
     const points = Number(row.potency) * POTENCY_TO_POINTS;
-    const health = Number(state.survivor?.health ?? 0);
-    const dose = Number(state.survivor?.radiation ?? 0);
+    /*
+     * Whose condition decides it: the owner of the pack, not `state.survivor`.
+     *
+     * That is the founder-era singular, and it meant every row on every card was judged by
+     * the first survivor. With the camp's first person at full health, a ration in somebody
+     * else's pack said “nothing to mend” and offered no button while they stood at forty;
+     * with the first person hurt, every other pack advertised a mend `useItem` then refused,
+     * because the service reads the actual owner. Found 2026-09-02 by looking at a page where
+     * nobody had a Use button and asking why.
+     */
+    const owner = condition.get(Number(row.character_id));
+    const health = Number(owner?.health ?? state.survivor?.health ?? 0);
+    const dose = Number(owner?.radiation ?? state.survivor?.radiation ?? 0);
 
     const round = (value) => Math.round(value * 10) / 10;
 
@@ -2099,6 +2144,8 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
          * climbing are told apart by the same fact the simulation acted on rather than by a
          * second guess at it.
          */
+        // Marks and rates come from one call: the numbers behind the words are the words'
+        // own numbers, and splitting them would let the two drift.
         drivers: driversFor(person, {
           recovery: recoveryOf(state, person, now, CONFIG),
           fed:
@@ -2120,7 +2167,7 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
          */
         carrying: (() => {
           const held = packsByOwner.get(Number(person.id)) ?? [];
-          return { said: `${saysWeight(weighPack(held))} / ${saysWeight(CARRY_CAP_GRAMS)}` };
+          return { said: saysLoad(weighPack(held), CARRY_CAP_GRAMS) };
         })(),
         // What they are doing, in the words the refusals use, so a block and a refusal
         // cannot describe the same person differently.
@@ -2159,7 +2206,22 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
      * the survivor was fed. A number that says food is climbing while it falls is
      * worse than no number.
      */
-    resources: Object.entries(state.settlement.resources).map(([kind, r]) => ({
+    /*
+     * In the order below, always.
+     *
+     * These came off `Object.entries` of whatever `loadWorld` had built, which is the order
+     * Postgres handed the rows back — heap order, which changes the moment a row is updated.
+     * So the rail quietly reshuffled itself as the camp ran: food above water one visit and
+     * fuel above everything the next. Four stores in four positions is a thing a player reads
+     * by position after the first day, and it was never the same twice.
+     *
+     * **Food, water, scrap, fuel**: the two that keep somebody alive, then the two that buy
+     * things — scrap before fuel because scrap is what the first hour is spent on and fuel is
+     * what the road wants much later.
+     */
+    resources: STORES.map((kind) => [kind, state.settlement.resources[kind]])
+      .filter(([, r]) => r)
+      .map(([kind, r]) => ({
       kind,
       amount: r.amount,
       cap: r.cap,

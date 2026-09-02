@@ -86,8 +86,14 @@ const PANES = {
  * cannot drag out of. Skills is the one thing here that genuinely is a reference: it changes
  * about once a lifetime and is read when choosing who to send, not while doing it.
  */
+/*
+ * The third value is how the panel lays itself out, because the generated rule is the only
+ * place `display` is set on a shown tab and a panel that has to be a flex column cannot say
+ * so anywhere else — anything specific enough to beat this rule is also specific enough to
+ * beat the `display: none` that hides the tab when it is not the open one.
+ */
 const SURVIVOR_TABS = [
-  ['carrying', 'Carrying'],
+  ['carrying', 'Carrying', 'flex'],
   ['skills', 'Skills'],
 ];
 
@@ -136,13 +142,13 @@ const PANE_CSS = Object.entries(PANES)
  */
 const SURVIVOR_TAB_CSS = [
   '  .tabbed { display: none; }',
-  ...SURVIVOR_TABS.map(([id]) => {
+  ...SURVIVOR_TABS.map(([id, , display = 'block']) => {
     const shown =
       id === DEFAULT_SURVIVOR_TAB
         ? `  body:not([data-survivor-tab]) .tabbed[data-tab="${id}"],\n` +
           `  body[data-survivor-tab="${id}"] .tabbed[data-tab="${id}"]`
         : `  body[data-survivor-tab="${id}"] .tabbed[data-tab="${id}"]`;
-    return `${shown} { display: block; }`;
+    return `${shown} { display: ${display}; }`;
   }),
   ...SURVIVOR_TABS.map(([id]) => {
     const lit =
@@ -187,13 +193,13 @@ const SURVIVOR_TAB_CSS = [
   '     panel rules above are undone rather than negated, so the generated tab rules take it',
   '     back without knowing this control exists. */',
   '  body[data-away-shut] .person[data-out] .tabbed[data-tab="away"] { display: none; }',
-  ...SURVIVOR_TABS.map(([id]) => {
+  ...SURVIVOR_TABS.map(([id, , display = 'block']) => {
     const chosen =
       id === DEFAULT_SURVIVOR_TAB
         ? `  body[data-away-shut]:not([data-survivor-tab]) .person[data-out] .tabbed[data-tab="${id}"],\n` +
           `  body[data-away-shut][data-survivor-tab="${id}"] .person[data-out] .tabbed[data-tab="${id}"]`
         : `  body[data-away-shut][data-survivor-tab="${id}"] .person[data-out] .tabbed[data-tab="${id}"]`;
-    return `${chosen} { display: block; }`;
+    return `${chosen} { display: ${display}; }`;
   }),
 ].join('\n');
 
@@ -596,8 +602,11 @@ const STYLE = `
    * sit inboard of the label in the strip above them. Only the outer edges: the columns
    * between stay tight, because the board is narrow.
    */
-  .board .carrying th:first-child, .board .carrying td:first-child { padding-left: 18px; }
-  .board .carrying th:last-child, .board .carrying td:last-child { padding-right: 18px; }
+  /* Both edges belong to the table, not to the board. The gutter went shared when an away
+     pack lost it; this is its other side, and it was still board-only — so a weight on the
+     Carrying tab sat hard against the end of the row while the same column on the board had
+     air after it. */
+  .carrying th:last-child, .carrying td:last-child { padding-right: 18px; }
   /*
    * The head needs air above it here, and only here.
    *
@@ -608,8 +617,10 @@ const STYLE = `
    * which is right where it is used.
    */
   .board .carrying thead th { padding-top: 9px; padding-bottom: 6px; }
-  /* The form each row carries has no controls in it, so its cell takes no width. */
-  .board .carrying .ferry { width: 0; padding: 0; }
+  /* The strip is a label and is set in capitals; the figure on it is a reading and is not.
+     It inherited the transform and said 5.1 KG — a unit shouted, in a face that already has
+     its own case. */
+  .block > h2 .val { text-transform: none; letter-spacing: normal; }
   .board .block h2 .val { font-family: var(--numer); font-size: 13px; color: var(--value);
                           font-variant-numeric: tabular-nums; white-space: nowrap; }
   .board .block .block-foot { gap: 8px; }
@@ -663,31 +674,74 @@ const STYLE = `
    */
   .carrying tbody tr { background: var(--panel); }
   /*
-   * And it answers the pointer in both. The oxide edge is this page's ink for a live
-   * control, and every row here has one — Use or Store on the tab, the drag on the board.
+   * And a row that can be lifted answers the pointer. The oxide edge is this page's ink for
+   * a live control, and the drag is what this row offers — Store was a button here until it
+   * became a gesture, and the gesture is now the whole of it.
    *
-   * The **grip stays on the board only**. It is the one mark here that means "pick this up",
-   * and a row on the Carrying tab cannot be picked up: the same dots there would be a
-   * handle promising a gesture that does nothing.
+   * **So the highlight follows the grip.** A pack twenty hours down the road keeps its
+   * gutter, because a column is where it is whoever is carrying it, but nothing in it lifts:
+   * the move verb refuses either end of a transfer to somebody away. A row that brightens under
+   * the pointer and then does nothing is the page offering what the service takes back.
    */
-  .carrying tbody tr:hover { background: var(--rule-in); box-shadow: inset 2px 0 0 var(--oxide); }
-  .carrying tbody tr:hover .name { color: var(--bone); }
+  .carrying tbody tr[draggable="true"]:hover {
+    background: var(--rule-in);
+    box-shadow: inset 2px 0 0 var(--oxide);
+  }
+  .carrying tbody tr[draggable="true"]:hover .name { color: var(--bone); }
   /* Three levels, and they have to be told apart at a glance on a dark screen: a slot is
      cut into the panel (void), a row holding something sits on it (panel), and a row under
      the pointer comes up off it (rule-in). Ground was the first try for a slot and it is
      seven points of grey from the panel — a difference you can measure and cannot see. */
-  .board .carrying tr.slot { background: var(--void); border-bottom-color: var(--rule-in); }
-  .board .carrying tr.slot td { color: var(--fainter); }
-  .board .carrying tr.slot:hover { background: var(--void); box-shadow: none; }
+  /* Unscoped from the board when the pack started drawing them too: an empty row is an
+     empty row, and the two tables are the same object seen in two places. */
+  .carrying tr.slot { background: var(--void); border-bottom-color: var(--rule-in); }
+  /* And set in the same type as a name, because that is what a blank row is a blank of. It
+     inherited the page's prose size, which made an empty row six pixels taller than a full
+     one — a shelf whose empty slots are a different size from its full ones. */
+  .carrying tr.slot td { color: var(--fainter); font-size: 13px; line-height: 1.25; }
+  .carrying tr.slot:hover { background: var(--void); box-shadow: none; }
 
   .carrying tr[draggable="true"] { cursor: grab; }
   .carrying tr[draggable="true"]:active { cursor: grabbing; }
   /* Relative on the cell rather than the row: a table row is not a containing block in
      every engine, and the grip has to hang off something that reliably is one. */
-  .carrying tr[draggable="true"] > td:first-child { position: relative; padding-left: 32px; }
-  /* Drawn rather than typed, so it cannot be selected with the row's text or announced as a
-     character by a screen reader. */
-  .carrying tr[draggable="true"] > td:first-child::before {
+  /*
+   * The grip gutter belongs to the table, not to the row.
+   *
+   * It was padding on each draggable row, which indented the names and left the column
+   * heading, the box's empty rows and the total sitting 32px to their left — one column with
+   * two left edges. A table with liftable rows has a gutter; everything in that column
+   * starts after it, whether it can be lifted or not.
+   */
+  .carrying tbody tr:not(.slot) > td:first-child { position: relative; }
+  /*
+   * **Every pack table reserves it, liftable or not.** It was conditional on the table
+   * having draggable rows, which made the gutter a fact about *state*: a survivor walking
+   * out of the gate shifted their own pack 32px left, and their card stopped lining up with
+   * the three beside it. The column is where the column is; whether a row can be picked up
+   * today is said by the grip being there or not.
+   */
+  .carrying th:first-child,
+  .carrying td:first-child { padding-left: 32px; }
+  /*
+   * And the sum under the list lines up with the column it sums — both edges.
+   *
+   * It is a paragraph, so it inherited the page's prose measure of 66ch and stopped 50px
+   * short of the table, which put its figure out of line with the weights above it. A
+   * measure is for reading a sentence across; this is a label and a number at opposite ends
+   * of a row, and it wants the width of the thing it sums.
+   */
+  .carrying-total { max-width: none; padding-left: 32px; padding-right: 18px; }
+  /*
+   * Drawn rather than typed, so it cannot be selected with the row's text or announced as a
+   * character by a screen reader.
+   *
+   * **Every row carrying something gets one**, and a row that cannot be lifted right now
+   * gets it dimmed rather than dropped: the column then looks the same on every card, and
+   * the greying is what says *not now*. The box's blank rows are the exception — they hold
+   * nothing, so there is no handle to draw.
+   */
+  .carrying tbody tr:not(.slot) > td:first-child::before {
     content: "";
     position: absolute;
     left: 16px;
@@ -697,12 +751,130 @@ const STYLE = `
     transform: translateY(-50%);
     background-image: radial-gradient(currentColor 1px, transparent 1.2px);
     background-size: 4px 4.5px;
-    color: var(--fainter);
+    color: var(--rule);
     transition: color .12s;
   }
-  .carrying tr[draggable="true"]:hover > td:first-child::before { color: var(--dim); }
+  /* Up to the faintest ink the palette has once it can actually be picked up, and to --dim
+     under the pointer — three states in one mark: not now, liftable, lift me. */
+  .carrying tbody tr[draggable="true"] > td:first-child::before { color: var(--fainter); }
+  .carrying tbody tr[draggable="true"]:hover > td:first-child::before { color: var(--dim); }
   .carrying tr.lifting { opacity: .4; }
   .carrying tr.lifting:hover { box-shadow: none; }
+
+  /*
+   * The pack, at the height of the card and no taller.
+   *
+   * It grew and shrank with whatever the person was holding: one card 57px of table, the
+   * next 125px, the fourth trailing off above a stretch of empty card. Down a roster that
+   * reads as four differently-shaped blocks rather than four readings of the same thing,
+   * and the gap under a short list looks like a panel that stopped rendering.
+   *
+   * So the shelf is the size of its cell and the contents scroll inside it — which is what a
+   * pack with a weight limit is: a fixed thing you fit things into. \`--pack-row\` is a row's
+   * exact height rather than its minimum, so the stripes below the list land on the same
+   * pitch as the rows above it; without it a row with a Use button in it runs half a pixel
+   * taller than one without and the shelf drifts out of step a pixel per row.
+   *
+   * The heading stays put while they scroll, because it is three sort controls as well as
+   * three labels — scrolling away the only way to reorder a list too long to see is the
+   * one moment it is wanted.
+   */
+  .pack {
+    /*
+     * Takes the cell and gives none of it back.
+     *
+     * \`flex: 1 1 0\` with no floor is doing two jobs. It fills whatever the gauges leave,
+     * so the heading sits at the top of the cell and the sum at the foot whatever the card
+     * is showing; and because its flex base is zero it contributes nothing to how tall the
+     * card wants to be — which is what keeps a person holding nine things the same height
+     * as a person holding one, with the ninth reached by scrolling rather than by making
+     * the roster taller.
+     */
+    flex: 1 1 0;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    /* In the page's own ink. The default is a pale bar down a dark card, and it is the only
+       chrome on this page that would announce itself louder than the list it belongs to. */
+    scrollbar-width: thin;
+    scrollbar-color: var(--rule) transparent;
+  }
+  /*
+   * And the empty rows under the list are drawn rather than written.
+   *
+   * They were real \`<tr class="slot">\` padding out to a fixed count, which is right for the
+   * box — a shelf with a column to itself, where six is a decision. Here the count is not a
+   * decision: it is however many fit beside four gauges, which is a question about a rendered
+   * cell and cannot be answered while writing the row. So the shelf is the space itself,
+   * striped on the row's own pitch, and it is exact at any height the card ever takes.
+   *
+   * A flex item of the scroller, so it takes the space the table does not and none when the
+   * table overflows — the stripes stop where the list starts needing to scroll.
+   */
+  /*
+   * On the card the shelf is the same grey as the rows, ruled rather than recessed.
+   *
+   * The board sinks its empty rows to the void, where a holding is a bordered column of its
+   * own and the recess reads as slots cut into it. Here the pack has no frame — it is a cell
+   * in a row of cells — and two greys inside an unframed cell read as two things: a list, and
+   * then a dark panel under it. One grey from the heading to the sum reads as one shelf with
+   * room left on it, which is what it is.
+   */
+  .pack { background: var(--panel); }
+  .pack .carrying tr.slot { background: var(--panel); border-bottom-color: var(--rule); }
+  .pack::after {
+    content: "";
+    flex: 1 1 auto;
+    min-height: 0;
+    /*
+     * Anchored to the head of the shelf, which is a row boundary — the table above it is the
+     * heading and its rows, all on the same pitch — so every line here continues the line
+     * above it. It was anchored to the foot, to keep the odd remainder (a shelf is rarely a
+     * whole number of rows tall) away from the total; that put the remainder against the
+     * list instead, where it was a short slot beside full ones and the rules stopped lining
+     * up. Lines that agree with the rows matter more than a shelf that ends on one: the
+     * remainder now runs out under the last line, against a sum that is a different ground
+     * anyway.
+     */
+    background-image: linear-gradient(
+      transparent 0 calc(var(--pack-row) - 1px),
+      var(--rule) calc(var(--pack-row) - 1px) var(--pack-row)
+    );
+    background-size: 100% var(--pack-row);
+    background-repeat: repeat-y;
+    background-position: 0 0;
+  }
+  .pack { display: flex; flex-direction: column; }
+  .pack .carrying tbody tr { height: var(--pack-row); }
+  /* The rule under the last row is what makes it the last row rather than the list fraying
+     into the shelf. It is dropped everywhere else because a table's last line is its edge;
+     here the shelf continues past it. */
+  .pack .carrying tbody tr:last-child { border-bottom: 1px solid var(--rule); }
+  /*
+   * The heading and the sum stand on the same pitch as the rows between them.
+   *
+   * They were 24px and 21px against a row's 34, which is what made them read as a header bar
+   * and a footer bar bracketing the list rather than as its first and last line. A shelf is
+   * one measure from top to bottom — the labels sit in a slot, the rows sit in slots, the sum
+   * sits in the slot at the bottom — and the eye reads the column as one thing.
+   */
+  .pack .carrying thead th {
+    height: var(--pack-row);
+    padding-top: 0;
+    padding-bottom: 0;
+    vertical-align: middle;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    /*
+     * The ground, which is what the same heading stands on over on the board — there it is
+     * simply the block showing through behind labels that have no background of their own.
+     * Here it has to be painted, because the rows travel under it and a see-through heading
+     * reads as the list being printed over its own labels. One shade darker than the shelf,
+     * so the labels are the lid on it rather than its first row.
+     */
+    background: var(--ground);
+  }
 
   .carrying { width: 100%; border-collapse: collapse; table-layout: auto; }
   .carrying tr { border-bottom: 1px solid var(--rule); }
@@ -710,6 +882,28 @@ const STYLE = `
   .carrying thead th { padding: 0 0 5px; color: var(--faint); font-family: var(--label);
                        font-size: 9.5px; font-weight: 700; letter-spacing: .12em;
                        text-align: left; text-transform: uppercase; }
+  /* The column heading is the control. It keeps the heading's own look rather than becoming
+     a button, because a row of three buttons over a five-row table is more furniture than
+     list — the arrow is what says it can be pressed, and it appears on the one holding the
+     order. */
+  .carrying thead .sorter {
+    appearance: none;
+    background: none;
+    border: 0;
+    padding: 0;
+    font: inherit;
+    color: inherit;
+    letter-spacing: inherit;
+    text-transform: inherit;
+    cursor: pointer;
+  }
+  .carrying thead .qty .sorter, .carrying thead .weight .sorter { float: right; }
+  .carrying thead .sorter:hover { color: var(--dim); }
+  .carrying thead th[aria-sort] .sorter { color: var(--value); }
+  /* The arrows as characters rather than as CSS escapes: a backslash in a template literal
+     is an escape twice over, and "\\2191" reaches the stylesheet as a literal backslash. */
+  .carrying thead th[aria-sort="ascending"] .sorter::after { content: " ↑"; }
+  .carrying thead th[aria-sort="descending"] .sorter::after { content: " ↓"; }
   .carrying td { padding: 7px 0; vertical-align: middle; }
   .carrying .name { color: var(--prose); font-size: 13px; line-height: 1.25; }
   .carrying .qty {
@@ -741,13 +935,14 @@ const STYLE = `
    * with it. Zeroing it here is safe because everything in this cell brings its own — the
    * button, and the note, which is text and sets 1.55.
    */
-  .carrying .use { width: 1%; padding-left: 10px; white-space: nowrap; text-align: right;
-                   line-height: 0; }
+  /* The button rides in the name cell now, so the cell keeps its text line and the button
+     is spaced off the word rather than off a column edge. */
+  .carrying .name form { display: inline-block; margin: 0 0 0 9px; vertical-align: middle;
+                         line-height: 0; }
   /* Middle, not baseline. An inline-block sits on the text baseline and carries the
      descender space under it, so in a cell that is itself middle-aligned the button ended up
      three pixels low against the name beside it — visible once every row had one. */
-  .carrying .use form { display: inline-block; margin: 0; vertical-align: middle; }
-  .carrying .use button,
+  .carrying .name button,
   .fitting button {
     appearance: none;
     background: none;
@@ -763,7 +958,7 @@ const STYLE = `
     padding: 1px 7px;
     cursor: pointer;
   }
-  .carrying .use button:hover { border-color: var(--oxide); color: var(--bone); }
+  .carrying .name button:hover { border-color: var(--oxide); color: var(--bone); }
   /* The prose line in the note, which is the only place a description is shown at all. */
   .carrying .note .what { display: block; color: var(--prose); max-width: 30ch; }
 
@@ -834,6 +1029,65 @@ ${SURVIVOR_TAB_CSS}
   .awayswitch[aria-pressed="true"] { color: var(--bone); border-color: var(--edge); }
   .awayswitch[aria-pressed="true"] .dot { background: var(--oxide); border-color: var(--oxide); }
   .awayswitch:hover { color: var(--prose); }
+
+  /*
+   * Send, and the names behind it.
+   *
+   * The lead keeps the shape of the button it replaces, so a row of roads still reads as a
+   * row of things to press. The list opens on hover and on focus — no script — and lands
+   * against the right edge, because the control sits at the right end of its row and a menu
+   * that opened leftward would run off the table on a narrow screen.
+   */
+  .sendmenu { position: relative; display: inline-block; }
+  /* The chevron stays on the word: in a narrow action cell the lead wrapped, and BUILD over
+     a lone angle bracket reads as two controls. */
+  .sendmenu .lead { white-space: nowrap; }
+  .sendmenu.shut { padding: 9px 14px; font-family: var(--label); font-size: 10.5px;
+                   letter-spacing: .14em; text-transform: uppercase; color: var(--faint); }
+  .sendmenu .names {
+    position: absolute;
+    right: 0;
+    /* Flush to the control, with the gap made of padding inside the list rather than of
+       empty space outside it: three pixels of nothing between the two is three pixels where the
+       pointer is over neither, and the menu shuts on the way to the name. */
+    top: 100%;
+    z-index: 6;
+    display: none;
+    min-width: 100%;
+    margin: 0;
+    padding: 4px;
+    padding-top: 7px;
+    list-style: none;
+    background: var(--panel);
+    border: 1px solid var(--edge);
+    text-align: left;
+    white-space: nowrap;
+  }
+  .sendmenu:hover .names, .sendmenu:focus-within .names { display: block; }
+  .sendmenu .names button {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    width: 100%;
+    justify-content: space-between;
+    padding: 6px 9px;
+    border: 0;
+    background: none;
+    font-family: var(--label);
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--prose);
+    cursor: pointer;
+  }
+  .sendmenu .names button:hover { background: var(--rule-in); color: var(--bone); }
+  .sendmenu .names button[disabled] { color: var(--faint); cursor: default; }
+  .sendmenu .names button[disabled]:hover { background: none; }
+  /* What has them, in the words the refusals use — there is no card beside this one to say
+     it, which is the one thing the choice lost by moving off the person. */
+  .sendmenu .names .why { font-size: 9.5px; letter-spacing: .1em; color: var(--faint);
+                          text-transform: lowercase; }
 
   .pick { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; }
   .pick .tag { color: var(--dim); font-size: 10px; letter-spacing: .18em; }
@@ -1017,7 +1271,16 @@ ${SURVIVOR_TAB_CSS}
    * fixed-width panel hung off a short number at the right-hand edge would leave the page.
    * Spanning the cell means it cannot, at any rail width.
    */
-  .store .costs { position: static; }
+  /*
+   * The explainer takes no height of its own.
+   *
+   * A store whose rate can be broken down wraps the figure in .costs; one with no rate
+   * prints the figure bare. The wrapper carries no padding, but it does carry the page's
+   * type — 16.5px at 1.6 — so its empty line box stood 26px tall against the 11.5px figure
+   * inside it, and the four store cells came out 82, 83, 83 and 71 high. Zeroing the line
+   * height leaves the child's own box to set it, without either rule naming a size.
+   */
+  .store .costs { position: static; line-height: 0; }
   .store .costs-panel { min-width: 0; width: auto; left: 0; right: 0; top: calc(100% + 4px); }
   .store .cost-row { justify-content: space-between; gap: 10px; }
   .store .cost-row.net { border-top: 1px solid var(--rule); padding-top: 5px; }
@@ -2036,7 +2299,38 @@ ${PANE_CSS}
    * Only the traveller's card: a pack table shorter than its gauges is a list with room
    * left, which is what a list should look like.
    */
-  .person[data-out] .who-body { align-self: stretch; display: flex; flex-direction: column; }
+  /*
+   * A card with somebody out gives the third column back.
+   *
+   * That column is what to do with the hours they have — and there is nothing to do with
+   * them: sleep is refused for anybody away, so it sat there greyed beside a block that
+   * already says why. The usual rule is that a control you cannot use keeps its place and
+   * says why; here the *place itself* says why, at the size of a photograph, so the control
+   * is redundant rather than informative.
+   */
+  /*
+   * **Only while the trip is the thing being shown.** These rules are about the trip block,
+   * not about the person: switch it off and the card is an ordinary card again — three
+   * columns, the pack in the middle, the sleep control back in its place, refusing as it
+   * always did. Without the guard, toggling changed the shape of the card as well as its
+   * contents, and the pack spread across a column it has no use for.
+   */
+  body:not([data-away-shut]) .person[data-out] .who-body {
+    align-self: stretch;
+    display: flex;
+    flex-direction: column;
+    grid-column: 2 / -1;
+    /* Out to the card's own edges: the row is padded 14px by 18px, and the plate is the one
+       thing here that is ground rather than content — an inset photograph reads as a picture
+       pinned to a card, and edge to edge it reads as the place the card is looking at. The
+       left is left alone, because that edge is the gutter between the gauges and this. */
+    margin: -14px -18px -14px 0;
+  }
+  body:not([data-away-shut]) .person[data-out] .goes { display: none; }
+  /* And the panel gives up the gap that separates a tab from the strip above it. There is
+     no strip above this one — the head is the column to its left — so the 18px was a margin
+     between the block and nothing, and the plate stopped short of the cell it fills. */
+  body:not([data-away-shut]) .person[data-out] .tabbed[data-tab="away"] { margin-top: 0; }
   .person[data-out] .who-body > .tabbed[data-tab="away"] { flex: 1; }
   .person[data-out] .tabbed[data-tab="away"] > .afield { height: 100%; }
   /*
@@ -2108,6 +2402,36 @@ ${PANE_CSS}
     color: var(--dim);
     white-space: nowrap;
   }
+  /*
+   * A job in progress breathes.
+   *
+   * The clock inside already ticks, which is motion but not the *kind* that reads at a
+   * glance: a player scanning four cards is asking who is occupied, not how long is left.
+   * A slow pulse on the edge answers that from across the block.
+   *
+   * **The border and nothing else**, because there is no room for anything else — a lamp
+   * like the away switch has would be eleven more pixels on a chip that already sits eight
+   * short of the column edge, and it would put the whole thing back under the name. A
+   * colour change costs no width at all.
+   *
+   * Oxide, at two and a half seconds, ease in and out: this page uses that ink for what is
+   * live and running, and slow enough that four of them breathing at once is a room with
+   * something happening in it rather than a row of alarms.
+   */
+  @keyframes busy {
+    0%, 100% { border-color: var(--rule); }
+    50% { border-color: var(--oxide); }
+  }
+  .who-name .doing { animation: busy 2.6s ease-in-out infinite; }
+  /* Out of step, because every animation on a page starts when the page does: four people
+     working would breathe in unison, which reads as the page pulsing rather than as four
+     people working. A negative delay starts a card partway into the cycle. */
+  .person:nth-child(2n) .doing { animation-delay: -0.9s; }
+  .person:nth-child(3n) .doing { animation-delay: -1.7s; }
+  @media (prefers-reduced-motion: reduce) {
+    /* The state, held still. Same rule the section-swap cue follows. */
+    .who-name .doing { animation: none; border-color: var(--edge); }
+  }
   .who-name .doing .clock {
     margin-left: 5px;
     font-family: var(--numer);
@@ -2132,6 +2456,13 @@ ${PANE_CSS}
 
   @media (max-width: 760px) {
     .person { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+    /* The fill is a fact about a cell beside the gauges. Stacked under them there is no such
+       cell — nothing else is setting the height — and a list scrolling inside a page that
+       already scrolls is two scrollbars for one list. Both flex items take their own size
+       again, which in a column that is only as tall as its contents means the list is the
+       height of the list and the shelf is nothing. */
+    .who-body > .tabbed[data-tab="carrying"] { flex: 0 0 auto; }
+    .pack { flex: 0 0 auto; }
   }
 
   /*
@@ -2166,9 +2497,9 @@ ${PANE_CSS}
                       margin-top: 11px; }
   .who-head .gauges > * { grid-column: auto !important; }
   .g-health { grid-column: 1; }
-  .g-hunger { grid-column: 2; }
-  .g-radiation { grid-column: 3; }
-  .g-stamina { grid-column: 4; }
+  .g-stamina { grid-column: 2; }
+  .g-hunger { grid-column: 3; }
+  .g-radiation { grid-column: 4; }
   /* Narrow enough and the slots stop being worth holding: two columns, then one, and a
      gauge takes whichever cell it lands in. */
   @media (max-width: 900px) {
@@ -2202,6 +2533,81 @@ ${PANE_CSS}
   .gauge-top .val { font-family: var(--numer); font-size: 16px; line-height: 1;
                     color: var(--value); font-variant-numeric: tabular-nums; }
   .gauge .track { margin-top: 7px; }
+  /*
+   * The bar warms as it goes wrong.
+   *
+   * The heat is 0 when a gauge is where you want it and 1 when it is as bad as it gets —
+   * health and stamina emptying, hunger and the dose filling. The colour is mixed here from
+   * the two the palette already has, so retuning the oxide retunes the bars; a hex picked in
+   * the renderer would be a second palette living outside :root.
+   *
+   * oklab rather than sRGB, because a straight channel mix between these two runs through a
+   * muddy olive halfway along, which reads as a third state rather than as a journey between
+   * two.
+   */
+  .gauge .track i {
+    position: relative;
+    overflow: hidden;
+    background: color-mix(in oklab, var(--quiet), var(--oxide) calc(var(--heat, 0) * 100%));
+    transition: width .45s ease, background-color .45s ease;
+  }
+  /*
+   * A light that runs the length of the bar when it moves, the way the bar moved.
+   *
+   * The width alone is a poor announcement: most changes between two check-ins are a
+   * fraction of a percent, which is a pixel or none, and a bar that has quietly become a
+   * pixel shorter is not something anybody notices. The direction is the part worth saying,
+   * so it is the part that is animated — left to right when a gauge climbs, right to left
+   * when it falls.
+   *
+   * Inside the fill, because the fill is the subject: the light travels the span of what the
+   * survivor has, not the width of the track it sits in. Two pixels tall, which is what this
+   * gauge is, so it reads as a bright segment passing rather than a bloom.
+   */
+  .gauge .track i::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      color-mix(in oklab, var(--bone) 70%, transparent),
+      transparent
+    );
+    transform: translateX(-130%);
+    opacity: 0;
+  }
+  /*
+   * **A gauge under something runs the light continuously.** The one-shot below announces a
+   * jump; this says a number is being *worked on* right now — a sleeper filling, a walker
+   * emptying, hunger climbing on an empty larder. It is the same fact the ▲ and ▼ marks
+   * carry, said on the bar itself, and it is the reason the bar is worth watching at all:
+   * these figures move by tenths a minute, which no width can show.
+   *
+   * Slow, and out of step per gauge. Four cards of four bars all sweeping together would be
+   * a page with a heartbeat; staggered, it is a row of instruments each doing its own work.
+   */
+  .gauge .track i.drift-up::after { animation: sweep-right 3.4s ease-in-out infinite; }
+  .gauge .track i.drift-down::after { animation: sweep-left 3.4s ease-in-out infinite; }
+  .gauge:nth-of-type(2) .track i::after { animation-delay: -.85s; }
+  .gauge:nth-of-type(3) .track i::after { animation-delay: -1.7s; }
+  .gauge:nth-of-type(4) .track i::after { animation-delay: -2.55s; }
+
+  /* And the one-shot, for a figure that jumped rather than drifted. */
+  .gauge .track i.rising::after { animation: sweep-right .62s ease-out; }
+  .gauge .track i.falling::after { animation: sweep-left .62s ease-out; }
+  @keyframes sweep-right {
+    from { transform: translateX(-130%); opacity: 1; }
+    to { transform: translateX(130%); opacity: 0; }
+  }
+  @keyframes sweep-left {
+    from { transform: translateX(130%); opacity: 1; }
+    to { transform: translateX(-130%); opacity: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .gauge .track i { transition: none; }
+    .gauge .track i::after { animation: none; }
+  }
   .gauge small { display: block; margin-top: 6px; font-size: 14px; line-height: 1.5; }
   /*
    * What the figure counts, and what moves it — see ".note", which is where this is
@@ -2234,6 +2640,53 @@ ${PANE_CSS}
    * player could see. Held here, every tab opens the same distance below the name.
    */
   .tabbed { margin-top: 18px; }
+  /*
+   * The pack is the height of the card, not the height of the pack.
+   *
+   * Every other tab is content that ends where it ends; this one is a container with a
+   * heading at the top and a sum at the bottom and a shelf between them, and the shelf is
+   * whatever is left after the four gauges to its left have set the height. So the cell
+   * stretches, the panel is a column, and the one flexible thing in it is the shelf.
+   *
+   * The 18px above every other panel comes off: it is the gap under the tab strip, and this
+   * panel's strip is the column beside it — the heading belongs against the top of the cell,
+   * level with the name, the way the trip block already sits.
+   */
+  .who-body { align-self: stretch; display: flex; flex-direction: column; min-height: 0; }
+  .who-body > .tabbed[data-tab="carrying"] {
+    flex: 1 1 0;
+    flex-direction: column;
+    min-height: 0;
+    /*
+     * Out to the card's own edges, top and bottom, the way the trip block goes out to all of
+     * them. The row is padded 14px, which the pack was still paying: a strip of card above
+     * the heading and another under the total, so the shelf read as a panel floating in the
+     * cell with a header and a footer around it rather than as the cell being a shelf. The
+     * rule between one survivor and the next is the shelf's own top and bottom edge now, and
+     * the 28px it gives back is most of another row.
+     *
+     * Only the vertical. The left edge is the gutter between the gauges and this, and the
+     * right is where the third column starts — neither is the card's edge to take.
+     *
+     * They are ruled instead, in the grey a block is edged in. The card is three columns and
+     * nothing said so: the condition, the pack and the hours were three things floating on
+     * one ground. With the shelf running divider to divider these two lines close it on the
+     * other two sides, and the roster reads as a table — which is the thing it has been all
+     * along.
+     */
+    margin: -14px 0;
+    border-left: 1px solid var(--rule);
+    border-right: 1px solid var(--rule);
+    --pack-row: 34px;
+  }
+  /* Foot of the column it sums, and the foot is the bottom of the cell: the 5px under it was
+     a gap before whatever came next, and nothing comes next. */
+  .carrying-total {
+    height: var(--pack-row);
+    align-items: center;
+    margin-bottom: 0;
+    margin-top: auto;
+  }
   .known { margin: 7px 0 0; font-size: 15.5px; line-height: 1.55; color: var(--dim); }
 
   /* ---- controls ---- */
@@ -3072,6 +3525,7 @@ export const TIMERS = `
 
   let live = [];
   let stores = [];
+  let gauges = [];
   let counters = [];
   let clocks = [];
   let nowlines = [];
@@ -3084,6 +3538,64 @@ export const TIMERS = `
    * is open — the body attribute is the one copy of that, and this is the only thing that
    * has to be told about it twice.
    */
+  /*
+   * The order, applied to every item table on the page.
+   *
+   * Done here rather than in SQL because it is a view of one list, not a fact about it: the
+   * server would have to be told the order on every request and every list would have to
+   * agree about it anyway. The rows carry their own keys as data attributes, so this sorts
+   * numbers rather than the text it printed them as — "1.67 kg" and "850 g" do not compare.
+   *
+   * Empty rows in the box keep their place at the end. They are not items and they are not
+   * in the order; they are the shape of the shelf.
+   */
+  const applySort = () => {
+    const by = document.body.dataset.sortBy;
+    if (!by) return;
+    const dir = document.body.dataset.sortDir === 'desc' ? -1 : 1;
+
+    for (const th of document.querySelectorAll('.carrying thead th')) {
+      const sorter = th.querySelector('[data-sortby]');
+      if (!sorter) continue;
+      if (sorter.dataset.sortby === by) {
+        th.setAttribute('aria-sort', dir === 1 ? 'ascending' : 'descending');
+      } else {
+        th.removeAttribute('aria-sort');
+      }
+    }
+
+    for (const body of document.querySelectorAll('.carrying tbody')) {
+      const rows = [...body.children].filter((row) => !row.classList.contains('slot'));
+      const slots = [...body.children].filter((row) => row.classList.contains('slot'));
+      if (rows.length < 2) continue;
+
+      rows.sort((a, b) => {
+        const x = a.dataset[by];
+        const y = b.dataset[by];
+        const cmp = by === 'name' ? String(x).localeCompare(String(y)) : Number(x) - Number(y);
+        return cmp * dir;
+      });
+
+      for (const row of [...rows, ...slots]) body.append(row);
+    }
+  };
+
+  document.addEventListener('click', (event) => {
+    const sorter = event.target.closest ? event.target.closest('[data-sortby]') : null;
+    if (!sorter) return;
+
+    const by = sorter.dataset.sortby;
+    // The same column again reverses; a new one starts the way that column wants to be read.
+    document.body.dataset.sortDir =
+      document.body.dataset.sortBy === by
+        ? document.body.dataset.sortDir === 'desc'
+          ? 'asc'
+          : 'desc'
+        : sorter.dataset.firstly;
+    document.body.dataset.sortBy = by;
+    applySort();
+  });
+
   const syncTabs = () => {
     const tabs = [...document.querySelectorAll('[data-survivortab]')];
     /*
@@ -3095,6 +3607,10 @@ export const TIMERS = `
     for (const el of document.querySelectorAll('[data-awayswitch]')) {
       el.setAttribute('aria-pressed', String(!('awayShut' in document.body.dataset)));
     }
+
+    // The order too: a swap brings back rows in the server's order, which is whatever the
+    // query said and not what the player last pressed.
+    applySort();
 
     if (tabs.length === 0) return;
     // No attribute means the first tab, which is what the stylesheet also assumes.
@@ -3114,6 +3630,7 @@ export const TIMERS = `
     // weather, which is why this is a straight line and not a simulation — the moment
     // it would need to be more than that, fresh state has arrived anyway.
     stores = [...document.querySelectorAll('[data-amount]')];
+    gauges = [...document.querySelectorAll('.gauge [data-value][data-drift]')];
     /*
      * Figures that climb rather than drain, and stop climbing at a stated instant: what a raid
      * has carried off so far, and what each person at the fence has held back or taken.
@@ -3172,34 +3689,13 @@ export const TIMERS = `
   };
 
   /*
-   * Who is going, copied into every row's hidden field the moment it changes.
+   * The selector-to-hidden-field sync lived here until 2026-09-02.
    *
-   * The dispatch table asks once and eleven forms have to agree. A form= attribute on the
-   * select would do it without script, but each row is its own form and a select can only
-   * belong to one. change rather than input, because a select fires both and doing the work
-   * twice is doing it twice.
+   * Three blocks asked who in a label strip and copied the answer into every row beneath
+   * them, because a select can belong to one form and each row is its own. Every one of
+   * them asks on the row now — a name in a menu is a submit button carrying its own id — so
+   * there is nothing to keep in step and the script that did it is gone with the controls.
    */
-  document.addEventListener('change', (event) => {
-    const picker = event.target.closest ? event.target.closest('[data-whopicks]') : null;
-    if (!picker) return;
-
-    // Only the fields belonging to this block: three blocks ask who now, and the bench's
-    // answer is not the dispatch table's.
-    const which = picker.dataset.whopicks;
-    for (const field of document.querySelectorAll('[data-whofield="' + which + '"]')) {
-      field.value = picker.value;
-    }
-
-    // And whoever asked to be told the name gets it. The dispatch buttons read "Send Odd",
-    // so a choice made on a card up the page is legible at the button that acts on it —
-    // without this they would all still say whoever was free when the page was drawn.
-    var named = picker.dataset.whoname;
-    if (named) {
-      for (const label of document.querySelectorAll('[data-nameof="' + which + '"]')) {
-        label.textContent = named;
-      }
-    }
-  });
 
   document.addEventListener('click', (event) => {
     // The switch first: it is a button in the same strip, and it is not a tab.
@@ -3222,6 +3718,28 @@ export const TIMERS = `
     syncTabs();
   });
 
+  /*
+   * A gauge that has moved should be seen to move.
+   *
+   * The swap replaces a section's markup wholesale, so every bar in it is a *new* element
+   * that begins life at its new width — a CSS transition has nothing to travel from and the
+   * bars jump. What is missing is the old value, and only this function still has it.
+   *
+   * So: read the widths before the swap, write them back onto the new bars, force the layout
+   * to take them, and then let go. The transition runs from there. Keyed by whose card and
+   * which gauge, because a roster of four has four healths and they must not swap places.
+   */
+  const barsOf = (root) => {
+    const found = new Map();
+    for (const bar of root.querySelectorAll('.gauge .track i')) {
+      const gauge = bar.closest('.gauge');
+      const who = bar.closest('[data-hold]');
+      if (!gauge) continue;
+      found.set((who ? who.dataset.hold : '') + '/' + gauge.className, bar);
+    }
+    return found;
+  };
+
   const apply = (html) => {
     const doc = new DOMParser().parseFromString(html, 'text/html');
     const incoming = doc.querySelectorAll('section[id^="s-"]');
@@ -3230,7 +3748,39 @@ export const TIMERS = `
     for (const next of incoming) {
       const current = document.getElementById(next.id);
       if (!current || current.innerHTML === next.innerHTML) continue;
+
+      // What every bar in this section was, an instant before it is replaced.
+      const was = new Map();
+      for (const [key, bar] of barsOf(current)) was.set(key, bar.style.width);
+
       current.innerHTML = next.innerHTML;
+
+      const now = barsOf(current);
+      for (const [key, bar] of now) {
+        const before = was.get(key);
+        if (!before || before === bar.style.width) continue;
+        const after = bar.style.width;
+        bar.style.transition = 'none';
+        bar.style.width = before;
+        void bar.offsetWidth; // take the old width, then travel to the new one
+        bar.style.transition = '';
+        bar.style.width = after;
+
+        /*
+         * And a light down the bar, the way it went — but only for a bar that is not already
+         * running one. A drifting gauge sweeps continuously and says the same thing better;
+         * a one-shot on top would restart its loop on every swap, which is a stutter rather
+         * than an announcement.
+         */
+        if (bar.classList.contains('drift-up') || bar.classList.contains('drift-down')) continue;
+        bar.classList.add(parseFloat(after) > parseFloat(before) ? 'rising' : 'falling');
+        bar.addEventListener(
+          'animationend',
+          () => bar.classList.remove('rising', 'falling'),
+          { once: true },
+        );
+      }
+
       if (next.innerHTML.trim() === '') continue;
       // Restart the cue even if it is already running.
       current.classList.remove('changed');
@@ -3277,6 +3827,29 @@ export const TIMERS = `
       const fill = el.closest('.store');
       const track = fill && fill.querySelector('[data-fill]');
       if (track && cap > 0) track.style.width = (100 * clamped) / cap + '%';
+    }
+
+    /*
+     * The gauges, on the stores' pattern: a figure, a rate, and a ceiling.
+     *
+     * The bar reads off the same projected number rather than a second attribute, so a track
+     * that disagrees with the figure beside it is not a state this can be in — and the heat
+     * is recomputed from it, so a gauge going wrong warms while you watch rather than at the
+     * next reload.
+     */
+    for (const el of gauges) {
+      const of = Number(el.dataset.of) || 100;
+      const rate = Number(el.dataset.drift);
+      if (!rate) continue;
+
+      const value = Math.max(0, Math.min(of, Number(el.dataset.value) + rate * elapsedHours));
+      el.textContent = value.toFixed(1);
+
+      const fill = el.closest('.gauge').querySelector('.track i');
+      if (!fill) continue;
+      const share = value / of;
+      fill.style.width = 100 * Math.max(0, Math.min(1, share)) + '%';
+      fill.style.setProperty('--heat', (el.dataset.rising ? share : 1 - share).toFixed(3));
     }
 
     for (const el of counters) {
@@ -3331,6 +3904,25 @@ export const TIMERS = `
     busy = true;
 
     const button = event.submitter;
+
+    /*
+     * **Read the form before disabling anything, and pass the submitter.** Two separate
+     * traps, both of which drop the pressed name:
+     *
+     * FormData(form) collects the fields and *not* the name and value of the button that
+     * submitted — the browser adds that pair itself on a native submit, and this path
+     * replaces the native submit. Every form here posted hidden fields and nothing else for
+     * as long as no button carried a value; the Send menu is the first that does.
+     *
+     * And a **disabled control is not submitted**. Disabling the button to stop a double
+     * press, and then building the body, drops the very pair the submitter was passed for.
+     * The body is built first for that reason, and the button goes dead immediately after.
+     *
+     * Both were live at once: pressing any name on a road sent whoever was at the top of
+     * the list, because the server saw no who at all and fell back to the first free
+     * survivor.
+     */
+    const body = new URLSearchParams(new FormData(form, button));
     if (button) button.disabled = true;
 
     // urlencoded, because that is what the server parses. A refusal comes back as the
@@ -3338,7 +3930,7 @@ export const TIMERS = `
     fetch(form.action, {
       method: 'POST',
       credentials: 'same-origin',
-      body: new URLSearchParams(new FormData(form)),
+      body,
     })
       .then((res) => res.text())
       .then(apply)
@@ -3884,10 +4476,9 @@ export function campPage(view, { error, pane = 'camp' } = {}) {
         Boolean(view.survivor),
         view.direction,
         !view.expedition?.moment,
-        // Whose hands, and the selector that sets it. Prepared here because these four
-        // functions are about a structure rather than about a camp.
-        whoField(view, 'work'),
-        whoSelector(view, { field: 'work', label: 'working' }),
+        // How to ask whose hands, rather than the answer: the row knows whether it is the
+        // one being advised, and the lead wears the accent when it is.
+        (label, klass) => whoMenu(view, label, klass),
       ),
     )}
     ${/*
@@ -4752,69 +5343,53 @@ const occupiedAs = (busy) => OCCUPIED_AS[busy] ?? busy;
  * are raising is on the structures table, under a heading that says so.
  */
 
-function whoSelector(view, { field, label }) {
+/**
+ * A verb, and who is to do it — one control per row.
+ *
+ * Returns the whole control: a lead that opens on hover or focus, and a name per survivor,
+ * each a submit button carrying its own id. Rendered once per row, which is a list of four
+ * copied eleven times; that is the cost of asking the question where it is answered, and it
+ * is markup rather than a decision repeated.
+ *
+ * **Send, Build and Fit all use it.** They are one question — *which of these people, for
+ * this job* — and they were asked three different ways: a radio on a card for going, and a
+ * dropdown in a label strip for the other two. The verb is the label, the row is the job,
+ * and the answer is a name you press.
+ */
+function whoMenu(view, label, klass = '') {
   const roster = view.roster ?? [];
   if (roster.length === 0) return '';
 
   const free = roster.filter((one) => !one.busy);
   if (free.length === 0) {
-    /*
-     * Nobody, and only that.
-     *
-     * This used to name everybody and what they were doing — "Hansert is away, Wren is
-     * fitting" — which is a roster printed into a label strip, and printed again on the
-     * next block, and the next. Three blocks ask who, so a camp with nobody free said the
-     * same sentence three times across one screen while the strips it sat in were meant to
-     * be captions. What each survivor is doing belongs under their own name, in their own
-     * block, once; the strip only has to say the choice is closed.
-     */
-    return '<span class="f-nav"><span class="short">no survivor available</span></span>';
+    // Nothing to open. The row keeps a control that says the choice is closed, rather than
+    // losing the column and moving every row up.
+    return '<span class="sendmenu shut">Nobody free</span>';
   }
 
-  /*
-   * The busy are listed and cannot be chosen, rather than quietly dropped.
-   *
-   * The bench's rule, and the moment options': an option you cannot take keeps its place and
-   * says why, because a name that vanishes from a list reads as a bug rather than as a
-   * person who is occupied. Disabled, so the browser refuses the choice before the service
-   * has to — and the service refuses it again, because the page is a render of a moment ago.
-   */
-  const option = (one) =>
+  const name = (one) =>
     one.busy
-      ? `<option value="${escape(String(one.id))}" disabled>${escape(
+      ? `<li><button type="button" disabled>${escape(one.name ?? 'Survivor')}<span class="why">${escape(
+          occupiedAs(one.busy),
+        )}</span></button></li>`
+      : `<li><button type="submit" name="who" value="${escape(String(one.id))}">${escape(
           one.name ?? 'Survivor',
-        )} — ${escape(occupiedAs(one.busy))}</option>`
-      : `<option value="${escape(String(one.id))}">${escape(one.name ?? 'Survivor')}</option>`;
+        )}</button></li>`;
 
-  return `<span class="f-nav"><span class="tag">${escape(label)}</span>
-      <select data-whopicks="${escape(field)}" aria-label="${escape(label)}">${roster
+  return `<span class="sendmenu">
+      <button type="button" class="lead${klass ? ` ${klass}` : ''}">${escape(
+        label,
+      )} &rsaquo;</button>
+      <ul class="names">${roster
         .slice()
         .sort((a, b) => Number(Boolean(a.busy)) - Number(Boolean(b.busy)))
-        .map(option)
-        .join('')}</select></span>`;
-}
-
-/** The hidden field a row carries, kept in step with the block's selector. */
-function whoField(view, field) {
-  const free = (view.roster ?? []).filter((one) => !one.busy);
-  if (free.length === 0) return '';
-  return `<input type="hidden" name="who" data-whofield="${escape(field)}" value="${escape(
-    String(free[0].id),
-  )}">`;
+        .map(name)
+        .join('')}</ul>
+    </span>`;
 }
 
 function renderSurvivors(view) {
   if (!view.roster?.length) return '';
-
-  /*
-   * Which card shows as chosen, decided the same way the table decides it.
-   *
-   * whoField writes the first free survivor's id into all eleven hidden fields when the
-   * page is built, so the card that reads as picked and the person who would actually walk
-   * out of the gate are the same one before a line of script has run. Get these two from
-   * different places and a player with JavaScript off sends somebody they did not pick.
-   */
-  const chosen = view.roster.find((one) => !one.busy)?.id ?? null;
 
   /*
    * One tab strip for the whole roster, because there was only ever one tab.
@@ -4857,7 +5432,7 @@ function renderSurvivors(view) {
 
   const people = view.roster
     .map((person) =>
-      renderSurvivor(person, person.strain, view.vitals, person.inventory, chosen, panelId),
+      renderSurvivor(person, person.strain, view.vitals, person.inventory, panelId),
     )
     .join('');
 
@@ -4867,7 +5442,7 @@ function renderSurvivors(view) {
   });
 }
 
-function renderSurvivor(survivor, strain, vitals, inventory, chosen, panelId) {
+function renderSurvivor(survivor, strain, vitals, inventory, panelId) {
   /*
    * What this one is, under how they are doing — as figures now rather than as a sentence.
    *
@@ -4986,12 +5561,54 @@ function renderSurvivor(survivor, strain, vitals, inventory, chosen, panelId) {
    *
    * `resting` stays in the signature because the marks still use it — see `driversFor`.
    */
-  const gauge = (label, value, of, note, tail = '', acting = []) => {
-    return `<div class="gauge noted g-${label.toLowerCase()}">
+  /*
+   * Which way "bad" runs, per gauge.
+   *
+   * Health and stamina are bad when they are low; hunger and the dose are bad when they are
+   * high. Everything else about a gauge is the same in both directions, so this is the only
+   * thing the bar needs to be told in order to colour itself.
+   */
+  const RISING = new Set(['hunger', 'radiation']);
+
+  const gauge = (label, value, of, note, tail = '', acting = [], rate = 0) => {
+    const key = label.toLowerCase();
+    const share = Math.max(0, Math.min(1, Number(value) / (Number(of) || 100)));
+
+    /*
+     * How hot the bar is, 0 to 1, handed to CSS as a custom property.
+     *
+     * The colour is mixed in the stylesheet rather than picked here: a hex chosen in JS
+     * would be a second palette living outside `:root`, and the first time somebody retuned
+     * the oxide the bars would quietly keep the old one.
+     */
+    const heat = RISING.has(key) ? share : 1 - share;
+
+    /*
+     * The figure carries its own rate, and climbs between loads the way a store does.
+     *
+     * A gauge that only moves on reload is a page that stops being true the moment it is
+     * drawn: hunger rises every minute, a sleeper recovers every minute, and the numbers
+     * beside them sat still until something else happened to fetch the page. The stores have
+     * climbed on their own since they were built; this is the same three attributes.
+     *
+     * The names are its own. The stores own data-amount and data-rate, the raid's counters
+     * own data-per-hour, and the page contract counts each against the others: two things
+     * sharing an attribute is how a test about one starts failing for the other. A gauge
+     * drifts, so it says drift — and that test caught the first draft of this, counting
+     * eight rates on a page with four stores.
+     */
+    const live = ' data-value="' + value + '" data-drift="' + rate + '" data-of="' + of + '"' +
+      (RISING.has(key) ? ' data-rising="1"' : '');
+
+    return `<div class="gauge noted g-${key}">
       <div class="gauge-top"><span class="tag">${label}</span>${signs(acting)}
-        <span class="val">${n(value)}</span></div>
+        <span class="val"${live}>${n(value)}</span></div>
       <div class="track">${
-        value > 0 ? `<i style="width:${bar(value, of)}%"></i>` : ''
+        value > 0
+          ? `<i class="${
+              rate > 0 ? 'drift-up' : rate < 0 ? 'drift-down' : ''
+            }" style="width:${bar(value, of)}%; --heat:${heat.toFixed(3)}"></i>`
+          : ''
       }</div>${marks(acting)}${tail}${note}
     </div>`;
   };
@@ -5048,17 +5665,19 @@ function renderSurvivor(survivor, strain, vitals, inventory, chosen, panelId) {
       <button type="submit"${canSleep ? '' : ' disabled'}>Sleep</button>
     </form>`;
 
-  const goes = `<div class="goes">
-      <label class="pick${survivor.busy ? ' off' : ''}">
-        <input type="radio" name="sending" value="${escape(String(survivor.id))}"
-               data-whopicks="send" data-whoname="${escape(survivor.name ?? 'Survivor')}"
-               ${survivor.busy ? 'disabled' : ''}${
-                 !survivor.busy && String(survivor.id) === String(chosen) ? ' checked' : ''
-               }>
-        <span class="tag">sending</span>
-      </label>
-      ${(vitals?.sleepHours ?? []).length > 0 ? rest : ''}
-    </div>`;
+  /*
+   * The card no longer asks who is going.
+   *
+   * It was a radio here and a hidden field in all eleven dispatch rows, kept in step by
+   * script — one question asked on this page and answered on that one. **Who goes is a
+   * question about a road**: you are looking at the Deep Zone and deciding whether anybody
+   * can be spared for eighteen hours, and the answer belongs on the row you are reading.
+   * The Send control there names everybody, so the choice is made where it is needed and
+   * this card is left saying what the person is rather than what they are for.
+   */
+  const goes = `<div class="goes">${
+    (vitals?.sleepHours ?? []).length > 0 ? rest : ''
+  }</div>`;
 
   /*
    * A row in the roster rather than a panel of its own.
@@ -5118,9 +5737,24 @@ function renderSurvivor(survivor, strain, vitals, inventory, chosen, panelId) {
          * their name does, and a band spanning the row would have sat under the open tab
          * rather than under the name it describes.
          */ ''}
+       ${/*
+         * Health, stamina, hunger, dose — the user's order, 2026-09-02, and it reads as two
+         * pairs. **The first two are what a survivor can do**: whether they can be sent
+         * anywhere at all, and whether they have the hours for it. **The second two are what
+         * is being done to them**, and they are the reasons the first two move — hunger eats
+         * health once the stores are empty, and the dose burns it above the threshold.
+         *
+         * Stamina was fourth on the argument that health, hunger and the dose are a person's
+         * condition while stamina is their day. True, and it put the two figures a player
+         * checks before sending somebody at opposite ends of the column.
+         */ ''}
        <div class="gauges">
-         ${gauge('Health', survivor.health, 100, said.health, '', survivor.drivers?.health)}
-         ${gauge('Hunger', survivor.hunger, 100, said.hunger, '', survivor.drivers?.hunger)}
+         ${gauge('Health', survivor.health, 100, said.health, '', survivor.drivers?.health,
+           survivor.drivers?.rates?.health)}
+         ${gauge('Stamina', survivor.stamina, 100, said.stamina, '', survivor.drivers?.stamina,
+           survivor.drivers?.rates?.stamina)}
+         ${gauge('Hunger', survivor.hunger, 100, said.hunger, '', survivor.drivers?.hunger,
+           survivor.drivers?.rates?.hunger)}
          ${gauge(
            'Radiation',
            survivor.radiation,
@@ -5128,13 +5762,8 @@ function renderSurvivor(survivor, strain, vitals, inventory, chosen, panelId) {
            said.radiation,
            strainNote(strain),
            survivor.drivers?.radiation,
+           survivor.drivers?.rates?.radiation,
          )}
-         ${/*
-           * Phase 10's gauge, fourth rather than first because it is the one that says what a
-           * survivor can do next rather than how they are: health, hunger and the dose are
-           * their condition, and this is their day.
-           */ ''}
-         ${gauge('Stamina', survivor.stamina, 100, said.stamina, '', survivor.drivers?.stamina)}
        </div>
      </div>
      <div class="who-body">
@@ -5665,17 +6294,20 @@ function renderExpeditions(view) {
           <form method="post" action="/expedition">
             <input type="hidden" name="region" value="${escape(region.slug)}">
             ${/*
-              * Who goes rides along hidden, filled from the selector above the table.
+              * Who goes, asked on the row and answered by pressing a name.
               *
-              * The choice is made once for the block rather than eleven times inside it —
-              * you know who is free before you know where they should go, and a list of the
-              * roster repeated on every row would be the same decision asked eleven ways.
-              * The client script copies the selection into each of these on change.
+              * **Every name is a submit button carrying its own id**, so this needs no script
+              * whatsoever: the menu is a list of `name="who" value="…"` buttons inside the
+              * row's own form, and the browser posts the pair belonging to whichever was
+              * pressed. Hover opens it, and so does tabbing into it — `:focus-within` is the
+              * whole of the keyboard support.
+              *
+              * The busy are listed and refused rather than dropped, which is this page's rule
+              * everywhere: a name that vanishes reads as a bug where one that is there and
+              * will not be pressed reads as a person who is occupied. What has them is on the
+              * button, because here there is no card two lines up to say it.
               */ ''}
-            ${whoField(view, 'send')}
-            <button type="submit">Send${
-              going ? ` <span data-nameof="send">${escape(going.name ?? 'them')}</span>` : ''
-            }</button>
+            ${whoMenu(view, 'Send')}
           </form>
         </td>
       </tr>`,
@@ -6093,6 +6725,35 @@ function renderRoad(road) {
  *   and the service takes away. Using something out of your own pack is a different question
  *   and stays allowed — that is the whole point of the pack travelling with them.
  */
+/**
+ * The head every item table wears, and the only control that orders them.
+ *
+ * **One function because there are two tables and one order.** The pack on a survivor's card
+ * and each holding on the storage board are the same list of the same objects; sorting one
+ * and not the other would mean the same spear sat third here and first there.
+ *
+ * The state lives on the body — like the open tab, and for the same reason: it has to
+ * survive the swap that replaces these sections after every action, and a per-table
+ * attribute would not. So one press orders every list on the page at once, which is what
+ * makes them comparable.
+ *
+ * **Which way first depends on the column.** A name wants A to Z; a quantity and a weight
+ * want the most first, because the question behind them is what is taking up the pack.
+ * Pressing the same column again reverses it.
+ */
+const SORTS = [
+  ['name', 'Item', '', 'asc'],
+  ['qty', 'Qty', 'qty', 'desc'],
+  ['grams', 'Weight', 'weight', 'desc'],
+];
+
+const carryHead = () =>
+  `<thead><tr>${SORTS.map(
+    ([key, label, cls, first]) =>
+      `<th scope="col"${cls ? ` class="${cls}"` : ''}><button type="button" class="sorter"
+         data-sortby="${key}" data-firstly="${first}">${label}</button></th>`,
+  ).join('')}</tr></thead>`;
+
 function inventoryBody(inventory, owner = null, carrying = null, athand = true) {
   /*
    * What the pack weighs, said even when it is empty.
@@ -6106,12 +6767,16 @@ function inventoryBody(inventory, owner = null, carrying = null, athand = true) 
       )}</span></p>`
     : '';
 
-  const outOfReach = athand
-    ? ''
-    : '<p class="caption">On the road. Whatever they took is with them.</p>';
+  /*
+   * **The pack of somebody away says nothing extra.** It used to print "On the road" above
+   * the rows, back when this block was the only place that mentioned it. It is now the
+   * fourth: the name line carries the job and its timer, the away panel is open over the
+   * card, and every row here is already dimmed and unliftable. A caption repeating what
+   * three louder things have said is a line to read past, and it pushed the list down.
+   */
 
   if (!inventory || inventory.length === 0) {
-    return `${load}<p class="none">${NOTHING.inventory}</p>${outOfReach}`;
+    return packed('', athand ? NOTHING.carrying : NOTHING.inventory) + load;
   }
 
   /*
@@ -6206,30 +6871,66 @@ function inventoryBody(inventory, owner = null, carrying = null, athand = true) 
         }
       </span>`;
 
-      return `<tr class="noted"${
+      return `<tr class="noted" data-name="${escape(item.name)}" data-qty="${
+        item.qty
+      }" data-grams="${(item.weightGrams ?? 0) * item.qty}"${
         owner && athand
           ? ` draggable="true" data-slug="${escape(item.slug)}" data-from="${escape(String(owner))}"`
           : ''
       }>
-        <td class="name">${escape(item.name)}</td>
+        ${/*
+          * The verb sits against the name, not at the end of the row.
+          *
+          * It had a column of its own at the right edge, which is where a table puts an
+          * action when every row has one. Most rows do not: a vest and a coil of parts are
+          * carried rather than taken, so the column was mostly empty and the one button in
+          * it was a long way from the word it acts on. Beside the name it reads as part of
+          * the row rather than as a fourth field, and the eye crosses nothing to reach it.
+          *
+          * The form with no controls and the hover note ride along here too, so the table is
+          * three columns everywhere and the head has no case for actions.
+          */ ''}
+        <td class="name">${escape(item.name)}${action}${store}${note}</td>
         <td class="qty">×${item.qty}</td>
         <td class="weight">${escape(item.weight ?? '—')}</td>
-        <td class="use">${action}${store}${note}</td>
       </tr>`;
     })
     .join('');
 
-  return `${load}${outOfReach}<table class="carrying">
-    <thead><tr>
-      <th scope="col">Item</th>
-      <th scope="col" class="qty">Qty</th>
-      <th scope="col" class="weight">Weight</th>
-      <th scope="col" class="use" aria-label="Actions"></th>
-    </tr></thead>
-    <tbody>${rows}</tbody>
-  </table>`;
+  /*
+   * The total under the list rather than over it.
+   *
+   * It went above when it was the only figure the tab had, on the reasoning that a total is
+   * the first thing looked for. With the rows sortable it is the last: the list is the thing
+   * being read and rearranged, and the sum of it belongs where a sum goes — at the foot of
+   * the column it sums.
+   */
+  return packed(rows) + load;
 }
 
+/**
+ * The shelf the rows sit on: a table at the top of the cell, and the space below it.
+ *
+ * The empty space is the point, and it is space rather than rows. A list of two that stops
+ * halfway down its cell reads as a block that failed rather than as a pack with room in it,
+ * and "room in it" is the fact this whole phase is about — the same reason the box across on
+ * the board keeps its shape when the last thing is taken out of it. `.pack::after` stripes
+ * whatever the table does not use on the row's own pitch, so it is exact at any height the
+ * card takes and there is no count here to keep in step with a cell nobody has measured yet.
+ *
+ * The sentence for an empty pack is a real row, because it is words rather than furniture,
+ * and it sits where the first item would be rather than above a table of nothing.
+ */
+function packed(rows, empty = null) {
+  const nothing = empty
+    ? `<tr class="slot"><td class="name" colspan="3">${empty}</td></tr>`
+    : '';
+
+  return `<div class="pack"><table class="carrying">
+    ${carryHead()}
+    <tbody>${rows}${nothing}</tbody>
+  </table></div>`;
+}
 
 /**
  * Everything the camp is holding, side by side.
@@ -6302,14 +7003,13 @@ function renderStorage(view) {
 
     const rows = self.items
       .map(
-        (item) => `<tr class="noted"${
+        (item) => `<tr class="noted" data-name="${escape(item.name)}" data-qty="${
+          item.qty
+        }" data-grams="${(item.weightGrams ?? 0) * item.qty}"${
           self.away || !first
             ? ''
             : ` draggable="true" data-slug="${escape(item.slug)}" data-from="${escape(self.id)}"`
         }>
-          <td class="name">${escape(item.name)}</td>
-          <td class="qty">×${item.qty}</td>
-          <td class="weight">${escape(item.weight ?? '—')}</td>
           ${/*
             * One at a time, whatever the stack holds.
             *
@@ -6321,7 +7021,7 @@ function renderStorage(view) {
             * `to` is left empty on purpose: nothing but the drop can fill it, and a default
             * would be a destination nobody chose.
             */ ''}
-          <td class="ferry">${
+          <td class="name">${escape(item.name)}${
             self.away || !first
               ? ''
               : `<form method="post" action="/move">
@@ -6331,6 +7031,8 @@ function renderStorage(view) {
                    <input type="hidden" name="qty" value="1">
                  </form>`
           }</td>
+          <td class="qty">×${item.qty}</td>
+          <td class="weight">${escape(item.weight ?? '—')}</td>
         </tr>`,
       )
       .join('');
@@ -6347,6 +7049,18 @@ function renderStorage(view) {
      * same height and the same shape as a full one and the words sit where the first item
      * would be.
      */
+    /*
+     * An empty pack on the board is still a pack: heading, and the words in the first row.
+     *
+     * It printed one bare sentence and no table, which on a board of columns made the one
+     * person carrying nothing the only column that was not a list — and the point of standing
+     * them side by side is to read the same three headings down every one of them. It is the
+     * same fix the box got, and the same as the pack on the card: the sentence sits where the
+     * first item would be rather than instead of the table it belongs in.
+     *
+     * The box pads to a count as well, because it is a shelf with a column to itself and the
+     * shape is what stops it collapsing to a sentence. A pack is as long as the pack.
+     */
     const slots =
       self.id === 'box'
         ? Array.from({ length: Math.max(0, BOX_ROWS - self.items.length) }, (_, i) =>
@@ -6354,15 +7068,13 @@ function renderStorage(view) {
               ? `<tr class="slot"><td class="name" colspan="3">${NOTHING.box}</td></tr>`
               : '<tr class="slot"><td colspan="3">&nbsp;</td></tr>',
           ).join('')
-        : '';
+        : self.items.length === 0
+          ? `<tr class="slot"><td class="name" colspan="3">${NOTHING.carrying}</td></tr>`
+          : '';
 
     const body = self.items.length || slots
       ? `<table class="carrying">
-          <thead><tr>
-            <th scope="col">Item</th>
-            <th scope="col" class="qty">Qty</th>
-            <th scope="col" class="weight">Weight</th>
-          </tr></thead>
+          ${carryHead()}
           <tbody>${rows}${slots}</tbody>
         </table>`
       : `<p class="none">${NOTHING.carrying}</p>`;
@@ -6380,15 +7092,24 @@ function renderStorage(view) {
      * the two things being compared across the board — and a select wedged between them was
      * pushing the figure out past the border on a column this narrow.
      */
-    return block(
-      self.name,
-      self.away ? '<p class="none">On the road. Whatever they took is with them.</p>' : body,
-      {
-        flush: !self.away && self.items.length > 0,
-        attrs: ` data-hold="${escape(self.id)}"${self.away ? ' data-out="1"' : ''}`,
-        aside: `<span class="val">${escape(self.said ?? '')}</span>`,
-      },
-    );
+    /*
+     * **A holding out on the road still shows what it holds.** It printed one sentence and
+     * nothing else, which is the only column on the board that answered a different question
+     * from the rest: the point of standing them side by side is to compare what is where, and
+     * a pack you cannot see is a pack you cannot plan around. The rows are there, greyed with
+     * the rest of the block, with pips that cannot be lifted — the same as that person's pack
+     * on their own card.
+     *
+     * The sentence moves to the foot, where it says why rather than standing in for the list.
+     */
+    return block(self.name, body, {
+      flush: self.items.length > 0 || Boolean(slots),
+      attrs: ` data-hold="${escape(self.id)}"${self.away ? ' data-out="1"' : ''}`,
+      aside: `<span class="val">${escape(self.said ?? '')}</span>`,
+      foot: self.away
+        ? '<div class="block-foot"><span class="caption">On the road. Whatever they took is with them.</span></div>'
+        : '',
+    });
   };
 
   const foot =
@@ -6452,10 +7173,9 @@ function renderWorkshop(view) {
     })
     .join('');
 
-  return block('Workshop', `<table>${rows}</table>`, {
-    flush: true,
-    aside: whoSelector(view, { field: 'bench', label: 'at the bench' }),
-  });
+  // No aside: the bench asked in its strip until 2026-09-02, and was the last block that
+  // did. Every row asks for itself now, the way a road and a structure do.
+  return block('Workshop', `<table>${rows}</table>`, { flush: true });
 }
 
 /** Stores and carried materials read as one price, because that is how they are paid. */
@@ -6476,9 +7196,8 @@ function craftCell(recipe, view) {
 
   return `<form method="post" action="/craft">
       <input type="hidden" name="recipe" value="${escape(recipe.slug)}">
-      ${/* Whose hands, from the selector on the bench's label strip. */ ''}
-      ${whoField(view, 'bench')}
-      <button type="submit">Make</button>
+      ${/* Whose hands, asked on the recipe that needs them. */ ''}
+      ${whoMenu(view, 'Make')}
     </form>`;
 }
 
@@ -6771,7 +7490,7 @@ const ADVISED = {
   undefended: 'watchtower',
 };
 
-function renderStructures(structures, buildInFlight, someoneAlive, direction, quiet = true, who = '', picker = '') {
+function renderStructures(structures, buildInFlight, someoneAlive, direction, quiet = true, ask = () => '') {
   // One filled control per view. A window that closes in eleven minutes outranks
   // standing advice about what to build next, so while contact is open the table stops
   // pointing — otherwise the page has two things marked as *the* thing to do and the
@@ -6781,7 +7500,7 @@ function renderStructures(structures, buildInFlight, someoneAlive, direction, qu
   const rows = structures
     .map((s) => {
       const name = escape(s.kind.replaceAll('_', ' '));
-      const status = statusCell(s, buildInFlight, someoneAlive, s.kind === advised, who);
+      const status = statusCell(s, buildInFlight, someoneAlive, s.kind === advised, ask);
       // An unbuilt structure produces nothing, and saying so is more useful than
       // an empty cell the player has to interpret.
       const doing = s.effect
@@ -6794,13 +7513,15 @@ function renderStructures(structures, buildInFlight, someoneAlive, direction, qu
           ${doing}
           ${step ? `<span class="step">${step}</span>` : ''}
           <span class="note">${escape(s.summary ?? '')}</span>
-          ${fittingIn(s, buildInFlight, someoneAlive, who)}
+          ${fittingIn(s, buildInFlight, someoneAlive, ask)}
         </td>
         ${status}
       </tr>`;
     })
     .join('');
-  return block('Structures', `<table>${rows}</table>`, { flush: true, aside: picker });
+  // No aside: the block used to carry a 'working' selector in its strip, and the rows ask
+  // for themselves now.
+  return block('Structures', `<table>${rows}</table>`, { flush: true });
 }
 
 /**
@@ -6810,16 +7531,16 @@ function renderStructures(structures, buildInFlight, someoneAlive, direction, qu
  * point: scrap makes the thing bigger and fuel makes it do something new, and the
  * page should not make those look like the same purchase.
  */
-function fittingIn(structure, buildInFlight, someoneAlive, who = '') {
+function fittingIn(structure, buildInFlight, someoneAlive, ask = () => '') {
   // A structure can carry more than one branch — the watchtower sells the hour of the
   // next raid and the sky as two separate purchases — so each gets its own inset in
   // declaration order. A structure with none renders nothing at all, as the shelter does.
   return (structure.upgrades ?? [])
-    .map((upgrade) => oneFittingIn(structure, upgrade, buildInFlight, someoneAlive, who))
+    .map((upgrade) => oneFittingIn(structure, upgrade, buildInFlight, someoneAlive, ask))
     .join('');
 }
 
-function oneFittingIn(structure, upgrade, buildInFlight, someoneAlive, who = '') {
+function oneFittingIn(structure, upgrade, buildInFlight, someoneAlive, ask = () => '') {
   /*
    * The fitting lives *inside* its structure's description, behind a 2px inset.
    *
@@ -6918,8 +7639,7 @@ function oneFittingIn(structure, upgrade, buildInFlight, someoneAlive, who = '')
   return inset(`${cost}
     <form method="post" action="/upgrade">
       <input type="hidden" name="upgrade" value="${escape(upgrade.slug)}">
-      ${who}
-      <button type="submit">Fit</button>
+      ${ask('Fit')}
     </form>`);
 }
 
@@ -6944,7 +7664,7 @@ function stepOf(structure) {
   return `level ${structure.level + 1} &rarr; ${escape(structure.nextEffect)}`;
 }
 
-function statusCell(structure, buildInFlight, someoneAlive, advised, who = '') {
+function statusCell(structure, buildInFlight, someoneAlive, advised, ask = () => '') {
   if (structure.build_completes_at) {
     const hoursLeft = (new Date(structure.build_completes_at).getTime() - Date.now()) / 3600000;
     const when =
@@ -6972,9 +7692,8 @@ function statusCell(structure, buildInFlight, someoneAlive, advised, who = '') {
   return `${cost}
     <td class="act"><form method="post" action="/build">
       <input type="hidden" name="kind" value="${escape(structure.kind)}">
-      ${/* Whose hands, from the selector on the block's label strip. */ ''}
-      ${who}
-      <button type="submit"${advised ? ' class="fill"' : ''}>Build</button>
+      ${/* Whose hands, asked on the row that needs them. */ ''}
+      ${ask('Build', advised ? 'fill' : '')}
     </form></td>`;
 }
 

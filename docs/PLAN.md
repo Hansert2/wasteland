@@ -4032,6 +4032,16 @@ answers is *is this person free, and when*; which workshop they are raising is o
 structures table under a heading that says so. `occupiedFully` went with it, having no other
 caller.
 
+**A job in progress breathes.** The clock inside the chip already ticks, which is motion but
+not the kind that reads at a glance — somebody scanning four cards is asking *who is busy*,
+not how long is left. The chip’s edge warms to oxide and back over 2.6s, which is the ink
+this page uses for what is live. **The border and nothing else**, because a lamp like the
+away switch carries would be eleven more pixels on a chip already sitting eight short of the
+column edge, and that is what put it under the name in the first place. Cards are staggered
+by a negative delay so four workers do not breathe in unison, which reads as the page
+pulsing rather than as four people working, and `prefers-reduced-motion` holds the border
+still — the same fallback the section-swap cue uses.
+
 **And crafting is one word on the page now.** It was “at the bench”, which wrapped the chip
 under the name on its own — the phrase is right in a sentence and three words too many in a
 190px column. The refusals keep it: *“Wren is at the bench and cannot build”* is prose, and
@@ -4111,6 +4121,463 @@ The gauges went into the left column with the name rather than as a band across 
 a band would have sat under the open tab rather than under the name it describes. Four of
 them do not fit across 190px, so that column is 240 now and they lay out two by two, which
 needed the wide arrangement’s `grid-column` assignments explicitly let go of.
+
+#### A card with somebody out gives the third column back
+
+The right-hand column is what to do with the hours a person has, and somebody away has none
+to spend: sleep is refused for anybody out there, so the control sat greyed beside a block
+that already says why. The trip takes the column now — the body spans to the card’s edge and
+the plate fills it.
+
+**And it bleeds to the card’s edges** — the row is padded 14 by 18, and the plate is the
+one thing on this page that is ground rather than content: inset, it reads as a photograph
+pinned to a card; edge to edge, it reads as the place the card is looking at. Only three
+sides. The left is the gutter between the gauges and the trip, and it stays.
+
+The negative margin cancels the padding and not the border, so the rule that separates one
+person from the next still shows above a card in the middle of the roster — it is only flush
+at the top on the first card, which has no rule above it.
+
+**Only while the trip is the thing being shown.** The rules are about the trip block and
+not about the person: switch it off and the card is an ordinary card again — three columns,
+the pack in the middle, the sleep control back in its place refusing as it always did.
+Without that guard the switch changed the *shape* of the card as well as its contents, and
+the pack spread across a column it has no use for.
+
+**A departure from the rule, stated rather than slipped in.** A control you cannot use
+normally keeps its place and says why; here the *place* says why, at the size of a
+photograph, so the control is redundant rather than informative.
+
+It also gave up the 18px that separates a tab panel from the strip above it. There is no
+strip above this one — the head is the column to its left — so that margin was space between
+the block and nothing, and it stopped the plate short of the cell it fills.
+
+#### Every verb asks on its own row now
+
+Send, Build, Fit and Make all carry the same menu: a lead that opens on hover or focus, and
+a name per survivor, each a submit button with its own id. **No block asks in a label strip
+any more.**
+
+The bench went last, and the reasoning that had kept it — a queue rather than a table of
+choices — did not survive contact with the page: it is still a list of rows you press, and
+having exactly one of five blocks ask a different way is worse than either answer applied
+everywhere.
+
+**What that deleted is the point.** `whoSelector`, `whoField` and the change handler that
+copied a selection into every hidden field are gone, along with `data-whopicks`,
+`data-whofield` and `data-nameof`. Three blocks each asked once and copied the answer into
+their rows, because a `<select>` can belong to one form and every row is its own; a name in
+a menu is a submit button carrying its id, so there is nothing to keep in step. The contract
+test now asserts the *absence* of both attributes.
+
+#### Build and Fit ask the same way Send does
+
+The structures block asked in its label strip — one *working* dropdown for a table of five
+rows and their fittings — while a road asked on the row. Same question, two shapes. Build and
+Fit now carry the menu too, so the answer is given on the line you were already reaching for,
+and the block has no aside at all.
+
+`sendMenu` became `whoMenu(view, label, klass)`: the verb is the label, the row is the job.
+The class is what lets the advised row keep its accent — the lead wears `fill` when the block
+is pointing at it, which is why the rows build their own menus rather than being handed one.
+
+**The bench still asks in its strip**, and is now the only block that does. It is a queue
+rather than a table of choices — one order at a time, and the row you press is a recipe
+rather than a place — so leaving it is defensible; it is also simply not what was asked for,
+and doing it unasked would be the same overreach twice.
+
+#### The Send menu sent the wrong person — two traps, 2026-09-02
+
+Pressing any name on a road sent whoever was at the top of the list. Played, not caught by a
+suite, and neither half errors:
+
+1. **`FormData(form)` does not include the submitter.** The browser adds the pressed
+   button’s name and value itself, and only on a native submit — which this page replaces
+   with a fetch. Every form here had posted hidden fields and nothing else for as long as no
+   button carried a value; the Send menu is the first that does.
+2. **A disabled control is not submitted.** The handler disables the button to stop a double
+   press, and then read the form — dropping the very pair passing the submitter was for.
+
+With no `who` in the body the route falls back to *the first free survivor*, which is the
+right default for a caller that never had a roster and exactly the wrong one here. The body
+is built before the button goes dead, and `page-contract` now pins both halves: the submitter
+is passed, and it is read first.
+
+#### The gauges climb on their own now
+
+They only moved on reload, which makes the card untrue the moment it is drawn: hunger rises
+every minute and a sleeper recovers every minute, and the four figures beside them sat still
+until something else happened to fetch the page. **The stores have climbed by themselves
+since they were built** — a figure, a rate and a ceiling, projected in `tick` — and a gauge
+is the same shape of thing.
+
+`driversFor` now returns a net rate per gauge beside the marks, **taken from the same values
+the marks are printed from**: healing or the dose on health, eating or starving on hunger,
+decay on the dose, work or rest on stamina. Working them out a second time is how a page ends
+up saying “+2/h” over a survivor healing at 3.8, which is a fault this file already records.
+
+It is a projection, not a promise — the same bargain a store climbing toward its cap makes.
+It holds until something the client cannot see changes, and the next swap replaces it with
+what the tick actually did.
+
+**The attribute names are its own**: `data-value`, `data-drift`, `data-of`. The stores own
+`data-amount` and `data-rate`, the raid’s counters own `data-per-hour`, and the page contract
+counts each against the others. The first draft reused `data-rate` and that test caught it
+immediately — eight rates on a page with four stores — which is the failure the comment above
+the counters predicted in so many words.
+
+#### A bar warms as it goes wrong, and moves rather than jumps
+
+**Colour.** Each bar carries a `--heat` from 0 to 1: 0 where you want the gauge to be, 1
+where it is as bad as it gets — health and stamina emptying, hunger and the dose filling. One
+set of gauges, one property, and the direction of *bad* is the only thing a bar has to be
+told. The colour is mixed in the stylesheet from the two inks the palette already has, so
+retuning the oxide retunes the bars; a hex picked in the renderer would be a second palette
+living outside `:root`. Mixed in **oklab**, because a straight sRGB mix between grey and
+oxide runs through a muddy olive halfway, which reads as a third state rather than a journey.
+
+**The motion is a light down the bar, the way the bar went** — left to right as a gauge
+climbs, right to left as it falls. The user’s shape, and the right one: the width alone is a
+poor announcement, because most changes between two check-ins are a fraction of a percent,
+which is a pixel or none, and a bar that has quietly become a pixel shorter is not something
+anybody notices. **The direction is the part worth saying, so it is the part that is
+animated.** It runs inside the fill rather than the track, because the fill is the subject:
+the light travels the span of what the survivor has.
+
+**And the travel needed more than a transition.** The swap replaces a section wholesale,
+so every bar in it is a *new* element that begins at its new width — a CSS transition has
+nothing to travel from and the bars jump. The old value exists in exactly one place at that
+moment: the markup about to be thrown away. So `apply` reads the widths first, writes them
+back onto the incoming bars, forces the layout to take them, and lets go.
+
+Keyed by whose card and which gauge, because a roster of four has four healths and they must
+not swap places. Verified against a freshly fetched page: nine bars live, nine incoming, nine
+keys matched, none unmatched.
+
+**What could not be checked here:** a backgrounded tab runs no transitions at all, so the
+motion itself has to be looked at by a person. The same limitation hid the status chip’s
+pulse earlier — worth remembering before trusting a green check on anything that moves.
+
+#### The gauges read as two pairs
+
+Health, stamina, hunger, dose — the user’s order. **The first two are what a survivor can
+do**: whether they can be sent anywhere at all, and whether they have the hours for it. **The
+second two are what is being done to them**, and they are the reasons the first two move —
+hunger eats health once the stores are empty, and the dose burns it above the threshold.
+
+Stamina was fourth on the argument that health, hunger and the dose are a person’s condition
+while stamina is their day. That is true and it put the two figures a player checks before
+sending anybody at opposite ends of the column.
+
+#### A holding on the road still shows what it holds
+
+It printed one sentence and nothing else, which made it the only column on the board
+answering a different question from the rest. The point of standing them side by side is to
+compare what is where, and a pack you cannot see is a pack you cannot plan around — which is
+the same argument that put the box on a view of its own.
+
+The rows are there now, greyed with the block and with pips that cannot be lifted, exactly as
+that person’s pack reads on their own card. The sentence moved to the foot, where it says why
+rather than standing in for the list.
+
+#### An empty pack on the board is still a pack
+
+A holding with nothing in it printed one bare sentence and no table, which on a board of
+columns made the one person carrying nothing the only column that was not a list — and the
+point of standing them side by side is to read the same three headings down every one of them.
+It gets the heading and the words in the first row now, the same fix the box got and the same
+as the pack on the card: the sentence sits where the first item would be, not instead of the
+table it belongs in. The box still pads to a count as well, being a shelf with a column to
+itself; a pack is as long as the pack.
+
+#### A load says its unit once, and a figure is not a label
+
+`3.46 kg / 15 kg` says kilograms twice about a single reading, and in the block strip on the
+board — which is uppercased, being a label — it came out as `3.46 KG / 15 KG`: a shouted unit,
+in a face that already has its own case. Now `saysLoad` puts the unit at the end, once, and a
+`.val` in a strip opts out of the transform it had only inherited. One string, so the card's
+sum and the board's strip say it the same way.
+
+#### One grey, ruled — and the card admits it is three columns
+
+The shelf on the card is now the same grey from the heading to the sum, with the empty rows
+ruled rather than recessed. The board keeps its void slots: a holding there is a bordered
+column of its own, and the recess reads as slots cut into it. The pack has no frame of its own
+— it is a cell in a row of cells — and two greys inside an unframed cell read as two things, a
+list and then a dark panel under it, rather than as one shelf with room left on it.
+
+The heading takes the darker grey instead, which is what the same heading stands on over on the
+board: there it is simply the block showing through behind labels with no background of their
+own, `--ground` against rows of `--panel`. Here it has to be painted, because the rows travel
+under it while it is sticky. One shade darker than the shelf, so the labels read as the lid on
+it rather than as its first row — and the two surfaces agree, which was the point of asking.
+
+And the two sides are ruled, in the grey a block is edged in. The card has always been three
+columns — the condition, the pack, the hours — and nothing said so; they were three things
+floating on one ground. With the shelf running divider to divider, these lines close it on the
+other two sides and the roster reads as a table, which is what it has been all along. They are
+on the Carrying panel, so they are absent on Skills, whose panel does not fill the cell.
+
+#### The pack fills the cell: heading at the top, sum at the foot
+
+The first cut of this capped the pack at three rows and a heading, which was the right height
+by arithmetic and the wrong thing by construction: the panel still began 18px down like every
+other tab, the sum sat wherever the table happened to end, and twenty pixels of card were left
+under it. Now the cell itself is the shelf.
+
+`.who-body` stretches, the Carrying panel is a flex column, and the scroller is `flex: 1 1 0`
+with no floor — which is doing two jobs. It fills whatever the four gauges leave, so the
+heading sits level with the survivor's name and the total's baseline sits level with the last
+gauge; and because its flex base is zero it contributes nothing to how tall the card wants to
+be, which is what keeps a person holding nine things the same height as a person holding one.
+The 18px comes off the top for this panel alone: that gap is the space under a tab strip, and
+this panel's strip is the column beside it.
+
+`display` had to come from the generated tab rule, because anything specific enough to beat it
+is also specific enough to beat the `display: none` that hides an unopened tab. So
+`SURVIVOR_TABS` carries a third value, and both places that reveal a panel — the ordinary rule
+and the one that hands a card back when the away switch is shut — read it.
+
+**The empty rows are drawn, not written.** Padding out to a fixed count is right for the box,
+where six is a decision; here the count is not a decision but however many fit beside four
+gauges, which is a question about a rendered cell and cannot be answered while writing the row.
+So `.pack::after` is a flex item that takes the space the table does not and stripes it on the
+row's own pitch — exact at any height, and nothing when the list is long enough to scroll. It is anchored to
+the head of the shelf, which is a row boundary, so every line continues the line above it. The
+foot was tried first, to keep the odd remainder — a shelf is rarely a whole number of rows tall
+— away from the total; that put the remainder against the list instead, where it was a short
+slot beside full ones and the rules visibly stopped lining up. Lines that agree with the rows
+matter more than a shelf that ends on one, so the remainder runs out under the last line
+against a sum that is a different ground anyway.
+
+**And it gives up the card's padding, top and bottom.** The row is padded 14px, which the pack
+was still paying after it started filling the cell: 15px of card above the heading and 14 under
+the total, so the shelf read as a panel floating in the cell with a header and a footer around
+it rather than as the cell being a shelf. The rule between one survivor and the next is the
+shelf's own edge now, the way the trip block already went out to all four of them. Only the
+vertical: the left edge is the gutter to the gauges and the right is where the third column
+starts, and neither is the card's to take. The 28px it hands back is most of another row.
+
+**And the heading and the sum stand on the row's own pitch.** They were 24px and 21px against a
+row's 34, which is what still made them read as a header bar and a footer bar bracketing the
+list rather than as its first and last line. A shelf is one measure top to bottom — the labels
+in a slot, the rows in slots, the sum in the slot at the bottom — and `--pack-row` moved up to
+the panel to say so, because the sum lives outside the scroller and has to stand on the same
+pitch as the rows above it.
+
+Measured: every card 195–196px, heading 34px, every row 34px, total 34px, heading 0–1px from the
+top of the cell, total 0px from the bottom — with the away switch open and shut alike. A fourth item scrolls, under a
+thin scrollbar in the page's own ink rather than the pale default bar. Stacked under 760px both
+flex items take their own size again, or a column only as tall as its contents would flex them
+both to nothing.
+
+#### The pack is a shelf the size of its cell
+
+The Carrying tab grew and shrank with whatever the person happened to be holding — 57px of
+table on one card, 125px on the next, the fourth trailing off above a stretch of empty card.
+Down a roster that reads as four differently-shaped blocks rather than four readings of the
+same thing, and the gap under a short list looks like a panel that stopped rendering.
+
+So the pack is fixed at `PACK_ROWS = 3` and a heading, which is exactly the height of the
+four gauges beside it, padded out with the same blank rows the box uses — cut into the panel,
+so an empty row reads as a slot and a full one as a thing sitting in a slot. A fourth item
+scrolls inside that shelf instead of pushing the card taller than the person it describes.
+The heading stays put while it scrolls, because it is three sort controls as well as three
+labels. Measured: every card 195–196px, every pack 126px, six items scrolling to 101.6.
+
+Two things had to become exact for the cap to land on a row boundary rather than through one.
+`--pack-row: 34px` is a row's height and not its minimum — a row with a Use button in it ran
+half a pixel taller than one without — and slot cells now take the name's type, having
+inherited the page's prose size and stood six pixels taller than a full row. The second was
+wrong on the board too, where an empty box drew slots larger than the items that replace them.
+
+The box keeps six and never scrolls: it is a shelf with a column to itself and nothing beside
+it setting the height. Same idea, different cell. Stacked under 760px there is no cell to fill
+and the cap comes off, because a list scrolling inside a page that already scrolls is two
+scrollbars for one list.
+
+#### The pack of somebody away says nothing extra
+
+`On the road. Whatever they took is with them.` came off the Carrying tab. It was written
+when this block was the only place that said it, and it is now the fourth: the name line
+carries the job and its timer, the away panel is open over the card, and every row below is
+dimmed and unliftable. A caption repeating what three louder things have said is a line to
+read past, and it pushed the list down.
+
+It stays on the storage board, where it is the block’s foot and answers *why* those rows
+cannot be lifted — there is no away panel over a holding to say it instead.
+
+#### Both edges belong to the table
+
+The weight sat hard against the end of a row on the Carrying tab while the same column had
+air after it on the board: the 18px was written `.board` only, the way the gutter had been
+before an away pack lost it. Both edges are the table’s now.
+
+Which exposed the total under the list, 32px out of line with the column it sums. It is a
+`<p>`, so it had inherited the page’s prose measure — `max-width: 66ch` — and stopped fifty
+pixels short of the table. A measure is for reading a sentence across; this is a label and a
+number at opposite ends of a row, and it wants the width of the thing it sums. Head, weights
+and total now all end on 1190.
+
+#### The gutter is a fact about the table; the highlight is a fact about the row
+
+Two halves of one question, and they come out opposite ways.
+
+**The gutter belongs to every pack table**, liftable or not. It was conditional on the table
+having draggable rows, so an away survivor’s pack sat 32px left of everybody else’s — walking
+out of the gate moved their own columns. A column is where it is whoever is carrying it.
+
+**The hover belongs only to a row that lifts.** Store was a button on these rows until it
+became a gesture, and the gesture is now the whole of what a row offers — so a row that
+brightens and then refuses is the page offering what the service takes back. Measured with a
+real pointer: an away row stays on the panel colour with no edge; a present one comes up to
+`--rule-in` with the oxide edge.
+
+**The grip is drawn on every row that holds something**, and dimmed rather than dropped when
+it cannot be lifted — the user’s call, and the better one: the column then looks the same on
+every card, and the greying carries *not now* on its own. Three states in one mark: `--rule`
+when nothing can be done, `--fainter` when it can, `--dim` under the pointer.
+
+The box’s blank rows are the one exception. They hold nothing, so there is no handle to draw
+— confirmed on the board: five slots, no pips.
+
+#### The gutter was a fact about state, and should be one about the table
+
+An away survivor’s pack sat 32px left of everybody else’s. The gutter was conditional on the
+table *having* draggable rows, and a survivor out on the road has none — so walking out of
+the gate moved their own column, and their card stopped lining up with the three beside it.
+
+**Every pack table reserves it now, liftable or not.** The column is where the column is;
+whether a row can be picked up today is said by the grip being there or not. Measured across
+a roster of four with two away and one asleep: head, first name and total all on 603, and on
+the board every holding’s head and rows agree too.
+
+#### One column, two left edges
+
+Audited every repeated cell family on the page after the stores were fixed, and the paddings
+were uniform within each one — except for a rag the grip gutter had introduced. It was
+padding on each **draggable row**, so item names indented 32px while the column heading, the
+box’s empty rows and the total underneath stayed where they were. One column with two left
+edges, on both the card and the board.
+
+**The gutter belongs to the table, not to the row.** A table with liftable rows has one, and
+everything in that column starts after it — heading, slots and the sum alike, whether the
+thing beside it can be lifted or not. Measured after: head, first name, empty row and total
+all on the same pixel, in all three places a pack table is drawn.
+
+The rest of the audit came back clean: the rail’s nav items, every block strip, every table
+cell in the structures and workshop blocks, the gauges and the person rows all share one
+padding within their family. Where heights differ inside a family it is content — a
+structure row with two fittings under it is taller than one with none, which is the row
+saying what it holds.
+
+#### And the four store cells were four different heights
+
+The padding was identical on all four — the culprit was the rate. A store whose rate can be
+broken down wraps its figure in the `.costs` explainer; one with no rate prints the figure
+bare. The wrapper carries no padding of its own, **but it does carry the page’s type**:
+16.5px at 1.6 is a 26px empty line box around an 11.5px number, so the three stores with a
+rate stood 12px taller than fuel, which has none. Measured at 82, 83, 83 and 71.
+
+Zeroing the wrapper’s line height leaves the figure inside to set the box, and neither rule
+has to name a size. All four rows are 70.8px now — the first is 0.8 shorter because it has no
+rule above it, which is the separator doing its job.
+
+#### The stores were in no order at all — fixed 2026-09-02
+
+The rail reshuffled itself as the camp ran: food above water one visit, fuel above
+everything the next. **Nothing chose that order.** The view mapped `Object.entries` of what
+`loadWorld` had built, and `loadWorld` selected the resource rows with no `order by` — so
+the page printed them in heap order, which changes the moment a row is updated. Four stores
+in four positions is something a player reads by position after the first day, and it was
+never twice the same.
+
+Locked to **food, water, scrap, fuel**: the two that keep somebody alive, then the two that
+buy things — scrap before fuel, because scrap is what the first hour is spent on and fuel is
+what the road wants much later. The list is named once in `view-camp.js`.
+
+The query is ordered too, which is the rule this file already states for every query that
+builds something the page walks: *without it two loads of an unchanged world can differ in
+nothing but order.* The page fixes its own order on top of that; the `order by` is so the
+state underneath is the same state twice.
+
+#### Who goes is asked on the road, 2026-09-02
+
+The choice used to live on the person: a radio on each card, and eleven dispatch rows
+carrying a hidden field the client kept in step with it. **It has moved onto the row.** Send
+is a control that opens on hover or focus and lists the roster; pressing a name sends that
+person down that road.
+
+**Who goes is a question about a road.** You are looking at the Deep Zone deciding whether
+anybody can be spared for eighteen hours, and the answer belongs on the line you are reading
+— not on a card in another view that you set first and then hope is still selected. The
+earlier reasoning (*a roster repeated on eleven rows is one question asked eleven ways*) was
+about a **dropdown in the block’s caption**, and it still holds against that; a menu that is
+shut until you reach for it is not the same thing.
+
+**And it needs no script at all.** Every name is a submit button carrying `name="who"` and
+its own id, inside the row’s own form, so the browser posts the pair belonging to whichever
+was pressed. `:focus-within` opens it from the keyboard. That deletes a whole class of bug
+the old build had to be tested against: the card drawn as chosen and the id sitting in the
+hidden fields were computed by two different functions, and a player with JavaScript off
+could send somebody they had not picked.
+
+The occupied are listed and refused, as everywhere else on this page — with what has them on
+the button, because here there is no card two lines up to say it. And one dead gap was worth
+measuring: the list first sat three pixels below its control, which is three pixels where the
+pointer is over neither and the menu shuts on the way to the name. The offset is padding
+inside the list now, and the measured gap is zero.
+
+#### The verb sits against the name
+
+Use had a column of its own at the right edge, which is where a table puts an action when
+every row has one. Most rows do not — a vest and a coil of parts are carried rather than
+taken — so the column stood mostly empty and its one button sat a long way from the word it
+acts on. It is beside the name now, and the table is three columns everywhere: the
+control-less move form and the hover note ride there too, so the head has no case for
+actions and the board and the card are the same shape.
+
+#### A pack row was judged by the wrong person — found 2026-09-02
+
+Whether a row offered **Use** came from `state.survivor`, which is the founder-era singular:
+every row on every card was measured against the *first* living survivor. With that person at
+full health nobody in the camp could take a ration; with them hurt, every other pack
+advertised a mend `useItem` then refused, because the service reads the row’s actual owner.
+
+**It is the seventh instance of that phrase**, and it was found by looking at a page rather
+than by a test: a screenshot with no Use button anywhere, and a survivor at 96 health in it.
+Both suites were green through the whole life of the bug — nothing had ever asked *whose*
+condition the affordance was computed from.
+
+Rows are judged by their owner now, and `test/db/use-item.test.js` pins it with a camp of two:
+one whole, one at forty, each holding the same ration. Verified against the fix stashed — the
+test fails without it.
+
+#### The lists are ordered from one place
+
+Item, Qty and Weight are the control: press one and **every item table on the page** takes
+that order — the pack on each card and every holding on the board. One order rather than
+one per table, because the same spear sitting third on a card and first on the board is two
+answers to one question, and comparing holdings is what the board is for.
+
+**On the body, and applied in the client.** Sorting in SQL would mean telling the server the
+order on every request and every list agreeing about it anyway, for a view of a list rather
+than a fact about one. The state sits beside the open tab for the same reason it does: it
+has to survive the swap that replaces these sections after every action, and `syncTabs`
+re-applies it, because a swap brings rows back in whatever order the query used.
+
+**Rows carry their keys as numbers.** `data-qty` and `data-grams` rather than the printed
+text — “1.67 kg” and “850 g” do not compare as strings, and a sort that reads what it
+rendered would put a gram above a kilo. The box’s blank rows are not in the order at all:
+they are the shape of the shelf, and they stay under whatever the order puts above them.
+
+**Which way first depends on the column**: a name wants A to Z, a quantity and a weight want
+the most first, because the question behind those two is what is filling the pack. The same
+column again reverses, and an arrow marks the one holding the order.
+
+**And the total moved under the list.** It was above while it was the only figure the tab
+carried; now the list is the thing being read and rearranged, and its sum belongs at the
+foot of the column it sums.
 
 #### Making a row look liftable
 

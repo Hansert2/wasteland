@@ -42,14 +42,22 @@ test('build every page state once', async () => {
 
 test('the carrying tab says its limit and item weights without a popup', () => {
   const html = STATES.banked;
-  const total = html.indexOf('<p class="carrying-total">');
-  const table = html.indexOf('<table class="carrying">', total);
+  const table = html.indexOf('<table class="carrying">');
+  const total = html.indexOf('<p class="carrying-total">', table);
 
   assert.ok(total >= 0, 'the carried / maximum total is missing');
-  assert.ok(table > total, 'the carried / maximum total belongs above the item list');
+  /*
+   * Under the list, not over it. It was over while it was the only figure the tab carried;
+   * with the rows sortable the list is the thing being read and rearranged, and its sum
+   * belongs at the foot of the column it sums.
+   */
+  assert.ok(total > table, 'the carried / maximum total belongs under the item list');
   assert.match(html, /<span class="val">[^<]+ \/ [^<]+<\/span>/);
-  assert.ok(
-    html.includes('<th scope="col" class="weight">Weight</th>'),
+
+  // The heading is a control now, so what is pinned is the column and its word.
+  assert.match(
+    html,
+    /<th scope="col" class="weight"><button[^>]*data-sortby="grams"[^>]*>Weight<\/button><\/th>/,
     'weight has no visible column heading',
   );
   assert.match(html, /<td class="weight">[^<]+<\/td>/);
@@ -69,13 +77,39 @@ test('the storage board stands every holding beside every other one', () => {
    * Moving is a drag and nothing else — but it still goes through a real form, so there is
    * one path to the verb and refusals come back the way every other refusal does.
    */
-  assert.match(html, /<tr class="noted" draggable="true" data-slug="[^"]+" data-from="[^"]+">/);
+  // Every row carries what it sorts by as well as what it drags: the keys are numbers on
+  // the row, because "1.67 kg" and "850 g" do not compare as the text they print as.
+  assert.match(html, /<tr class="noted" data-name="[^"]+" data-qty="[0-9]+" data-grams="[0-9]+"/);
+  assert.match(html, /draggable="true" data-slug="[^"]+" data-from="[^"]+">/);
   assert.match(html, /<form method="post" action="\/move">/);
   assert.match(html, /name="qty" value="1"/, 'a drag moves one, whatever the stack holds');
   assert.ok(
     !html.includes('data-whopicks="move-'),
     'the destination picker was cut; only the drop names a destination',
   );
+});
+
+test('a submitted form carries the button that submitted it', () => {
+  /*
+   * Two traps, and both drop the pressed name in silence.
+   *
+   * The page replaces the native submit with a fetch, and FormData(form) collects the
+   * fields and *not* the name and value of the submitting button — the browser adds that
+   * pair itself, and only on a native submit. And a disabled control is not submitted at
+   * all, so disabling the button to stop a double press and then reading the form drops the
+   * very pair the submitter was passed for.
+   *
+   * Both were live at once on 2026-09-02: every name in a Send menu sent whoever was at the
+   * top of the list, because the server saw no who and fell back to the first free
+   * survivor. Nothing errored, and both suites were green.
+   */
+  const html = STATES.home;
+  const built = html.indexOf(String.fromCharCode(110) + 'ew FormData(form, button)');
+  const disabled = html.indexOf('button.disabled = true');
+
+  assert.ok(built > 0, 'the submitter is not passed, so a named button posts nothing');
+  assert.ok(disabled > 0, 'the double-press guard has gone');
+  assert.ok(built < disabled, 'the body is read after the button is disabled, which drops it');
 });
 
 test('a page with a deadline on it is a page the script can swap', async () => {

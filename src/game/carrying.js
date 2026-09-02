@@ -93,3 +93,15 @@ export function saysWeight(grams) {
   const kg = Number((grams / 1000).toFixed(2));
   return `${kg} kg`;
 }
+
+/**
+ * A load against the limit it is measured against: `3.46 / 15 kg`.
+ *
+ * The unit once, at the end, because it is one unit and the two figures are one reading.
+ * `3.46 kg / 15 kg` says kilograms twice to describe a single fraction, and in the block
+ * strip — which is uppercased, being a label — it came out as `3.46 KG / 15 KG`, a shout
+ * about a unit.
+ */
+export function saysLoad(grams, cap) {
+  return `${Number((grams / 1000).toFixed(2))} / ${saysWeight(cap)}`;
+}

@@ -5,6 +5,7 @@ import {
   CARRY_CAP_GRAMS,
   howManyFit,
   roomLeft,
+  saysLoad,
   saysWeight,
   weighPack,
 } from '../../src/game/carrying.js';
@@ -59,4 +60,12 @@ test('weights are always said in kilograms', () => {
   assert.equal(saysWeight(1668), '1.67 kg');
   assert.equal(saysWeight(1400), '1.4 kg');
   assert.equal(saysWeight(15000), '15 kg');
+});
+
+test('a load is said against its limit with the unit once', () => {
+  // The strip on the board is uppercased, being a label, so a unit said twice came out as
+  // "3.46 KG / 15 KG". One unit, at the end, for one reading.
+  assert.equal(saysLoad(3460, 15000), '3.46 / 15 kg');
+  assert.equal(saysLoad(0, 15000), '0 / 15 kg');
+  assert.equal(saysLoad(417, 15000), '0.42 / 15 kg');
 });
