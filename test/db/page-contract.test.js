@@ -40,6 +40,44 @@ test('build every page state once', async () => {
   assert.ok(Object.keys(STATES).length >= 6, 'the states worth checking are all built');
 });
 
+test('the carrying tab says its limit and item weights without a popup', () => {
+  const html = STATES.banked;
+  const total = html.indexOf('<p class="carrying-total">');
+  const table = html.indexOf('<table class="carrying">', total);
+
+  assert.ok(total >= 0, 'the carried / maximum total is missing');
+  assert.ok(table > total, 'the carried / maximum total belongs above the item list');
+  assert.match(html, /<span class="val">[^<]+ \/ [^<]+<\/span>/);
+  assert.ok(
+    html.includes('<th scope="col" class="weight">Weight</th>'),
+    'weight has no visible column heading',
+  );
+  assert.match(html, /<td class="weight">[^<]+<\/td>/);
+});
+
+test('the storage board stands every holding beside every other one', () => {
+  const html = STATES.banked;
+
+  assert.ok(html.includes('<section id="s-storage">'), 'the board has no section of its own');
+
+  // The box and one column per living survivor. A board of one is not a board.
+  const holds = html.match(/data-hold="[^"]*"/g) ?? [];
+  assert.ok(holds.includes('data-hold="box"'), 'the camp box is not on the board');
+  assert.ok(holds.length >= 3, `only ${holds.length} holdings on the board`);
+
+  /*
+   * Moving is a drag and nothing else — but it still goes through a real form, so there is
+   * one path to the verb and refusals come back the way every other refusal does.
+   */
+  assert.match(html, /<tr class="noted" draggable="true" data-slug="[^"]+" data-from="[^"]+">/);
+  assert.match(html, /<form method="post" action="\/move">/);
+  assert.match(html, /name="qty" value="1"/, 'a drag moves one, whatever the stack holds');
+  assert.ok(
+    !html.includes('data-whopicks="move-'),
+    'the destination picker was cut; only the drop names a destination',
+  );
+});
+
 test('a page with a deadline on it is a page the script can swap', async () => {
   // The graveyard has no sections, and that is correct rather than an oversight: it is
   // static, it carries no countdown, and `apply()` treats a response with no sections as
@@ -351,7 +389,13 @@ test('every gauge says what its number counts, in a place the note script can fi
      * sentence that meant "the survivor" while a camp held one, and quietly means "the
      * page" now. Four is a fact about a person.
      */
-    const cards = html.split('<div class="person">').slice(1);
+    /*
+     * The tag, not the tag and nothing else. A survivor card carries `data-hold` since it
+     * became a place a dragged row can be dropped, so what is pinned here is the element
+     * and its class — the thing the layout is written against — and not whatever the card
+     * has to say about itself.
+     */
+    const cards = html.split('<div class="person"').slice(1);
     const slots = [];
     for (const card of cards) {
       const mine = [...card.matchAll(/class="gauge noted g-(\w+)"/g)].map((m) => m[1]);
@@ -586,7 +630,7 @@ test('somebody out there is shown the place they are in', () => {
   assert.equal(shown[1], 'the_deep_zone', 'and it is the place they actually went');
 
   // Inside the roster row, which is what makes it theirs rather than the page's.
-  assert.match(html, /<div class="person">[^]*?afield plated/, 'the plate is in a survivor row');
+  assert.match(html, /<div class="person"[^>]*>[^]*?afield plated/, 'the plate is in a survivor row');
 
   // And the place names itself on it, rather than in a line beside the survivor's name.
   assert.match(

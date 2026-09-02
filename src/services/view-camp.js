@@ -40,6 +40,7 @@ import { directionFor } from '../game/direction.js';
 import { radThresholdFor, skillsOf, wandererFor } from '../game/wanderers.js';
 import { stateAt, timelineOf } from '../game/timeline.js';
 import { CONFIG } from '../game/constants.js';
+import { CARRY_CAP_GRAMS, saysWeight, weighPack } from '../game/carrying.js';
 import { radDamagePerHourAt, recoveryOf } from '../game/tick.js';
 import { RAID_DAMAGE_PER_HOUR, standFor, standTogether } from '../game/raids.js';
 import {
@@ -954,8 +955,26 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
     [settlementId],
   );
 
+  /*
+   * The camp box.
+   *
+   * Read here rather than in `loadWorld`, and that is a decision rather than convenience:
+   * the tick must not be able to see it. The safety valve eats whatever a survivor is
+   * carrying before lethal damage, and the box being invisible to `applyTick` is what makes
+   * "banking your last ration is how you die with a full larder" a structural fact instead of
+   * a rule somebody has to remember.
+   */
+  const { rows: boxRows } = await client.query(
+    `select i.slug, i.name, i.kind, i.description, i.weight_grams, si.qty
+       from store_items si
+       join items i on i.id = si.item_id
+      where si.settlement_id = $1 and si.qty > 0
+      order by i.name`,
+    [settlementId],
+  );
+
   const { rows: inventoryRows } = await client.query(
-    `select ii.character_id, i.slug, i.name, i.kind, i.potency, i.description, ii.qty
+    `select ii.character_id, i.slug, i.name, i.kind, i.potency, i.description, ii.qty, i.weight_grams
        from inventory_items ii
        join items i on i.id = ii.item_id
        join characters c on c.id = ii.character_id
@@ -983,6 +1002,13 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
    * `characters` to find them — and only the grouping is new. With one survivor the whole
    * result was one pack and nobody had to ask.
    */
+  // Every branch of the map below spreads the row, so the camelCase name the carrying
+  // helpers read is put on the row itself rather than added three times.
+  for (const row of inventoryRows) {
+    row.weightGrams = row.weight_grams;
+    row.weight = saysWeight(row.weight_grams * row.qty);
+  }
+
   const packsByOwner = new Map();
 
   const inventory = inventoryRows.map((row) => {
@@ -1912,6 +1938,23 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
      */
     plans,
     inventory,
+    /*
+     * What the camp keeps, and what the whole shelf weighs.
+     *
+     * Uncapped for now — the constraint this phase is about is the road, not the shed — so
+     * the weight is here to be read rather than to be measured against anything.
+     */
+    box: {
+      items: boxRows.map((row) => ({
+        ...row,
+        weightGrams: row.weight_grams,
+        weight: saysWeight(row.weight_grams * row.qty),
+      })),
+      grams: weighPack(boxRows.map((row) => ({ qty: row.qty, weightGrams: row.weight_grams }))),
+      said: saysWeight(
+        weighPack(boxRows.map((row) => ({ qty: row.qty, weightGrams: row.weight_grams }))),
+      ),
+    },
     recipes: recipes.map((recipe) => ({
       ...recipe,
       shortBy: shortfall(purse, pack, recipe.costs ?? {}, recipe.inputs ?? []),
@@ -2066,6 +2109,18 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
           config: CONFIG,
         }),
         inventory: packsByOwner.get(Number(person.id)) ?? [],
+        /*
+         * What the pack weighs, as one string, because that is all the page reads.
+         *
+         * Phase 13, and a fraction rather than a bar: the block already carries four gauges,
+         * and a fifth would report a vague fullness where the useful figure is the number of
+         * kilograms a find still has to fit into. Formatted here rather than in the page —
+         * `render.js` imports nothing by design, so every weight on it is said in this file.
+         */
+        carrying: (() => {
+          const held = packsByOwner.get(Number(person.id)) ?? [];
+          return { said: `${saysWeight(weighPack(held))} / ${saysWeight(CARRY_CAP_GRAMS)}` };
+        })(),
         // What they are doing, in the words the refusals use, so a block and a refusal
         // cannot describe the same person differently.
         // Kept as two flat fields rather than the map's object, because everything that

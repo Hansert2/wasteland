@@ -267,6 +267,54 @@ export async function buildStates(client, now = Date.now()) {
     states['under-raid'] = campPage(await viewCamp(client, id, now + HOUR));
   }
 
+  /*
+   * 6d. A box with something in it, and a pack near its cap.
+   *
+   * Phase 13's block, and it is markup nothing else here reaches: the box renders one way
+   * empty and another way stocked, and the pack tab grows a weight line and a second verb in
+   * a column two hundred pixels wide. Two survivors, because the Take control is a hidden
+   * field on a camp of one and a select on a camp of two — the two states of that control
+   * are the whole reason this fixture has a second person in it.
+   */
+  {
+    const id = await camp(client, now);
+    await raiseSuccessor(client, id, { now });
+    /*
+     * Named from outside the wanderer pool, and the id is captured rather than matched on.
+     * The first draft added a 'Wren' beside a successor the seed had also called Wren, so
+     * every `name <> 'Wren'` in the fixture matched nobody: the packs came out empty, both
+     * options in the Take control read the same, and the page looked wrong in a way that had
+     * nothing to do with the code it was drawn to check.
+     */
+    const { rows: joiner } = await client.query(
+      `insert into characters (settlement_id, name, born_at)
+       values ($1, 'Marek', $2) returning id`,
+      [id, new Date(now - HOUR)],
+    );
+    const { rows: living } = await client.query(
+      `select id from characters
+        where settlement_id = $1 and died_at is null and id <> $2 order by born_at, id`,
+      [id, joiner[0].id],
+    );
+
+    await client.query(
+      `insert into store_items (settlement_id, item_id, qty)
+       select $1, i.id, x.qty from items i
+         join (values ('scavenged_parts', 4), ('tinned_stew', 2)) as x(slug, qty)
+           on x.slug = i.slug`,
+      [id],
+    );
+    // A vest and a spear is 11 kg of the 15, which is what makes the free figure worth
+    // printing rather than a rounding of the cap.
+    await client.query(
+      `insert into inventory_items (character_id, item_id, qty)
+       select $1, i.id, 1 from items i
+        where i.slug in ('plate_vest', 'scrap_spear', 'rad_x')`,
+      [living[0].id],
+    );
+    states['banked'] = campPage(await viewCamp(client, id, now + 0.1 * HOUR));
+  }
+
   // 7. The ledger, and the empty camp that follows a death.
   {
     const id = await camp(client, now);
