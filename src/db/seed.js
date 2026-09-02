@@ -10,12 +10,25 @@ import { pool } from './pool.js';
  * Every statement upserts on the natural key, so this is safe to run repeatedly.
  */
 
+/**
+ * Items, and what they weigh.
+ *
+ * **A ration's weight is derived rather than chosen.** A point of hunger has a mass: eating
+ * covers `hungerFallPerHour` an hour while costing `foodPerHour`, which is 5.2 g a point at
+ * Phase 18's conversion of 125 g to the food unit. Tinned Stew relieves 80, so it weighs a
+ * tin of stew. Nothing was invented, and reality agreed with the arithmetic to within 5%.
+ *
+ * **Everything else is anchored content**, and this is the anchoring pass: a strip of tablets
+ * against a spear against a plate vest. Change them on purpose — `tools/carry-balance.mjs`
+ * re-derives the cap from whatever these say.
+ */
 const ITEMS = [
   {
     slug: 'tinned_stew',
     name: 'Tinned Stew',
     kind: 'ration',
     potency: 80,
+    weight: 417, // derived: 80 hunger x 5.2 g
     description: 'Older than you are. Still food.',
   },
   {
@@ -23,6 +36,7 @@ const ITEMS = [
     name: 'Rad-X',
     kind: 'antirad',
     potency: 60,
+    weight: 20,
     description: 'Chalky tablets that scrub the worst of it out.',
   },
   {
@@ -32,6 +46,7 @@ const ITEMS = [
     name: 'Scavenged Parts',
     kind: 'material',
     potency: 0,
+    weight: 750,
     description: 'Springs, wire, a motor that might still turn.',
   },
   {
@@ -39,6 +54,7 @@ const ITEMS = [
     name: 'Scrap Spear',
     kind: 'weapon',
     potency: 25,
+    weight: 2000,
     description: 'Rebar, tape, and the confidence to keep something at arm’s length.',
   },
   {
@@ -46,6 +62,7 @@ const ITEMS = [
     name: 'Plate Vest',
     kind: 'armour',
     potency: 30,
+    weight: 9000,
     description: 'Road signs, cut down and stitched into a jacket. Heavy. Worth it.',
   },
   {
@@ -53,6 +70,7 @@ const ITEMS = [
     name: 'Preserved Meal',
     kind: 'ration',
     potency: 70,
+    weight: 365, // derived: 70 hunger x 5.2 g
     description: 'Camp food, sealed while it was still worth sealing.',
   },
   {
@@ -60,6 +78,7 @@ const ITEMS = [
     name: 'Rad Scrubber',
     kind: 'antirad',
     potency: 45,
+    weight: 120,
     description: 'Home-run chelation. Unpleasant, and better than the alternative.',
   },
 ];
@@ -315,12 +334,13 @@ const REGIONS = [
 export async function seed(client) {
   for (const item of ITEMS) {
     await client.query(
-      `insert into items (slug, name, kind, potency, description)
-       values ($1, $2, $3, $4, $5)
+      `insert into items (slug, name, kind, potency, description, weight_grams)
+       values ($1, $2, $3, $4, $5, $6)
        on conflict (slug) do update
          set name = excluded.name, kind = excluded.kind,
-             potency = excluded.potency, description = excluded.description`,
-      [item.slug, item.name, item.kind, item.potency, item.description],
+             potency = excluded.potency, description = excluded.description,
+             weight_grams = excluded.weight_grams`,
+      [item.slug, item.name, item.kind, item.potency, item.description, item.weight],
     );
   }
 

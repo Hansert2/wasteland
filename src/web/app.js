@@ -22,6 +22,7 @@ import { startSleep } from '../services/start-sleep.js';
 import { answerRaid } from '../services/answer-raid.js';
 import { setCampClock } from '../services/set-camp-clock.js';
 import { useItem } from '../services/use-item.js';
+import { moveItem } from '../services/move-item.js';
 import { takeInWanderer } from '../services/take-in-wanderer.js';
 import { startUpgrade } from '../services/start-upgrade.js';
 import { commitToRoad } from '../services/commit-to-road.js';
@@ -409,6 +410,29 @@ export function createApp() {
       const now = Date.now();
       await advanceSettlement(client, settlementId, now);
       await useItem(client, settlementId, req.body.slug, req.body.who || null);
+    });
+
+    res.redirect(backToCamp(req));
+  });
+
+  app.post('/move', requireAuth, async (req, res) => {
+    await withTransaction(async (client) => {
+      const settlementId = await settlementIdForPlayer(client, req.playerId);
+      if (!settlementId) throw new InputError('This account has no camp.');
+
+      /*
+       * Advance first, and here it decides whether the verb is allowed at all: a raid that
+       * opened while the page sat there freezes transfers, and a trip that landed a second
+       * ago is a pack with different things in it.
+       */
+      const now = Date.now();
+      await advanceSettlement(client, settlementId, now);
+      await moveItem(client, settlementId, {
+        from: req.body.from,
+        to: req.body.to,
+        slug: req.body.slug,
+        qty: req.body.qty ?? 1,
+      });
     });
 
     res.redirect(backToCamp(req));

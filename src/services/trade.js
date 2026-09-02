@@ -6,7 +6,7 @@ import {
   priceAt,
   rivalOf,
 } from '../game/factions.js';
-import { grantItems } from '../db/world.js';
+import { grantItems, storeItems } from '../db/world.js';
 import { InputError } from '../errors.js';
 import { TRADE_POST_LINKS } from '../game/road.js';
 
@@ -131,7 +131,16 @@ async function payCosts(client, settlementId, costs) {
 
 async function grant(client, settlementId, characterId, goods) {
   if (goods.item) {
-    await grantItems(client, characterId, [{ slug: goods.item, qty: goods.qty }]);
+    /*
+     * Phase 13: a caravan trades at the gate, so whatever will not fit in the pack goes in
+     * the box rather than being lost. The camp is standing right there, and a purchase that
+     * silently evaporated because somebody was carrying a plate vest would be a worse
+     * surprise than the cap itself.
+     */
+    const overflow = await grantItems(client, characterId, [
+      { slug: goods.item, qty: goods.qty },
+    ]);
+    if (overflow.length > 0) await storeItems(client, settlementId, overflow);
     return;
   }
 

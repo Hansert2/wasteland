@@ -1,3 +1,4 @@
+import { howManyFit } from '../game/carrying.js';
 import { UPGRADES, productionRates } from '../game/structures.js';
 
 /**
@@ -142,7 +143,7 @@ export async function loadWorld(client, settlementId) {
   const packs = new Map();
   if (characters.length > 0) {
     const { rows: inventoryRows } = await client.query(
-      `select ii.character_id, ii.id as row_id, ii.qty, i.slug, i.kind, i.potency
+      `select ii.character_id, ii.id as row_id, ii.qty, i.slug, i.kind, i.potency, i.weight_grams
          from inventory_items ii
          join items i on i.id = ii.item_id
         where ii.character_id = any($1)
@@ -214,6 +215,9 @@ export async function loadWorld(client, settlementId) {
         kind: row.kind,
         potency: row.potency,
         qty: row.qty,
+        // Phase 13. Carried so anything holding a pack can weigh it without a second query;
+        // zero until the seed has run, which is the pack every survivor had before.
+        weightGrams: row.weight_grams,
       })),
     };
 
@@ -689,13 +693,60 @@ export async function saveWorld(client, state) {
  * deals in slugs and knows nothing of item ids — resolving one is a database concern.
  */
 export async function grantItems(client, characterId, grants) {
+  /*
+   * Phase 13: the pack has a bottom now, so this answers with what would not go in.
+   *
+   * Weighed once here rather than per grant, then kept in step as each one lands — the
+   * alternative is a round trip per find on a trip that found four things. `howManyFit`
+   * answers with a number rather than a yes, because half a stack going in and half being
+   * left on the ground is the honest outcome and the log has to be able to say it.
+   */
+  const { rows: carried } = await client.query(
+    `select ii.qty, i.weight_grams
+       from inventory_items ii
+       join items i on i.id = ii.item_id
+      where ii.character_id = $1`,
+    [characterId],
+  );
+  const pack = carried.map((row) => ({ qty: row.qty, weightGrams: row.weight_grams }));
+
+  const { rows: weights } = await client.query(
+    'select slug, weight_grams from items where slug = any($1)',
+    [grants.map((grant) => grant.slug)],
+  );
+  const weightOf = new Map(weights.map((row) => [row.slug, row.weight_grams]));
+
+  const leftBehind = [];
+
   for (const { slug, qty } of grants) {
+    const weightGrams = weightOf.get(slug) ?? 0;
+    const fits = howManyFit(pack, weightGrams, qty);
+
+    if (fits < qty) leftBehind.push({ slug, qty: qty - fits });
+    if (fits === 0) continue;
+
     await client.query(
       `insert into inventory_items (character_id, item_id, qty)
        select $1, i.id, $3 from items i where i.slug = $2
        on conflict (character_id, item_id)
          do update set qty = inventory_items.qty + excluded.qty`,
-      [characterId, slug, qty],
+      [characterId, slug, fits],
+    );
+    pack.push({ qty: fits, weightGrams });
+  }
+
+  return leftBehind;
+}
+
+/** Put items in the camp box. The box has no cap, so this always succeeds. */
+export async function storeItems(client, settlementId, grants) {
+  for (const { slug, qty } of grants) {
+    await client.query(
+      `insert into store_items (settlement_id, item_id, qty)
+       select $1, i.id, $3 from items i where i.slug = $2
+       on conflict (settlement_id, item_id)
+         do update set qty = store_items.qty + excluded.qty`,
+      [settlementId, slug, qty],
     );
   }
 }
