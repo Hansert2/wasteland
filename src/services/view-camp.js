@@ -1505,9 +1505,38 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
    * line already renders. Derived once here rather than twice, because a forecast that
    * disagrees with the number printed above it is worse than no forecast.
    */
+  /*
+   * What the fence is holding back at this instant, from the same function the walk charges
+   * with. Worked out here because three things want it: the rate below, and two fields of the
+   * raid's own payload.
+   */
+  const standingNow = state.raid
+    ? standTogether(
+        (state.raid.stands ?? [])
+          .filter((row) => row.since != null)
+          .map((row) => (state.survivors ?? []).find((one) => one.id === row.characterId))
+          .filter((one) => one?.alive),
+      )
+    : 0;
+
+  /*
+   * And raiders, while there are any.
+   *
+   * A raid drains the stores by the hour now, so a page that left it out promised a rate the
+   * stores were not moving at — caught by the invariant in `test/db/world.test.js` that the
+   * figure printed must be the figure the simulation uses, which is exactly the fault that
+   * test exists for. What is going out of the door during a raid is production, less mouths,
+   * less whatever the raiders are carrying off past whoever is at the fence.
+   */
+  const raiding =
+    state.raid && state.raid.resolvedAt == null ? state.raid.perHour ?? {} : {};
+
   const netRates = {};
   for (const kind of Object.keys(state.settlement.resources)) {
-    netRates[kind] = (rates[kind] ?? 0) * (weatherFactors[kind] ?? 1) - (eats[kind] ?? 0);
+    netRates[kind] =
+      (rates[kind] ?? 0) * (weatherFactors[kind] ?? 1) -
+      (eats[kind] ?? 0) -
+      (raiding[kind] ?? 0) * (1 - standingNow);
   }
   const have = Object.fromEntries(
     Object.entries(state.settlement.resources).map(([kind, r]) => [kind, Number(r.amount)]),
@@ -1663,18 +1692,6 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
     )?.name,
   });
 
-  /*
-   * What the fence is holding back at this instant, from the same function the walk charges
-   * with. Worked out here rather than inside the payload because two of its fields want it.
-   */
-  const standingNow = state.raid
-    ? standTogether(
-        (state.raid.stands ?? [])
-          .filter((row) => row.since != null)
-          .map((row) => (state.survivors ?? []).find((one) => one.id === row.characterId))
-          .filter((one) => one?.alive),
-      )
-    : 0;
 
   return {
     name: settlements[0].name,

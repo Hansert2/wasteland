@@ -216,10 +216,34 @@ test('the rate the camp page shows is the rate the stores actually move at', asy
       new Date(now),
     ]);
 
+    /*
+     * Over a window with no weather in it, and that is not fussiness.
+     *
+     * The rate is a statement about the current instant: it samples the sky *now*. The walk
+     * integrates the sky across the hours it covers. So the two disagree by exactly the share
+     * of the window that falls the other side of a weather boundary — and this test asserted
+     * the stronger claim that an hour of the rate is an hour of movement.
+     *
+     * It had been quietly lucky for months. Caught 2026-09-02 at 08:00, with a rad storm due
+     * at 08:35 that scales water production to 0.4: over an hour the page said 1.750 and the
+     * stores moved 1.151, and over four hours 1.750 against 0.475 — which is the storm's share
+     * of each window to three figures. Nothing was wrong with either number.
+     *
+     * So the window stops short of the next event. A rate can only be checked against a span
+     * it is actually a rate for.
+     */
+    const { rows: upcoming } = await client.query(
+      'select min(starts_at) as next from world_events where starts_at > $1',
+      [new Date(now)],
+    );
+    const nextEvent = upcoming[0].next ? upcoming[0].next.getTime() : Infinity;
+    const span = Math.min(hours(1), Math.max(0, nextEvent - now));
+    assert.ok(span > hours(0.1), 'no quiet window to measure a rate in, which is a bad fixture');
+
     const view = await viewCamp(client, settlementId, now);
     const before = await loadWorld(client, settlementId);
 
-    await advanceSettlement(client, settlementId, now + hours(1));
+    await advanceSettlement(client, settlementId, now + span);
     const after = await loadWorld(client, settlementId);
 
     for (const shown of view.resources) {
@@ -227,11 +251,13 @@ test('the rate the camp page shows is the rate the stores actually move at', asy
         after.settlement.resources[shown.kind].amount -
         before.settlement.resources[shown.kind].amount;
 
-      // An hour of the shown rate should be an hour of real movement. Tolerance is
-      // for the slice walk's floating point, not for the rate being approximate.
+      // The shown rate across the span should be the movement across it. Tolerance is for
+      // the slice walk's floating point, not for the rate being approximate.
+      const predicted = (shown.ratePerHour * span) / hours(1);
       assert.ok(
-        Math.abs(moved - shown.ratePerHour) < 0.01,
-        `${shown.kind}: page said ${shown.ratePerHour}/h, stores moved ${moved.toFixed(3)}`,
+        Math.abs(moved - predicted) < 0.01,
+        `${shown.kind}: page said ${shown.ratePerHour}/h, stores moved ` +
+          `${moved.toFixed(3)} over ${(span / hours(1)).toFixed(2)}h`,
       );
     }
   });

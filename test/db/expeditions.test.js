@@ -394,12 +394,23 @@ test('the report on a trip in flight agrees with the trip that lands', async () 
     const carried = Number(after.survivor.radiation);
     const decayed = CONFIG.radDecayPerHour * 20;
 
+    /*
+     * Against the gauge's ceiling, because the prediction has none.
+     *
+     * `radiation` is clamped to a hundred and the page's figure is not, so a sky dirty enough
+     * to promise 146 rads delivers exactly 100 and the lower bound below reads that as the
+     * walk having scrubbed 46. Caught 2026-09-02 during a rad storm, which is the only
+     * condition that gets the prediction over the ceiling — the invariant holds, the
+     * comparison was just made against a number the gauge cannot reach.
+     */
+    const reachable = Math.min(100, predictedDose);
+
     assert.ok(
-      carried <= predictedDose + 0.05,
+      carried <= reachable + 0.05,
       `the page said ${predictedDose} rads and the trip delivered more: ${carried}`,
     );
     assert.ok(
-      carried >= predictedDose - decayed - 0.05,
+      carried >= reachable - decayed - 0.05,
       `the page said ${predictedDose} rads and only ${carried} arrived, ` +
         `which is more than the ${decayed} the walk could have scrubbed`,
     );

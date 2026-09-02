@@ -560,7 +560,18 @@ ${SURVIVOR_TAB_CSS}
      itself the browser draws an unchecked radio as a solid light disc, which on this page
      reads as the chosen one. Declared, it is a hollow ring, and only the picked one is
      filled — which is the entire readout here. */
-  .pick input { accent-color: var(--oxide); color-scheme: dark; margin: 0; cursor: pointer; }
+  /*
+   * And sized like a tick box, which it has to say out loud.
+   *
+   * The rule "label input" further down sets width 100% and display block for the login
+   * form's text fields, and it reaches every input inside a label — including these. Seen in the browser
+   * rather than reasoned about: the raid block's checkboxes were **892 pixels wide**, which
+   * pushed every name to the far right of its row and made the list unreadable. It looked
+   * survivable in the "sending" radio only because that label is shrink-to-fit, so the input
+   * stretched to something small.
+   */
+  .pick input { accent-color: var(--oxide); color-scheme: dark; cursor: pointer;
+                display: inline-block; width: auto; flex: none; margin: 0; }
   .pick:has(:checked) .tag { color: var(--bone); }
   /* Occupied: the control keeps its place and refuses, and does not repeat the reason —
      that is two lines up, under the name, on this same card. */
@@ -569,12 +580,6 @@ ${SURVIVOR_TAB_CSS}
   .pick.off input { cursor: default; }
 
   /* Who stands at the fence: a name to press and what pressing it saves. */
-  .standers { list-style: none; margin: 12px 0 0; padding: 0; display: flex;
-              flex-wrap: wrap; gap: 10px 18px; }
-  .stander { display: flex; align-items: baseline; gap: 8px; }
-  .stander .keeps { font-family: var(--numer); font-size: 12px; color: var(--dim);
-                    font-variant-numeric: tabular-nums; }
-  .stander.off .keeps { color: var(--faint); }
   /*
    * A raid, which is the one block on this page that is an instrument rather than a reading.
    *
@@ -585,6 +590,13 @@ ${SURVIVOR_TAB_CSS}
    */
   .holding { margin-bottom: 16px; }
   .holding .val { font-size: 20px; }
+  /*
+   * Thicker than a survivor's gauge, and the only track on the page that is. Those are a
+   * reading you glance at; this is the one figure in the game that moves because of something
+   * the player just did, and a two-pixel hairline could not show it moving.
+   */
+  .holding .track { height: 5px; margin-top: 9px; }
+  .holding .track i { height: 5px; background: var(--bone); }
   .holding .gone { margin: 10px 0 0; font-family: var(--numer); font-size: 12.5px;
                    line-height: 1.5; color: var(--dim); font-variant-numeric: tabular-nums; }
 
@@ -593,24 +605,36 @@ ${SURVIVOR_TAB_CSS}
    * a flex row: the shares line up under each other and the tallies start in the same place,
    * so a list that is changing under you can still be read down.
    */
-  .fencers { list-style: none; margin: 0; padding: 0; display: grid; gap: 9px; }
-  .fencer { display: grid; grid-template-columns: minmax(0, 1fr) 4ch auto; gap: 4px 14px;
-            align-items: baseline; }
+  .took-one { white-space: nowrap; }
+  .standers-foot b { font-weight: 400; color: var(--bone); }
+  .fencers { list-style: none; margin: 18px 0 0; padding: 0; display: grid; gap: 10px; }
+  /*
+   * Name, share, tally — three columns so the shares line up under one another and the
+   * tallies all start in the same place. A list that changes under you has to be readable
+   * downwards, which a row of flexed pairs never is.
+   */
+  .fencer { display: grid; grid-template-columns: minmax(0, 15ch) 4ch minmax(0, 1fr);
+            gap: 3px 18px; align-items: baseline; }
+  /* A label is a form caption everywhere else on this page, with the margin to match. */
+  .fencer .pick { justify-self: start; margin: 0; }
   .fencer .share { font-family: var(--numer); font-size: 12px; color: var(--dim);
                    font-variant-numeric: tabular-nums; text-align: right; }
-  .fencer.off .share { color: var(--faint); font-size: 11px; text-align: right;
-                       white-space: nowrap; }
-  .fencer .tally { grid-column: 1 / -1; display: flex; gap: 14px; font-family: var(--numer);
-                   font-size: 11.5px; color: var(--faint); font-variant-numeric: tabular-nums; }
-  .fencer .tally:empty { display: none; }
-  /* Out there: the name carries the weight, which is the whole readout on this row. */
+  .fencer.off .share { color: var(--faint); font-size: 11px; text-align: left;
+                       white-space: nowrap; grid-column: 2 / -1; }
+  /*
+   * Both halves at the same weight. The first cut had what somebody held back a step brighter
+   * than what it cost them, which is the wrong way round for a control you press to *stop*
+   * paying: the injury is the half of the trade being decided on.
+   */
+  .fencer .tally { display: flex; gap: 16px; font-family: var(--numer); font-size: 12px;
+                   color: var(--dim); font-variant-numeric: tabular-nums; }
+  /* Out there: the name takes the weight and the share takes the accent. */
   .fencer.outthere .tag { color: var(--bone); }
   .fencer.outthere .share { color: var(--oxide-light); }
-  .fencer .held { color: var(--dim); }
 
-  @media (max-width: 560px) {
-    .fencer { grid-template-columns: minmax(0, 1fr) auto; }
-    .fencer .tally { gap: 10px; }
+  @media (max-width: 620px) {
+    .fencer { grid-template-columns: minmax(0, 1fr) 4ch; }
+    .fencer .tally { grid-column: 1 / -1; gap: 12px; }
   }
 
   /* What the fence is worth and the way to change it, on one line. */
@@ -2709,6 +2733,33 @@ export const TIMERS = `
      * about one of them starts failing for the other.
      */
     counters = [...document.querySelectorAll('[data-count]')];
+
+    /*
+     * What the ticked boxes would hold back, worked out as they are ticked.
+     *
+     * One in the product for each of them, which is standTogether on the server written the
+     * same way. It is the only figure on this page the browser computes rather than reads,
+     * and it earns that: the question is whether to send one more, and it cannot be answered
+     * by a page that only knows what has already been sent.
+     */
+    const fence = document.querySelector('[data-fencetotal]');
+    if (fence) {
+      const rows = [...document.querySelectorAll('.fencer[data-share]')];
+      const retally = () => {
+        let held = 0;
+        for (const row of rows) {
+          const box = row.querySelector('input[type=checkbox]');
+          if (!box || !box.checked) continue;
+          held += Number(row.dataset.share) * (1 - held);
+        }
+        fence.textContent = Math.round(Math.min(0.9, held) * 100) + '%';
+      };
+      for (const row of rows) {
+        const box = row.querySelector('input[type=checkbox]');
+        if (box) box.addEventListener('change', retally);
+      }
+      retally();
+    }
     // The camp clock. Not UTC since migration 015: each element carries its camp's own
     // offset, and the tick below shifts the browser's Date by it rather than reading the
     // viewer's locale — so the strip shows the camp's hour on any machine anywhere.
@@ -3773,15 +3824,21 @@ function renderRaid(view) {
 
   const kinds = Object.keys(raid.perHour ?? {});
 
-  // One line, in the numeric face, joined the way this page joins facts that share a line.
+  /*
+   * One line, in the numeric face. Each figure carries its own separator *in front of it* and
+   * the pair does not break, so a wrap happens between groups and never leaves a middot
+   * dangling at the end of a line — which is what the first cut of this did at every width
+   * narrow enough to wrap.
+   */
   const taken = kinds
     .map(
-      (kind) =>
-        `${live(Number(raid.taken?.[kind] ?? 0), Number(raid.losingPerHour?.[kind] ?? 0))} ${escape(
-          kind,
-        )}`,
+      (kind, index) =>
+        `<span class="took-one">${index > 0 ? '&middot; ' : ''}${live(
+          Number(raid.taken?.[kind] ?? 0),
+          Number(raid.losingPerHour?.[kind] ?? 0),
+        )} ${escape(kind)}</span>`,
     )
-    .join(' &middot; ');
+    .join(' ');
 
   const out = new Map((raid.defending ?? []).map((one) => [String(one.id), one]));
 
@@ -3808,7 +3865,8 @@ function renderRaid(view) {
   const row = (one) => {
     const away = one.busy === 'away';
     const standing = out.get(String(one.id));
-    return `<li class="fencer${away ? ' off' : ''}${standing ? ' outthere' : ''}">
+    return `<li class="fencer${away ? ' off' : ''}${standing ? ' outthere' : ''}"
+        data-share="${away ? 0 : Number(one.stands ?? 0).toFixed(4)}">
         <label class="pick${away ? ' off' : ''}">
           <input type="checkbox" name="who" value="${escape(String(one.id))}"${
             away ? ' disabled' : ''
@@ -3841,7 +3899,16 @@ function renderRaid(view) {
         <form method="post" action="/raid">
           <ul class="fencers">${(view.roster ?? []).map(row).join('')}</ul>
           <div class="standers-foot">
-            <span class="keeps">send anybody, call them back whenever</span>
+            ${/*
+               * What the boxes as they stand would hold back — before committing to it.
+               *
+               * The block could say what the fence *is* worth and not what it *would* be,
+               * which left the only question a player actually has ("is one more worth it?")
+               * unanswerable until after they had answered it. The figure is combined the way
+               * the raid combines it, from the shares on the rows.
+               */ ''}
+            <span class="keeps">these would hold back
+              <b data-fencetotal>${Math.round(stand * 100)}%</b></span>
             <button type="submit" class="fill">Set the fence</button>
           </div>
         </form>
