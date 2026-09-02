@@ -3355,14 +3355,19 @@ person, and it is counted per card now.
 
 ### What is deliberately not built
 
-**A sleeper still defends.** `resolveRaid` asks only whether anybody is alive, so the
-overhaul document's "cannot defend while asleep" is not modelled. Modelling it means
-deciding what a camp of sleepers does when raiders arrive, which is a raid design question
-and not a sleep one. Noted here so the next reader knows it was seen rather than missed.
+**Answered by Phase 12 on 2026-09-02, and the paragraph below is kept for its reasoning.**
+A sleeper can be pulled to the fence: `answerRaid` refuses only somebody who is *away*, on
+the rule that standing is a job you can be too busy for — you put the beam down, and
+somebody twenty hours down the road cannot. `resolveRaid` no longer exists, and neither
+does the founder-takes-the-damage line noted below: each defender now takes their own.
 
-Related and worth grepping before touching raids: `raid()` passes `state.survivor` — the
-founder — as the person who takes the damage. That is the sixth instance of the phrase that
-meant "the survivor" when a camp held one.
+*Written when sleep shipped, 2026-08-31:* **a sleeper still defends.** `resolveRaid` asks
+only whether anybody is alive, so the overhaul document’s “cannot defend while asleep” is
+not modelled. Modelling it means deciding what a camp of sleepers does when raiders arrive,
+which is a raid design question and not a sleep one. Noted here so the next reader knows it
+was seen rather than missed. Related and worth grepping before touching raids: `raid()`
+passes `state.survivor` — the founder — as the person who takes the damage. That is the
+sixth instance of the phrase that meant “the survivor” when a camp held one.
 
 **No shelter bonus.** The overhaul proposes a shelter that improves sleep. Beds already cap
 the roster, so "you need a bed to sleep" would be scenery — everybody standing in the camp
@@ -3772,11 +3777,12 @@ plausibly takes less each than one alone. It is left out because it points the w
 softening with numbers, on top of holding back more with numbers, makes sending everybody the
 answer to every raid.
 
-## Phase 13 — what a person can carry, and what the camp keeps
+## Phase 13 — what a person can carry, and what the camp keeps ✅
 
 *Against: a pack with no bottom, and no way to move anything out of it.*
 
-Designed 2026-09-01 with the user. Not built.
+Designed 2026-09-01 with the user. **Built 2026-09-02** — see the end of this section for
+what the build decided and what the browser found.
 
 ### Three reasons, and the first is a fault rather than a feature
 
@@ -3835,6 +3841,50 @@ properly; a cap that never binds is a column nobody reads.
 Weights themselves are content, per item, and want the same anchoring pass: a tablet against a
 spear against a plate vest. A stack weighs `qty × weight`, which needs saying once.
 
+### Measured 2026-09-02, and it moved the design
+
+`tools/carry-balance.mjs`, 4,000 trips per region against the real region rows.
+
+**A ration's weight is derived, not invented, and reality checked the arithmetic.** A point
+of hunger has a mass: eating covers `hungerFallPerHour` an hour while costing `foodPerHour`,
+so one point is 5.2 g at Phase 18's conversion. Tinned Stew is 80 points, therefore **417 g**
+— which is a tin of stew. Preserved Meal comes out at 365 g. Neither number was chosen. The
+rest are the anchoring pass the rule asked for: tablets at 20 g, parts at 750 g, the spear at
+2 kg, the vest at 9 kg.
+
+**What a trip brings home is small, and the far regions are where it is anything at all.**
+Median haul by mass: nothing at all up to the Millrace, 750 g at Coastal Wreckage and
+Sixteen Wells, 1.5 kg at the Deep Zone, the Waterworks and Harrow End. The heaviest single
+trip measured anywhere was 3.1 kg.
+
+**So the cap the rule produces is 14.9 kg, and 11 kg of it is the kit.** Spear and vest are
+three quarters of the pack; the walk's supplies are 854 g and the p90 haul is 3 kg. The term
+this phase is *about* — what a trip finds — is a fifth of the number.
+
+#### The question the measurement asks, and it is the user's
+
+**Does gear that is worn count against the cap?** The phase says weight is carried items
+only, and never distinguishes *worn* from *carried* because until now nothing needed the
+distinction.
+
+    trips before the pack is full, at a 14.9 kg cap
+      Harrow End / Waterworks / Deep Zone      2.0 with kit      9.3 without
+      Coastal Wreckage / Sixteen Wells         4.0 with kit     18.7 without
+
+**Counting it makes armour a real cost, which is the more interesting game.** A survivor in a
+plate vest has 4 kg of pack left, so one long trip roughly fills it, and the next find is
+refused on the road — that is the vest being *heavy* in a way the player feels rather than
+reads. It also agrees with `standFor`, which already reads a *carried* weapon: gear is on
+your back, not in a slot beside it.
+
+**Not counting it makes the cap a pure question about hauling**, at nine long trips between
+visits to the box — which, since every trip ends at camp anyway, is a cap that never binds
+and a column nobody reads. That is the failure the rule was written to avoid.
+
+**Recommended: worn gear counts.** With one consequence to accept deliberately — a fully
+kitted survivor loses finds on a long trip unless they bank first, and the page has to say so
+before dispatch rather than in the returning log.
+
 ### What happens when a full pack meets a find
 
 They are on the road; the box is at home. **They leave it, and the log says what.** That is
@@ -3856,8 +3906,7 @@ box is safe from death and useless in an emergency, and both halves of that are 
 
 **The bench draws from the crafter's pack**, which is the fault this phase opens with. If the
 box is not reachable from the bench, the fix for scattered parts is to shuttle them to
-whoever is crafting, every time — busywork replacing an impossibility. **Recommended and
-wanting the user's nod: the bench may draw from the box.** The recipe's argument survives it
+whoever is crafting, every time — busywork replacing an impossibility. **Answered by the user on 2026-09-02: yes, the bench may draw from the box.** The recipe's argument survives it
 — *the interesting half of a recipe is the thing you had to go and find* is about where a
 material came from, not about which pocket it is in.
 
@@ -3879,6 +3928,280 @@ decision to bank is the player's.
 survivor is away, when a raid is open, and when the receiving side has no room. One verb
 rather than three, because store, take and hand-over are the same act with different ends.
 
+### Built 2026-09-02, and what the build decided
+
+Migration `024`, `src/game/carrying.js`, `src/services/move-item.js`, and the box block on
+the camp view. 331 unit tests and 218 database tests green.
+
+**The cap is 15 kg**, rounded up from the measured 14,854 g, and the rounding is the only
+part of it that was chosen. **Worn gear counts against it** — the user's call once the
+measurement showed the kit is three quarters of the cap — so a survivor in a plate vest
+carries 11 kg of their 15 and one long trip roughly fills the rest. There is no `equipped`
+flag in the schema and this is why one was not added: `equipmentOf` and `standFor` already
+read what is *carried*, so gear is on your back rather than in a slot beside it.
+
+#### Four departures from the design above, all small and all deliberate
+
+**`weight_grams` is an integer, not the `numeric` the schema sketch said.** A gram is
+already the small unit, half a gram is a distinction no content here will want, and an
+integer cannot drift when a stack is multiplied out.
+
+**A finished craft that does not fit goes in the box; a find that does not fit is left
+behind.** The design wrote one rule for a full pack, but the two cases are not the same act:
+a find is out there and the box is at home, while an order is lifted off a bench that is
+standing next to the box. Refusing the order would destroy something already paid for in
+fuel and scrap. Two events say which happened — `find_left_behind` and `craft_boxed`.
+**A caravan's goods take the same road as the bench's**, and for the same reason: the camp
+is standing right there.
+
+**The bench spends the pack before the box.** A survivor's own materials are the ones that
+die with them, so spending those first is the ordering that loses least, and it keeps the
+box a reserve rather than the first thing raided.
+
+**The tick still cannot see the box, structurally.** `loadWorld` does not read `store_items`
+— the box is read by `viewCamp` and by the bench, not by the simulation — so the safety
+valve eating the pack and never the shelf is a fact about what `applyTick` is handed rather
+than a rule somebody has to remember. `test/db/carrying.test.js` asserts the behaviour; the
+seam is what guarantees it.
+
+#### The page, and two things only the browser said
+
+The block goes through `block()` with the picker in its label strip, like the bench. Both
+were found by reading the rendered page rather than the markup, which is the third time that
+rule has paid for itself:
+
+**The box's rows sat 16 pixels left of every other block's.** `.carrying` is styled for the
+two-hundred-pixel rail inside a survivor card — `padding: 7px 0`, no side padding, because
+the rail provides it. In a full-width block the cells carry their own padding, so the box
+uses a plain table like Structures and the bench do.
+
+**The pack line and the box's footnote both wore `.short`, which is oxide** — the class the
+stylesheet reserves for *a price the camp cannot pay*, a warning, a clock that is running
+out. Every pack on the page read as an alarm. They are captions, so there is now a `.caption`
+rule that is faint, with the reasoning beside it.
+
+**And the box's picker is deliberately not `whoSelector`.** That helper offers whoever is
+*free*, which is right for a job — dispatching, building, the bench. Reaching into a box is
+not a job: `moveItem` refuses only somebody who is **away**, so a camp where everybody is
+building can still bank a spear. Built on `whoSelector` the page would have refused what the
+service allows.
+
+#### One fixture bug worth recording, because it looked like a code bug
+
+The new page state put a survivor named Wren beside a successor the wanderer pool had also
+named Wren. Every `name <> 'Wren'` in the fixture then matched nobody: both packs rendered
+empty, both options in the Take control read the same, and the page looked broken in a way
+that had nothing to do with what it was drawn to check. Fixtures now capture the id they
+insert rather than matching on a name out of a pool of seven.
+
+### Storage became a view of its own — 2026-09-02, the same day
+
+The box shipped as a block on Camp, under the bench, and was played for about an hour before
+the user asked for this: **a tab holding the box and every survivor's pack side by side, with
+drag and drop between them.**
+
+**The argument for the move is that the block could not answer the question it was for.**
+What a player does here is *compare* — this pack against that shelf against the other pack —
+and a block sitting ninth in a column of blocks has nothing beside it to compare with. A view
+whose whole subject is one question can stand every holding in a row, which is also the only
+layout in which dragging one thing onto another means anything.
+
+So `PANES.camp` lost `box` and gained nothing; `PANES.storage` is `['storage']` and holds one
+board. The rail gained **Storage**, between Survivors and Road.
+
+#### The survivor card lost a tab, 2026-09-02
+
+**Condition is not a tab any more; it stands under the name on every card.** A tab is for
+what you go and look at, and a gauge is for what you glance at — health, hunger, the dose and
+stamina answer *can this person do the thing*, which is the question every other control on
+the card is asking, so hiding them behind a tab meant clicking to find out whether you were
+allowed to click.
+
+**Carrying is the default and Skills follows it.** With the Store button gone this is the
+view where things are handed from one person to another, and a pack you have to open a tab
+to reach is a pack you cannot drag out of. Skills is the one thing on the card that is
+genuinely a reference: it changes about once a lifetime and is read when choosing who to
+send, not while sending them.
+
+The gauges went into the left column with the name rather than as a band across the card —
+a band would have sat under the open tab rather than under the name it describes. Four of
+them do not fit across 190px, so that column is 240 now and they lay out two by two, which
+needed the wide arrangement’s `grid-column` assignments explicitly let go of.
+
+#### Making a row look liftable
+
+Nothing about a table row says it can be picked up, and on this board a row *is* a thing
+rather than a line of text. Three signals, in the order the eye meets them:
+
+- **Weight.** Everything empty is cut into the panel (`--void`); everything holding
+  something sits on it (`--panel`). The box runs taller than its six rows, so its block
+  takes the dark too — otherwise the recess appears to stop halfway down.
+- **A grip.** Two columns of dots in the gutter of every liftable row, drawn with a
+  `radial-gradient` rather than typed, so it cannot be selected with the row’s text or
+  announced as a character.
+- **A lift on hover.** The row comes up to `--rule-in`, the grip goes to `--dim`, the name
+  to `--bone`, and a 2px oxide edge lights on the leading side — the ink every live control
+  on this page already uses.
+
+**And then the whole gesture followed, 2026-09-02.** The Carrying tab lost its Store button
+the way the board lost its Move buttons — two ways to move a thing is one too many, and the
+one that survives is the one that says where it is going. Every row there is draggable now,
+and **a survivor card is a holding**: `data-hold` on `.person` makes each person a place a
+row can be dropped, so Vera hands Wren a spear on the view that lists them both. The box is
+not on that view and is not meant to be — this is hand to hand, and the shelf has a view of
+its own.
+
+That decorated an opening tag two contract tests pinned literally (`<div class="person">`).
+They now pin the element and its class and not what the card says about itself, which is the
+same distinction the section rule draws — recorded rather than worked around, because a card
+that can be dropped on has to say so in the markup.
+
+**The shading and the hover belong to the pack table wherever it is drawn**, so the Carrying
+tab on Survivors took them too: it is the same table describing the same objects, and
+styling one and not the other made the tab read as a list and the board as an inventory.
+**The grip stayed on the board alone** — it is the one mark here that means *pick this up*,
+and a row on the Carrying tab cannot be picked up, so the same dots there would promise a
+gesture that does nothing. A slot does not light up either: a hole is not a control.
+
+**Two things this pass found.** `--ground` for an empty row is seven points of grey from the
+panel: a difference you can measure and cannot see. And the drop highlight had been reaching
+for `--plate`, which is not a colour on this page at all — it is the region-image URL the
+road plates use — so a drop target had only its border to show for itself.
+
+#### Moving is a drag and nothing else, and a drag moves one
+
+The board shipped with a destination picker in every foot and a Move button on every row —
+dragging as an enhancement over a control that works with a keyboard. **The user cut both**,
+and the reason holds: on a board whose whole point is that everything is visible beside
+everything else, a select naming the columns you can already see is furniture.
+
+**The form stays and only its controls went.** Each row still carries a real `/move` form
+with hidden fields; the drop sets the destination and submits it. So there is still one path
+to the verb, and a refusal still comes back through the page’s own submit handler with no
+error handling written for the drag.
+
+**A drag moves one, whatever the stack holds.** The gesture has nowhere to put a number, and
+the two readings of dropping a stack of four are equally reasonable — which is the sign that
+it should mean the smaller one. Four drags to move four is legible; a stack that vanished in
+one because a drag meant *all of it* is not, and there is nothing to undo it with.
+
+**The cost, recorded rather than discovered later: taking something out of the box now needs
+a pointer.** The Carrying tab on Survivors keeps its Store button, so putting things in still
+works without one; there is no keyboard route the other way. If that ever matters the answer
+is a control on the row, not the select that used to be in the foot.
+
+#### The box runs the height of the roster beside it
+
+`align-items: stretch` on the board, and the two columns end level however many people the
+camp holds. **Nothing counts anybody** — the grid does it, which is why it stays right
+through a death or an arrival without a line of code knowing one happened. Measured against
+a live page: four survivors put both columns at 722px, two at 401, and one at 360, where the
+box is the taller of the pair and sets the height itself.
+
+The destination picker is pinned to the bottom edge with `margin-top: auto`, so the panel
+reads as a container with a foot rather than a table with a gap under it.
+
+#### The box keeps six rows whatever is in it
+
+`BOX_ROWS` is **a floor and never a ceiling.** The box is uncapped — the constraint this
+phase is about is the road, not the shed — so the blank rows are not slots and a seventh
+thing does not go homeless; the table grows past them. What they buy is a shelf that keeps
+its shape: storing the last item used to collapse the panel to a single sentence, and on a
+board of columns that reads as the box having gone away rather than as the box being empty.
+
+The empty-box sentence rides in the first blank row rather than above the table, so a full
+box and an empty one are the same height and the words sit where the first item would.
+
+#### A holding is a block, and there is no block around them
+
+The board shipped as bordered panels inside a block called Storage, and the user cut the
+wrapper: **one frame too many.** A block is already the page’s word for a bordered thing
+with its name in a strip, and the board is the only thing on its pane, so the outer block
+was naming the view a second time. The box and each survivor are blocks now; the board is
+only the grid they sit on.
+
+Two things followed from going through `block()` rather than around it. It grew an `attrs`
+option, so a holding can be a block *and* the drop target without a second element wrapped
+around it — the drag handlers look for `[data-hold]` rather than a class. And a heading
+that carries a figure now lays out as a row: `.block > h2:has(.val)` joins the `.f-nav` and
+`.tabs` cases that were already there, which is the same rule with a third occupant rather
+than a new one.
+
+**The destination picker moved to the block foot.** The strip is the name and the figure —
+the two things being compared across the board — and a select wedged between them pushed the
+figure past the border on a column this narrow.
+
+One alignment fix worth knowing: `.carrying` was cut for a two-hundred-pixel rail, where the
+rail supplies the side padding and the cells carry none. In a block the cells have to, or
+every name sits inboard of the label above it.
+
+#### The box takes the width, the roster stacks down the side
+
+Five equal columns was the first build and the user drew over it: **the box wide on the
+left, the people in a narrow column beside it.** It is the right shape for what the two
+things are. The box is what gets filled and emptied — it holds the most, it is the only
+uncapped holding, and it is one end of nearly every move — so it takes the width. The
+people are a list of destinations, and a list is read down.
+
+One column under 900px, with the override written *after* the rule it overrides: a media
+query carries no specificity of its own and loses to an equal selector above it.
+
+#### Every column is the same shape, and the differences are data
+
+A hold is one function. The box and a person both hold items, so what separates them is what
+they are called, what they weigh against — the box is uncapped and prints no denominator —
+and whether they can be reached at all. Somebody *away* gets a column that says so and takes
+no drops, which is the rule `moveItem` already enforces: away is the only occupation that
+puts a person out of reach.
+
+#### The gesture submits the row's own form
+
+**This is the load-bearing decision of the whole feature.** A drop could have built its own
+`fetch` from the drag data. It does not: every row carries a real form with a real
+destination — chosen by the picker in the column head — and the drop handler sets one field
+and calls `requestSubmit()`. `requestSubmit` rather than `submit`, because only the former
+fires the event the page's existing submit handler listens for.
+
+What that buys, in order of importance:
+
+- **One path to the verb.** A second one would drift from the first, and the drift would be
+  in the half nobody clicks.
+- **The board works with no script at all** — pickers and buttons — and with a keyboard.
+- **Refusals already work.** The submit handler applies the response in place, so "not while
+  they are at the fence" lands on the page it was refused from, with no error handling
+  written for the drag at all.
+
+A whole stack moves, which is what the button does. Half a stack wants a number and the
+gesture has nowhere to put one.
+
+#### Two faults the browser found, and one the tooling did
+
+**The head did not fit.** Name, total and destination on one line pushed the total out past
+the column border at 230 px. The name and the figure it is compared on keep the first line;
+the picker takes the second.
+
+**Synthetic mouse input cannot start an HTML5 drag.** `left_click_drag` through the browser
+tool moved nothing and proved nothing — the handlers had to be driven with real `DragEvent`
+objects to see the path work. Worth knowing before trusting a green drag test again: the
+end-to-end proof was a `dragstart`/`dragover`/`drop` triple, after which the Plate Vest was
+in the box, Vera was down from 11.75 kg to 2.75 kg, and the page had never left
+`/camp/storage`.
+
+**And the dev environment lied twice.** A stale server from that morning served pre-Phase-13
+code for half an hour while `/health` answered 200 — the tell was the CSS, not the markup.
+Then the WSL distro began shutting down between commands, taking Postgres with it and killing
+the app server on an unhandled pool error each time. Holding the distro open with a long
+`sleep` fixed it. **`curl /health` is not proof the running server is the code on disk**;
+grep the served CSS for something only the new build has.
+
+#### What is deliberately not built
+
+**No quantity in the gesture, and no multi-select.** Both want a control the drag does not
+have, and the button beside every row already moves the same stack.
+
+**The pack tab on Survivors keeps its own Store button.** It is the shortest path when you
+are already looking at a person, and it posts to the same verb. Two entrances to one room.
+
 ### What this does not decide
 
 **Whether the box has a cap of its own.** Uncapped to begin with: the constraint this phase
@@ -3889,6 +4212,349 @@ shelter, which already sets a storage ceiling for resources and could set one he
 this and it reopens a derivation: `staminaPerHourWorked` is a hundred points over the longest
 walk on the map, and a weight multiplier on top makes that ceiling a function of what somebody
 packed. Separable, and it wants its own measurement.
+
+## The road ahead — the order, decided 2026-09-02
+
+*Seven phases, and the order below is an argument rather than a ranking.*
+
+Settled with the user on 2026-09-02 by reading `wasteland-overhaul.md` back against this
+file and asking what of it is genuinely still unbuilt. Four things were: its **§2** (night
+as a different thing), **§§12–15** (faction relations), **§7** (recruitment through the
+world) and the **second half of §10** (body recovery). Phase 13 was already designed and
+belongs among them rather than before them. Phase 18 came later the same day and is not from
+that document at all — it is the user asking for food and water to be counted in units a
+person could hold.
+
+Everything else in that document has landed. §1 is Phase 9, §§4–5 are Phase 10 and sleep,
+§6 and §8 and §11 are Phase 7 and `who-is-free.js`, and §10's first half is Phase 13. The
+overhaul document remains **a source and not a plan**: what was read and declined is at the
+end of this section, so it is not proposed again as if it were new.
+
+### The rule that comes before all seven: play what has shipped
+
+**Three mechanics have gone out unplayed, and every number in them is a prediction.** The
+roster and stamina, the road's shortcuts, and the live raid. Two of the numbers that would
+move a design decision can only be got by playing:
+
+- **Is about one raid in three catchable?** `tools/check-in-density.mjs` is the instrument
+  for the 2–4h window. The four-hour drain was *derived* so that four undefended hours cost
+  exactly what one press used to — derived, not observed.
+- **Did the shortcuts leave the road's finale as its worst-earning region?** Measured at
+  Coastal 4.3 → 5.2, Deep Zone 5.1 → 6.3, Harrow End flat at 5.5, for a 797-fuel link.
+  Decide after play, not before.
+
+This is the same hold that preceded Phase 6, and it was right that time.
+
+### Phase 13 first, because it is the only fault on the list — built 2026-09-02
+
+The other four are features. Phase 13 opens on something that is wrong in the game right
+now: `consumeInputs` takes a recipe's materials from the crafter's pack while finds land on
+whoever walked, so parts scatter across a roster that has no transfer verb of any kind. A
+player can reach a state where the bench refuses and nothing in the game can fix it.
+
+It is also **the floor under Phase 16**. Body recovery is a question about what a pack was
+carrying when its owner died a long way from home, and until carried inventory is a thing
+with a weight, a cap and a box to bank against, there is nothing to recover *from*.
+
+**Both of its open decisions were answered on 2026-09-02.** The bench may draw from the box
+— without it the fix for scattered parts is shuttling them to the crafter every time. And
+**the cap is derived in grams**, at Phase 18's conversion of 125 g to the food unit, rather
+than in abstract points that would only be re-derived later.
+
+### Phase 14 — night as a different thing, not a dimmer day
+
+*Against: the clock changed what an hour costs, and not what is out there.*
+
+Phase 9 gave the world an hour and made a trip's light and dark visible before dispatch.
+What it attached to that axis was **one lever**: `coefficientsAt` pays finds for daylight
+and charges dose for it, integrated across the trip. That is a clean, symmetrical trade and
+**this phase must not touch it.** Night is currently *quieter and thinner*, which is a trade;
+the overhaul's complaint is that it is not yet *different*.
+
+The material already exists. Phase 6's moment machinery draws from a generator salted off
+the trip's own seed, and `daylight.js` can already say which hours of a trip are dark
+(`splitOf`, `darkSpansBetween`). A night table is content on top of two built systems.
+
+**Three constraints, and the first is the one that keeps the clock a decision.**
+
+**Night content must be different in kind, not better.** The coefficients have already
+priced the difference between the hours. If darkness additionally holds the good finds, the
+trade collapses into "go at night", the dispatch table's split becomes decoration, and the
+player stops choosing. What darkness should hold is what only darkness can: a light moving
+on a ridge, someone who will not travel by day, a door left open because nobody expected to
+be seen — and a hazard the day does not have, which is the doc's ambush and its navigation
+injury.
+
+**The count of moments per trip must not move.** Phase 6's window divisor was swept and
+settled at 3 on measured evidence — 703 catches against 701 — and that arithmetic is about
+how many windows a trip opens, not which table they draw from. So a dark hour should change
+**which** moment is drawn, never **how many**: night content mirrored against day content
+rather than added to it. This keeps `tools/window-coverage.mjs` meaningful, and keeps an
+unattended night trip from quietly becoming a different length of game.
+
+**Measure before designing: what share of trips crosses a dark hour at all?** Per region,
+against the real dispatch table and a real spread of check-in times. If almost every long
+trip already spans both, night is weather the player walks through rather than a thing they
+choose, and the phase is really about the short trips — which changes what content to write.
+Cheap sweep, and it should be the first thing done, the way the window divisor was.
+
+Probably no migration; the moment tables are code and the hour is a pure function. That
+claim wants enumerating rather than asserting when the phase is designed — Phase 9 made the
+same claim, and it only held because it was checked line by line.
+
+### Phase 15 — recruitment through the world
+
+*Against: a bed is a purchase, and a person should be a story.*
+
+Today a camp with a spare bed can take in a wanderer at the gate, and `wandererFor` derives
+who that is from the camp's seed and how many have come before — deterministic on purpose,
+so there is no reroll and no draft. That mechanism is correct and stays.
+
+What the doc asks for is the **other** sources: someone met in an expedition moment, someone
+rescued off the road, someone a faction introduces. Small phase, and it turns a fitting into
+an arrival.
+
+**The line that makes it safe: the world chooses when, the seed chooses who.** A moment may
+be the *occasion* for an arrival, but the person must still come from `wandererFor` and the
+same shared counter the gate uses. Otherwise a player who dislikes the traits takes another
+trip and rolls again, and the backstory becomes a stat block — the exact failure
+`src/game/wanderers.js` is written to avoid, and the reason nobody is chosen there.
+
+**The bed still caps it, and that is the decision the doc wanted.** Meeting someone you have
+no room for is a real choice: improve the shelter, or walk away from a person. A rescue must
+not conjure capacity.
+
+### Phase 16 — body recovery
+
+*Against: what someone carried beyond the wire simply evaporates.*
+
+The other half of §10, and the clearest statement the game makes of its own thesis. It rests
+on Phase 13 being **built and played**, because the cap and the box have to have settled
+before "what they were carrying" means anything.
+
+**Two facts about the schema make this a design and not a patch, and both are worth knowing
+before starting.**
+
+**A death has no place.** `characters` records `died_at` and `cause_of_death`, and nothing
+about where it happened. A recovery trip needs somewhere to go, so a death has to start
+writing one.
+
+**The pack is already gone by then.** `inventory_items` cascades on delete, and migration
+`001` says that is deliberate: *carried inventory belongs to the survivor and dies with
+them.* Changing the cascade would reach back through every phase that has relied on it. The
+clean shape is the opposite one — a death writes **what was left out there** into its own
+record, keyed to a place and a time, and the recovery trip reads that. The cascade stays
+true, and "most of it is lost" becomes a number in that record rather than an accident of
+deletion.
+
+### Phase 17 — faction relations
+
+*Against: two factions is a rivalry with a slider, not a world.*
+
+The largest block left: §§12–15 in full — a third faction, pairwise relations between all
+three, diplomatic events that appear in the log with a cause attached, and their effects on
+prices, raids, roads and encounters. Most content, most schema, designed properly only when
+it is next.
+
+**Three things are already settled and carry into it.**
+
+**Trade may never produce fuel.** Fuel is the only resource nothing in the camp produces,
+which is what the whole fuel track is priced against. This is a real test now, not prose.
+
+**Visit frequency ignores standing, deliberately.** Phase 5 recorded that departure because
+the hostile crew still turning up is the only road back from a grudge. Pairwise relations
+are exactly the kind of change that would overturn it by accident — a faction that hates you
+*and* is at war with your only other trading partner must not be able to strand a camp.
+
+**The third faction comes out of the map.** The doc's own rule, and it is right: developed
+from existing locations and lore, controlling a genuinely different necessity, rather than
+introduced as a distant government or an organised nation.
+
+### Phase 18 — food in grams, water in litres
+
+*Against: a camp with "340 food" in it, which is not a quantity of anything.*
+
+Asked for by the user on 2026-09-02, for later: give the two stores real units — **grams for
+food, litres for water** — with a survivor consuming a realistic amount per day, drawn down
+by the hour, still gated by hunger.
+
+**The finding that makes this cheap: the rates are already realistic, and only the label is
+missing.** `foodPerHour` is 0.5 and `waterPerHour` is 0.75, which is 12 and 18 a day. Name a
+unit — **1 food = 125 g, 1 water = 0.2 L** — and that is:
+
+    1,500 g and 3.6 L per survivor per day
+       62.5 g/h and 0.15 L/h, drawn every 15-minute step
+
+A working adult in heat, and the right ratio between the two. Nothing about the simulation
+is unrealistic; it has simply never said what it is counting.
+
+**So this is a re-denomination, not a rebalance, and that distinction is the whole phase.**
+
+**The free version.** Every food number ×125 and every water number ×0.2 — the constants,
+the stored amounts, the storage caps, the structure production rates, the region loot tables,
+the recipe costs, the trade offers, the raid's hourly drain. A linear scaling of one axis
+moves no balance: the 36-to-72-hour starvation window holds *by construction*, because both
+the demand and the store scale together, and `test/unit/tick.test.js` will say so without
+being touched.
+
+**The expensive version, which is not what realism asks for.** Deciding independently that a
+person needs 3 L and re-deriving from there changes the ratio of demand to every region's
+yield, moves the starvation window, and lands on the fuel/day axis everything in this file is
+measured against. There is no reason to pay that: the ratio is already right.
+
+#### Grams are a denomination of the stores, and they never become carry weight
+
+**Confirmed by the user on 2026-09-02, and it is the trap this phase sets for the next
+reader: only items have weight. Food, water, scrap and fuel do not.**
+
+Phase 13 weighs carried items and leaves the haul alone, because weighing the haul would cap
+fuel per day — the axis every balance figure in this file is measured against. Writing food
+in grams makes that look like an oversight rather than a decision: a resource with a mass
+that a person can carry any amount of. It is not an oversight, and the shape of the game
+depends on it staying that way.
+
+The two do meet in exactly one place, and it is legitimate: a **ration item** weighs what the
+same relief would weigh eaten out of the larder, which is how the 417 g above was derived.
+That borrows the conversion; it does not give the resource a mass. Worth a test that says so,
+in the phase that ships the weights: a pack’s weight counts `inventory_items` and nothing
+else.
+
+#### It is wide and shallow, and "just a display change" is the wrong description
+
+Enumerated, because that claim is usually wrong: `CONFIG.foodPerHour` and `waterPerHour`;
+`resources.amount` and `storage_cap` — `numeric(14, 4)` has the headroom, and grams want no
+decimals while litres want one; the production rates seeded by migration `002`; every region
+`loot` table in `src/db/seed.js`; recipe costs (`food: 20` is 2.5 kg); trade offers; the
+raid's stores drain; `view-camp.js` and `render.js`; and every test and tool that names a
+food or water figure. About thirty files.
+
+**And it needs a migration that scales the rows that already exist.** A camp holding 340 food
+is holding 42.5 kg, and if the stored number does not move with the unit, every live save
+either starves or floods on deploy. This is the one part of the phase that can go wrong
+badly, and the dev database has a real camp in it.
+
+#### Formatting, which is where the realism is actually felt
+
+**One unit, always kilograms** — `0.02 kg`, `0.417 kg`, `1.4 kg`, `15 kg` — trailing zeroes
+trimmed, and litres to one decimal. Decided while Phase 13 was being played on 2026-09-02,
+against the mixed convention this section first proposed: a column of weights is read *down*,
+and a column that switches unit halfway cannot be compared at a glance. The pack table is the
+place that settled it, and `saysWeight` is the one function that says either. The per-hour figure reads as a rate beside the gauge, in the style the stores rate
+already uses: name the effect before the number. `stats()` in `render.js` is the house style
+for anything a popup explains.
+
+#### The one decision that cannot wait for this phase
+
+**Phase 13's carry cap should be derived in these units.** That phase sets a flat cap from
+kit plus what the longest walk needs plus the 90th-percentile finds. If food is grams, the
+honest unit for a pack is grams too — and deriving the cap in abstract points now means
+re-deriving it later. **So settle the food unit before Phase 13 measures its cap**, even
+though the re-denomination itself lands long afterwards. The reward is that "how many days of
+food can one person carry" becomes a question with an answer, which is the best thing this
+change buys.
+
+#### Two things the units will make conspicuous, both of them already true
+
+**A sleeper consumes nothing at all.** `appetite` is 1 awake and 0 asleep — deliberately a
+branch rather than a rate, so that a sleeper's hunger comes only from what they recovered.
+Written as litres, "asleep: 0.0 L" is a claim about a person rather than a modelling
+convenience. Fixing it is the overhaul's §9 (activity-scaled consumption: more while
+building, less while asleep), and that is a balance change wearing a realism hat — it wants
+its own measurement, and it is not part of this.
+
+**There is no thirst.** `fedFraction` is `min(food drawn, water drawn)`, so a camp out of
+water reports the shortage as *hunger*. That is a defensible simplification of one gauge, and
+it will read as a bug the moment the page says litres. **That question was asked the same day
+and is now Phase 19 below**, which recommends splitting the two — and records why the split
+has to stay out of this phase.
+
+### Phase 19 — thirst, proposed 2026-09-02 and deliberately deferred
+
+*Against: a camp with no water reports the shortage as hunger.*
+
+Asked by the user while Phase 18 was being written: should water be separated from hunger,
+and should a survivor carry both gauges? **Recommended yes, with the two gauges doing
+different jobs.** **The user deferred the decision the same day: it is to be made when the
+game gets there, not now — so do not re-open it as a question until Phase 18 has shipped and
+been played.** The reasoning is written down here so that it is read rather than re-derived.
+It is deliberately not part of Phase 18 — that phase's entire
+value is that it moves no balance number, and this one moves the central guard.
+
+#### The gauge that exists is already a thirst gauge under another name
+
+On empty stores a survivor dies in **53.5 hours**: `hungerRisePerHour` of 4.2 climbs to the
+starvation threshold of 70 in about seventeen, then `starvationDamagePerHour` of 3 drains a
+hundred health across the rest. That is a little over two days.
+
+A person without water dies in about three days. A person without food dies in about three
+weeks. **The tuned clock is water's, and it is off by an order of magnitude from food's.**
+So the split is not adding a system; it is admitting which system is already there.
+
+`fedFraction` is `min(food drawn, water drawn)`, which is the same admission in code: either
+store running dry drives the same gauge at the same rate.
+
+#### Two gauges that kill on one clock would be bookkeeping, not design
+
+The version worth building is asymmetric, and the code is already half of the way there —
+the user's rule of 2026-08-31 made the chain `stores -> hunger -> stamina -> work`.
+
+**Thirst is the deadline.** It inherits today's numbers: the rise rate, the threshold, the
+damage. The 36-to-72-hour guard in `test/unit/tick.test.js` then survives the split rather
+than needing re-derivation, because the thing it measures — a camp with nothing in it — is
+still governed by the same arithmetic under a new name.
+
+**Hunger is capability.** Weeks rather than hours, and its bite is the stamina chain that
+already exists: a hungry survivor works badly, recovers badly, and is a poor thing to send
+down a long road. Starvation still kills a camp that has been truly abandoned; it stops
+being what kills a camp over a long weekend.
+
+**The derivation that must not be skipped: the guard is about a camp with nothing, so both
+gauges are running.** If thirst keeps a damage rate of 3/h and starvation adds its own on
+top, the combined clock falls under 36 hours and the game starts punishing real life —
+exactly the failure the guard exists to catch. The two rates have to sum to about what the
+one rate does today. Measure it, do not choose it.
+
+#### What it costs
+
+A migration (a `thirst` column on `characters`, `numeric(6, 3)` beside `hunger`, same
+check); two branches in the tick where there is one; a damage-stacking rule with radiation
+already in the mix; and the page.
+
+**The page is the real cost, and it is worth saying plainly.** A roster of four already
+shows health, hunger, radiation and stamina. A fifth gauge per person is twenty numbers on a
+view whose last verdict was *"too many sentences and commas"*. The house rule is the answer
+if anything is: a mark reports something acting on a number **in both directions**, and says
+nothing when nothing is happening. A survivor who is drinking normally should not be showing
+a thirst gauge at all.
+
+#### The cheaper alternative, recorded so it is a choice rather than a fallback
+
+**Keep one gauge and rename it.** `fedFraction` already covers both stores; calling the
+result *privation* or *condition* rather than *hunger* costs a migration-free rename and
+makes the page honest without adding a system. It loses the thing this phase is actually
+for — food and water having different clocks and different consequences — and it is the
+right answer if the roster page turns out to be the constraint.
+
+**What decides between them: play Phase 18 first.** Once the page says litres, either the
+single gauge reads as a lie or it does not.
+
+### What was read and declined, so it is not raised again as new
+
+**§3's list of weather effects** — heat into stamina, cold into food, rain into water
+production, dust into loot and navigation. Temperature shipped in Phase 9 with **one**
+mechanical job on purpose: it widens the day/night coefficients. The recorded reason still
+holds — the sky already owns production, haul and dose, and a second global system pulling
+the same three would make `effectsOf` an incomplete account of what the weather costs. The
+doc's own balance principle asks that weather consequences be stated before the player
+commits, and one lever can be stated.
+
+**§8's extras** — a second worker speeding a build, and handing a job over mid-way. The
+assignment half of §8 shipped; these two are not scheduled. Neither is a bad idea, and both
+are dials on a system nobody has played yet.
+
+**§5's shelter and night bonuses on sleep**, already declined under Phase 10 for the same
+reason: a level-scaled rate is a second dial nothing derives, and a night bonus is a third
+thing acting on one number.
 
 ## The dispatch table was quoting a dose it did not charge — 2026-08-30
 
