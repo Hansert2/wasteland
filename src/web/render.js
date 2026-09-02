@@ -597,7 +597,9 @@ ${SURVIVOR_TAB_CSS}
    */
   .holding .track { height: 5px; margin-top: 9px; }
   .holding .track i { height: 5px; background: var(--bone); }
-  .raiding .gone { margin: 15px 0 10px; font-size: 15px; line-height: 1.5; color: var(--dim); }
+  /* The label over the haul, at the weight the gauge's own label sits at. */
+  .raiding .gone { margin: 18px 0 9px; }
+  .raiding .gone .tag { letter-spacing: .16em; color: var(--dim); }
   /*
    * The cells sit in the block rather than at its edge, so they need the border the Away
    * block's own frame gives them there.
@@ -3903,7 +3905,16 @@ function renderRaid(view) {
           <div class="track">${stand > 0 ? `<i style="width:${(stand * 100).toFixed(1)}%"></i>` : ''}</div>
         </div>
 
-        <p class="gone">${escape(crew)} are in the yard. They have taken:</p>
+        ${/*
+           * A label, not a sentence.
+           *
+           * "Raiders out of The Junction Crews are in the yard. They have taken:" was a
+           * caption doing a header's job, and a colon at the end of a paragraph is the giveaway
+           * — the words existed only to introduce the figures under them. The crew still gets
+           * named, because who is at the fence is the one thing here that is not a number, and
+           * a label is where this page puts a name over a set of figures.
+           */ ''}
+        <p class="gone"><span class="tag">taken by ${escape(raid.crew ?? 'raiders')}</span></p>
         ${taken}
 
         <form method="post" action="/raid">
