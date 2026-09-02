@@ -597,15 +597,18 @@ ${SURVIVOR_TAB_CSS}
    */
   .holding .track { height: 5px; margin-top: 9px; }
   .holding .track i { height: 5px; background: var(--bone); }
-  .holding .gone { margin: 10px 0 0; font-family: var(--numer); font-size: 12.5px;
-                   line-height: 1.5; color: var(--dim); font-variant-numeric: tabular-nums; }
+  .raiding .gone { margin: 15px 0 10px; font-size: 15px; line-height: 1.5; color: var(--dim); }
+  /*
+   * The cells sit in the block rather than at its edge, so they need the border the Away
+   * block's own frame gives them there.
+   */
+  .raiding .readout { border: 1px solid var(--rule-in); }
 
   /*
    * One row per survivor, ticked when they are out there. Three columns on a grid rather than
    * a flex row: the shares line up under each other and the tallies start in the same place,
    * so a list that is changing under you can still be read down.
    */
-  .took-one { white-space: nowrap; }
   .standers-foot b { font-weight: 400; color: var(--bone); }
   .fencers { list-style: none; margin: 18px 0 0; padding: 0; display: grid; gap: 10px; }
   /*
@@ -3825,20 +3828,25 @@ function renderRaid(view) {
   const kinds = Object.keys(raid.perHour ?? {});
 
   /*
-   * One line, in the numeric face. Each figure carries its own separator *in front of it* and
-   * the pair does not break, so a wrap happens between groups and never leaves a middot
-   * dangling at the end of a line — which is what the first cut of this did at every width
-   * narrow enough to wrap.
+   * What they have carried off, read the way a trip's haul is read.
+   *
+   * The same `.readout` cells the Away block uses for damage, dose and haul — a label over a
+   * figure, one cell per thing, ruled apart. It was a sentence with middots in it, which is
+   * the shape prose takes when it is really a table: four labelled numbers pretending to be a
+   * clause, wrapping badly and leaving a separator hanging at the end of a line.
+   *
+   * A trip's readout and a raid's are the same kind of fact — this is what happened to us
+   * while we were not in control of it — so they should not be two different pictures.
    */
-  const taken = kinds
+  const taken = `<div class="readout">${kinds
     .map(
-      (kind, index) =>
-        `<span class="took-one">${index > 0 ? '&middot; ' : ''}${live(
+      (kind) =>
+        `<div class="read"><span class="tag">${escape(kind)}</span><span class="fig">${live(
           Number(raid.taken?.[kind] ?? 0),
           Number(raid.losingPerHour?.[kind] ?? 0),
-        )} ${escape(kind)}</span>`,
+        )}</span></div>`,
     )
-    .join(' ');
+    .join('')}</div>`;
 
   const out = new Map((raid.defending ?? []).map((one) => [String(one.id), one]));
 
@@ -3893,8 +3901,10 @@ function renderRaid(view) {
           <div class="gauge-top"><span class="tag">holding back</span>
             <span class="val">${Math.round(stand * 100)}%</span></div>
           <div class="track">${stand > 0 ? `<i style="width:${(stand * 100).toFixed(1)}%"></i>` : ''}</div>
-          <p class="gone">${escape(crew)} have taken ${taken}</p>
         </div>
+
+        <p class="gone">${escape(crew)} are in the yard. They have taken:</p>
+        ${taken}
 
         <form method="post" action="/raid">
           <ul class="fencers">${(view.roster ?? []).map(row).join('')}</ul>
