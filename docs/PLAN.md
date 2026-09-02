@@ -4009,6 +4009,77 @@ layout in which dragging one thing onto another means anything.
 So `PANES.camp` lost `box` and gained nothing; `PANES.storage` is `['storage']` and holds one
 board. The rail gained **Storage**, between Survivors and Road.
 
+#### The trip is a switch, and the pack is always the default
+
+A card carrying the trip block *and* the pack table ran most of a screen tall. The trip is a
+panel of its own now, revealed by a control that is in the strip only while somebody is out.
+
+It was a third tab first, and the default while anybody was away. **Both were wrong and the
+user cut them.** The tabs are three views of one person; this is a view of one *card*, and a
+tab that takes over the strip has to say something about the other three people — the build
+fell through to their packs, which worked but meant the tab meant two things at once. And a
+default that moves when somebody leaves the camp means the page opens somewhere different
+depending on what the camp is doing. **Carrying is the default, always.**
+
+So: a switch that takes over the traveller’s card and leaves everybody else exactly as they
+were. It names who is out rather than saying *away* — on a roster of four that is the fact
+being offered — and it falls back to “on the road” when more than one person is.
+
+**On by default, so the attribute names the closed state.** A body that has never been
+clicked carries no attribute at all, so a rule that *shows* a trip cannot be written against
+one; what the switch sets is `data-away-shut`, and turning it on again is deleting that.
+The generated tab rules are re-run for the traveller under that attribute rather than being
+negated, so the card rejoins the strip without those rules knowing this control exists.
+
+**And it does not look like a tab**, which is the point of it not being one. The tabs are a
+strip of words with the open one underlined; this is a state, so it is a box with a lamp in
+it — hollow ring off, filled with oxide on — borrowing the sending radio’s idiom, which is
+what this page already uses to mean *this one, right now*.
+
+**On the body, like the tab**, and for the same reason: a per-card attribute lives inside the
+section the page replaces on every action, so it would be lost on the next swap. `syncTabs`
+presses the button back in after a swap for exactly that reason — the fresh button knows
+nothing, and the body is the one copy of the state.
+
+One thing the contract test could not ask, and now asks differently: the sheet is a single
+constant carrying every rule on every page, so *does the trip have a rule* is always yes.
+What it pins instead is that **the switch and the trip panel appear together** — a control
+over nothing, or a trip the page renders and cannot reveal, are the two failures worth
+catching. It also learned to look for the button rather than the string, because the client
+script is printed into every page and was matching its own source.
+
+#### Away dims the pack, not the person
+
+The card was greyed whole while somebody was out — borrowed from the board, where a holding
+that cannot be reached really is unreachable. On a survivor it was wrong, and wrong against
+a decision recorded two hundred lines above it: **health and radiation keep moving while
+somebody is away** — the dose accrues across the walk since Phase 11 — so a card dimmed for
+exactly the hours those numbers move fastest hides what it exists to show.
+
+What is out of reach is the pack, so the pack is what says so: dimmed, with the board’s own
+words under the total, and its rows no longer draggable. A row that can be picked up and
+dropped nowhere is a gesture the page offers and the service takes away — `moveItem` refuses
+either end of a transfer twenty hours down the road. **Use still works**, which is the point
+of the pack travelling with them.
+
+#### What has somebody, as a chip on their name
+
+The occupation line was a sentence sitting on top of the column the four gauges had just
+moved into — prose over a list of figures. It is a chip after the name now, small and faint
+in the label face so the name stays the loudest thing on the card, and it answers the
+question a roster is scanned for: *who is doing what*, beside the person it is about.
+
+**And every timed job carries its clock, not sleep alone.** Sleep had one because the hour
+sat on the survivor’s own row and the card could reach it; building, fitting, crafting and
+standing at the fence were named and left open-ended — a state a player cannot plan around,
+which is the opposite of what committing the hours was for. Every query in `occupations`
+already had the instant in hand and dropped it, because its only caller was a refusal and a
+refusal asks *whether*, never *for how long*. They all carry `until` now.
+
+Away stays out of the chip. It heads its own field in the middle column with the place, the
+picture of it and the countdown — a chip repeating that would be one card saying one thing
+three times.
+
 #### The survivor card lost a tab, 2026-09-02
 
 **Condition is not a tab any more; it stands under the name on every card.** A tab is for
