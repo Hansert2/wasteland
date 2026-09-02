@@ -594,20 +594,79 @@ test('every survivor tab has a panel, a rule that hides it, and a rule that show
         panels.slice().sort(),
         `${name}: the ${tab} tab does not name every panel it switches`,
       );
-      assert.ok(
-        html.includes(`body[data-survivor-tab="${tab}"] .tabbed[data-tab="${tab}"]`),
-        `${name}: nothing reveals the ${tab} panel`,
+      /*
+       * A selector that reveals it, which is no longer always the bare pair.
+       *
+       * Away is shown on the card of whoever is out and falls through to the pack on
+       * everybody else, so its rule reads through `.person[data-out]`. What has to hold is
+       * that choosing the tab reveals its panel — not the exact shape of the selector that
+       * does it, which is a layout decision rather than a contract.
+       */
+      const reveals = new RegExp(
+        `body\\[data-survivor-tab="${tab}"\\][^,{]*\\.tabbed\\[data-tab="${tab}"\\]`,
       );
-      assert.ok(
-        html.includes(`body[data-survivor-tab="${tab}"] .tab[data-survivortab="${tab}"]`),
-        `${name}: nothing lights the ${tab} tab`,
+      const lights = new RegExp(
+        `body\\[data-survivor-tab="${tab}"\\][^,{]*\\.tab\\[data-survivortab="${tab}"\\]`,
       );
+      assert.match(html, reveals, `${name}: nothing reveals the ${tab} panel`);
+      assert.match(html, lights, `${name}: nothing lights the ${tab} tab`);
     }
 
-    // And exactly one of them is the default, shown to a body that has never been clicked.
-    const defaults = [...html.matchAll(/body:not\(\[data-survivor-tab\]\) \.tabbed\[data-tab="([a-z]+)"\]/g)];
-    assert.equal(defaults.length, 1, `${name}: there must be one default tab`);
-    assert.equal(defaults[0][1], tabs[0], `${name}: the default is the first tab`);
+    /*
+     * What a body that has never been clicked opens on.
+     *
+     * It was "exactly one, and it is the first tab". Away broke both halves and correctly:
+     * it leads the strip while somebody is out, but it is only the default *on the card of
+     * whoever is out* — everybody else still opens on their pack. So a page with a traveller
+     * on it carries two default rules, and a page without one carries the single old rule.
+     *
+     * The pair is the assertion. One rule on a page with a traveller would mean either the
+     * trip does not open by default or three cards open on nothing.
+     */
+    assert.match(
+      html,
+      /body:not\(\[data-survivor-tab\]\) \.tabbed\[data-tab="carrying"\]/,
+      `${name}: the pack is not the default`,
+    );
+
+    /*
+     * The trip is a switch over the tabs rather than one of them, so it has no default and
+     * never moves this one: a card opens on its pack whatever the camp is doing.
+     *
+     * What is worth pinning is that the switch exists exactly when there is a trip to show.
+     * A page offering it with nobody out there would be a control over nothing; a traveller
+     * with no switch would be a trip the page renders and cannot reveal.
+     */
+    // The button, not the handler that looks for it: the client script is printed into
+    // every page, so a bare substring finds its own source on a page with nobody out.
+    const hasSwitch = /<button[^>]*data-awayswitch/.test(html);
+    const hasTrip = /class="tabbed" id="survivor-[0-9]+-away"/.test(html);
+    assert.equal(hasSwitch, hasTrip, `${name}: the away switch and the trip panel disagree`);
+
+    if (hasTrip) {
+      /*
+       * Open unless shut, so the rule that shows a trip cannot be written against an
+       * attribute: a body that has never been clicked carries none. What the switch sets is
+       * the *closed* state, which makes these three the pair of states worth pinning —
+       * the trip opens on its own card, the pack steps aside for it, and the switch can put
+       * things back.
+       */
+      assert.match(
+        html,
+        /\.person\[data-out\] \.tabbed\[data-tab="away"\] \{ display: block/,
+        `${name}: a trip does not open on its own card`,
+      );
+      assert.match(
+        html,
+        /\.person\[data-out\] \.tabbed:not\(\[data-tab="away"\]\) \{ display: none/,
+        `${name}: the trip lands on top of the pack instead of replacing it`,
+      );
+      assert.match(
+        html,
+        /body\[data-away-shut\] \.person\[data-out\] \.tabbed\[data-tab="away"\] \{ display: none/,
+        `${name}: the switch cannot be turned off`,
+      );
+    }
   }
 });
 

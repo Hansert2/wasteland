@@ -47,15 +47,31 @@ export async function occupations(client, settlementId, now = Date.now()) {
   const busy = new Map();
   const at = new Date(now);
 
+  /*
+   * **Every occupation carries the hour it ends**, added 2026-09-02.
+   *
+   * Each of these queries already had the instant in hand and dropped it, because the only
+   * caller was a refusal and a refusal needs to know *whether* somebody is busy, not for how
+   * much longer. The card asks the other question: a job with no end on it is a state a
+   * player cannot plan around, which is what committing the hours was for. Sleep had a
+   * countdown because it was read straight off the survivor row; the rest were named and
+   * left open-ended.
+   */
   const { rows: away } = await client.query(
-    `select e.character_id from expeditions e
+    `select e.character_id, e.returns_at from expeditions e
        join characters c on c.id = e.character_id
       where c.settlement_id = $1 and e.status = 'active'`,
     [settlementId],
   );
   // Where they went is on the survivor's own block already, printed with the countdown, so
   // this does not join the regions table to say it a second time.
-  for (const row of away) busy.set(Number(row.character_id), { kind: 'away', what: null });
+  for (const row of away) {
+    busy.set(Number(row.character_id), {
+      kind: 'away',
+      what: null,
+      until: row.returns_at?.getTime() ?? null,
+    });
+  }
 
   /*
    * Asleep, which is the one occupation that is not a job.
@@ -69,13 +85,19 @@ export async function occupations(client, settlementId, now = Date.now()) {
    * ends, so the comparison against the clock *is* the state — see migration `020`.
    */
   const { rows: sleeping } = await client.query(
-    `select id from characters
+    `select id, sleep_until from characters
       where settlement_id = $1 and died_at is null and sleep_until > $2`,
     [settlementId, at],
   );
   // What there is to name is the hour they wake, and that is a countdown rather than a
   // string — the survivor's own block prints it from `sleepUntil`. This says only who.
-  for (const row of sleeping) busy.set(Number(row.id), { kind: 'sleeping', what: null });
+  for (const row of sleeping) {
+    busy.set(Number(row.id), {
+      kind: 'sleeping',
+      what: null,
+      until: row.sleep_until?.getTime() ?? null,
+    });
+  }
 
   /*
    * At the fence, which is a job — decided with the user on 2026-09-01 when a raid gained a
@@ -86,13 +108,17 @@ export async function occupations(client, settlementId, now = Date.now()) {
    * *was* out there, and their totals are history rather than an occupation.
    */
   const { rows: defending } = await client.query(
-    `select s.character_id from raid_stands s
+    `select s.character_id, r.closes_at from raid_stands s
        join raids r on r.id = s.raid_id
       where r.settlement_id = $1 and r.resolved_at is null and s.since is not null`,
     [settlementId],
   );
   for (const row of defending) {
-    busy.set(Number(row.character_id), { kind: 'defending', what: null });
+    busy.set(Number(row.character_id), {
+      kind: 'defending',
+      what: null,
+      until: row.closes_at?.getTime() ?? null,
+    });
   }
 
   /*
@@ -102,18 +128,22 @@ export async function occupations(client, settlementId, now = Date.now()) {
    * against the clock rather than against the row's presence.
    */
   const { rows: building } = await client.query(
-    `select built_by, kind from camp_structures
+    `select built_by, kind, build_completes_at from camp_structures
       where settlement_id = $1 and built_by is not null and build_completes_at > $2`,
     [settlementId, at],
   );
   for (const row of building) {
     // The column, as the page spells it: a structure has no display name of its own, and
     // every other place that prints one turns the underscores into spaces.
-    busy.set(Number(row.built_by), { kind: 'building', what: String(row.kind).replace(/_/g, ' ') });
+    busy.set(Number(row.built_by), {
+      kind: 'building',
+      what: String(row.kind).replace(/_/g, ' '),
+      until: row.build_completes_at?.getTime() ?? null,
+    });
   }
 
   const { rows: fitting } = await client.query(
-    `select fitted_by, upgrade from structure_upgrades
+    `select fitted_by, upgrade, completes_at from structure_upgrades
       where settlement_id = $1 and fitted_by is not null
         and installed_at is null and completes_at > $2`,
     [settlementId, at],
@@ -122,18 +152,26 @@ export async function occupations(client, settlementId, now = Date.now()) {
     // Lowercased, because a fitting's name is title case for a label strip — "A Bed", "The
     // Clock" — and this lands mid-sentence under somebody's name.
     const named = UPGRADES[row.upgrade]?.name ?? row.upgrade;
-    busy.set(Number(row.fitted_by), { kind: 'fitting', what: String(named).toLowerCase() });
+    busy.set(Number(row.fitted_by), {
+      kind: 'fitting',
+      what: String(named).toLowerCase(),
+      until: row.completes_at?.getTime() ?? null,
+    });
   }
 
   const { rows: crafting } = await client.query(
-    `select co.crafted_by, rec.name from craft_orders co
+    `select co.crafted_by, rec.name, co.completes_at from craft_orders co
        join recipes rec on rec.id = co.recipe_id
       where co.settlement_id = $1 and co.crafted_by is not null
         and co.status = 'active' and co.completes_at > $2`,
     [settlementId, at],
   );
   for (const row of crafting) {
-    busy.set(Number(row.crafted_by), { kind: 'crafting', what: String(row.name).toLowerCase() });
+    busy.set(Number(row.crafted_by), {
+      kind: 'crafting',
+      what: String(row.name).toLowerCase(),
+      until: row.completes_at?.getTime() ?? null,
+    });
   }
 
   return busy;

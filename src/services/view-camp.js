@@ -2129,6 +2129,9 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
         // forgot which it was.
         busy: busyBy.get(Number(person.id))?.kind ?? null,
         busyWith: busyBy.get(Number(person.id))?.what ?? null,
+        // And when it ends, for every job that has an end — not sleep alone, which was the
+        // only one whose clock the card could reach before `occupations` carried them all.
+        busyUntil: busyBy.get(Number(person.id))?.until ?? null,
         away: trip
           ? {
               regionName: trip.region.name,

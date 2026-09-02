@@ -152,6 +152,49 @@ const SURVIVOR_TAB_CSS = [
         : `  body[data-survivor-tab="${id}"] .tab[data-survivortab="${id}"]`;
     return `${lit} { color: var(--bone); border-bottom-color: var(--oxide); }`;
   }),
+  /*
+   * Away is a switch over the tabs rather than one of them.
+   *
+   * It was a third tab and the default while anybody was out, which read wrong twice: the
+   * tabs are three views of one person and this is a view of one *card*, and a default that
+   * moves when somebody leaves the camp means the page opens somewhere different depending
+   * on what the camp is doing. **Carrying is the default, always.**
+   *
+   * So it is a toggle beside the strip, on only while somebody is out there, and off unless
+   * pressed. When it is on it takes over the traveller's card and leaves everybody else
+   * exactly as they were — which is the whole reason it can be a switch instead of a tab:
+   * it says nothing about the other three people.
+   *
+   * On the body, like the tab, because a per-card attribute lives inside the section the
+   * page replaces on every action and would be lost on the next swap.
+   */
+  /*
+   * On unless shut, which is why the attribute names the closed state.
+   *
+   * A trip is the thing worth seeing about the person on it, so the card opens on it — but
+   * the *tabs* are untouched by that, which is the difference from the build where away was
+   * a tab: everybody at home still opens on their pack, and Carrying is still the default
+   * for the view. This switch says one card is showing something else.
+   *
+   * The default has to be the absence of the attribute, because a body that has never been
+   * clicked carries none. So the attribute is what turns it off.
+   */
+  '  .person[data-out] .tabbed[data-tab="away"] { display: block; }',
+  '  /* And whatever tab that card was showing steps aside, or the trip lands on top of the',
+  '     pack and the card is two screens tall again — which is what the switch is for. */',
+  '  .person[data-out] .tabbed:not([data-tab="away"]) { display: none; }',
+  '  /* Shut: the card rejoins the strip and shows whatever everybody else is showing. The',
+  '     panel rules above are undone rather than negated, so the generated tab rules take it',
+  '     back without knowing this control exists. */',
+  '  body[data-away-shut] .person[data-out] .tabbed[data-tab="away"] { display: none; }',
+  ...SURVIVOR_TABS.map(([id]) => {
+    const chosen =
+      id === DEFAULT_SURVIVOR_TAB
+        ? `  body[data-away-shut]:not([data-survivor-tab]) .person[data-out] .tabbed[data-tab="${id}"],\n` +
+          `  body[data-away-shut][data-survivor-tab="${id}"] .person[data-out] .tabbed[data-tab="${id}"]`
+        : `  body[data-away-shut][data-survivor-tab="${id}"] .person[data-out] .tabbed[data-tab="${id}"]`;
+    return `${chosen} { display: block; }`;
+  }),
 ].join('\n');
 
 const STYLE = `
@@ -575,7 +618,17 @@ const STYLE = `
   .board .block.over { border-color: var(--oxide); background: var(--rule-in); }
   /* The same answer from a person as from a panel: this is where it would land. */
   .person.over { background: var(--rule-in); box-shadow: inset 2px 0 0 var(--oxide); }
-  .person[data-out] { opacity: .55; }
+  /*
+   * Away dims the pack and nothing else.
+   *
+   * It dimmed the whole card first, borrowed from the board where a whole holding really is
+   * unreachable. On a survivor it was wrong and recorded as wrong two hundred lines up:
+   * health and radiation keep moving while somebody is out — the dose accrues across the
+   * walk since Phase 11 — so a card greyed for the hours those numbers move fastest hides
+   * exactly what it exists to show. What is out of reach is their pack, so that is what says
+   * so.
+   */
+  .person[data-out] .carrying { opacity: .5; }
   /*
    * A row you can pick up, and a row you cannot.
    *
@@ -679,9 +732,23 @@ const STYLE = `
     white-space: nowrap;
     text-align: right;
   }
-  .carrying .use { width: 1%; padding-left: 10px; white-space: nowrap; text-align: right; }
-  .carrying .use form { display: inline-block; margin: 0; }
-  .carrying .use button {
+  /*
+   * The cell holds controls and no text, so it keeps no line box of its own.
+   *
+   * The button sat four pixels below the name beside it. Not the button and not the cell,
+   * both of which are centred: the cell inherits a 16.8px line-height it has nothing to use
+   * it on, and that strut sits on the baseline under the button and drags the line box down
+   * with it. Zeroing it here is safe because everything in this cell brings its own — the
+   * button, and the note, which is text and sets 1.55.
+   */
+  .carrying .use { width: 1%; padding-left: 10px; white-space: nowrap; text-align: right;
+                   line-height: 0; }
+  /* Middle, not baseline. An inline-block sits on the text baseline and carries the
+     descender space under it, so in a cell that is itself middle-aligned the button ended up
+     three pixels low against the name beside it — visible once every row had one. */
+  .carrying .use form { display: inline-block; margin: 0; vertical-align: middle; }
+  .carrying .use button,
+  .fitting button {
     appearance: none;
     background: none;
     border: 1px solid var(--edge);
@@ -690,6 +757,9 @@ const STYLE = `
     font-size: 10.5px;
     font-variant-caps: all-small-caps;
     letter-spacing: .14em;
+    /* Its own, because the cell around it has none: font: inherit brings the line-height
+       down with everything else, and a button with a zero line box is four pixels tall. */
+    line-height: 1.6;
     padding: 1px 7px;
     cursor: pointer;
   }
@@ -729,6 +799,42 @@ ${SURVIVOR_TAB_CSS}
    * there is no figure here, only a person picked or not picked.
    */
   .goes { border-top: 1px solid var(--rule); padding: 8px 18px; }
+  /*
+   * The away switch, which is deliberately not a tab.
+   *
+   * The tabs are three views of one person and they read as a strip of words with the open
+   * one underlined. This is a state: one card is showing a trip instead of a pack. So it is
+   * a box with a lamp in it, borrowing the sending radio's idiom — hollow ring when off,
+   * filled with oxide when on — because that is what the page already uses to mean *this
+   * one, right now*.
+   */
+  .awayswitch {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    margin-right: 14px;
+    padding: 3px 9px;
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    background: none;
+    font-family: var(--label);
+    font-weight: 700;
+    font-size: 9.5px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--faint);
+    cursor: pointer;
+  }
+  .awayswitch .dot {
+    width: 7px;
+    height: 7px;
+    border: 1px solid var(--edge);
+    border-radius: 50%;
+  }
+  .awayswitch[aria-pressed="true"] { color: var(--bone); border-color: var(--edge); }
+  .awayswitch[aria-pressed="true"] .dot { background: var(--oxide); border-color: var(--oxide); }
+  .awayswitch:hover { color: var(--prose); }
+
   .pick { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; }
   .pick .tag { color: var(--dim); font-size: 10px; letter-spacing: .18em; }
   /* The dark scheme declared, as the selects declare it and for the same reason: left to
@@ -1708,8 +1814,13 @@ ${PANE_CSS}
    * size it read as loudly as the Build beside it, which is the opposite of what the
    * inset is claiming: scrap makes the thing bigger, fuel makes it do something new, and
    * only one of those is the row's headline.
+   *
+   * **It wears the pack's button now**, which is the same idea carried further: it was the
+   * headline button shrunk, keeping the heavier edge and the bone text that say *this is
+   * the thing to press here*. A verb inside a row is a different weight of control from the
+   * row's own purchase, and there is one description of it — see the rule it shares with
+   * the pack, a few hundred lines down, where that shape is defined.
    */
-  .fitting button { padding: 5px 11px; font-size: 9.5px; }
 
   /* ---- the glass ---- */
 
@@ -1914,6 +2025,21 @@ ${PANE_CSS}
   }
   .person:first-child { border-top: 0; }
   /*
+   * A trip fills the cell it is in.
+   *
+   * The card is as tall as the four gauges beside it, and the trip block is shorter than
+   * that — so it sat at the top of its column with fifty pixels of nothing under it, which
+   * reads as a block that failed to load rather than as a block that is finished. The
+   * column stretches and the plate takes the height, which is the one placement where the
+   * photograph is the ground rather than a picture, so there is more of it to see.
+   *
+   * Only the traveller's card: a pack table shorter than its gauges is a list with room
+   * left, which is what a list should look like.
+   */
+  .person[data-out] .who-body { align-self: stretch; display: flex; flex-direction: column; }
+  .person[data-out] .who-body > .tabbed[data-tab="away"] { flex: 1; }
+  .person[data-out] .tabbed[data-tab="away"] > .afield { height: 100%; }
+  /*
    * What is acting on a gauge, as small marks under its track.
    *
    * Deliberately not figures. The number is already the largest thing in the gauge and a
@@ -1959,6 +2085,38 @@ ${PANE_CSS}
   .driver:hover { color: var(--bone); border-color: var(--edge); }
 
   .who-head .out { margin-top: 4px; }
+  /*
+   * What has somebody, as a chip after their name.
+   *
+   * Small, faint and in the label face, so the name stays the loudest thing on the card and
+   * the state reads as a caption on it rather than a second title. The clock inside takes
+   * the numeric face every other figure on this page counts in: it is the half a player is
+   * planning around, and it should not look like more prose.
+   */
+  .who-name .doing {
+    display: inline-block;
+    margin-left: 7px;
+    padding: 2px 6px;
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    vertical-align: middle;
+    font-family: var(--label);
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--dim);
+    white-space: nowrap;
+  }
+  .who-name .doing .clock {
+    margin-left: 5px;
+    font-family: var(--numer);
+    font-size: 11px;
+    letter-spacing: 0;
+    text-transform: none;
+    color: var(--value);
+    font-variant-numeric: tabular-nums;
+  }
   .who-head .back { display: block; white-space: nowrap; }
   /* The sending control loses its own rule and padding in here: the row's border is already
      the line between people, and a second one inside the row divides nothing. */
@@ -2928,6 +3086,16 @@ export const TIMERS = `
    */
   const syncTabs = () => {
     const tabs = [...document.querySelectorAll('[data-survivortab]')];
+    /*
+     * The away switch is re-stated here for the same reason the tabs are: a swap replaces
+     * the button with a fresh one pressed out, while the body still says the trip is open.
+     * It is not in the list above because it is not one of them — it presses in and out on
+     * its own, over whichever tab is showing.
+     */
+    for (const el of document.querySelectorAll('[data-awayswitch]')) {
+      el.setAttribute('aria-pressed', String(!('awayShut' in document.body.dataset)));
+    }
+
     if (tabs.length === 0) return;
     // No attribute means the first tab, which is what the stylesheet also assumes.
     const open = document.body.dataset.survivorTab || tabs[0].dataset.survivortab;
@@ -3034,6 +3202,17 @@ export const TIMERS = `
   });
 
   document.addEventListener('click', (event) => {
+    // The switch first: it is a button in the same strip, and it is not a tab.
+    const flip = event.target.closest ? event.target.closest('[data-awayswitch]') : null;
+    if (flip) {
+      // The attribute names the closed state, because open is what a page that has never
+      // been clicked has to be.
+      if ('awayShut' in document.body.dataset) delete document.body.dataset.awayShut;
+      else document.body.dataset.awayShut = '';
+      syncTabs();
+      return;
+    }
+
     const tab = event.target.closest ? event.target.closest('[data-survivortab]') : null;
     if (!tab) return;
     // Always written, whichever tab it is. Storing the default as the absence of the
@@ -4647,6 +4826,7 @@ function renderSurvivors(view) {
    * every person's panel for it.
    */
   const panelId = (person, tab) => `survivor-${person.id}-${tab}`;
+
   const tabs = `<span class="tabs" role="tablist" aria-label="Survivors">${SURVIVOR_TABS.map(
     ([id, label]) =>
       `<button type="button" class="tab" data-survivortab="${id}"
@@ -4655,13 +4835,34 @@ function renderSurvivors(view) {
                  .join(' ')}">${label}</button>`,
   ).join('')}</span>`;
 
+  /*
+   * And the switch, which is only there while somebody is.
+   *
+   * Not a tab: it belongs to one card rather than to the view, so it says nothing about what
+   * the other three people are showing. A button that presses in, in the words the strip
+   * already uses — and it names who is out, because on a roster of four that is the fact
+   * being offered rather than the word "away".
+   */
+  const travelling = view.roster.filter((person) => person.away);
+  const away = travelling.length
+    ? `<button type="button" class="awayswitch" data-awayswitch aria-pressed="true"
+               aria-controls="${travelling
+                 .map((person) => panelId(person, 'away'))
+                 .join(' ')}"><span class="dot" aria-hidden="true"></span>${escape(
+        travelling.length === 1 ? `${travelling[0].name ?? 'Away'} is out` : 'On the road',
+      )}</button>`
+    : '';
+
   const people = view.roster
     .map((person) =>
       renderSurvivor(person, person.strain, view.vitals, person.inventory, chosen, panelId),
     )
     .join('');
 
-  return block('Survivors', people, { flush: true, aside: tabs });
+  return block('Survivors', `<div class="roster">${people}</div>`, {
+    flush: true,
+    aside: `${away}${tabs}`,
+  });
 }
 
 function renderSurvivor(survivor, strain, vitals, inventory, chosen, panelId) {
@@ -4881,39 +5082,33 @@ function renderSurvivor(survivor, strain, vitals, inventory, chosen, panelId) {
     survivor.busy === 'away' ? ' data-out="1"' : ''
   }>
      <div class="who-head">
-       <div class="who-name">${escape(survivor.name ?? 'Survivor')}</div>
-       ${
-         /*
-          * Where they are, beside the tabs rather than behind one.
-          *
-          * Health and radiation keep moving while somebody is out — the dose accrues across
-          * the walk since Phase 11 — so putting the trip in a tab would hide the numbers most
-          * worth watching at the moment they move fastest.
-          */
-         /*
-          * What has them, when what has them is a job in the yard.
-          *
-          * Being away used to print here too, and it outgrew the slot: a place and a
-          * countdown are not the same size of fact as "fitting · a bed", and the picture of
-          * that place was sitting inertly beside the words. It heads its own field now, in
-          * the middle column — see tripReadout. This line is for the work that keeps
-          * somebody in the camp, which is genuinely a footnote to their name.
-          */
+       ${/*
+         * What has them, on the name line rather than under it.
+         *
+         * It was a sentence in the column the four gauges now stand in, which put prose on
+         * top of a list of figures. As a chip on the name it answers the question a roster
+         * is scanned for — *who is doing what* — beside the person it is about.
+         *
+         * **Every timed job brings its clock now, and not sleep alone.** Sleep had one
+         * because the hour was on the survivor's own row and the card could reach it;
+         * building, fitting, crafting and standing at the fence were named and left
+         * open-ended, which is a state a player cannot plan around and the opposite of what
+         * committing the hours was for. `occupations` carries the end of every one of them
+         * now, and this prints whichever it is handed.
+         *
+         * Away is still not here. It heads its own field in the middle column with the
+         * place, the picture of it and the countdown — see tripReadout — and a chip
+         * repeating that beside the name would be one card saying one thing three times.
+         */ ''}
+       <div class="who-name">${escape(survivor.name ?? 'Survivor')}${
          survivor.busy && !survivor.away
-           ? `<p class="out">${
-               /*
-                * Asleep is the one occupation with an hour attached, so it gets the treatment
-                * being away gets: the state, then the clock. Every other job on this line
-                * finishes when the camp's own countdown says so and is named instead — see
-                * occupiedFully. Without the hour, "asleep" is a state a player cannot plan
-                * around, which is the opposite of what committing the hours was for.
-                */
-               survivor.busy === 'sleeping' && survivor.sleepUntil
-                 ? `asleep &middot; wakes in ${countdown(survivor.sleepUntil)}`
-                 : occupiedFully(survivor.busy, survivor.busyWith)
-             }</p>`
+           ? `<span class="doing">${occupiedFully(survivor.busy, survivor.busyWith)}${
+               survivor.busyUntil
+                 ? ` <span class="clock">${countdown(survivor.busyUntil)}</span>`
+                 : ''
+             }</span>`
            : ''
-       }
+       }</div>
        ${/*
          * The condition, under the name and never behind anything.
          *
@@ -4958,7 +5153,14 @@ function renderSurvivor(survivor, strain, vitals, inventory, chosen, panelId) {
                 * the countdown is on the line under the name — so this is the one part that
                 * was dropped rather than moved.
                 */ ''}
-              ${tripReadout(survivor.away)}
+              ${/*
+                 * In a panel of its own, so the trip and the pack are two tabs rather than
+                 * two screens. A card carrying both ran a full viewport tall, and the tab
+                 * that opens while somebody is out is this one — see SURVIVOR_TAB_CSS.
+                 */ ''}
+              <div class="tabbed" id="${panelId(survivor, 'away')}" data-tab="away" role="tabpanel">
+                ${tripReadout(survivor.away)}
+              </div>
               ${/*
                  * The armed timer that fetches the next window.
                  *
@@ -4975,7 +5177,7 @@ function renderSurvivor(survivor, strain, vitals, inventory, chosen, panelId) {
          ${who}
        </div>
        <div class="tabbed" id="${panelId(survivor, 'carrying')}" data-tab="carrying" role="tabpanel">
-         ${inventoryBody(inventory, survivor.id, survivor.carrying)}
+         ${inventoryBody(inventory, survivor.id, survivor.carrying, survivor.busy !== 'away')}
        </div>
      </div>
      ${goes}
@@ -5882,7 +6084,14 @@ function renderRoad(road) {
  * Returns a body and no label: the tab is the label. An empty pack still says so in words,
  * because a tab that opens onto nothing reads as a page that failed to load.
  */
-function inventoryBody(inventory, owner = null, carrying = null) {
+/**
+ * @param {boolean} [athand] whether things can be handed to and from this pack. False for
+ *   somebody away: `moveItem` refuses either end of a transfer twenty hours down the road,
+ *   and a row that can be picked up and never dropped anywhere is a gesture the page offers
+ *   and the service takes away. Using something out of your own pack is a different question
+ *   and stays allowed — that is the whole point of the pack travelling with them.
+ */
+function inventoryBody(inventory, owner = null, carrying = null, athand = true) {
   /*
    * What the pack weighs, said even when it is empty.
    *
@@ -5895,8 +6104,12 @@ function inventoryBody(inventory, owner = null, carrying = null) {
       )}</span></p>`
     : '';
 
+  const outOfReach = athand
+    ? ''
+    : '<p class="caption">On the road. Whatever they took is with them.</p>';
+
   if (!inventory || inventory.length === 0) {
-    return `${load}<p class="none">${NOTHING.inventory}</p>`;
+    return `${load}<p class="none">${NOTHING.inventory}</p>${outOfReach}`;
   }
 
   /*
@@ -5932,7 +6145,7 @@ function inventoryBody(inventory, owner = null, carrying = null) {
        * **What is reachable from here is people.** The box lives on Storage; this view holds
        * the roster, so a drag here hands something to somebody.
        */
-      const store = owner
+      const store = owner && athand
         ? `<form method="post" action="/move">
              <input type="hidden" name="from" value="${escape(String(owner))}">
              <input type="hidden" name="to" value="">
@@ -5992,7 +6205,9 @@ function inventoryBody(inventory, owner = null, carrying = null) {
       </span>`;
 
       return `<tr class="noted"${
-        owner ? ` draggable="true" data-slug="${escape(item.slug)}" data-from="${escape(String(owner))}"` : ''
+        owner && athand
+          ? ` draggable="true" data-slug="${escape(item.slug)}" data-from="${escape(String(owner))}"`
+          : ''
       }>
         <td class="name">${escape(item.name)}</td>
         <td class="qty">×${item.qty}</td>
@@ -6002,7 +6217,7 @@ function inventoryBody(inventory, owner = null, carrying = null) {
     })
     .join('');
 
-  return `${load}<table class="carrying">
+  return `${load}${outOfReach}<table class="carrying">
     <thead><tr>
       <th scope="col">Item</th>
       <th scope="col" class="qty">Qty</th>

@@ -603,8 +603,13 @@ test('somebody already working is shown as working, and cannot be chosen', async
      * a name that vanishes reads as a bug where one that is there and will not be picked
      * reads as a person who is occupied.
      */
+    /*
+     * Anchored on the name inside the div rather than on the whole element: what has somebody
+     * is a chip on the name line now, so `who-name` holds the name *and* "fitting · filtration"
+     * with its countdown. The card is still found by whose name opens it.
+     */
     const theirCard = new RegExp(
-      `<div class="who-name">Odd</div>[^]*?<label class="pick( off)?">[^]*?value="${odd}"([^>]*)>`,
+      `<div class="who-name">Odd[^]*?<label class="pick( off)?">[^]*?value="${odd}"([^>]*)>`,
     ).exec(html);
     assert.ok(theirCard, 'their card offers the choice at all');
     assert.equal(theirCard[1], ' off', 'and marks it as one they cannot take');
@@ -636,8 +641,20 @@ test('somebody already working is shown as working, and cannot be chosen', async
     assert.equal(busy.busyWith, 'filtration', 'and which job it is');
     assert.match(
       html,
-      /<div class="who-name">Odd<\/div>\s*<p class="out">fitting &middot; filtration<\/p>/,
+      /<div class="who-name">Odd<span class="doing">fitting &middot; filtration/,
       "the survivor's own block names the job, not just the verb",
+    );
+
+    /*
+     * And says when it ends. Sleep was the only occupation whose clock this card could
+     * reach, because the hour sat on the survivor's own row; every other job was named and
+     * left open-ended, which is a state a player cannot plan around.
+     */
+    assert.ok(busy.busyUntil, 'the view carries the hour the job ends');
+    assert.match(
+      html,
+      /<div class="who-name">Odd<span class="doing">[^]*?<span class="clock"/,
+      'a timed job shows its countdown beside the name',
     );
   });
 });
