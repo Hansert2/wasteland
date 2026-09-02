@@ -3669,7 +3669,9 @@ const onward = (href, label) => ` <a href="${href}">${label} &rarr;</a>`;
 const NOTHING = {
   /* Phase 13. The box says what it is for, because a shelf nobody has used yet is exactly
      when a player needs telling; a pack that is empty is just empty. */
-  box: 'Nothing banked. What goes in here outlives the person who put it there.',
+  /* It was a sentence about what the box is for. The box is on a view called Storage,
+     beside four packs, with a weight in its strip: what it is for is legible without it. */
+  box: 'Empty.',
   carrying: 'Carrying nothing.',
   moment: 'Nobody is on the wire.',
   raid: 'No radio fitted. You will hear them when they arrive.',
@@ -4723,32 +4725,32 @@ function tripReadout(away) {
  * What an occupation is called, in one place.
  *
  * `occupations` answers with a kind — the word the service refuses by — and two things
- * render it: the disabled option in a selector, and the line under a survivor's name. They
+ * render it: the disabled option in a selector, and the chip on a survivor's name. They
  * have to agree, or the page says a person is crafting where the dropdown says they are at
  * the bench and the player is left wondering whether those are two different jobs.
+ *
+ * **One word each, because the chip shares a line with a name.** Crafting was “at the
+ * bench”, which is the right phrase in a sentence and three words too many in a 190px
+ * column — it wrapped the chip under the name. The refusals keep the phrase: “Wren is at
+ * the bench and cannot build” is prose, and prose is where it belongs.
  */
 const OCCUPIED_AS = Object.assign(Object.create(null), {
   away: 'away',
   building: 'building',
   fitting: 'fitting',
-  crafting: 'at the bench',
+  crafting: 'crafting',
   sleeping: 'asleep',
 });
 
 const occupiedAs = (busy) => OCCUPIED_AS[busy] ?? busy;
 
 /*
- * The same, with the job named — "fitting · a bed" rather than "fitting".
- *
- * Which is the version a survivor's own block wants and a dropdown does not: the block is
- * answering "what is this person doing", where an option in a list is only answering
- * "can I pick them", and a name trailing four more words in a narrow select is a worse
- * answer to that question than a short one.
- *
- * Middot, because that is how this line already joins its parts when somebody is away.
+ * The job used to be named beside the verb here — "fitting · a bed" rather than "fitting" —
+ * and that version is gone, deliberately. On a name line it is the difference between
+ * SESH BUILDING 2m and SESH BUILDING · WORKSHOP 2m, and the second wraps under the name in a
+ * 190px column. What the chip is for is *is this person free and when*; which workshop they
+ * are raising is on the structures table, under a heading that says so.
  */
-const occupiedFully = (busy, what) =>
-  what ? `${occupiedAs(busy)} &middot; ${escape(what)}` : escape(occupiedAs(busy));
 
 function whoSelector(view, { field, label }) {
   const roster = view.roster ?? [];
@@ -5102,7 +5104,7 @@ function renderSurvivor(survivor, strain, vitals, inventory, chosen, panelId) {
          */ ''}
        <div class="who-name">${escape(survivor.name ?? 'Survivor')}${
          survivor.busy && !survivor.away
-           ? `<span class="doing">${occupiedFully(survivor.busy, survivor.busyWith)}${
+           ? `<span class="doing">${escape(occupiedAs(survivor.busy))}${
                survivor.busyUntil
                  ? ` <span class="clock">${countdown(survivor.busyUntil)}</span>`
                  : ''

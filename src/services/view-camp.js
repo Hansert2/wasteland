@@ -774,7 +774,8 @@ function driversFor(person, {
       away: 'out there',
       building: 'building',
       fitting: 'fitting',
-      crafting: 'at the bench',
+      // The card's word, so a mark and the chip above it name one job one way.
+      crafting: 'crafting',
     };
     stamina.push({
       sign: '▼',

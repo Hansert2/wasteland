@@ -639,10 +639,19 @@ test('somebody already working is shown as working, and cannot be chosen', async
      * name, once; the strip only reports that the choice is closed.
      */
     assert.equal(busy.busyWith, 'filtration', 'and which job it is');
+
+    /*
+     * The chip says the verb, and the view still knows the job.
+     *
+     * It said both — "fitting · filtration" — until the name line proved too narrow for it:
+     * the pair wrapped under the name in a 190px column. What the chip answers is *is this
+     * person free, and when*; which fitting they are raising is on the structures table
+     * under a heading that says so. The view keeps `busyWith` because the refusals read it.
+     */
     assert.match(
       html,
-      /<div class="who-name">Odd<span class="doing">fitting &middot; filtration/,
-      "the survivor's own block names the job, not just the verb",
+      /<div class="who-name">Odd<span class="doing">fitting/,
+      "the survivor's own block says what has them",
     );
 
     /*

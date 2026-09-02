@@ -4025,6 +4025,19 @@ So: a switch that takes over the traveller’s card and leaves everybody else ex
 were. It names who is out rather than saying *away* — on a roster of four that is the fact
 being offered — and it falls back to “on the road” when more than one person is.
 
+**The chip says the verb and the clock, and not the job.** It said both — “fitting · a bed”
+— until a name line proved too narrow for it: SESH BUILDING · WORKSHOP 2m wraps under the name
+in a 190px column, which is the one thing the chip was moved onto that line to avoid. What it
+answers is *is this person free, and when*; which workshop they are raising is on the
+structures table under a heading that says so. `occupiedFully` went with it, having no other
+caller.
+
+**And crafting is one word on the page now.** It was “at the bench”, which wrapped the chip
+under the name on its own — the phrase is right in a sentence and three words too many in a
+190px column. The refusals keep it: *“Wren is at the bench and cannot build”* is prose, and
+a test pins it. What had to stay in step is the chip and the dropdown, which is what the
+note above `OCCUPIED_AS` asks for, and both read from that one map.
+
 **On by default, so the attribute names the closed state.** A body that has never been
 clicked carries no attribute at all, so a rule that *shows* a trip cannot be written against
 one; what the switch sets is `data-away-shut`, and turning it on again is deleting that.
