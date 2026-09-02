@@ -232,18 +232,43 @@ test('the rate the camp page shows is the rate the stores actually move at', asy
      * So the window stops short of the next event. A rate can only be checked against a span
      * it is actually a rate for.
      */
-    const { rows: upcoming } = await client.query(
-      'select min(starts_at) as next from world_events where starts_at > $1',
-      [new Date(now)],
-    );
-    const nextEvent = upcoming[0].next ? upcoming[0].next.getTime() : Infinity;
-    const span = Math.min(hours(1), Math.max(0, nextEvent - now));
-    assert.ok(span > hours(0.1), 'no quiet window to measure a rate in, which is a bad fixture');
+    /*
+     * An hour with no weather boundary in it, reached by living through the boundary rather
+     * than by stepping around it.
+     *
+     * The rate is a statement about the sky *now*; the walk integrates the sky across the
+     * hours it covers. Any hour containing a change is an hour the two are entitled to
+     * disagree about — measured 2026-09-02 with a storm due in 35 minutes, where the page said
+     * 1.750 and the stores moved 1.151, which is the storm's share of the window exactly.
+     *
+     * The camp is advanced past the boundary first, which is the game working rather than a
+     * fixture trick: a camp really does live through weather. Events run 18 hours and more, so
+     * one step is always enough to land in a stable stretch.
+     */
+    const boundaries = async (after) => {
+      const { rows } = await client.query(
+        `select starts_at as at from world_events where starts_at > $1
+         union all
+         select ends_at from world_events where ends_at > $1
+         order by at limit 1`,
+        [new Date(after)],
+      );
+      return rows[0] ? rows[0].at.getTime() : Infinity;
+    };
 
-    const view = await viewCamp(client, settlementId, now);
+    let clock = now;
+    if ((await boundaries(clock)) <= clock + hours(1)) {
+      clock = (await boundaries(clock)) + 1000;
+      await advanceSettlement(client, settlementId, clock);
+    }
+
+    const span = Math.min(hours(1), (await boundaries(clock)) - clock);
+    assert.ok(span > hours(0.5), `only ${(span / hours(1)).toFixed(2)}h of settled sky to measure in`);
+
+    const view = await viewCamp(client, settlementId, clock);
     const before = await loadWorld(client, settlementId);
 
-    await advanceSettlement(client, settlementId, now + span);
+    await advanceSettlement(client, settlementId, clock + span);
     const after = await loadWorld(client, settlementId);
 
     for (const shown of view.resources) {
