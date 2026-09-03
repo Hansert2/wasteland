@@ -93,7 +93,20 @@ const PANES = {
  * beat the `display: none` that hides the tab when it is not the open one.
  */
 const SURVIVOR_TABS = [
-  ['carrying', 'Carrying', 'flex'],
+  /*
+   * "Inventory", which is what the brief called this block all along: docs/DESIGN-BRIEF.md
+   * names it Inventory and the tab drifted to Carrying on the way in. It is also the noun
+   * the rest of the game already uses for the same thing -- the table is inventory_items,
+   * the world model hands every survivor an `inventory`, and the graveyard's empty line is
+   * keyed `inventory`. One name for one idea.
+   *
+   * The tab key stays `carrying`, on the rule the rail states for Survivors: the key is what
+   * the generated tab rules, the panel ids and the page contract are written against, and
+   * renaming it moves a good deal of machinery to change a word nobody sees. `carrying` also
+   * stays right where it is a verb -- the class on a table of things somebody is carrying,
+   * and "Carrying nothing." on an empty pack, which is an observation rather than a label.
+   */
+  ['carrying', 'Inventory', 'flex'],
   ['skills', 'Skills'],
 ];
 
