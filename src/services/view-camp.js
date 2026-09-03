@@ -561,6 +561,16 @@ function lineOf(trip, report, now, { clock, noon, hasClock }) {
 
   return {
     along: at(now),
+    /*
+     * And the two instants behind it, because the marker has to keep walking.
+     *
+     * A trip is hours long and nothing reloads the page across them, so a position rendered
+     * once is true once. The browser is handed the same arithmetic this function does — the
+     * far end and the span — rather than a rate to extrapolate, which is the shape the
+     * forecast's now-line already uses for exactly this reason.
+     */
+    from: departedAt,
+    span,
     setOut: stamp(departedAt),
     home: { ...stamp(returnsAt), tomorrow },
     marks: [...settled, ...upcoming].sort((a, b) => a.at - b.at),

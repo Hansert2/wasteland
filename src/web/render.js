@@ -3648,6 +3648,7 @@ export const TIMERS = `
   let counters = [];
   let clocks = [];
   let nowlines = [];
+  let trips = [];
   let since = Date.now();
   let busy = false;
 
@@ -3794,6 +3795,10 @@ export const TIMERS = `
     // walks across it — and it has to walk on the client, because nothing fetches the page
     // between one minute and the next.
     nowlines = [...document.querySelectorAll('[data-nowline]')];
+    // A trip's marker, for the same reason: the line stands still and the present walks
+    // along it, and nothing fetches this page between one hour of a twelve-hour walk and
+    // the next.
+    trips = [...document.querySelectorAll('[data-trip]')];
     // The zone picker opens on the browser's own place, so the usual answer is one click.
     // A default and not a claim: the server derives the offset from whichever zone is
     // actually submitted, so nothing here is trusted, only pre-filled.
@@ -4002,6 +4007,30 @@ export const TIMERS = `
       const dot = el.querySelector('circle');
       if (line) { line.setAttribute('x1', px); line.setAttribute('x2', px); }
       if (dot) dot.setAttribute('cx', px);
+    }
+
+    /*
+     * The marker on a trip, walked the way the now-line is walked: the browser is given the
+     * two ends and does the division itself.
+     *
+     * It does not pull at the far end, and the now-line does. The difference is that this
+     * cell already holds a countdown armed for that same instant, and two things asking for
+     * the same page in the same second is one request wasted — so this one simply arrives at
+     * the end of its line and stops.
+     *
+     * Written only when the figure actually changes. At a tenth of a percent that is once
+     * every forty seconds on a twelve-hour walk, against a tick that runs every second.
+     */
+    for (const el of trips) {
+      const span = Number(el.dataset.span);
+      const along = Math.max(0, Math.min(1, (Date.now() - Number(el.dataset.from)) / span));
+      const pct = (Math.round(along * 1000) / 10) + '%';
+      if (el.dataset.at === pct) continue;
+      el.dataset.at = pct;
+      const gone = el.querySelector('.gone');
+      const here = el.querySelector('.here');
+      if (gone) gone.style.width = pct;
+      if (here) here.style.left = pct;
     }
 
     for (const el of live) {
@@ -5463,7 +5492,9 @@ function tripLine(line) {
          }${escape(line.last.title)} &mdash; <b>${escape(line.last.took)}</b></span></span>`
     : '';
 
-  return `<div class="trip">
+  return `<div class="trip" data-trip data-from="${Number(line.from) || 0}" data-span="${
+    Number(line.span) || 0
+  }">
       ${told}
       <div class="thread">
         <i class="gone" style="width:${pct(line.along)}"></i>

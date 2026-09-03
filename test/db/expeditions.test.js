@@ -501,6 +501,18 @@ test('a trip in flight is a line with an hour at each end', async () => {
     assert.match(html, /home <b>19:15<\/b>/);
 
     /*
+     * And the marker keeps walking after the page is rendered.
+     *
+     * A trip is hours long and nothing reloads across it, so a position painted once is
+     * true once. The browser is handed the trip's two ends — the same pair `lineOf` divides
+     * — and the script that walks the forecast's now-line walks this one.
+     */
+    const armed = /<div class="trip" data-trip data-from="([0-9]+)" data-span="([0-9]+)"/.exec(html);
+    assert.ok(armed, 'the line carries the arithmetic the browser needs');
+    assert.equal(Number(armed[1]), out, 'from the hour they left');
+    assert.equal(Number(armed[2]), hours(12), 'across the whole of the walk');
+
+    /*
      * And the row of dashes is gone with it. Two of the five cells used to report that
      * nothing had gone wrong, at the weight of a haul and across two-fifths of the cell —
      * which is what most of a trip's first hours looked like.
