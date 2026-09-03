@@ -30,7 +30,12 @@ const spanOf = (trip) => ({
   baseTravelHours: Number(trip.travel_hours),
 });
 
-export async function answerMoment(client, settlementId, { index, option }, now = Date.now()) {
+export async function answerMoment(
+  client,
+  settlementId,
+  { index, option, trip = null },
+  now = Date.now(),
+) {
   await client.query('select id from settlements where id = $1 for update', [settlementId]);
 
   /*
@@ -85,12 +90,36 @@ export async function answerMoment(client, settlementId, { index, option }, now 
   }
 
   const wanted = Number(index);
+  // Absent is not zero. `Number(null)` is 0 and `Number('')` is 0, so a form or a caller
+  // that names no trip would have asked for expedition 0 and been told the trip was over.
+  const named = trip === null || trip === undefined || trip === '' ? null : Number(trip);
+
+  /*
+   * Which trip, from the button rather than from a search.
+   *
+   * The search below is what this used to be, and it is a guess: a moment index is numbered
+   * inside its own trip, so a camp with two people out has two moment 0s and the first trip
+   * holding an unanswered one wins. That is the right *answer* often enough to have looked
+   * fine, and on 2026-09-03 it was wrong in play — the page had shown the newer trip's window
+   * and the older trip's index 0 was still unanswered, so the answer went there and was
+   * refused against a clock the player could not see.
+   *
+   * The page carries the trip now. The search stays for a form rendered before it did, and
+   * for anything posting by hand; a named trip that is not in flight is refused rather than
+   * quietly falling through to the guess, because "the trip you were looking at has ended" is
+   * a different thing to be told than "that moment has passed".
+   */
+  const asked = Number.isFinite(named) ? active.find((one) => Number(one.id) === named) : null;
+  if (Number.isFinite(named) && !asked) throw new InputError('That trip is over.');
+
   const expedition =
-    active.find((trip) => {
-      const answered = new Set((trip.choices ?? []).map((choice) => Number(choice.index)));
+    asked ??
+    active.find((one) => {
+      const answered = new Set((one.choices ?? []).map((choice) => Number(choice.index)));
       if (answered.has(wanted)) return false;
-      return momentsFor(spanOf(trip), Number(trip.seed)).some((moment) => moment.index === wanted);
-    }) ?? active[0];
+      return momentsFor(spanOf(one), Number(one.seed)).some((moment) => moment.index === wanted);
+    }) ??
+    active[0];
 
   const travelHours = spanOf(expedition).travelHours;
   const moments = momentsFor(spanOf(expedition), Number(expedition.seed));

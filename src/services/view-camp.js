@@ -420,6 +420,19 @@ function reportOn(row, state, now) {
   );
 
   return {
+    /*
+     * Which trip this is, and whose.
+     *
+     * The id rides all the way to the form, so answering says which window is being
+     * answered instead of leaving the service to guess from an index that every trip in
+     * flight has its own copy of. The name is for the block's head: with four people in a
+     * camp, a box headed only "Contact" does not say who is on the wire.
+     */
+    expeditionId: Number(row.expedition_id),
+    characterId: Number(row.character_id),
+    who:
+      (state.survivors ?? []).find((one) => Number(one.id) === Number(row.character_id))?.name ??
+      null,
     regionName: row.name,
     // Which plate to show beside the report. The name would not do: it is prose and the
     // files are named for the slug the game already keys everything else on.
@@ -1038,16 +1051,33 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
 
   // Re-read rather than using the post-tick state: the tick may have just resolved
   // an expedition, and what the page wants is whatever is in flight *now*.
+  /*
+   * Ordered, and carrying its own id.
+   *
+   * Neither was true and both had to be. Without an `order by` the rows come back in heap
+   * order, which changes as rows are updated — so `away[0]`, the trip the Contact box shows,
+   * was whichever one Postgres happened to name first, while `answerMoment` looked for the
+   * trip to answer in `departed_at` order. On a camp with two people out those are not the
+   * same trip, and the answer landed on the other one: measured against the wrong clock it
+   * came back as "That has not happened yet" or "That moment has passed", on a window with
+   * forty minutes left on it. Reported from play on 2026-09-03.
+   *
+   * The id is what stops it happening again. A moment index belongs to a trip — `momentsFor`
+   * numbers each trip's own 0..n — so an index alone cannot say which trip is being answered,
+   * and the form now carries the trip rather than leaving the service to work it out.
+   */
   const { rows: away } = await client.query(
     `select r.name, r.slug, r.danger, r.travel_hours, r.loot, r.finds, r.radiation_per_trip,
             r.description,
+            e.id as expedition_id,
             e.character_id,
             e.returns_at, e.departed_at, e.seed, e.choices,
             e.clock_offset_minutes, e.solar_noon_minutes
        from expeditions e
        join regions r on r.id = e.region_id
        join characters c on c.id = e.character_id
-      where c.settlement_id = $1 and c.died_at is null and e.status = 'active'`,
+      where c.settlement_id = $1 and c.died_at is null and e.status = 'active'
+      order by e.departed_at, e.id`,
     [settlementId],
   );
 
@@ -1375,10 +1405,33 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
     if (report) reports.set(Number(row.character_id), report);
   }
 
-  const expedition = reportOn(away[0], state, now);
+  /*
+   * The oldest trip in flight, and the *same object* the roster hands that survivor.
+   *
+   * This called `reportOn` a second time on the row the map had just done, which resolved
+   * the whole trip twice per page and — worse — produced two objects for one trip. Anything
+   * written onto one of them was invisible on the other, which is a bug waiting for the next
+   * person to annotate a moment and wonder why the page did not change.
+   */
+  const expedition = away[0] ? (reports.get(Number(away[0].character_id)) ?? null) : null;
   if (expedition && fitted.has('radio')) {
     expedition.nextMomentAt = expedition.upcoming[0] ?? null;
   }
+
+  /*
+   * Whose window the Contact box shows, which is not "the first trip".
+   *
+   * It read `expedition`, and `expedition` is the oldest trip in flight because half the
+   * page is written against that one — how long until somebody is back, what can be paid for
+   * before then. A window is a different question: the box has to show the trip that has one
+   * open, and on a camp with two people out that is often the newer trip. While it did not,
+   * a moment could open, run and close on the second traveller without ever being offered.
+   *
+   * Falls back to the oldest trip so the block still has something to say about a camp with
+   * nobody on the wire — `renderMoment` reads the moment and quietly says so when there is
+   * none.
+   */
+  const contact = [...reports.values()].find((report) => report.moment) ?? expedition;
 
   /**
    * An option priced in something the pack does not hold is not a decision.
@@ -1390,9 +1443,9 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
    * one never changes what the trip was going to be. That makes *here* the first point
    * at which the price and the pack are both known, so here is where they are compared.
    */
-  if (expedition?.moment) {
+  if (contact?.moment) {
     const wanted = [
-      ...new Set(expedition.moment.options.flatMap((option) => option.consumes ?? [])),
+      ...new Set(contact.moment.options.flatMap((option) => option.consumes ?? [])),
     ];
     if (wanted.length > 0) {
       const { rows: named } = await client.query(
@@ -1400,9 +1453,19 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
         [wanted],
       );
       const names = new Map(named.map((row) => [row.slug, row.name]));
-      const held = new Set(inventory.map((item) => item.slug));
+      /*
+       * The pack of whoever is actually out there, not the camp's whole shelf.
+       *
+       * This read every item in the settlement, so an option priced in a Rad-X was offered
+       * because somebody at home had one — and `spendOne` takes it from the traveller's own
+       * pack, which is the fault this check exists to prevent. Same shape as the Use button
+       * being judged by the founder's condition, fixed on 2026-09-02.
+       */
+      const held = new Set(
+        (packsByOwner.get(contact.characterId) ?? []).map((item) => item.slug),
+      );
 
-      for (const option of expedition.moment.options) {
+      for (const option of contact.moment.options) {
         if (!option.consumes) continue;
         // Any one of them pays: the list is a preference order, not a shopping list.
         option.missing = !option.consumes.some((slug) => held.has(slug));
@@ -2109,6 +2172,12 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
       ? { name: onTheBench[0].name, completesAt: onTheBench[0].completes_at }
       : null,
     expedition,
+    /*
+     * The trip the Contact box is about — often the same object as `expedition`, and
+     * deliberately its own field: one is "who is out and when are they back", which half the
+     * page reads, and the other is "whose window is open right now".
+     */
+    contact,
     survivor: state.survivor
       ? {
           ...state.survivor,

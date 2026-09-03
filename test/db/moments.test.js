@@ -7,6 +7,7 @@ import { dispatchExpedition } from '../../src/services/dispatch-expedition.js';
 import { foundSettlement, raiseSuccessor } from '../../src/services/settlement-lifecycle.js';
 import { MOMENTS, momentCount, momentsFor, walkHomeHours } from '../../src/game/moments.js';
 import { viewCamp } from '../../src/services/view-camp.js';
+import { campPage } from '../../src/web/render.js';
 import { answerMoment } from '../../src/services/answer-moment.js';
 import { InputError } from '../../src/errors.js';
 
@@ -83,8 +84,8 @@ async function stores(client, settlementId) {
  */
 const FIXED_SEED = 8;
 
-async function sendFixed(client, settlementId, slug, now) {
-  const { expeditionId } = await dispatchExpedition(client, settlementId, slug, now);
+async function sendFixed(client, settlementId, slug, now, who = null) {
+  const { expeditionId } = await dispatchExpedition(client, settlementId, slug, now, who);
   await client.query('update expeditions set seed = $2 where id = $1', [
     expeditionId,
     FIXED_SEED,
@@ -682,5 +683,99 @@ test('the schema refuses a malformed or oversized answer list', async () => {
       );
       await client.query('rollback to savepoint probe');
     }
+  });
+});
+
+test('with two out, the box shows whose window is open and the answer goes to that trip', async () => {
+  /*
+   * Reported from play on 2026-09-03: a moment was answered and came back "That moment has
+   * passed" on a window with forty minutes left on it, and a second time "That has not
+   * happened yet".
+   *
+   * Two faults, one shape. A moment index is numbered inside its own trip, so a camp with
+   * two people out has two moment 0s — and the form said only which index, leaving
+   * `answerMoment` to find the trip by scanning for one holding that index unanswered. The
+   * page, meanwhile, showed `away[0]` from a query with no `order by`. So the box could be
+   * showing one traveller while the answer resolved to the other, and the refusal was
+   * measured against a clock the player could not see.
+   *
+   * Both ends are pinned here: the box shows the trip with a window open, and the answer
+   * lands on the trip the button belonged to.
+   */
+  await withRollback(async (client) => {
+    const { settlementId } = await setup(client);
+    const t0 = Date.now();
+
+    const { rows: odd } = await client.query(
+      `insert into characters (settlement_id, name, born_at, health, radiation)
+       values ($1, 'Odd', now(), 100, 0) returning id`,
+      [settlementId],
+    );
+    // Whoever was already here — the founder's name is drawn from the camp's seed, so it is
+    // found by not being the one just added rather than by being called anything.
+    const { rows: vera } = await client.query(
+      `select id, name from characters
+        where settlement_id = $1 and died_at is null and id <> $2
+        order by born_at, id limit 1`,
+      [settlementId, odd[0].id],
+    );
+
+    /*
+     * The same region and the same seed, four hours apart, read at 9.8 hours.
+     *
+     * Seed 8 on the Deep Zone opens moment 0 at 4.51–6.01 and moment 1 at 8.18–9.68. So the
+     * founder is 9.8 hours in with nothing open and an unanswered moment 0 behind her, while
+     * Odd is 5.8 hours in with his moment 0 open. Answering by index alone finds hers first
+     * — the older trip, the one whose window has gone — and refuses.
+     */
+    const hers = await sendFixed(client, settlementId, 'the_deep_zone', t0, vera[0].id);
+    const his = await sendFixed(client, settlementId, 'the_deep_zone', t0 + hours(4), odd[0].id);
+
+    const at = t0 + hours(9.8);
+    const view = await viewCamp(client, settlementId, at);
+
+    assert.equal(view.contact.who, 'Odd', 'the box is about whoever has a window open');
+    assert.equal(view.contact.expeditionId, his, 'and it names his trip');
+    assert.equal(view.contact.moment.index, 0);
+    assert.equal(view.expedition.moment, null, 'while the older trip has nothing open');
+
+    // The button carries the trip, which is the whole fix: an index cannot say which of two.
+    const html = campPage(view, { pane: 'camp' });
+    assert.match(
+      html,
+      new RegExp(`<input type="hidden" name="trip" value="${his}">`),
+      'the form says which trip it is answering',
+    );
+    assert.match(html, /<span class="tag">Contact &middot; Odd<\/span>/, 'and the head says who');
+
+    // A form that does not say — one rendered before this existed — still guesses, and the
+    // guess is what was wrong: it finds Vera's unanswered index 0 and refuses against her
+    // clock. Asserted so the reason the field exists cannot be quietly deleted.
+    const option = view.contact.moment.options[0].key;
+    await assert.rejects(
+      answerMoment(client, settlementId, { index: 0, option }, at),
+      (error) => error instanceof InputError && /that moment has passed/i.test(error.message),
+    );
+
+    await answerMoment(client, settlementId, { index: 0, option, trip: his }, at);
+
+    const { rows: after } = await client.query(
+      'select id, choices from expeditions where id = any($1) order by departed_at',
+      [[hers, his]],
+    );
+    assert.deepEqual(after[0].choices, [], 'nothing was written to the trip that was not asked');
+    assert.deepEqual(
+      after[1].choices.map((choice) => [choice.index, choice.option]),
+      [[0, option]],
+      'and the answer is on the trip the button belonged to',
+    );
+
+    // A trip that is not in flight is refused for what it is, rather than falling through to
+    // the guess: "the trip you were looking at has ended" is different news from "that
+    // moment has passed".
+    await assert.rejects(
+      answerMoment(client, settlementId, { index: 0, option, trip: 0 }, at),
+      (error) => error instanceof InputError && /that trip is over/i.test(error.message),
+    );
   });
 });

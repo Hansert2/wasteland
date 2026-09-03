@@ -452,7 +452,9 @@ export function createApp() {
       await answerMoment(
         client,
         settlementId,
-        { index: req.body.index, option: req.body.option },
+        // The trip as well as the moment: an index is numbered inside its own trip, and a
+        // camp can have four of them in flight.
+        { index: req.body.index, option: req.body.option, trip: req.body.trip },
         now,
       );
     });

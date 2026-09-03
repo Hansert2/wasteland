@@ -4477,7 +4477,7 @@ function shell(view, pane, { error, inner }) {
     ${section('hour', hourBar(view.hour, view.place))}
     <div class="stream">
     ${section('error', error ? `<p class="error">${escape(error)}</p>` : '')}
-    ${section('moment', renderMoment(view.expedition))}
+    ${section('moment', renderMoment(view.contact))}
     ${inner}
     </div>
     </main>
@@ -6293,11 +6293,21 @@ function renderNoSurvivor(everHeld, arriving) {
  * never do is look identical to an option you can take and refuse after the click,
  * which is what it did until 2026-08-19, on a window with eleven minutes left on it.
  */
-function momentAction(moment, option, filled) {
+function momentAction(moment, option, filled, trip = null) {
   if (option.missing) return `<span class="short">needs ${escape(option.needs)}</span>`;
 
+  /*
+   * Which trip, as well as which moment.
+   *
+   * A moment index is numbered inside its own trip, so with two people out there are two
+   * moment 0s and the index cannot say which one this button belongs to. The service used to
+   * work it out by scanning the active trips for one with that index unanswered, which is a
+   * guess — and on 2026-09-03 it guessed wrong in play, answering the older trip and
+   * refusing against its clock.
+   */
   return `<form method="post" action="/moment">
             <input type="hidden" name="index" value="${moment.index}">
+            ${trip ? `<input type="hidden" name="trip" value="${Number(trip)}">` : ''}
             <input type="hidden" name="option" value="${escape(option.key)}">
             <button type="submit"${filled ? ' class="fill"' : ''}>Choose</button>
           </form>`;
@@ -6330,7 +6340,7 @@ function renderMoment(expedition) {
           option.warned ? '<span class="glyph">&#9888;</span>' : ''
         }<span>${escape(option.detail)}</span></span>
         ${effects(option)}
-        ${momentAction(moment, option, option === filled)}
+        ${momentAction(moment, option, option === filled, expedition?.expeditionId)}
       </div>`,
     )
     .join('');
@@ -6351,7 +6361,12 @@ function renderMoment(expedition) {
   // bad would be the whole design failing at the last inch.
   return `<div class="block contact${warned ? ' warned' : ''}">
       <div class="block-head">
-        <span class="tag">Contact</span>
+        ${/*
+           * Named, because a camp holds four people and any of them can be the one on the
+           * wire. "Contact" alone was true while a camp held one survivor and says nothing
+           * now — and the decision underneath it is about that person's health and pack.
+           */ ''}
+        <span class="tag">Contact${expedition?.who ? ` &middot; ${escape(expedition.who)}` : ''}</span>
         <span class="clock deadline">${countdown(moment.closesAt, 'gone')}<small>to answer</small></span>
       </div>
       <div class="block-body">
