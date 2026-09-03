@@ -2238,16 +2238,35 @@ ${PANE_CSS}
   }
 
   /*
-   * And the trip's own figures, on the ground of the place they were taken in.
+   * And the trip, standing on the place it is being taken in.
    *
-   * The same treatment as a dispatch row and deliberately so: the readout and the table
-   * below it are two views of one place, and a photograph that is a band in one and a
-   * ground in the other makes them look like two different kinds of thing. No hover here —
-   * a dispatch row lifts to .68 because it is a row you are considering, and this is a
-   * report rather than a choice.
+   * A dispatch row and this cell used to carry the same flat scrim, on the argument that a
+   * photograph which is a band in one and a ground in the other makes them look like two
+   * kinds of thing. They now differ, and the reason is what each shape is: a dispatch row is
+   * a line of text with a picture behind it, where an even scrim is the only way the line
+   * stays readable — but the traveller's cell is stretched to the gauges beside it, and
+   * below the figures there is nothing to read at all. Half the cell was holding a
+   * photograph at a fifth of its strength for no reason.
+   *
+   * So the scrim opens in the middle and closes at both ends: near-solid behind the head and
+   * the columns, down to .40 across the band where there is nothing at all, and back up
+   * under the line at the foot. The place shows through exactly where the cell is empty,
+   * and the empty part stops being a hole and becomes the reason there is a photograph at
+   * all. No hover, still — a dispatch row lifts because it is a row you are considering,
+   * and this is a report rather than a choice.
+   *
+   * **It closes again because the foot is not empty.** Thinning all the way down looked
+   * right and measured badly: Coastal Wreckage ends in pale mud, and against the brightest
+   * tenth of it "SET OUT" at --dim came out at 2.7:1. The stops below were picked by
+   * measuring that composite against every one of the eleven plates — the worst is 5.2:1 at
+   * the labels and 5.8:1 at the line above them, and the worst is this same beach.
    */
   .afield.plated {
-    background-image: linear-gradient(rgba(23, 22, 20, .82), rgba(23, 22, 20, .82)),
+    background-image: linear-gradient(rgba(23, 22, 20, .94) 0%,
+                                      rgba(23, 22, 20, .88) 30%,
+                                      rgba(23, 22, 20, .40) 58%,
+                                      rgba(23, 22, 20, .85) 82%,
+                                      rgba(23, 22, 20, .90) 100%),
                       var(--plate);
     background-size: cover;
     background-position: center 72%;
@@ -2339,13 +2358,15 @@ ${PANE_CSS}
                    color: var(--quiet); }
   /* What was decided out there, above the tick it belongs to. A row in the flow rather
      than a label hung off the line, so it cannot end up crossing the line it annotates. */
+  /* Prose rather than --faint, and the bone on the choice: this line sits in the open band
+     of the scrim, which is the one place on the cell where the photograph is at strength. */
   .trip .told { display: block; margin-bottom: 7px; font-size: 12.5px; line-height: 1.2;
-                color: var(--faint); }
+                color: var(--prose); }
   .trip .told span { display: inline-block; white-space: nowrap; }
   /* Past the middle the label is placed by its right edge, or a moment answered late in a
      long trip would hang off the end of the cell. */
   .trip .told span.late { transform: translateX(-100%); }
-  .trip .told b { font-weight: 400; color: var(--prose); }
+  .trip .told b { font-weight: 400; color: var(--bone); }
   .trip .told .at { margin-right: 5px; font-family: var(--numer); font-size: 11.5px;
                     color: var(--value); font-variant-numeric: tabular-nums; }
 
