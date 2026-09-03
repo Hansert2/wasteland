@@ -7,6 +7,8 @@ import {
   campDefence,
   campWealth,
   craftHoursMultiplier,
+  fittingsAllowed,
+  levelForFitting,
   productionRates,
   radDecayMultiplier,
   storageCap,
@@ -211,4 +213,30 @@ test('defence comes from the watchtower and nowhere else', () => {
   assert.equal(campDefence([{ kind: 'shelter', level: 9 }]), 0, 'a big shelter is not a wall');
   assert.equal(campDefence([{ kind: 'watchtower', level: 0 }]), 0, 'unbuilt defends nothing');
   assert.equal(campDefence([{ kind: 'nonsense', level: 4 }]), 0);
+});
+
+test('the level that buys the next fitting is the level that allows it', () => {
+  /*
+   * Two functions asking the same question from opposite ends, so they are checked against
+   * each other rather than against a table of numbers somebody typed twice.
+   *
+   * The one this exists for is the bed's even-numbered step. A shelter at 4 holds two beds
+   * and a shelter at 5 holds two beds, so a full bed row that says only "fitted" sits beside
+   * a level track offering a level that buys no bed at all — which is how a player ends up
+   * buying storage they did not want. `levelForFitting` is what lets the row name 6.
+   */
+  for (let n = 1; n <= 5; n += 1) {
+    const level = levelForFitting('bed', n);
+    assert.ok(level >= UPGRADES.bed.requiresLevel, 'never below the level the fitting needs');
+    assert.ok(fittingsAllowed('bed', level) >= n, `shelter ${level} holds ${n} beds`);
+    assert.ok(fittingsAllowed('bed', level - 1) < n, `and shelter ${level - 1} does not`);
+  }
+
+  assert.equal(levelForFitting('bed', 3), 6, 'the third bed is the one the shelter step hides');
+
+  // An instrument has one level and no next: a second clock tells the same hour, and the
+  // row that would name a level for it must be given nothing to say.
+  assert.equal(levelForFitting('clock', 1), UPGRADES.clock.requiresLevel);
+  assert.equal(levelForFitting('clock', 2), null, 'there is no level that buys a second clock');
+  assert.equal(levelForFitting('nonsense', 1), null);
 });

@@ -722,6 +722,53 @@ test('the bed row says what it costs, and which ceiling is holding it', async ()
   });
 });
 
+test('a full bed row names the level that buys the next one', async () => {
+  /*
+   * Reported from play on 2026-09-03: a camp took in a survivor, went to build the bed for
+   * them, and found the row saying "fitted" with the shelter beside it offering level 5.
+   *
+   * Both statements were true and the pair was useless. Beds step every second level, so a
+   * shelter at 4 and a shelter at 5 hold the same two — the level on offer buys 125 storage
+   * and no bed — and "fitted" pointed at a level track that would not have helped for two
+   * more levels. The row now says which level, which is the only part of it a player cannot
+   * work out from the page.
+   */
+  await withRollback(async (client) => {
+    const settlementId = await setup(client);
+    await client.query(
+      "update camp_structures set level = 4 where settlement_id = $1 and kind = 'shelter'",
+      [settlementId],
+    );
+    // Two beds standing, and three people to fill them: the roster ceiling has to be clear
+    // of the way, or the row would be answering `waiting` instead.
+    await client.query(
+      `insert into structure_upgrades (settlement_id, kind, upgrade, ordinal, completes_at, installed_at)
+       values ($1, 'shelter', 'bed', 1, now() - interval '1 hour', now() - interval '1 hour'),
+              ($1, 'shelter', 'bed', 2, now() - interval '1 hour', now() - interval '1 hour')`,
+      [settlementId],
+    );
+    await client.query(
+      `insert into characters (settlement_id, name, born_at, health, radiation)
+       values ($1, 'Odd', now(), 100, 0), ($1, 'Wren', now(), 100, 0)`,
+      [settlementId],
+    );
+
+    const view = await viewCamp(client, settlementId);
+    const shelter = view.structures.find((one) => one.kind === 'shelter');
+    const bed = shelter.upgrades.find((one) => one.slug === 'bed');
+    assert.equal(bed.fitted, true, 'the shelter has no room for another');
+    assert.equal(bed.waiting, false, 'and the thing in the way is the shelter, not the roster');
+    assert.equal(bed.nextAt, 6, 'the third bed wants a shelter at 6');
+
+    const html = campPage(view, { pane: 'camp' });
+    const row = /<span class="tag">A Bed<\/span>[^]*?<span>([^]*?)<\/span>\s*<\/span>/.exec(html);
+    assert.ok(row, 'the shelter still offers the bed');
+    const said = row[1].replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    assert.match(said, /fitted/, 'the row still says there is no room');
+    assert.match(said, /another at shelter 6/, 'and says what buys the room');
+  });
+});
+
 test('the road offers every name, and only the free ones can be pressed', async () => {
   /*
    * The invariant that lets who-goes live on the road.

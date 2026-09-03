@@ -65,6 +65,7 @@ import {
   bedsToRoster,
   fittingsAllowed,
   fittingsBuildable,
+  levelForFitting,
   campWealth,
   productionRates,
   structureEffect,
@@ -1958,6 +1959,15 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
           waiting: standing > 0 && standing >= allowed && allowed < ceiling,
           standing,
           allowed,
+          /*
+           * And, for a full one, the level that buys the next.
+           *
+           * Only the structure's own ceiling has a level to name: a bed held back by the
+           * roster is undone by somebody walking up the road, and `waiting` already says so.
+           * Null for every instrument, which is `levelForFitting` answering that there is no
+           * such level rather than this line knowing which fittings repeat.
+           */
+          nextAt: standing > 0 && standing >= ceiling ? levelForFitting(branch.slug, ceiling + 1) : null,
           shortBy: shortfall(purse, pack, price),
           fittingUntil: beingFitted?.upgrade === branch.slug ? beingFitted.completes_at : null,
         };

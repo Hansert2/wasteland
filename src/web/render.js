@@ -7608,7 +7608,21 @@ function oneFittingIn(structure, upgrade, buildInFlight, someoneAlive, ask = () 
     return inset('<span class="needs">the spare is empty</span>');
   }
 
-  if (upgrade.fitted) return inset('<em class="needs">fitted</em>');
+  /*
+   * Fitted, and where the next one comes from.
+   *
+   * "fitted" alone is true and useless on a bed: the row beside it is offering the shelter's
+   * next level, and for a bed every second level buys nothing — a shelter at 4 and a shelter
+   * at 5 both hold two. A player reads the full row as "upgrade the shelter", takes the level
+   * the page is showing, and gets storage. Naming the level is what makes the row honest
+   * about the wait, and it is only ever a level on the structure this fitting is already in.
+   */
+  if (upgrade.fitted) {
+    const another = upgrade.nextAt
+      ? ` &mdash; another at ${escape(`${structure.kind.replaceAll('_', ' ')} ${upgrade.nextAt}`)}`
+      : '';
+    return inset(`<em class="needs">fitted${another}</em>`);
+  }
 
   if (upgrade.fittingUntil) {
     const hoursLeft = (new Date(upgrade.fittingUntil).getTime() - Date.now()) / 3600000;

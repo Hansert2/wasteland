@@ -339,6 +339,28 @@ export function fittingsAllowed(slug, level) {
 }
 
 /**
+ * The level a structure has to reach before it may hold `n` of a fitting.
+ *
+ * The inverse of `fittingsAllowed`, and written as one so the two cannot drift: that one
+ * says `floor(level / perLevels) >= n`, which is `level >= perLevels * n`.
+ *
+ * It exists because a full bed row said only "fitted", and the level track beside it was
+ * offering a level that does not buy one. A shelter at 4 holds two beds and so does a
+ * shelter at 5 — the step is every second level — so a player who took the upgrade the page
+ * was showing them got 125 storage and the same two beds, having read the row as an
+ * instruction to upgrade the shelter. Naming the level is the whole fix: the row says which
+ * one, and the ones in between stop looking like progress towards a bed.
+ *
+ * @returns {number|null} null where there is no such level: a second of an instrument
+ */
+export function levelForFitting(slug, n) {
+  const spec = UPGRADES[slug];
+  if (!spec || n < 1) return null;
+  if (!spec.repeats) return n === 1 ? spec.requiresLevel : null;
+  return Math.max(spec.requiresLevel, spec.perLevels * n);
+}
+
+/**
  * How many of a fitting a camp may *build* right now.
  *
  * Deliberately not `fittingsAllowed`, which is the ceiling the structure sets and is what
