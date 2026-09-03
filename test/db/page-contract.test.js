@@ -725,10 +725,17 @@ test('somebody out there is shown the place they are in', () => {
   // Inside the roster row, which is what makes it theirs rather than the page's.
   assert.match(html, /<div class="person"[^>]*>[^]*?afield plated/, 'the plate is in a survivor row');
 
-  // And the place names itself on it, rather than in a line beside the survivor's name.
+  /*
+   * And the place names itself on it, rather than in a line beside the survivor's name.
+   *
+   * It is the head's title now rather than a label strip — "away at" over the region at the
+   * size a survivor's own name is set — so this asserts the name and its eyebrow rather than
+   * the one string the strip used to be. What is being held is unchanged: a traveller's cell
+   * says where they are, on the picture of it.
+   */
   assert.match(
     html,
-    /class="afield plated"[^]*?<span class="tag">away &middot; The Deep Zone<\/span>/,
+    /class="afield plated"[^]*?<span class="tag">away at<\/span>[^]*?<span class="where-name">The Deep Zone<\/span>/,
     'the field is headed by where they are',
   );
 

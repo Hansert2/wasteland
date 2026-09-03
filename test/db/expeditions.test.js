@@ -7,6 +7,7 @@ import { loadWorld } from '../../src/db/world.js';
 import { advanceSettlement } from '../../src/services/advance-settlement.js';
 import { dispatchExpedition } from '../../src/services/dispatch-expedition.js';
 import { viewCamp } from '../../src/services/view-camp.js';
+import { campPage } from '../../src/web/render.js';
 import { foundSettlement, raiseSuccessor } from '../../src/services/settlement-lifecycle.js';
 import { ORDINARY } from '../../src/game/wanderers.js';
 import { slotAt } from '../../src/game/world-events.js';
@@ -427,4 +428,126 @@ test('the report on a trip in flight agrees with the trip that lands', async () 
 
 test.after(async () => {
   await pool.end();
+});
+
+/** The camp's own hour for an instant, which is UTC while nobody has moved the clock. */
+const utc = (h, m = 0) => Date.UTC(2026, 8, 3, h, m);
+
+/** A fraction is arithmetic on floats and will not land on 0.75 exactly. */
+const close = (actual, expected, what, tol = 1e-6) =>
+  assert.ok(Math.abs(actual - expected) < tol, `${what}: ${actual} is not about ${expected}`);
+
+test('a trip in flight is a line with an hour at each end', async () => {
+  /*
+   * The away cell could say where somebody was and when they would be back, and could not
+   * say the one thing a player asks before deciding whether to wait up: how far along.
+   *
+   * Both ends are hours rather than durations, which is the argument the strip already won
+   * for sunset — "home 19:15" answers whether you will be here for it; "back in 2h 49m"
+   * only answers how long from now. The countdown stays on the head, because the thing
+   * that ticks should be the thing that moves.
+   */
+  await withRollback(async (client) => {
+    const { settlementId, slug } = await setup(client, { travelHours: 12 });
+    const out = utc(7, 15);
+    await dispatchExpedition(client, settlementId, slug, out);
+
+    // Nine hours into twelve: three-quarters of the way, and home at 19:15.
+    const now = out + hours(9);
+    const view = await viewCamp(client, settlementId, now);
+    const away = view.roster.find((one) => one.away)?.away;
+    assert.ok(away, 'the traveller carries their own trip');
+
+    const { line } = away;
+    assert.ok(line, 'and the trip is a line');
+    close(line.along, 0.75, 'the marker sits where they are, not where the region is');
+
+    /*
+     * And the hour is a fitting. Without The Clock the camp is handed no figure at all —
+     * the same rule the strip follows — and gets the band instead, which is free at every
+     * tier because anybody can see it by looking up.
+     */
+    assert.equal(line.setOut.hour, null, 'no clock, no hour');
+    assert.equal(line.home.hour, null);
+    assert.match(line.setOut.said, /^(in|at|before) /, 'it says when in words instead');
+    assert.match(line.home.said, /^(in|at|before) /);
+
+    const bare = campPage(view, { pane: 'survivor' });
+    assert.match(bare, /set out <em>(in|at|before) /, 'the page prints the words');
+    assert.doesNotMatch(
+      bare,
+      /set out <b>[0-9]{2}:[0-9]{2}<\/b>/,
+      'and never an hour the camp has not paid for',
+    );
+
+    await client.query(
+      `insert into structure_upgrades (settlement_id, kind, upgrade, ordinal, completes_at, installed_at)
+       values ($1, 'shelter', 'clock', 1, now() - interval '1 hour', now() - interval '1 hour')`,
+      [settlementId],
+    );
+
+    const told = await viewCamp(client, settlementId, now);
+    const ticked = told.roster.find((one) => one.away).away.line;
+    assert.deepEqual(
+      [ticked.setOut.hour, ticked.setOut.minute],
+      [7, 15],
+      'with the clock, the hour they walked out',
+    );
+    assert.deepEqual([ticked.home.hour, ticked.home.minute], [19, 15], 'and the hour they are back');
+    assert.equal(ticked.home.tomorrow, false, 'a twelve-hour trip out at 07:15 lands the same day');
+
+    const html = campPage(told, { pane: 'survivor' });
+    assert.match(html, /set out <b>07:15<\/b>/, 'the line is dated at both ends');
+    assert.match(html, /home <b>19:15<\/b>/);
+
+    /*
+     * And the row of dashes is gone with it. Two of the five cells used to report that
+     * nothing had gone wrong, at the weight of a haul and across two-fifths of the cell —
+     * which is what most of a trip's first hours looked like.
+     */
+    assert.doesNotMatch(html, /<span class="tag">damage<\/span>/, 'no cell for a cost of nothing');
+  });
+});
+
+test('a trip that lands tomorrow says which day it means', async () => {
+  /*
+   * An hour on its own stops being an answer the moment a trip crosses midnight, and the
+   * long regions are eighteen hours — so most of them do. Read as camp-days rather than as
+   * instants, or a camp east of Greenwich is told a trip landing at 00:30 comes home today.
+   */
+  await withRollback(async (client) => {
+    const { settlementId, slug } = await setup(client, { travelHours: 18 });
+    const out = utc(21, 40);
+    await dispatchExpedition(client, settlementId, slug, out);
+
+    await client.query(
+      `insert into structure_upgrades (settlement_id, kind, upgrade, ordinal, completes_at, installed_at)
+       values ($1, 'shelter', 'clock', 1, now() - interval '1 hour', now() - interval '1 hour')`,
+      [settlementId],
+    );
+
+    // Read before midnight: the trip is eighteen hours out of 21:40, so it lands on a day
+    // the player is not in yet.
+    const tonight = await viewCamp(client, settlementId, out + hours(2));
+    const line = tonight.roster.find((one) => one.away).away.line;
+    assert.deepEqual([line.home.hour, line.home.minute], [15, 40]);
+    assert.equal(line.home.tomorrow, true, 'out at 21:40, home the next afternoon');
+
+    assert.match(
+      campPage(tonight, { pane: 'survivor' }),
+      /home <b>15:40<\/b> tomorrow/,
+      'and the page says so beside the hour',
+    );
+
+    /*
+     * And it stops saying it once the player is in that day. The word is about the reader's
+     * day rather than the trip's — the same trip, the same arrival, read the next morning
+     * is simply this afternoon.
+     */
+    const morning = await viewCamp(client, settlementId, out + hours(13));
+    const later = morning.roster.find((one) => one.away).away.line;
+    assert.deepEqual([later.home.hour, later.home.minute], [15, 40], 'the same arrival');
+    assert.equal(later.home.tomorrow, false, 'read the next morning, it is today');
+    assert.doesNotMatch(campPage(morning, { pane: 'survivor' }), /15:40<\/b> tomorrow/);
+  });
 });

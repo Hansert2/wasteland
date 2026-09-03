@@ -21,6 +21,7 @@ import {
   isLit,
   nextBandChange,
   nextDegreeChange,
+  saysBand,
   sunAt,
   temperatureAt,
   travelFactors,
@@ -490,6 +491,82 @@ function reportOn(row, state, now) {
     upcoming: moments
       .filter((moment) => !answered.has(moment.index) && moment.atHour > elapsed)
       .map((moment) => new Date(row.departed_at.getTime() + moment.atHour * HOUR_MS)),
+  };
+}
+
+/**
+ * The trip as a line: where they are along it, and the hour at each end.
+ *
+ * **Hours rather than durations, and that is the whole of it.** "Back in 2h 49m" answers
+ * how long from now, which is the question you ask once; "home 19:15" answers whether you
+ * will be here for it, which is the question you actually plan against — and it is the
+ * argument the strip already won for sunset, which it prints as a time and not as a
+ * countdown. The countdown stays on the head, because the thing that moves should be the
+ * thing that is ticking.
+ *
+ * **The hour is a fitting.** A camp with no clock may not be told one — `hour` is null on
+ * the strip without it and must be null here, or the cheapest thing on the fuel track is
+ * being given away by a different block. What that camp gets instead is the band, which
+ * is free at every tier: the same instant, said in the words anybody gets by looking up.
+ *
+ * `along` is measured against the trip's *own* two ends rather than the region's column,
+ * for the reason `travelHours` is derived that way in `loadWorld`: a shortcut makes the
+ * walk shorter, and a marker drawn against the region's figure would sit still for the
+ * hours the shortcut saved.
+ */
+function lineOf(trip, report, now, { clock, noon, hasClock }) {
+  const departedAt = Number(trip.departedAt);
+  const returnsAt = Number(trip.returnsAt);
+  // Never zero: a trip whose ends agree would divide the marker by nothing. The gate
+  // cannot dispatch one, and the clamp costs a comparison.
+  const span = Math.max(1, returnsAt - departedAt);
+  const at = (when) => Math.min(1, Math.max(0, (when - departedAt) / span));
+
+  const stamp = (when) => {
+    const world = worldTimeAt(when, clock, noon);
+    return {
+      hour: hasClock ? world.hour : null,
+      minute: hasClock ? world.minute : null,
+      said: hasClock ? null : saysBand(world.band),
+    };
+  };
+
+  /*
+   * Which day the far end lands on, because an hour alone stops being an answer the
+   * moment a trip crosses midnight — and the long regions are eighteen hours, so most of
+   * them do. Compared as camp-days through `dayWindow`, which is the same clock the hour
+   * itself is read on; comparing the raw instants would call a trip landing at 00:30
+   * "today" for anyone east of Greenwich.
+   */
+  const tomorrow = dayWindow(returnsAt, 0, clock).from !== dayWindow(now, 0, clock).from;
+
+  /*
+   * Every moment the trip has, as ticks: the ones already answered behind the marker and
+   * the ones still to come ahead of it. Only the last answered one is named — a label per
+   * tick would overlap the moment two of them fell in the same afternoon, and the one a
+   * player wants to see is the thing that just happened.
+   */
+  const settled = (report?.settled ?? []).map((one) => ({
+    at: at(departedAt + Number(one.atHour) * HOUR_MS),
+    answered: true,
+    title: one.title,
+    took: one.label,
+    ...stamp(departedAt + Number(one.atHour) * HOUR_MS),
+  }));
+
+  const upcoming = (report?.upcoming ?? []).map((when) => ({
+    at: at(new Date(when).getTime()),
+    answered: false,
+  }));
+
+  return {
+    along: at(now),
+    setOut: stamp(departedAt),
+    home: { ...stamp(returnsAt), tomorrow },
+    marks: [...settled, ...upcoming].sort((a, b) => a.at - b.at),
+    // The one that gets words. Null until something has been answered out there, which is
+    // most trips: a line with no label on it is the normal state and not an empty one.
+    last: settled.length > 0 ? settled[settled.length - 1] : null,
   };
 }
 
@@ -2195,6 +2272,13 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
               regionName: trip.region.name,
               regionSlug: trip.region.slug,
               returnsAt: new Date(trip.returnsAt),
+              // Where they are along it and the hour at each end — the part of a trip the
+              // card could not say at all. See `lineOf`.
+              line: lineOf(trip, reports.get(Number(person.id)) ?? null, now, {
+                clock,
+                noon,
+                hasClock: fitted.has('clock'),
+              }),
               // What this trip has done to them so far, which is the whole reason the
               // report belongs in their block rather than in a stack of its own.
               report: reports.get(Number(person.id)) ?? null,

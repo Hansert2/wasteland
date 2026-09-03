@@ -108,6 +108,32 @@ const SOLAR_NOON = 12;
  */
 export const BANDS = ['before dawn', 'morning', 'the heat of the day', 'evening', 'night'];
 
+/**
+ * A band as a phrase, for a page saying *when* something happened rather than which part
+ * of the day it is.
+ *
+ * The strip prints the band as a word because it is labelling now — "MORNING" over a
+ * reading. A trip's two ends are different: they sit after "set out" and "home", where a
+ * bare word reads as a caption rather than as a time, and where the sentence a player
+ * hears in their head has a preposition in it.
+ *
+ * It lives beside `BANDS` and not in the renderer because these five phrases and those
+ * five words are one vocabulary, and a band added to that list has to be answerable here
+ * in the same edit — which is what the unit test checks.
+ */
+const SAID_AS = {
+  'before dawn': 'before dawn',
+  morning: 'in the morning',
+  'the heat of the day': 'in the heat of the day',
+  evening: 'in the evening',
+  night: 'at night',
+};
+
+/** @returns {string} the band as a phrase, or the band itself for anything unknown */
+export function saysBand(band) {
+  return SAID_AS[band] ?? String(band ?? '');
+}
+
 const DAWN_HOURS = 1.5;
 const DUSK_HOURS = 1;
 const MORNING_ENDS = 0.35;
@@ -163,10 +189,21 @@ export function hourAt(at, offset = 0) {
 export function worldTimeAt(at, offset = 0, noon = SOLAR_NOON) {
   requireInstant(at, 'worldTimeAt');
 
-  const hour = hourAt(at, offset);
+  /*
+   * Counted in whole minutes rather than taken off the float hour.
+   *
+   * `Math.floor((hour % 1) * 60)` is exact for almost every instant and wrong for the ones
+   * a page is most likely to print: 07:15 divides to 7.249999999999999 and floors to
+   * 07:14. Nothing noticed while the only hours rendered were a sunrise and a sunset,
+   * which land on no particular minute; a trip dispatched on the hour lands on one every
+   * time. Integer arithmetic on the instant cannot drift, and the float hour stays where
+   * a float is wanted — `hourAt`, which the band boundaries are measured with.
+   */
+  const minutes = Math.floor(local(at, offset) / 60_000);
+  const inDay = ((minutes % 1440) + 1440) % 1440;
   return {
-    hour: Math.floor(hour),
-    minute: Math.floor((hour % 1) * 60),
+    hour: Math.floor(inDay / 60),
+    minute: inDay % 60,
     band: bandAt(at, offset, noon),
     daylightHours: daylightHoursAt(at),
     ...sunAt(at, noon),

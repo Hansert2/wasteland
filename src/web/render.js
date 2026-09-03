@@ -1774,22 +1774,19 @@ ${PANE_CSS}
                      letter-spacing: .14em; text-transform: uppercase;
                      color: var(--dim); margin-left: 8px; }
 
-  /* ---- what was answered out there ---- */
-
-  /* Three columns rather than a sentence with a comma and a dash in it: which moment,
-     when, and what was chosen. The choice is pushed to the far side because it is the
-     column being scanned — the titles are already distinct, and the hours are context
-     for them rather than the point. */
-  .settled { border-top: 1px solid var(--rule); padding: 13px 20px 4px; }
-  .settled > .tag { display: block; color: var(--dim); }
-  .answered { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px;
-              padding: 9px 0; border-bottom: 1px solid var(--rule-in); }
-  .answered .what { font-family: var(--label); font-size: 14.5px; color: var(--bone); }
-  .answered .when { font-family: var(--numer); font-size: 11.5px; color: var(--quiet);
-                    font-variant-numeric: tabular-nums; }
-  .answered .took { margin-left: auto; font-size: 14.5px; color: var(--dim); }
-  .settled .footnote { margin: 0; padding: 9px 0 9px; font-size: 12.5px;
-                       line-height: 1.4; color: var(--faint); }
+  /*
+   * ---- what was answered out there ----
+   *
+   * Was a block of three columns — which moment, when, and what was chosen — and it went
+   * when the trip reports moved onto the survivors. The rules outlived the markup by
+   * months, styling nothing, which is only tidiness until a class name collides: an
+   * an unscoped .answered set display:flex and 18px of padding on the first element to
+   * carry that word again, which was the lit tick on the trip line, and the tick came out
+   * nineteen pixels tall for no reason visible in its own rules.
+   *
+   * What replaces it is .trip .told, which says the same thing in the place it belongs:
+   * on the line, over the hour it happened at.
+   */
 
   .choices { display: grid; grid-template-columns: repeat(3, 1fr);
              border-top: 1px solid var(--rule); }
@@ -2258,21 +2255,99 @@ ${PANE_CSS}
     border: 1px solid var(--rule);
   }
   /*
-   * The head: the place on the left, the clock hard right.
+   * The head: where they are on the left, what the trip has done on the right.
    *
-   * Small caps for the place because it is a label — the same voice a block's own strip
-   * uses — and the countdown in the numeral face, because it is the one thing here that
-   * moves and the page sets every running clock the same way.
+   * The place is set at the size a person's name is, because being away is the largest
+   * thing true of them and it used to be the smallest type in the cell — a label strip
+   * reading "away · Coastal Wreckage" over a row of instrument cells, with the countdown
+   * the quietest thing in the corner.
+   *
+   * The figures ride beside it rather than under it. They were a sentence for one version
+   * and a full-width readout for another; a sentence is prose in the one part of the cell
+   * that is not prose, and the readout cost a whole band of the cell to say what five
+   * columns say in the width already going spare next to a two-word place name. What that
+   * band is worth is the line at the foot.
    */
-  .afield-head { display: flex; align-items: baseline; justify-content: space-between;
-                 gap: 12px; padding: 9px 16px; }
+  .afield { display: flex; flex-direction: column; }
+  /* Wrapping, because the cell is a column in a grid and the grid lets it shrink: on a
+     phone the figures drop under the place rather than holding the whole roster row open
+     at a width the screen does not have. */
+  .afield-head { display: flex; flex-wrap: wrap; align-items: flex-start;
+                 justify-content: space-between; gap: 12px 26px; padding: 9px 16px 12px; }
   .afield-head .tag { letter-spacing: .14em; color: var(--dim); }
-  .afield-head .back { font-family: var(--numer); font-size: 12.5px; color: var(--prose);
-                       font-variant-numeric: tabular-nums; white-space: nowrap; }
-  .afield-head .back .short { font-family: var(--body); color: var(--faint); }
-  /* Inside the field the rules belong to the field, so the readout keeps only the hairline
-     that separates the head from the figures. */
-  .afield .readout { border-bottom: 0; border-top-color: var(--rule-in); }
+  .where-name { display: block; margin-top: 3px; font-family: var(--label); font-weight: 700;
+                font-size: 22px; line-height: 1.1; color: var(--bone); }
+  /* The countdown keeps the numeral face every running clock on this page is set in, and
+     keeps the accent: it is the one figure in the cell that is still moving. */
+  .back-in { display: flex; align-items: baseline; gap: 9px; margin-top: 9px; }
+  .back-in .fig { font-family: var(--numer); font-size: 19px; line-height: 1;
+                  color: var(--oxide-light); font-variant-numeric: tabular-nums;
+                  white-space: nowrap; }
+
+  /* Columns in a head, not a readout across a block: narrower cells, and the last one
+     flush with the cell's own padding so the row ends where the head does. */
+  /* Right of the place by the head's own space-between rather than by an auto margin: an
+     auto margin survives the wrap and would strand the columns against the far edge of a
+     line they now have to themselves. */
+  .figures { display: flex; flex-wrap: wrap; }
+  .figures .read { flex: 0 0 auto; min-width: 0; padding: 1px 15px 0;
+                   border-right: 1px solid var(--rule-in); }
+  .figures .read:last-child { border-right: 0; padding-right: 0; }
+  .figures .read .fig { margin-top: 7px; font-size: 18px; }
+  /*
+   * Where the haul stops and the bill starts.
+   *
+   * The outer rule rather than the inner one, which is how this design has always said
+   * "a different kind of thing" as against "the next cell", and the oxide on the figures
+   * says it a second time — the same accent a draining store gets. Two of the five cells
+   * used to be em-dashes at the weight of a haul; a cost that has not happened yet is now
+   * simply not a column.
+   */
+  .figures .cost { border-left: 1px solid var(--rule); margin-left: 9px; padding-left: 24px; }
+
+  /*
+   * The trip as a line, across the foot of the cell.
+   *
+   * A margin-top of auto and not an absolute bottom: inside a roster row the cell is
+   * stretched to the gauges column and the line should sit at the bottom of that, but on
+   * a narrow page nothing stretches it and an absolutely-placed line would climb back
+   * over the head. This way it falls to the floor when there is one and follows the
+   * figures when there is not.
+   */
+  .trip { position: relative; margin-top: auto; padding: 0 16px 12px; }
+  .trip .thread { position: relative; height: 1px; background: var(--edge); }
+  /* How much of it is behind them. The accent, because it is the half that is done. */
+  .trip .gone { position: absolute; left: 0; top: 0; height: 1px; background: var(--oxide); }
+  /* A moment: answered ones lit and a shade taller, the ones still out there faint. */
+  .trip .pin { position: absolute; top: -4px; width: 1px; height: 9px; background: var(--edge); }
+  .trip .pin.answered { top: -5px; height: 11px; background: var(--oxide-light); }
+  /* Where they are standing. The only solid thing on the line, and the only thing that
+     moves between one visit and the next. */
+  .trip .here { position: absolute; top: -6px; width: 7px; height: 13px; margin-left: -3px;
+                background: var(--oxide-light); }
+  .trip .ends { display: flex; justify-content: space-between; gap: 16px; margin-top: 11px; }
+  .trip .ends span { font-family: var(--label); font-weight: 700; font-size: 9.5px;
+                     letter-spacing: .16em; text-transform: uppercase; color: var(--dim); }
+  /* The hour itself is a figure, so it leaves the label's case and tracking for the
+     numeral face — and a camp with no clock gets the band instead, in the prose face,
+     because a phrase dressed as a reading is the page pretending to know the time. */
+  .trip .ends b { margin-left: 6px; font-family: var(--numer); font-weight: 400;
+                  font-size: 12px; letter-spacing: 0; text-transform: none;
+                  color: var(--value); font-variant-numeric: tabular-nums; }
+  .trip .ends em { margin-left: 6px; font-family: var(--body); font-style: normal;
+                   font-size: 12px; letter-spacing: .01em; text-transform: none;
+                   color: var(--quiet); }
+  /* What was decided out there, above the tick it belongs to. A row in the flow rather
+     than a label hung off the line, so it cannot end up crossing the line it annotates. */
+  .trip .told { display: block; margin-bottom: 7px; font-size: 12.5px; line-height: 1.2;
+                color: var(--faint); }
+  .trip .told span { display: inline-block; white-space: nowrap; }
+  /* Past the middle the label is placed by its right edge, or a moment answered late in a
+     long trip would hang off the end of the cell. */
+  .trip .told span.late { transform: translateX(-100%); }
+  .trip .told b { font-weight: 400; color: var(--prose); }
+  .trip .told .at { margin-right: 5px; font-family: var(--numer); font-size: 11.5px;
+                    color: var(--value); font-variant-numeric: tabular-nums; }
 
   ul.events { list-style: none; margin: 0; padding: 0; }
   ul.events li { padding: 11px 18px; border-bottom: 1px solid var(--rule-in);
@@ -2469,6 +2544,16 @@ ${PANE_CSS}
 
   @media (max-width: 760px) {
     .person { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+    /*
+     * And the traveller's cell must not ask for a column that is not there.
+     *
+     * It is placed at "2 / -1" above, which is right for the three-column card and wrong
+     * the moment the card is one column: grid makes the second track implicitly, the
+     * explicit one is left with nothing to hold, and the name and gauges collapse to a
+     * zero-width column underneath the plate. Found by measuring at 657px, where the first
+     * track computed to 0px and Vera's name was behind her own photograph.
+     */
+    body:not([data-away-shut]) .person[data-out] .who-body { grid-column: 1 / -1; }
     /* The fill is a fact about a cell beside the gauges. Stacked under them there is no such
        cell — nothing else is setting the height — and a list scrolling inside a page that
        already scrolls is two scrollbars for one list. Both flex items take their own size
@@ -5242,76 +5327,132 @@ function renderGate(gate) {
 function tripReadout(away) {
   if (!away) return '';
   const report = away.report;
+  const line = away.line;
 
-  const signed = (value, mark) =>
-    value > 0 ? `${mark}${n(value, mark === '−' ? 0 : 1)}` : '—';
+  /*
+   * The haul, and then what it has cost — two kinds of fact, and the row says so twice:
+   * an outer rule where one stops and the other starts, and the accent on the figures
+   * that are being taken rather than gathered.
+   *
+   * A cost that has not happened yet is not a column. This used to render "damage —" and
+   * "rads —" always, which put two em-dashes at the weight of a haul across two-fifths of
+   * the cell to report that nothing had gone wrong; the trip's first hours are mostly
+   * that, so the widest thing in the cell was usually its emptiest.
+   */
+  const carried = Object.entries(report?.carrying ?? {}).map(([kind, amount]) => ({
+    tag: kind,
+    value: String(amount),
+  }));
 
-  const cells = [];
-  if (report) {
-    cells.push({
-      tag: 'damage',
-      value: signed(report.damage, '−'),
-      tone: report.damage > 0 ? 'hurt' : '',
-    });
-    cells.push({ tag: 'rads', value: signed(report.radiation, '+') });
-    for (const [kind, amount] of Object.entries(report.carrying ?? {})) {
-      cells.push({ tag: kind, value: String(amount) });
-    }
-    if (Object.keys(report.carrying ?? {}).length === 0) cells.push({ tag: 'haul', value: '—' });
+  const spent = [];
+  if (Number(report?.damage) > 0) {
+    spent.push({ tag: 'health', value: `−${n(report.damage, 0)}`, tone: 'hurt', cost: true });
+  }
+  if (Number(report?.radiation) > 0) {
+    spent.push({ tag: 'rads', value: `+${n(report.radiation, 1)}`, tone: 'hurt', cost: spent.length === 0 });
   }
 
-  /*
-   * On the ground of the place they are in.
-   *
-   * This was a photograph in a band above the figures, which is the shape the Away block
-   * used when it was a block of its own — its own subject, its own width, the picture at the
-   * top of it. Inside a roster row it is a second thing stacked on a first, and it made one
-   * traveller's row twice the height of everybody else's.
-   *
-   * Under the figures instead, at the dispatch table's own strength: nothing is added to the
-   * row, the photograph is beneath the words it belongs to, most of the way to the page's
-   * grey. The same argument the table makes — a place behind a row rather than a picture
-   * beside one — and now the two say it the same way, which is what makes "Coastal Wreckage"
-   * on the readout and "Coastal Wreckage" in the table below read as one place.
-   */
-  /*
-   * Where they are and when they are back, on the ground of the place itself.
-   *
-   * Those two facts sat under the name in the left column, in the same small line a camp
-   * survivor gets for "fitting · a bed" — which is right for a job in the yard and thin for
-   * a person who is not here. Being away is the largest thing true of a survivor, and the
-   * photograph of where they went was already directly beside the words naming it, doing
-   * nothing for them.
-   *
-   * So the middle column becomes the elsewhere: headed by the place and the countdown,
-   * standing on a picture of it, with the trip's figures underneath. The left column goes
-   * back to being who they are, which is what it says for everybody else in the roster.
-   *
-   * The head renders whether or not a report has arrived. A trip an hour old has nothing to
-   * report yet and is no less a trip, and an empty field with a countdown running on it is
-   * the honest shape of that — where somebody is does not wait on the first haul.
-   */
+  const cells = [...carried, ...spent];
   const figures =
     cells.length > 0
-      ? `<div class="readout out-readout">${cells
+      ? `<div class="figures">${cells
           .map(
             (cell) =>
-              `<div class="read"><span class="tag">${escape(cell.tag)}</span><span class="fig${
+              `<div class="read${cell.cost ? ' cost' : ''}"><span class="tag">${escape(
+                cell.tag,
+              )}</span><span class="fig${
                 cell.tone ? ` ${cell.tone}` : ''
               }">${escape(cell.value)}</span></div>`,
           )
           .join('')}</div>`
       : '';
 
+  /*
+   * On the ground of the place they are in.
+   *
+   * The same treatment as a dispatch row and deliberately so: the readout and the table
+   * below it are two views of one place, and a photograph that is a band in one and a
+   * ground in the other makes them look like two different kinds of thing.
+   */
   return `<div class="afield plated"${plateGround(away.regionSlug)}>
       <div class="afield-head">
-        <span class="tag">away &middot; ${escape(away.regionName)}</span>
-        <span class="back"><span class="short">back in</span> ${countdown(
-          away.returnsAt,
-          'now',
-        )}</span>
+        <div class="whereabouts">
+          <span class="tag">away at</span>
+          <span class="where-name">${escape(away.regionName)}</span>
+          <span class="back-in">
+            <span class="tag">back in</span>
+            <span class="fig">${countdown(away.returnsAt, 'now')}</span>
+          </span>
+        </div>
+        ${figures}
       </div>
-      ${figures}
+      ${tripLine(line)}
+    </div>`;
+}
+
+/**
+ * The trip drawn as a line: set out on the left, home on the right, and where they are.
+ *
+ * The one question the cell could not answer was *how far along*, which is the question a
+ * player asks before deciding whether to wait for them. Every figure here was already
+ * computed on the report and thrown away — see `lineOf` in view-camp.
+ *
+ * Both ends are hours rather than durations, for the reason the strip prints sunset as a
+ * time: "home 19:15" answers whether you will be here for it, and "back in 2h 49m" only
+ * answers how long from now. The countdown does not go away — it is on the head, where
+ * the thing that ticks should be.
+ */
+function tripLine(line) {
+  if (!line) return '';
+
+  // A width and a left offset, at a tenth of a percent — which on a 795px cell is under a
+  // pixel, and keeps the markup from carrying fifteen decimals of float.
+  const pct = (value) => `${Math.round(Math.max(0, Math.min(1, value)) * 1000) / 10}%`;
+
+  /*
+   * An hour, or the band. Never both and never neither: `hour` is null for a camp with no
+   * clock, which is the same rule the strip follows, and `said` is what it gets instead.
+   */
+  const when = (stamp) =>
+    stamp?.hour === null || stamp?.hour === undefined
+      ? `<em>${escape(String(stamp?.said ?? ''))}</em>`
+      : `<b>${escape(at(stamp.hour, stamp.minute))}</b>`;
+
+  const pins = (line.marks ?? [])
+    .map(
+      (mark) =>
+        `<i class="pin${mark.answered ? ' answered' : ''}" style="left:${pct(mark.at)}"></i>`,
+    )
+    .join('');
+
+  /*
+   * What was decided out there, over the tick it happened at.
+   *
+   * The only thing on the page that says a moment was ever answered: the box vanishes the
+   * instant it is, and the consequence does not land until the return. Placed by its right
+   * edge past the middle of the line, or an answer given late in a long trip runs off the
+   * side of the cell.
+   */
+  const told = line.last
+    ? `<span class="told"><span class="${line.last.at > 0.55 ? 'late' : ''}"
+         style="margin-left:${pct(line.last.at)}">${
+           line.last.hour === null
+             ? ''
+             : `<span class="at">${escape(at(line.last.hour, line.last.minute))}</span>`
+         }${escape(line.last.title)} &mdash; <b>${escape(line.last.took)}</b></span></span>`
+    : '';
+
+  return `<div class="trip">
+      ${told}
+      <div class="thread">
+        <i class="gone" style="width:${pct(line.along)}"></i>
+        ${pins}
+        <i class="here" style="left:${pct(line.along)}"></i>
+      </div>
+      <div class="ends">
+        <span>set out ${when(line.setOut)}</span>
+        <span>home ${when(line.home)}${line.home?.tomorrow ? ' tomorrow' : ''}</span>
+      </div>
     </div>`;
 }
 

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   BANDS,
+  saysBand,
   bandAt,
   daylightFraction,
   daylightHoursAt,
@@ -227,4 +228,50 @@ test('a band boundary is not always a turn of the light', () => {
 
 test('the alarm throws on a missing instant like the rest of the module', () => {
   assert.throws(() => nextBandChange(undefined), TypeError);
+});
+
+test('every band can be said as a phrase, and the five stay one vocabulary', () => {
+  /*
+   * The trip line puts a band after "set out" and "home", where the bare word the strip
+   * uses reads as a caption rather than as a time. The phrases live beside `BANDS` so a
+   * sixth band cannot be added without one — which is what this checks, rather than the
+   * wording, because the wording is a design decision and the coverage is an invariant.
+   */
+  for (const band of BANDS) {
+    assert.match(saysBand(band), /^(in|at|before) /, `${band} reads as a phrase, not a label`);
+  }
+
+  // Anything it has no phrase for comes back as it went in: a line that says the band is
+  // better than a line that says "undefined".
+  assert.equal(saysBand('the long dark'), 'the long dark');
+  assert.equal(saysBand(null), '');
+});
+
+test('an instant on the minute is printed as that minute', () => {
+  /*
+   * Found by putting a trip's departure on the page: dispatched at 07:15, the card said
+   * 07:14. The hour was derived by multiplying a float back out — 7.25 arrives as
+   * 7.249999999999999 and floors a minute short — and it went unnoticed while the only
+   * hours printed were a sunrise and a sunset, which land on no particular minute.
+   *
+   * Walked across a whole day rather than asserted at the one instant that failed,
+   * because the fault was in the arithmetic and arithmetic is wrong for classes of input.
+   */
+  const midnight = Date.UTC(2026, 8, 3);
+  for (let m = 0; m < 24 * 60; m += 1) {
+    const said = worldTimeAt(midnight + m * 60_000);
+    assert.deepEqual(
+      [said.hour, said.minute],
+      [Math.floor(m / 60), m % 60],
+      `minute ${m} of the day`,
+    );
+  }
+
+  // And seconds inside a minute belong to it: 07:15:59 is still a quarter past seven.
+  const late = worldTimeAt(Date.UTC(2026, 8, 3, 7, 15, 59));
+  assert.deepEqual([late.hour, late.minute], [7, 15]);
+
+  // The camp's own clock moves the reading and not the instant.
+  const shifted = worldTimeAt(Date.UTC(2026, 8, 3, 7, 15), 90);
+  assert.deepEqual([shifted.hour, shifted.minute], [8, 45]);
 });
