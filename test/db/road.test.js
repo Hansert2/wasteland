@@ -203,24 +203,38 @@ test('the view says where the road has got to and what the next link wants', asy
   });
 });
 
-test('a place the road has not reached is not on the dispatch table', async () => {
+/*
+ * This used to assert the opposite -- that an unreached place was absent from the table --
+ * and it was changed on 2026-09-06 with the dispatch block's redesign.
+ *
+ * The rule it was protecting has not moved: the road still gates the place, and the test
+ * below this one is the one that proves it, because refusing the dispatch is where that is
+ * actually enforced. What changed is only whether the player can see what they have not
+ * reached, and the block now lists it and refuses it by name. That is the rule the rest of
+ * this page already follows -- the busy are listed and refused rather than dropped, because
+ * a name that vanishes reads as a bug where one that will not be pressed reads as a thing
+ * you cannot have yet -- and the road block was already naming the links ahead, so no
+ * secret is being spent here.
+ */
+test('a place the road has not reached is on the table, and sealed', async () => {
   await withRollback(async (client) => {
     const settlementId = await setup(client, 500);
     const slug = linkGives(1).region;
 
     const before = await viewCamp(client, settlementId);
     assert.ok(before.regions.length > 0, 'the map is not empty to begin with');
-    assert.ok(
-      !before.regions.some((r) => r.slug === slug),
-      `${slug} is offered before the road reaches it`,
-    );
+    const sealed = before.regions.find((r) => r.slug === slug);
+    assert.ok(sealed, `${slug} should be listed before the road reaches it`);
+    assert.equal(sealed.locked, true, `${slug} is offered before the road reaches it`);
+    assert.equal(sealed.opensAtLink, 1, 'and it says which link opens it');
 
     await commitToRoad(client, settlementId, linkCost(1));
 
     const after = await viewCamp(client, settlementId);
     const opened = after.regions.find((r) => r.slug === slug);
     assert.ok(opened, `${slug} should be on the table once the link is made`);
-    assert.equal(after.regions.length, before.regions.length + 1, 'exactly the one');
+    assert.equal(opened.locked, false, 'and it is no longer sealed');
+    assert.equal(after.regions.length, before.regions.length, 'the same eleven throughout');
 
     // And it arrives with contact in it, which is the whole reason a destination is
     // the strongest reward the road has.

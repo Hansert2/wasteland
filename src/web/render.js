@@ -2010,46 +2010,263 @@ ${PANE_CSS}
                 line-height: 1.15; color: var(--bone); margin: 0 0 10px; }
 
   /*
-   * The dispatch table is a grid, not four columns, and the arithmetic is why.
+   * ---- the roads out ----
    *
-   * It lives in the Survivor view's left lane — about 620px — and it was carrying a
-   * 200px name column, a 140px minimum cost column and a 96px button. What was left for
-   * the region's description was 176px: twenty-one characters, three words a line, four
-   * lines to say "As far as the wire and back. Ten minutes, and never nothing." Every
-   * other measure in this design is capped between 58 and 76ch.
-   *
-   * Four columns do not fit in 620px, so the row stops pretending they do. Name and its
-   * numbers, the contact count and the button share the first line; the description gets
-   * the second to itself and about 70ch to say it in. This is the same shape the narrow
-   * breakpoint was already imposing on every table — promoted to always, for the one
-   * table that never had the width for the other shape.
+   * A band across the top and a table under it. The band is a fixed height in both of its
+   * states, because the list must not move when it changes: on a page made of countdowns
+   * the one motion nobody wants is the rows below jumping when you press one, which is what
+   * ruled out opening a row inline.
    */
-  .dispatch, .dispatch tbody { display: block; }
-  .dispatch td { display: block; padding: 0; border-bottom: 0; }
+  /*
+   * roadband, not band. The hour strip already prints the weather word as a span.band --
+   * "THE HEAT OF THE DAY" -- and a bare .band rule here gave it a height of 148px, a grid
+   * display and 20px of padding, which drew it as a large empty box above the page.
+   *
+   * The audit that missed it asked whether a *rule* named .band existed at the top level.
+   * .hourbar .band is scoped, so it did not match -- but scoping protects that rule from
+   * this one, not that element. What has to be unique is the class in the markup.
+   */
+  .roadband { display: grid; align-items: center; height: 148px; padding: 0 20px; gap: 0 24px;
+          border-bottom: 1px solid var(--rule); background: var(--strip);
+          background-size: cover; background-position: center 62%; background-repeat: no-repeat; }
+  .roadband.at-camp { grid-template-columns: minmax(0, 1fr) auto; }
+  /*
+   * The place, behind the whole band, at a flat veil rather than a gradient.
+   *
+   * With the pay bars in the middle column there is no third of the band with nothing
+   * written on it, so there is nothing for a gradient to open into -- it would only be
+   * thinning behind text. .88 was walked down from .96 until the 9px bar labels stopped
+   * clearing 4.5:1 against the palest plate in the set, which is Coastal Wreckage, the same
+   * one .afield.plated already names as the worst case.
+   */
+  .roadband.at-place { grid-template-columns: minmax(0, 1.15fr) 288px auto;
+                background-image: linear-gradient(rgba(23, 22, 20, .88), rgba(23, 22, 20, .88)),
+                                  var(--plate); }
+  .band-main { min-width: 0; }
+  .band-lead { font-family: var(--label); font-weight: 700; font-size: 10px;
+               letter-spacing: .2em; text-transform: uppercase; color: var(--faint); }
+  .band-nm { font-family: var(--label); font-size: 30px; line-height: 1; color: var(--bone); }
+  /*
+   * Two lines' worth of box whether the sentence needs one or two. Five of the eleven
+   * descriptions set to one line and six to two, and left to itself that slid the place name
+   * 11px up and down as you moved between them. Measured max is two lines, so nothing clips.
+   */
+  .band-note { margin: 9px 0 0; font-size: 15px; line-height: 1.5; color: var(--prose);
+               max-width: 46ch; min-height: 3em; }
+  .band-fig { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 16px;
+              font-family: var(--numer); font-size: 12px; color: var(--dim);
+              font-variant-numeric: tabular-nums; }
+  .band-fig .hot { color: var(--oxide); }
+  .band-figs { min-width: 0; }
+  .band-act { display: flex; flex-direction: column; align-items: flex-end; gap: 9px; }
+  .band-hint { font-family: var(--numer); font-size: 12px; color: var(--faint); }
+  /* Brighter than the hint beside it, and for the same reason as the bar labels: the hint
+     sits on the flat rest band, this sits on a photograph. */
+  .band-back { font-family: var(--numer); font-size: 12px; color: var(--dim);
+               text-decoration: none; }
+  .band-back:hover { color: var(--bone); }
+  /*
+   * Whichever of the two stands here is the same height, so the four sealed places do not
+   * sit lower than the seven you can be sent to. Pinned to a number rather than matched to
+   * each other, because a button inherits line-height 1.6 and its height therefore follows
+   * whichever condensed face the machine actually has -- Roboto Condensed is not resident on
+   * Windows -- which would hand the misalignment to somebody else's screen.
+   */
+  .band-act .sendmenu .lead, .band-act .sealed { height: 36px; display: inline-flex;
+                                                 align-items: center; justify-content: center; }
+  /* Set in prose, not --faint: this sits at the end of the band where the veil is read
+     against a photograph rather than against the panel fill. */
+  .band-act .sealed { color: var(--prose); }
+
+  /* The camp, which is what the band says until a place is pressed. */
+  /*
+   * band-who, not who: the rail already has a div.who and a bare rule here would restyle it.
+   * Same reason .band takes at-camp / at-place rather than rest / place -- the sleep form is
+   * .rest and the clock picker is .place, and both are declared after this, so a bare
+   * modifier of the same name simply loses.
+   */
+  .band-who { display: grid; gap: 5px; margin-top: 8px; max-width: 330px; }
+  .band-who .p { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; gap: 10px;
+            align-items: baseline; }
+  .band-who .nm { font-family: var(--label); font-size: 14.5px; color: var(--bone); }
+  .band-who .st { font-family: var(--numer); font-size: 11.5px; color: var(--quiet);
+             white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* The clocks are the column you read down, so they are mono, tabular and right-aligned. */
+  .band-who .til { font-family: var(--numer); font-size: 11.5px; color: var(--dim);
+              font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+  .band-who .p.ready .nm { color: var(--oxide-light); }
+  .band-who .p.ready .st { color: var(--value); }
+  .band-who .p.ready .til { color: var(--fainter); }
+
+  /* The pay, in figures, for the one place being read. */
+  .pbars { display: grid; gap: 7px; margin-top: 12px; }
+  .pbar { display: grid; grid-template-columns: 40px minmax(0, 1fr) 48px; align-items: center;
+          gap: 9px; }
+  /* --dim, not --faint: these are read off a photograph rather than off the panel fill,
+     and at --faint the 9px labels measured 2.9:1 against the city. */
+  .pbar .k { font-family: var(--label); font-weight: 700; font-size: 9px; letter-spacing: .14em;
+             text-transform: uppercase; color: var(--dim); }
+  .pbar .t { display: block; position: relative; height: 5px; background: rgba(11, 10, 8, .6); }
+  .pbar .t i { position: absolute; left: 0; top: 0; height: 100%; background: var(--dim); }
+  .pbar .t u { position: absolute; top: -2px; width: 1px; height: 9px; background: var(--oxide); }
+  .pbar .v { font-family: var(--numer); font-size: 11px; text-align: right; color: var(--value);
+             font-variant-numeric: tabular-nums; }
+  /* A resource this place does not pay keeps its label at full strength; what says "none" is
+     the dash and the dotted rule. Dimming it spent contrast repeating them. */
+  .pbar.nil .v { color: var(--dim); }
+  .pbar.nil .t { background: transparent; height: 1px; margin: 2px 0;
+                 border-bottom: 1px dotted var(--edge); }
+
+  /* ---- the board ---- */
+  /*
+   * No overflow here, and that is the point of the rule.
+   *
+   * This was overflow-x: auto, to stop a table with a 680px min-content width pushing the
+   * document sideways in a narrower lane. It worked and it cost more than it bought:
+   * overflow-x: auto computes overflow-y to auto as well, so the container clipped the
+   * crew menu -- which is absolutely positioned and has to escape its row -- and the menu on
+   * the last rows was answered with a scrollbar instead.
+   *
+   * The width is bought back below rather than scrolled around: the destination is allowed
+   * to wrap, the Out bar drops to its figure, and the cells give up their padding. Nothing
+   * between the menu and the viewport clips anything, at any width.
+   */
+  .roadscroll { min-width: 0; }
+  .roads { width: 100%; border-collapse: collapse; font-family: var(--numer);
+           font-variant-numeric: tabular-nums; }
+  .roads th { padding: 0; text-align: left; background: var(--strip);
+              border-bottom: 1px solid var(--rule); }
+  .roads th button, .roads th span.h {
+    display: block; width: 100%; padding: 8px 8px; background: none; border: 0; text-align: left;
+    font-family: var(--label); font-weight: 700; font-size: 9.5px; letter-spacing: .16em;
+    text-transform: uppercase; color: var(--fainter); white-space: nowrap;
+  }
+  .roads th button { cursor: pointer; }
+  .roads th button:hover { color: var(--dim); }
+  .roads th.num button, .roads th.num span.h, .roads th.act span.h { text-align: right; }
+  .roads th[aria-sort] button { color: var(--bone); }
+  /* The glyphs themselves rather than CSS escapes: this stylesheet is a template
+     literal, where a backslash before 2193 is read as an octal escape and refuses
+     to parse. */
+  .roads th[aria-sort] button::after { content: ' ↓'; color: var(--oxide); }
+  .roads th[aria-sort="ascending"] button::after { content: ' ↑'; }
+  .roads td { padding: 6px 8px; border-bottom: 1px solid var(--rule-in); font-size: 13px;
+              color: var(--value); vertical-align: middle; }
+  .roads tbody tr:last-child td { border-bottom: 0; }
+  .roads .num, .roads .act { text-align: right; white-space: nowrap; }
+  .roads .dest { white-space: nowrap; }
+  .roads .dest a { font-family: var(--label); font-size: 15px; letter-spacing: .04em;
+                   text-transform: uppercase; color: var(--bone); text-decoration: none; }
+  .roads .dest a:hover { color: var(--oxide-light); }
+  .roads .act button { padding: 5px 8px; font-size: 10px; }
+  .roads .hot { color: var(--oxide); }
+  .roads tr.shut td { color: var(--fainter); }
+  .roads tr.shut .dest a { color: var(--faint); }
+  /* Pressable along its whole length, the crew cell included -- the control inside it keeps
+     its own pointer and its own job, and everything around it opens the place. Saying
+     "default" over that cell was the cursor disagreeing with what a click there does. */
+  .roads tr.road { cursor: pointer; }
+  /* .noted asks for a help cursor, and on this table that would be the cell disagreeing
+     with the row it is in -- pressing here opens the place like anywhere else. */
+  .roads tr.road td.noted { cursor: pointer; }
+  .roads tr.on td { background: var(--panel); }
+  .roads tr.on td:first-child { box-shadow: inset 3px 0 0 var(--oxide); }
+  .roads tr.on .dest a { color: var(--oxide-light); }
+  .roads tr:hover td { background-image: linear-gradient(rgba(23, 22, 20, .9),
+                                                         rgba(23, 22, 20, .9)), var(--plate);
+                       background-size: cover; background-position: center 72%; }
+
+  .outbar { display: inline-flex; align-items: center; gap: 9px; width: 100%;
+            justify-content: flex-end; }
+  .outbar .t { position: relative; width: 78px; height: 4px; background: var(--rule-in); }
+  .outbar .t i { position: absolute; left: 0; top: 0; height: 100%; min-width: 2px;
+                 background: var(--edge); }
+  .roads tr:hover .outbar .t i, .roads tr.on .outbar .t i { background: var(--dim); }
+  .outbar .n { min-width: 34px; text-align: right; }
+
+  /* Shade, not height: see payTier(). Every cell is the same size on purpose. */
+  .paysig { display: inline-flex; gap: 2px; vertical-align: middle; }
+  .paysig i { width: 9px; height: 14px; display: block; box-shadow: inset 0 0 0 1px var(--rule-in); }
+  .paysig i.t1 { background: var(--rule); box-shadow: none; }
+  .paysig i.t2 { background: var(--faint); box-shadow: none; }
+  .paysig i.t3 { background: var(--dim); box-shadow: none; }
+  .paysig i.t4 { background: var(--bone); box-shadow: none; }
+  .roads tr.shut .paysig i.t4 { background: var(--dim); }
+  .roads tr.shut .paysig i.t3 { background: var(--faint); }
+  /*
+   * The pay cell explains itself, so the block has no foot.
+   *
+   * A legend is an explanation filed away from the thing it explains: it sat under eleven
+   * rows saying what the shading meant, which is the one question a player has *while
+   * looking at a row*. Hovering the cell now gives the ranges and the ranks together, in
+   * the page's own stat block -- and on a phone, where there is no hover, the same element
+   * is simply the figures, in place.
+   */
 
   /*
-   * Scoped above the narrow breakpoint, and that is not tidiness — it is a bug I put in
-   * and took out again. Below 560px every table becomes a two-column grid with its own
-   * row assignments, and those rules override "grid-column" while leaving the explicit
-   * "grid-row" below untouched. The name and the contact count both landed in row one,
-   * column one, printed on top of each other. Placement has to be all-or-nothing per
-   * breakpoint, so this half only exists where it is the only half.
+   * dangerpips, because .pips is the skills block's and has been since before this.
+   *
+   * Sharing it cost twice over: a later .pips rule took the skill bar's display and its
+   * align-items, and ".pips i" outranks ".pip" on specificity, so a skill's pips were being
+   * pinned to 6px instead of flexing to fill their track. Neither is visible in the block
+   * being worked on, which is exactly why a class has to be checked against the markup
+   * rather than against the stylesheet.
    */
-  @media (min-width: 561px) {
-    .dispatch tr {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto auto;
-      align-items: start;
-      gap: 6px 18px;
-      padding: 12px 18px;
-      border-bottom: 1px solid var(--rule-in);
-    }
-    .dispatch tr:last-child { border-bottom: 0; }
-    .dispatch td:first-child { grid-column: 1; grid-row: 1; width: auto; }
-    .dispatch .contact-col { grid-column: 2; grid-row: 1; text-align: right; }
-    .dispatch .act { grid-column: 3; grid-row: 1 / span 2; width: auto; }
-    .dispatch .lede { grid-column: 1 / 3; grid-row: 2; }
-    .dispatch .lede small { margin-top: 0; }
+  .dangerpips { display: inline-flex; gap: 3px; vertical-align: middle; }
+  .dangerpips i { width: 6px; height: 6px; background: var(--rule); display: block; }
+  .dangerpips i.on { background: var(--dim); }
+  .dangerpips i.hot { background: var(--oxide); }
+
+  /*
+   * Below the width the three columns need, the band stacks and takes its own height.
+   *
+   * It gives up the one thing it is for -- a fixed height, so choosing a place never moves
+   * the list -- and it has to: at 700px the middle column's 288px left the name and the
+   * description nothing, and the content ran 177px out of a 148px box. A band that moves the
+   * list by a few pixels is worse than a band that clips its own text by a hundred, and this
+   * is the width where the whole page is already reflowing anyway.
+   */
+  @media (max-width: 960px) {
+    /*
+     * What the seven columns give up so they fit without a scroller. The destination is the
+     * only cell with a sentence in it, so it is the only one that can wrap; the Out bar is
+     * a picture of a figure that is printed beside it, so it is the only one that can go
+     * without losing anything the row was saying.
+     */
+    .roads .dest { white-space: normal; }
+    .roads .dest a { font-size: 14px; }
+    .outbar .t { display: none; }
+    .roads td, .roads th button, .roads th span.h { padding-left: 6px; padding-right: 6px; }
+    .roads .act button { padding-left: 6px; padding-right: 6px; }
+    /*
+     * And the contact count comes out, because sixty of the fifty pixels that do not fit are
+     * its. It is the one column the band restates in full for whichever place is open, so it
+     * is the only one that can go without the row losing something nothing else says.
+     */
+    /* col-contact on both, and that pair has to match: the head was col-contact and the
+       cell col-moments, so this hid five cells under six headers and every row below the
+       Dose column was one place to the left of its own name. */
+    .roads .col-contact { display: none; }
+    /*
+     * And the crew column with it, which is the widest cell on the row and the only one that
+     * has to escape its own box.
+     *
+     * Below this width you choose the place first and send from the band, where the whole
+     * roster has room to open downward into the page. That is one press more on a screen
+     * that has no room for the shortcut, and it is what makes the table fit without a
+     * scroller -- which is what was clipping the menu in the first place.
+     */
+    .roads .col-crew, .roads .act { display: none; }
+    /* A little more air out of the meter, so the fit is not down to its last pixel. */
+    .dangerpips { gap: 2px; }
+    .dangerpips i { width: 5px; height: 5px; }
+
+    .roadband, .roadband.at-place, .roadband.at-camp { grid-template-columns: minmax(0, 1fr); height: auto;
+                                     padding: 14px 18px; gap: 12px 0; }
+    .band-note { min-height: 0; }
+    .band-act { flex-direction: row; align-items: center; justify-content: flex-start;
+                gap: 16px; }
+    .band-who { max-width: none; }
   }
   /* The contact count is four fixed phrases and never wraps. It was borrowing the cost
      column, whose 140px minimum exists for the workshop's long prices — which is what
@@ -2225,17 +2442,8 @@ ${PANE_CSS}
    * Hover thins it to .68. That is the whole interaction: the row a player is
    * considering shows them where they would be sending somebody, and nothing else moves.
    */
-  .dispatch tr.plated {
-    background-image: linear-gradient(rgba(23, 22, 20, .82), rgba(23, 22, 20, .82)),
-                      var(--plate);
-    background-size: cover;
-    background-position: center 72%;
-    background-repeat: no-repeat;
-  }
-  .dispatch tr.plated:hover {
-    background-image: linear-gradient(rgba(23, 22, 20, .68), rgba(23, 22, 20, .68)),
-                      var(--plate);
-  }
+  /* The rows no longer stand on their plates -- the band does, at the size a photograph
+     is worth having. What is left here is the hover on .roads tr, above. */
 
   /*
    * And the trip, standing on the place it is being taken in.
@@ -3100,8 +3308,7 @@ ${PANE_CSS}
                         align-items: start; gap: 4px 12px; }
     .block > table tr > td:first-child { grid-column: 1; width: auto; }
     .block > table tr > td.lede { grid-column: 1 / -1; margin-top: 6px; }
-    /* Higher specificity than the .dispatch rules on purpose: below this width the
-       dispatch table wants exactly what every other table wants, and saying so once is
+    /* Below this width every table wants the same two-column shape, and saying so once is
        better than a second narrow layout that has to be kept in step with this one. */
     .block > table td.cost-col, .block > table td.contact-col,
     .block > table td.right { grid-column: 1; text-align: left; width: auto; }
@@ -3110,7 +3317,7 @@ ${PANE_CSS}
        and a photograph behind that much text is a photograph nobody can see and every
        line is read against. Dropping the image also means it is never fetched. The
        traveller's readout goes with it: same argument, same width, same place. */
-    .dispatch tr.plated, .afield.plated { background-image: none; }
+    .roads tr:hover td, .afield.plated { background-image: none; }
   }
 `;
 
@@ -3700,6 +3907,119 @@ export const TIMERS = `
     }
   };
 
+  /*
+   * The roads out, ordered the same way and for the same reason -- a view of one list
+   * rather than a fact about it -- but on its own two attributes.
+   *
+   * Deliberately not sharing applySort's: that one walks every .carrying tbody, and a road
+   * head setting body.dataset.sortBy to "danger" would have it sorting packs by a key their
+   * rows do not carry, which is NaN against NaN and a scrambled shelf.
+   *
+   * Pay mix is one head and four questions. Pressing it again walks to the next resource
+   * rather than reversing, because "worst place for water first" is not a thing anybody
+   * asks, and four separate columns is the width this mark exists to avoid.
+   */
+  const PAY_ORDER = ['food', 'water', 'scrap', 'fuel'];
+
+  const applyRoadSort = () => {
+    const by = document.body.dataset.roadSort;
+    const table = document.querySelector('.roads tbody');
+    if (!table) return;
+
+    const pay = document.body.dataset.roadPay || PAY_ORDER[0];
+    for (const th of document.querySelectorAll('.roads thead th')) {
+      const head = th.querySelector('[data-roadsort]');
+      if (!head) continue;
+      if (head.dataset.roadsort === by) {
+        th.setAttribute('aria-sort', document.body.dataset.roadDir === 'asc' ? 'ascending' : 'descending');
+      } else {
+        th.removeAttribute('aria-sort');
+      }
+      // The head says which of the four it is ordering by, or it is a lie by omission.
+      if (head.dataset.roadsort === 'pay') {
+        head.textContent = by === 'pay' ? 'Pay mix \u00b7 ' + pay : 'Pay mix';
+      }
+    }
+    if (!by) return;
+
+    const dir = document.body.dataset.roadDir === 'asc' ? 1 : -1;
+    const keyOf = (row) =>
+      by === 'name'
+        ? row.dataset.name
+        : by === 'pay'
+          ? Number(row.dataset['pay' + pay])
+          : Number(row.dataset[by]);
+
+    const rows = [...table.children];
+    rows.sort((a, b) => {
+      const x = keyOf(a);
+      const y = keyOf(b);
+      const cmp = by === 'name' ? String(x).localeCompare(String(y)) : Number(x) - Number(y);
+      return cmp * (by === 'name' ? -dir : dir);
+    });
+    for (const row of rows) table.append(row);
+  };
+
+  document.addEventListener('click', (event) => {
+    const head = event.target.closest ? event.target.closest('[data-roadsort]') : null;
+    if (head) {
+      const by = head.dataset.roadsort;
+      if (by === 'pay' && document.body.dataset.roadSort === 'pay') {
+        const at = PAY_ORDER.indexOf(document.body.dataset.roadPay || PAY_ORDER[0]);
+        document.body.dataset.roadPay = PAY_ORDER[(at + 1) % PAY_ORDER.length];
+      } else {
+        if (by === 'pay') document.body.dataset.roadPay = PAY_ORDER[0];
+        // The same head again reverses; pay always reads best-first.
+        document.body.dataset.roadDir =
+          document.body.dataset.roadSort === by && document.body.dataset.roadDir !== 'asc'
+            ? 'asc'
+            : 'desc';
+      }
+      document.body.dataset.roadSort = by;
+      applyRoadSort();
+      return;
+    }
+
+    /*
+     * A place opens by asking the server for the page again with ?place= on it.
+     *
+     * The band is server-rendered -- it holds the description, the figures and the pay in
+     * numbers -- so drawing it here would mean a second copy of that markup in JavaScript,
+     * kept in step by hand. Instead the link's own href becomes the address, and the swap
+     * that already exists brings the band back with it. Without script the href navigates
+     * on its own and the band still opens, which is the whole reason it is a link.
+     */
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+
+    let place = event.target.closest ? event.target.closest('[data-place], .band-back') : null;
+
+    /*
+     * The whole row opens the place, not only the name on it.
+     *
+     * The link stays and is still the thing that carries the address, because it is what
+     * works without script, what the keyboard tabs to and what a middle click opens in a
+     * tab. The row is a second, larger way to press the same link -- so it looks for that
+     * link rather than knowing an address of its own, and there is one place a slug is
+     * written.
+     *
+     * Three things a click on a row must not be: a press of the crew control, which lives
+     * in the last cell and has its own job; a press of a sort head, which is in the thead
+     * and not in a row at all; and the end of dragging a selection across a description.
+     */
+    if (!place && event.target.closest) {
+      const row = event.target.closest('.roads tr.road');
+      const control = event.target.closest('.sendmenu, form, button, a, input, select');
+      const selecting = !(document.getSelection()?.isCollapsed ?? true);
+      if (row && !control && !selecting) place = row.querySelector('[data-place]');
+    }
+
+    if (!place) return;
+    event.preventDefault();
+    const url = new URL(place.getAttribute('href'), location.href);
+    history.replaceState(null, '', url.pathname + url.search);
+    pull();
+  });
+
   document.addEventListener('click', (event) => {
     const sorter = event.target.closest ? event.target.closest('[data-sortby]') : null;
     if (!sorter) return;
@@ -3731,6 +4051,7 @@ export const TIMERS = `
     // The order too: a swap brings back rows in the server's order, which is whatever the
     // query said and not what the player last pressed.
     applySort();
+    applyRoadSort();
 
     if (tabs.length === 0) return;
     // No attribute means the first tab, which is what the stylesheet also assumes.
@@ -4557,7 +4878,7 @@ function openingPage(view) {
   );
 }
 
-export function campPage(view, { error, pane = 'camp' } = {}) {
+export function campPage(view, { error, pane = 'camp', place = null } = {}) {
   /*
    * A camp nobody has ever held is not the camp page with a block in it — it is a different
    * screen, and branching here rather than at the route is what makes that unbypassable.
@@ -4614,7 +4935,7 @@ export function campPage(view, { error, pane = 'camp' } = {}) {
     ${section('gate', renderGate(view.atTheGate))}
     ${section(
       'expedition',
-      view.roster?.length ? renderExpeditions(view) : quiet('Away', NOTHING.expedition),
+      view.roster?.length ? renderExpeditions(view, place) : quiet('Away', NOTHING.expedition),
     )}
     ${section(
       'structures',
@@ -6483,67 +6804,286 @@ function readout(cells) {
     .join('')}</div>`;
 }
 
-function renderExpeditions(view) {
-  /*
-   * Only ever the dispatch table now.
-   *
-   * It used to be either a trip report *or* the table, which was right while a camp had one
-   * traveller and wrong the moment it had two: one person out meant the other could not be
-   * sent anywhere, because the block that sends people had been replaced by a report about
-   * somebody else. The reports moved into the survivor blocks; this went back to being about
-   * where to send whoever is free.
-   */
+/**
+ * The four the camp counts, in the order the camp counts them: what a survivor lives on,
+ * then what the camp is built from. One order, used by the list's ranks and the band's
+ * bars, so a shape in one and a bar in the other are read the same way round.
+ */
+const PAY_KINDS = ['food', 'water', 'scrap', 'fuel'];
 
-  /*
-   * Who is going is asked on the survivor's own card now, not here.
-   *
-   * The block kept a dropdown in its label strip while the person it referred to sat in
-   * another block entirely — the caption of a table asking a question about somebody two
-   * blocks away. The card is the person, so the card asks. What is left here is the answer
-   * to it, printed on the button: the table says whose trip it is about to start.
-   */
-  const going = (view.roster ?? []).find((one) => !one.busy);
+/**
+ * The best any place in the game pays of each resource.
+ *
+ * Derived from the rows rather than written down, so a twelfth region retunes the scale by
+ * existing. Every rank below is a share of one of these.
+ */
+function payCeilings(regions) {
+  const ceil = Object.create(null);
+  for (const kind of PAY_KINDS) {
+    ceil[kind] = Math.max(
+      0,
+      ...regions.map((region) => Number((region.loot ?? {})[kind]?.[1] ?? 0)),
+    );
+  }
+  return ceil;
+}
 
-  const rows = view.regions
-    .map(
-      (region) => `<tr class="plated"${plateGround(region.slug)}>
-        <td><span class="name">${escape(region.name)}</span>
-            <span class="lvl">danger ${region.danger} &middot; ${escape(duration(region.travel_hours))} out</span></td>
-        <td class="lede"><small>${escape(region.description ?? '')}</small></td>
-        <td class="contact-col"><span class="cost">${escape(contact(region.moments))}</span></td>
-        <td class="act">
-          <form method="post" action="/expedition">
-            <input type="hidden" name="region" value="${escape(region.slug)}">
-            ${/*
-              * Who goes, asked on the row and answered by pressing a name.
-              *
-              * **Every name is a submit button carrying its own id**, so this needs no script
-              * whatsoever: the menu is a list of `name="who" value="…"` buttons inside the
-              * row's own form, and the browser posts the pair belonging to whichever was
-              * pressed. Hover opens it, and so does tabbing into it — `:focus-within` is the
-              * whole of the keyboard support.
-              *
-              * The busy are listed and refused rather than dropped, which is this page's rule
-              * everywhere: a name that vanishes reads as a bug where one that is there and
-              * will not be pressed reads as a person who is occupied. What has them is on the
-              * button, because here there is no card two lines up to say it.
-              */ ''}
-            ${whoMenu(view, 'Send')}
-          </form>
-        </td>
-      </tr>`,
+/**
+ * How good this place is for one resource, in four steps -- and never how much.
+ *
+ * The four are on four different scales and the game names no rate between them: food tops
+ * out at 18 a trip and scrap at 80, and nothing says what a unit of one is worth in the
+ * other. Drawn as bars of different heights the mark claims a comparison it cannot support,
+ * and a full-height food bar reads as a fortune when 18 food is a quarter of Harrow End's
+ * 80 scrap. So the cells are one size and only their shade moves, which encodes rank inside
+ * a resource rather than quantity across four.
+ */
+function payTier(region, kind, ceil) {
+  const range = (region.loot ?? {})[kind];
+  if (!range || !Number(range[1])) return '';
+  const share = Number(range[1]) / (ceil[kind] || 1);
+  return share >= 0.75 ? 't4' : share >= 0.5 ? 't3' : share >= 0.25 ? 't2' : 't1';
+}
+
+const RANK_SAID = Object.assign(Object.create(null), {
+  '': 'none',
+  t1: 'poor',
+  t2: 'fair',
+  t3: 'good',
+  t4: 'best',
+});
+
+/**
+ * The figures behind the four cells, on the row they belong to.
+ *
+ * This replaced a legend in the block's foot, and the legend was answering the right
+ * question in the wrong place: it explained the mark once, at the bottom, for eleven rows
+ * — so a player wanting to know what the Millrace actually pays read a sentence about
+ * shading and was no closer. The note is the same explanation attached to the thing it
+ * explains, and it carries the numbers the ranks are ranks of.
+ *
+ * Built with `stats`, so it is the popup on a mouse, the paragraph in place on a phone, and
+ * read in document order by a screen reader — one copy of every figure, cloned rather than
+ * transcribed. The value says the range and the rank together, because those are the two
+ * things the cell cannot say on its own: how much, and how that compares.
+ */
+function payNote(region, ceil) {
+  return stats(
+    'what a trip brings back, and how it ranks',
+    PAY_KINDS.map((kind) => {
+      const range = (region.loot ?? {})[kind];
+      if (!range) return [kind, 'none'];
+      return [kind, `${range[0]}\u2013${range[1]} \u00b7 ${RANK_SAID[payTier(region, kind, ceil)]}`];
+    }),
+  );
+}
+
+function paySig(region, ceil) {
+  const said = PAY_KINDS.map(
+    (kind) => `${kind} ${RANK_SAID[payTier(region, kind, ceil)]}`,
+  ).join(', ');
+  return `<span class="paysig" role="img" aria-label="${escape(said)}">${PAY_KINDS.map(
+    (kind) => `<i class="${payTier(region, kind, ceil)}"></i>`,
+  ).join('')}</span>`;
+}
+
+/** Danger as a meter: five squares are read faster than the word and a digit. */
+function dangerPips(level) {
+  const n = Number(level) || 0;
+  return `<span class="dangerpips" role="img" aria-label="danger ${n} of 5">${[1, 2, 3, 4, 5]
+    .map((i) => `<i class="${i > n ? '' : n >= 4 ? 'hot' : 'on'}"></i>`)
+    .join('')}</span>`;
+}
+
+/**
+ * The road, folded into a cell: how much of the longest walk in the game this one is.
+ *
+ * The fill carries a 2px floor because the Fence Line is ten minutes of a twenty-six hour
+ * scale -- 0.65%, which draws as nothing and reads as a missing figure rather than as a
+ * short walk.
+ */
+function outBar(hours, longest) {
+  const share = longest > 0 ? (Number(hours) / longest) * 100 : 0;
+  return `<span class="outbar"><span class="t"><i style="width:${share.toFixed(
+    1,
+  )}%"></i></span><span class="n">${escape(duration(hours))}</span></span>`;
+}
+
+/**
+ * What the block says when nobody has pressed a place: the camp.
+ *
+ * Not a place nobody chose. The question a player brings here is who can go, so that is
+ * what stands in the band until they answer it -- each line a name, the job in one word,
+ * and the clock that ends it, which is the shape `occupiedAs` already writes beside a name.
+ *
+ * Deliberately not the stores as well. The rail draws those, and a second copy six inches
+ * away is how a page starts to disagree with itself.
+ */
+function campAtRest(view) {
+  const people = (view.roster ?? [])
+    .map((one) => {
+      const doing = one.away
+        ? escape(one.away.regionName ?? 'away')
+        : one.busy
+          ? escape(occupiedAs(one.busy))
+          : 'at camp';
+      const until = one.away?.returnsAt ?? one.busyUntil;
+      return `<div class="p${one.busy ? '' : ' ready'}">
+        <span class="nm">${escape(one.name ?? 'Survivor')}</span>
+        <span class="st">${doing}</span>
+        <span class="til">${
+          until ? countdown(new Date(until).getTime(), 'due') : '&mdash;'
+        }</span>
+      </div>`;
+    })
+    .join('');
+
+  return `<div class="roadband at-camp">
+      <div class="band-main">
+        <span class="band-lead">Who can go</span>
+        <div class="band-who">${people}</div>
+      </div>
+      <div class="band-act"><span class="band-hint">Press a place to read it</span></div>
+    </div>`;
+}
+
+/**
+ * And what it says once they have: that place, standing on its own photograph.
+ *
+ * A fixed height in either state, because the list below must not move when the band
+ * changes -- that was the whole objection to opening a row inline on a page made of
+ * countdowns. The description reserves two lines whether it needs one or two, for the same
+ * reason: five of the eleven set to one line and six to two, and left to itself that slid
+ * the place name 11px up and down as you moved between them.
+ *
+ * The veil is flat rather than a gradient. With the pay bars in the middle column there is
+ * no part of the band with nothing written on it, so there is nothing for a gradient to
+ * open into and it would only be thinning behind text.
+ */
+function placeBand(view, region, ceil) {
+  const bars = PAY_KINDS.map((kind) => {
+    const range = (region.loot ?? {})[kind];
+    if (!range) {
+      return `<div class="pbar nil"><span class="k">${kind}</span><span class="t"></span><span class="v">&mdash;</span></div>`;
+    }
+    const low = Number(range[0]);
+    const high = Number(range[1]);
+    const top = ceil[kind] || 1;
+    return `<div class="pbar"><span class="k">${kind}</span><span class="t"><i style="width:${(
+      (high / top) *
+      100
+    ).toFixed(1)}%"></i><u style="left:${((low / top) * 100).toFixed(
+      1,
+    )}%"></u></span><span class="v">${low}&ndash;${high}</span></div>`;
+  }).join('');
+
+  const dose = Number(region.radiation_per_trip) || 0;
+
+  return `<div class="roadband at-place"${plateGround(region.slug)}>
+      <div class="band-main">
+        <span class="band-nm">${escape(region.name)}</span>
+        <p class="band-note">${escape(region.description ?? '')}</p>
+      </div>
+      <div class="band-figs">
+        <span class="band-fig">${dangerPips(region.danger)}<span>${escape(
+          duration(region.travel_hours),
+        )} out</span>${
+          region.locked ? '' : `<span>${escape(contact(region.moments))}</span>`
+        }${dose ? `<span class="hot">+${dose} rads</span>` : ''}</span>
+        <div class="pbars">${bars}</div>
+      </div>
+      <div class="band-act">
+        ${
+          region.locked
+            ? `<span class="sealed">opens at link ${region.opensAtLink}</span>`
+            : `<form method="post" action="/expedition">
+                 <input type="hidden" name="region" value="${escape(region.slug)}">
+                 ${whoMenu(view, 'Send')}
+               </form>`
+        }
+        <a class="band-back" href="?">Back to camp</a>
+      </div>
+    </div>`;
+}
+
+/**
+ * The roads out: a band that is the camp until you choose, and the eleven places under it.
+ *
+ * The band sits above the list rather than beside it, and that is the whole arrangement. A
+ * side pane buys the same stillness with width, which is the axis this block has least of:
+ * a 372px pane cost the pay figures *and* the contact count, because the destination column
+ * alone is 189px. Above, it costs nothing horizontal and the list keeps everything.
+ *
+ * Which place is open is a query parameter rather than something the client remembers. The
+ * script swaps this whole section on every timer, so state held only in that DOM is gone
+ * within seconds -- and the refresh fetch already carries `location.search`, so the server
+ * renders the band open and it survives the swap for nothing. It also means the band works
+ * with no script at all, which matters here: the pay figures live in it and the list carries
+ * only ranks.
+ *
+ * The sort is the opposite case and lives on the body -- see `applyRoadSort`, and
+ * `applySort`'s note on why an order is a view of a list rather than a fact about it.
+ */
+function renderExpeditions(view, place = null) {
+  const regions = view.regions ?? [];
+  const ceil = payCeilings(regions);
+  const longest = Math.max(1, ...regions.map((one) => Number(one.travel_hours) || 0));
+  const open = regions.find((one) => one.slug === place) ?? null;
+
+  const heads = [
+    ['name', 'Destination', ''],
+    ['hours', 'Out', 'num'],
+    ['danger', 'Danger', 'num'],
+    ['dose', 'Dose', 'num'],
+    ['pay', 'Pay mix', 'num'],
+    ['contact', 'Contact', 'num'],
+    [null, 'Crew', 'act'],
+  ]
+    .map(([key, label, klass]) =>
+      key
+        ? `<th class="${klass} col-${key}"><button type="button" data-roadsort="${key}">${label}</button></th>`
+        : `<th class="${klass} col-crew"><span class="h">${label}</span></th>`,
     )
     .join('');
 
-  /*
-   * And it is named for what it is.
-   *
-   * "Where to send them" was the name of a decision, and the decision has been leaving this
-   * block for a while: the trip reports went to the survivors, and now the choice of who
-   * has too. What stands here is the eleven places and what is known about each — a
-   * catalogue, which is exactly the thing that wanted the full width.
-   */
-  return block('The roads out', `<table class="dispatch">${rows}</table>`, { flush: true });
+  const rows = regions
+    .map((region) => {
+      const dose = Number(region.radiation_per_trip) || 0;
+      const keys = PAY_KINDS.map(
+        (kind) => ` data-pay${kind}="${Number((region.loot ?? {})[kind]?.[1] ?? 0)}"`,
+      ).join('');
+      const chosen = open && open.slug === region.slug;
+      return `<tr class="road${region.locked ? ' shut' : ''}${chosen ? ' on' : ''}"
+          data-name="${escape(region.name)}" data-hours="${Number(region.travel_hours)}"
+          data-danger="${Number(region.danger)}" data-dose="${dose}"
+          data-contact="${region.locked ? -1 : Number(region.moments)}"${keys}>
+        <td class="dest"><a href="?place=${escape(region.slug)}" data-place="${escape(
+          region.slug,
+        )}">${escape(region.name)}</a></td>
+        <td class="num">${outBar(region.travel_hours, longest)}</td>
+        <td class="num">${dangerPips(region.danger)}</td>
+        <td class="num${dose ? ' hot' : ''}">${dose ? `+${dose}` : '&mdash;'}</td>
+        <td class="num noted">${paySig(region, ceil)}${payNote(region, ceil)}</td>
+        <td class="num col-contact">${
+          region.locked || Number(region.moments) === 0 ? '&mdash;' : Number(region.moments)
+        }</td>
+        <td class="act">${
+          region.locked
+            ? `<span class="sealed">opens at link ${region.opensAtLink}</span>`
+            : `<form method="post" action="/expedition">
+                 <input type="hidden" name="region" value="${escape(region.slug)}">
+                 ${whoMenu(view, 'Send')}
+               </form>`
+        }</td>
+      </tr>`;
+    })
+    .join('');
+
+  return block(
+    'The roads out',
+    `${open ? placeBand(view, open, ceil) : campAtRest(view)}<div class="roadscroll"><table class="roads"><thead><tr>${heads}</tr></thead><tbody>${rows}</tbody></table></div>`,
+    { flush: true },
+  );
 }
 
 /**

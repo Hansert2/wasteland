@@ -229,13 +229,29 @@ export function createApp() {
     // decides what a chart draws, not what the camp does.
     const day = Number.parseInt(req.query?.day, 10) || 0;
 
+    /*
+     * Which place the dispatch band is showing, on exactly the argument `day` is here on:
+     * a reading of one block rather than a view of its own, so it is a query parameter and
+     * `/camp` is still `/camp`.
+     *
+     * It is in the URL rather than in the client's hands because the client swaps whole
+     * sections on every timer — anything held only in that DOM is gone within seconds —
+     * and because the fetch already carries `location.search`, so the server renders the
+     * band open and it survives the swap for nothing. It also means the band works with no
+     * script at all, which matters: the pay figures live in it.
+     *
+     * Not validated here. An unknown slug simply matches no place and the band falls back
+     * to the camp, which is the same thing an absent parameter does.
+     */
+    const place = typeof req.query?.place === 'string' ? req.query.place : null;
+
     const view = await withTransaction(async (client) => {
       const settlementId = await settlementIdForPlayer(client, req.playerId);
       if (!settlementId) throw new InputError('This account has no camp.');
       return viewCamp(client, settlementId, Date.now(), { day });
     });
 
-    res.send(campPage(view, { pane }));
+    res.send(campPage(view, { pane, place }));
   };
 
   // One route per view rather than one route with a parameter, so an unknown view is a

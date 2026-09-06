@@ -1044,8 +1044,17 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
     [settlementId],
   );
 
+  /*
+   * `loot` and `radiation_per_trip` come along now because the dispatch block draws them.
+   *
+   * The table used to say a place's danger and its hours and stop, which meant the one
+   * question a player actually brings to it — what is this place *for* — was answerable
+   * only by going there. The block ranks each place against the best in the game for each
+   * resource, so it needs every place's ranges to work out what "the best" is.
+   */
   const { rows: regionRows } = await client.query(
-    `select slug, name, danger, travel_hours, description, requires_link
+    `select slug, name, danger, travel_hours, description, requires_link,
+            loot, radiation_per_trip
        from regions order by danger, travel_hours`,
   );
 
@@ -1627,11 +1636,21 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
    * The moment count comes from the generator's own function, so what the page promises
    * and what the trip holds cannot drift apart.
    */
+  /*
+   * Every place, including the ones the road has not reached yet.
+   *
+   * They used to be filtered out, so a new camp saw seven rows and had no way of knowing
+   * there were eleven. That is the same rule the rest of this page already follows — the
+   * busy are listed and refused rather than dropped, because a name that vanishes reads as
+   * a bug where one that will not be pressed reads as a thing you cannot have yet. The road
+   * block already names the links ahead, so nothing here is a secret being spent.
+   */
   const regionsOf = (plans) =>
     regionRows
-      .filter((region) => region.requires_link === null || opened.has(Number(region.requires_link)))
       .map((region) => ({
         ...region,
+        locked: region.requires_link !== null && !opened.has(Number(region.requires_link)),
+        opensAtLink: region.requires_link === null ? null : Number(region.requires_link),
         /*
          * How many the place holds, from the place's own hours — never from the shortened
          * walk. A shortcut takes a fifth off the road to somewhere; it does not empty it.
