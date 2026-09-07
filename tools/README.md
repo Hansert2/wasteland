@@ -58,6 +58,17 @@ they have found something that reasoning and a green test suite both missed:
   than about the policy the instrument chose. And the one region that beats them both,
   Harrow End at 21 a day, is behind link seven — locked behind the thing fuel buys.
 
+- **Night is weather on the long roads and a choice only on the short ones.** Phase 14 was
+  written on the assumption that leaving before dark was a decision the player made. Sweeping
+  every departure minute of the year said otherwise: from the Deep Zone up (18h) **no
+  departure hour avoids darkness and none is entirely dark**, so those roads are always
+  mixed, and night there is scenery the trip walks through. The fence line is the opposite —
+  a straight coin toss, 49% all-light against 49% all-dark. And for a player who only checks
+  in at nine in the evening, *every* trip of six hours or less is 100% dark, which is a whole
+  class of content they would otherwise never have seen twice. That is what made the night
+  table a re-reading of the existing moments rather than a set of new ones: on the roads
+  where it fires most it cannot be a choice, so it had to be worth meeting anyway.
+
 The pattern worth keeping: the simulation is a pure function of `(state, now)`, so
 sixty days of play runs in milliseconds and a balance question can be answered rather
 than argued about. Before trusting a number, measure it.
@@ -75,7 +86,16 @@ node tools/craft-balance.mjs     # what gear is worth, and what a death costs
 
 ```
 node tools/window-coverage.mjs   # who the encounter windows actually reach
+node tools/night-share.mjs       # how much of each road is dark, and for whom
 ```
+
+**`night-share.mjs` answers it twice, and the two answers are for different people.** *Any
+hour* sweeps every departure minute of the year and is the honest statement about a road.
+*Check-ins* restricts departures to the hours somebody actually presses Send, because a road
+that is half dark across all departures can still be reliably light for a player who only
+ever plays at nine in the morning — and that is the player the content meets. Base travel
+hours, so it reads the table as a camp without shortcuts sees it; a link-opened shortcut can
+only move a trip toward the light it left in.
 
 `check-in-density.mjs` needs the database, and answers a blunter question than any of the
 above: **when you load the page, what is there to do?** It probes rather than reasons —

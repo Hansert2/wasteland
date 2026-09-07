@@ -24,10 +24,29 @@ const HOUR_MS = 60 * 60 * 1000;
  * after the survivor is already home. The count comes from the region, because how much there
  * is to meet somewhere is a fact about the somewhere.
  */
+/*
+ * The trip as `momentsFor` wants it, departure included.
+ *
+ * The clock is on here rather than at the two call sites below because both of them derive
+ * their moments from the same row and must not be able to differ: one decides *which trip*
+ * an index belongs to and the other decides *what was answered*, and a moment whose words
+ * moved between those two reads is one whose title is recorded wrong.
+ *
+ * Only the departure is carried, not the camp's offset and noon — this function has a row
+ * and no settlement. That is the right answer rather than a shortcut: the offset defaults to
+ * zero and the noon to twelve, which is the sky nearly every camp is under, and nothing here
+ * renders a moment's words. It picks an option by key, and keys are the same after dark.
+ */
 const spanOf = (trip) => ({
   slug: trip.slug,
   travelHours: (trip.returns_at.getTime() - trip.departed_at.getTime()) / 3_600_000,
   baseTravelHours: Number(trip.travel_hours),
+  departedAt: trip.departed_at.getTime(),
+  clockOffset: trip.clock_offset_minutes ?? 0,
+  solarNoon:
+    trip.solar_noon_minutes === null || trip.solar_noon_minutes === undefined
+      ? undefined
+      : Number(trip.solar_noon_minutes) / 60,
 });
 
 export async function answerMoment(
@@ -61,6 +80,7 @@ export async function answerMoment(
    */
   const { rows: active } = await client.query(
     `select e.id, e.seed, e.choices, e.departed_at, e.returns_at, e.character_id,
+            e.clock_offset_minutes, e.solar_noon_minutes,
             r.slug, r.travel_hours
        from expeditions e
        join regions r on r.id = e.region_id

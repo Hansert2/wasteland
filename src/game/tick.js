@@ -1,4 +1,5 @@
 import { CONFIG } from './constants.js';
+import { withClock } from './moments.js';
 import { resolveExpedition } from './expeditions.js';
 import { stateAt, timelineOf } from './timeline.js';
 import {
@@ -182,16 +183,26 @@ function flightOf(state, expedition) {
     return null;
   }
 
+  /*
+   * The sky this trip left under, named once and used twice — for the weather it is resolved
+   * against and for the hour each of its moments happens at. `reportOn` composes the same
+   * two values from the same row, and the pair has to match: the page renders a moment's
+   * words and the log line the return writes carries its title, so a disagreement here is a
+   * player being shown one scene and told about a different one.
+   */
+  const clockOffset = expedition.clockOffset ?? state.settlement.clockOffset ?? 0;
+  const solarNoon = expedition.solarNoon ?? state.settlement.solarNoon ?? 12;
+
   const outcome = resolveExpedition({
-    region: expedition.region,
+    region: withClock(expedition.region, expedition.departedAt, clockOffset, solarNoon),
     survivor: walker,
     seed: expedition.seed,
     weather: travelFactors(
       state.worldEvents,
       expedition.departedAt,
       expedition.returnsAt,
-      expedition.clockOffset ?? state.settlement.clockOffset ?? 0,
-      expedition.solarNoon ?? state.settlement.solarNoon ?? 12,
+      clockOffset,
+      solarNoon,
     ),
     choices: expedition.choices,
     standings: state.settlement.standings,

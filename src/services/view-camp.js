@@ -28,14 +28,7 @@ import {
   worldTimeAt,
 } from '../game/daylight.js';
 import { answerTo, resolveExpedition } from '../game/expeditions.js';
-import {
-  isOpen,
-  isWarned,
-  momentCount,
-  momentsFor,
-  optionEffects,
-  walkHomeHours,
-} from '../game/moments.js';
+import { isOpen, isWarned, momentCount, momentsFor, optionEffects, walkHomeHours, withClock } from '../game/moments.js';
 import { openWithin, planFor } from '../game/planning.js';
 import { directionFor } from '../game/direction.js';
 import { radThresholdFor, skillsOf, wandererFor } from '../game/wanderers.js';
@@ -375,6 +368,21 @@ function reportOn(row, state, now) {
   const returnsAt = row.returns_at.getTime();
   const elapsed = Math.max(0, (now - departedAt) / HOUR_MS);
 
+  /*
+   * The sky frozen onto the trip at dispatch — migration 017 — falling back to the camp's
+   * for a trip that predates it.
+   *
+   * Named here rather than written inline at the `travelFactors` call because there are two
+   * callers of it now: the weather the trip is resolved against, and the hour each of its
+   * moments happens at. Those must be the same sky, or the page can offer "The failing
+   * light" while the log that comes home a minute later says "The light coming back".
+   */
+  const clockOffset = row.clock_offset_minutes ?? state.settlement.clockOffset ?? 0;
+  const solarNoon =
+    row.solar_noon_minutes === null || row.solar_noon_minutes === undefined
+      ? (state.settlement.solarNoon ?? DEFAULT_SOLAR_NOON)
+      : Number(row.solar_noon_minutes) / 60;
+
   const stillToCome = deriveEventsBetween(WORLD_SEED, now, returnsAt).filter(
     (event) => event.startsAt >= now,
   );
@@ -384,31 +392,20 @@ function reportOn(row, state, now) {
     region,
     survivor: state.survivor,
     seed,
-    weather: travelFactors(
-      overTheTrip,
-      departedAt,
-      returnsAt,
-      /*
-       * The sky frozen onto the trip at dispatch — migration 017 — falling back to the
-       * camp's for a trip that predates it.
-       *
-       * This has to read exactly what `returnExpedition` reads. `travelFactors` is one
-       * function so the two cannot compose the sky differently; that would be undone here
-       * by handing it different arguments, and the symptom would be a report promising
-       * one thing and the return delivering another.
-       */
-      row.clock_offset_minutes ?? state.settlement.clockOffset ?? 0,
-      row.solar_noon_minutes === null || row.solar_noon_minutes === undefined
-        ? (state.settlement.solarNoon ?? DEFAULT_SOLAR_NOON)
-        : Number(row.solar_noon_minutes) / 60,
-    ),
+    /*
+     * This has to read exactly what `returnExpedition` reads. `travelFactors` is one
+     * function so the two cannot compose the sky differently; that would be undone here by
+     * handing it different arguments, and the symptom would be a report promising one thing
+     * and the return delivering another.
+     */
+    weather: travelFactors(overTheTrip, departedAt, returnsAt, clockOffset, solarNoon),
     choices,
     standings: state.settlement.standings,
   });
 
   const carried = stateAt(timelineOf({ outcome, travelHours, seed }), elapsed);
   const answered = new Set(choices.map((choice) => Number(choice.index)));
-  const moments = momentsFor(region, seed);
+  const moments = momentsFor(withClock(region, departedAt, clockOffset, solarNoon), seed);
 
   // Health as it stands out there: what they left with, less what the trip has already
   // done to them. This is what the warning on a lethal option is measured against, and

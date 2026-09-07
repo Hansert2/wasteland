@@ -5,7 +5,7 @@ import { pool } from '../../src/db/pool.js';
 import { advanceSettlement } from '../../src/services/advance-settlement.js';
 import { dispatchExpedition } from '../../src/services/dispatch-expedition.js';
 import { foundSettlement, raiseSuccessor } from '../../src/services/settlement-lifecycle.js';
-import { MOMENTS, momentCount, momentsFor, walkHomeHours } from '../../src/game/moments.js';
+import { MOMENTS, NIGHT, momentCount, momentsFor, walkHomeHours } from '../../src/game/moments.js';
 import { viewCamp } from '../../src/services/view-camp.js';
 import { campPage } from '../../src/web/render.js';
 import { answerMoment } from '../../src/services/answer-moment.js';
@@ -83,6 +83,23 @@ async function stores(client, settlementId) {
  * kept_pace (a hazard) at 10.93–12.43, and the_wounded at 14.75–16.25.
  */
 const FIXED_SEED = 8;
+
+/*
+ * Two departures with the sun in a known place, because a moment's words come from the hour
+ * it happens at.
+ *
+ * `Date.now()` was fine for every test in this file until Phase 14, and then it quietly
+ * became a coin toss: the trip below meets `counter_clicks` four and a half hours out, and
+ * whether that is "The quiet dosimeter" or "What the needle does not see" depends on what
+ * time of day the suite is run. It failed the first time it was run in the evening, which is
+ * the good version of that bug — the assertion was already there to catch it.
+ *
+ * A fresh camp is unplaced, so the offset is zero and noon is twelve. Midsummer gives a
+ * sunrise at 04:30 and a sunset at 19:30: leaving at eight puts the moment at 12:30 and
+ * leaving at twenty puts it at 00:30, and neither is near an edge.
+ */
+const LEAVES_IN_DAYLIGHT = Date.UTC(2026, 5, 21, 8);
+const LEAVES_AFTER_DARK = Date.UTC(2026, 5, 21, 20);
 
 async function sendFixed(client, settlementId, slug, now, who = null) {
   const { expeditionId } = await dispatchExpedition(client, settlementId, slug, now, who);
@@ -383,7 +400,7 @@ test('an answered moment stays on the page instead of vanishing', async () => {
   // and the game said nothing more until the survivor walked back through the gate hours
   // later. The answer is recorded here; the consequence is still rolled at the return.
   await withRollback(async (client) => {
-    const now = Date.now();
+    const now = LEAVES_IN_DAYLIGHT;
     const { settlementId, slug } = await setup(client);
     await sendFixed(client, settlementId, slug, now);
 
@@ -406,6 +423,58 @@ test('an answered moment stays on the page instead of vanishing', async () => {
     // whole gap this closes is the stretch between answering and coming home.
     const later = await viewCamp(client, settlementId, now + hours(12));
     assert.equal(later.expedition.settled.length, 1);
+  });
+});
+
+test('the same trip after dark is the same moment in different words', async () => {
+  /*
+   * Phase 14's whole claim, end to end through the database: an identical seed leaving at a
+   * different hour offers *the same moment* — same index, same axis, same window, same option
+   * keys and the same mechanics on them — and reads differently.
+   *
+   * Both halves matter and they fail in opposite directions. If the words never changed the
+   * night table would be dead weight; if anything else changed, a trip's difficulty would
+   * depend on the clock in a way `coefficientsAt` has already priced once.
+   */
+  await withRollback(async (client) => {
+    const { settlementId, slug } = await setup(client);
+    await sendFixed(client, settlementId, slug, LEAVES_AFTER_DARK);
+
+    const view = await viewCamp(client, settlementId, LEAVES_AFTER_DARK + hours(5));
+    const { moment } = view.expedition;
+    assert.ok(moment, 'the same window is open at the same hour');
+
+    // The page's moment box carries words rather than the key, which is the point: the
+    // title is the only thing that says which of the two readings the player got.
+    assert.equal(moment.index, 0, 'the same moment, at the same index');
+    assert.equal(moment.title, NIGHT.counter_clicks.title);
+    assert.notEqual(moment.title, MOMENTS.counter_clicks.title);
+    assert.equal(moment.prose, NIGHT.counter_clicks.prose);
+
+    // The options are the daylight ones wearing different words. Keys first, because that is
+    // what an answer is recorded against and what `answerMoment` matches on.
+    assert.deepStrictEqual(
+      moment.options.map((option) => option.key),
+      ['trust', 'assume', 'dose', 'turn_back'],
+    );
+    assert.equal(
+      moment.options.find((option) => option.key === 'assume').label,
+      NIGHT.counter_clicks.options.assume.label,
+    );
+
+    // And it still answers, against the key rather than the label.
+    await answerMoment(
+      client,
+      settlementId,
+      { index: 0, option: 'assume' },
+      LEAVES_AFTER_DARK + hours(5),
+    );
+    const { rows } = await client.query('select choices from expeditions where id = $1', [
+      view.expedition.expeditionId,
+    ]);
+    assert.deepStrictEqual(rows[0].choices, [
+      { index: 0, key: 'counter_clicks', option: 'assume' },
+    ]);
   });
 });
 

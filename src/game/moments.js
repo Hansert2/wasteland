@@ -16,6 +16,7 @@
  */
 import { makeRandom, mix } from './random.js';
 import { FACTIONS } from './factions.js';
+import { isLit, DEFAULT_SOLAR_NOON } from './daylight.js';
 
 const FACTION_SLUGS = Object.keys(FACTIONS).sort();
 
@@ -624,6 +625,303 @@ export const MOMENTS = {
 };
 
 /**
+ * The same twenty moments, after dark.
+ *
+ * Keyed by the day moment each one re-reads, and **an entry can only override text.** It
+ * carries a title, a scene, a turn, and per-option `label` and `detail` — nothing else, and
+ * a test pins that. The option objects themselves are the daylight ones, merged rather than
+ * replaced, so an option's key, verb, hours, `consumes`, `findChance` and factors are the
+ * same after dark as before it.
+ *
+ * That constraint is the whole design, and it was worth a rewrite to get. The first draft of
+ * this table retyped each option in full, which reads naturally and is a trap: `answerMoment`
+ * finds the chosen option *on the moment it was handed* and applies whatever is on it, so a
+ * mirror that retyped `Give him the spear` without its `consumes` and `lootFactor` would have
+ * quietly made the night version of that trade free and worthless. Three of the four I had
+ * written that way had already lost mechanics. Overrides cannot do this: there is nowhere to
+ * put a number.
+ *
+ * The swap happens *after* the axes are picked and the hours are placed, so a night trip
+ * offers the same count, on the same axes, in the same windows. Only the reading changes.
+ *
+ * **Different in kind, not better.** `coefficientsAt` has already priced the hours — night
+ * pays fewer finds and charges less dose — and that trade is not this table's business.
+ * Nothing here is worth more than its daylight partner because nothing here *can* be. What
+ * changes is the question, and in three places the day's correct answer becomes the wrong
+ * one, which is the clearest evidence the content is doing its job:
+ *
+ * - `wind_turns`: by day the dose is blowing past and sitting it out is right. At night the
+ *   cold air has sunk into the low ground and stopped, so the culvert is *in* it.
+ * - `the_ford`: by day the gravel bottom is visible the whole way across and fording is a
+ *   look followed by a decision. At night the depth is a thing you find out with a leg.
+ * - `the_long_way`: by day the short cut is a bet on whether the track connects. At night it
+ *   is a bet on whether it can be followed at all.
+ *
+ * **Three things the dark has that the day has not**, which is where the rest come from: it
+ * hides what you would have judged by looking, and sells it back for time; it shows the few
+ * things only visible when they are the brightest thing present; and it makes being seen
+ * expensive, so the standing moments now price visibility rather than approach.
+ *
+ * **Underground, night is not about light.** A gallery is dark at noon. For the interior
+ * moments — `the_climb`, `the_last_gallery`, `the_hot_room`, `welded_door` — the difference
+ * the hour makes is to the *survivor*: the torch has been burning for hours by then, and
+ * there is no daylight to come back out into. Writing those as "it is dark down there" would
+ * have been true of the day version too, which is the check that caught the first draft.
+ *
+ * A moment with no entry keeps its daylight text. Nothing uses that today — all twenty are
+ * here — but it is deliberate rather than incidental: it means the next moment written can
+ * ship before its mirror without a half-filled table changing how many moments a trip has.
+ */
+export const NIGHT = {
+  welded_door: {
+    title: 'The door standing open',
+    scene:
+      'The same bay and the same steel, except that the weld has been cut through and the door is propped wide with a length of pipe. The cut is bright. Nothing has had time to rust it.',
+    prose: 'Somebody opened it, and not long ago. The dark past the frame is a different dark from the corridor.',
+    options: {
+      leave: { detail: 'they do not look' },
+      work: { label: 'Go in after them', detail: 'two hours, and whoever else is in there' },
+    },
+  },
+
+  wind_turns: {
+    title: 'The air that stopped moving',
+    scene:
+      'The wind drops with the temperature, the way it always does, and the cold air slides off the high ground and lies down in the low places. The counter does not start clicking. It has been clicking for a while.',
+    prose: 'Nothing is blowing it anywhere tonight, and the culvert is at the bottom of the field.',
+    options: {
+      push: { detail: 'take the dose' },
+      // Same hour and the same relief. What it buys is different: by day the hour is spent
+      // waiting for the wind to take the dose away, and tonight it is spent walking uphill
+      // out of the dose, because it is not going anywhere on its own.
+      wait: { label: 'Get to higher ground', detail: 'an hour uphill, and most of the dose' },
+      tablets: { detail: 'one dose from the pack, and almost none of it' },
+    },
+  },
+
+  kept_pace: {
+    title: 'The easiest thing to follow',
+    scene:
+      'It started somewhere behind the shoulder of the road and it has never once been in the same place twice. There is exactly one thing moving through this valley that can be seen from a distance, and the survivor is carrying it.',
+    prose: 'Something has kept pace with them for an hour. It does not need to see the road to do it.',
+    options: {
+      keep: { detail: 'they walk on, lit' },
+      ground: { label: 'Put the light out', detail: 'an hour sat in the dark, and it goes past' },
+      face: { label: 'Turn and face it', detail: 'settle it at arm’s length, which is as far as they can see' },
+    },
+  },
+
+  the_container: {
+    title: 'As far in as the torch reaches',
+    scene:
+      'The tide has stacked them three deep along the shingle and the salt has opened half of them. One has come apart down the welded seam, and the inside is dry, and it goes back further than the light does.',
+    prose: 'The limit is not what one back can carry. It is what they can find in there before the torch is done.',
+    options: {
+      fits: { label: 'Take what the light finds', detail: 'they walk on' },
+      overload: { label: 'Go in properly', detail: 'half again, an hour slower, and a rotten floor they cannot see' },
+    },
+  },
+
+  the_tin: {
+    title: 'The last tin, and the cold',
+    scene:
+      'The pack has been lighter than it ought to be since the second hour. What has changed since the light went is that standing still has started to cost something, and the walking is the only thing keeping the cold off.',
+    prose: 'They have walked on nothing since the light went, and the night is taking its cut whether they eat or not.',
+    options: {
+      save: { detail: 'they walk on, cold' },
+      eat: { detail: 'one ration, and something to burn against the cold' },
+    },
+  },
+
+  the_fire: {
+    title: 'The fire that is still lit',
+    scene:
+      'A ring of stones in the lee of a wall, and this time there is no need to hold a hand over it: it is burning, and it has been visible from the rise for the last twenty minutes. Whoever is sitting round it has had exactly as long to watch the survivor’s light come down the road.',
+    prose: 'A fire, three people at it, and both parties have known about each other for a mile.',
+    options: {
+      off: { label: 'Douse the light and go wide', detail: 'they walk on, unseen' },
+      hail: { label: 'Call out early', detail: 'whoever they are, and whatever they make of a light in the dark' },
+    },
+  },
+
+  the_climb: {
+    title: 'The shaft, by a dying torch',
+    scene:
+      'The stairwell is the same slope of concrete and bent bar it would be at noon, and the shaft beside it is the same shaft. What is different is that the torch has been lit since the light went, and the circle it throws on the far wall has been shrinking for an hour.',
+    prose: 'The rungs have not changed. What they have to see them by has.',
+    options: {
+      around: { detail: 'they walk on' },
+      climb: { label: 'Take it while it lasts', detail: 'half again, if the rungs hold and the torch does' },
+    },
+  },
+
+  bad_water: {
+    title: 'The cistern you cannot see into',
+    scene:
+      'The heat went with the sun and the thirst did not. Behind the fallen outbuilding the cistern is where it always was, and the torch puts a coin of light on the surface that says nothing whatever about the foot of water underneath it.',
+    prose: 'The canteen has been empty since the pylons. By day they would look at this and decide.',
+    options: {
+      thirst: { detail: 'they walk on' },
+      boil: { detail: 'forty minutes and the fuel for it, and they drink safely' },
+      drink: { label: 'Drink what they cannot see', detail: 'no time lost, and no way of knowing' },
+    },
+  },
+
+  the_settling_tanks: {
+    title: 'The tank that gives nothing back',
+    scene:
+      'Six open tanks in a row and the fifth still full. By day the surface at least tells you where it is; at this hour it returns the torch as nothing at all, and the edge of the walkway is something found with a boot.',
+    prose: 'Everything worth taking is still on the walkway, and tonight the walkway has no edge.',
+    options: {
+      around: { detail: 'they walk on' },
+      clear: { label: 'Clear the walkway by feel', detail: 'all of it, and a long time stood over water they cannot see' },
+      reach: { detail: 'the near end only, and less of the water under them' },
+    },
+  },
+
+  the_last_gallery: {
+    title: 'The gallery, and the way out',
+    scene:
+      'The gallery is exactly as dark as it was at noon, because it has been dark since the lamps came down. What is different is behind them: the walk back out of it ends in more of this, and the counter has been holding its one note for a long time already.',
+    prose: 'Nobody has been this far along it. Going further tonight means the whole way back in the dark as well.',
+    options: {
+      turn: { detail: 'they walk on' },
+      far: { label: 'Go to the end of it anyway', detail: 'whatever is down there, and every step of it counting, twice' },
+      near: { detail: 'what the last crew left, and a reading they can walk off' },
+    },
+  },
+
+  the_hot_room: {
+    title: 'The hot room, by torch',
+    scene:
+      'Shelving floor to ceiling and none of it stripped, and the dosimeter goes from ticking to a flat tone between the doorway and the first shelf, the same as it would at any hour. The difference is that everything on those shelves has to be told apart by hand.',
+    prose: 'A room worth stripping, and no way to see which of it is worth carrying.',
+    options: {
+      skip: { detail: 'they walk on' },
+      strip: { label: 'Strip it by feel', detail: 'a good deal more, and a good deal more of the dose' },
+      // The day version can grab the light things because it can see which they are. At
+      // night this is the same two minutes spent finding that out.
+      quick: { label: 'Two minutes, no more', detail: 'whatever comes to hand first, and barely a reading' },
+    },
+  },
+
+  counter_clicks: {
+    title: 'What the needle does not see',
+    scene:
+      'Two miles of hot ground and the needle has not come off the same mark since the fence. Off the shoulder of the road there is a ditch with a faint green low down in it — the sort of light there is no finding at noon, because at noon there is something brighter to lose it in.',
+    prose: 'The instrument still says the same number. Their eyes have started to disagree with it.',
+    options: {
+      trust: { label: 'Trust the needle', detail: 'they walk on' },
+      assume: { label: 'Trust their eyes', detail: 'work the shallow ground, an hour longer, and take less of it' },
+      dose: { detail: 'one from the pack, and stop wondering' },
+    },
+  },
+
+  the_long_way: {
+    title: 'The field they cannot see across',
+    scene:
+      'The rise is the same rise, and from the top of it there is now nothing to see: the road is a darker line for as far as the torch goes, and the field it bends around is a flat absence with a mile of somewhere on the other side of it.',
+    prose: 'The bend still costs the hours it costs. Cutting the corner is no longer a look at the ground first.',
+    options: {
+      road: { detail: 'they walk on' },
+      cut: { label: 'Cut across blind', detail: 'the hours the bend would cost, and ground nobody has seen tonight' },
+    },
+  },
+
+  light_is_going: {
+    /*
+     * The one mirror that had to be written twice, and the reason is worth keeping.
+     *
+     * The first version was the pretty inversion: the day moment is the light running out,
+     * so the night one was dawn coming up — the same room at the other end of the night, two
+     * hours on offer, and the reason to spend them reversed. Then it was rendered through
+     * `tools/page-states.mjs` at a departure of eight in the evening, met at half past ten,
+     * and said the sun would be up in an hour. It would not.
+     *
+     * The swap knows whether an hour is lit, which is all it knows and all it should know.
+     * So a mirror cannot claim a *particular* dark hour, only the fact of darkness — and the
+     * honest re-reading of this moment is not the sunrise, it is that the light stopped being
+     * the thing that ends the search. What ends it now is the walk home.
+     */
+    title: 'The road home in the dark',
+    scene:
+      'They have been working the same run of rooms by torch for hours and are still turning things up in it. The light stopped being a reason to leave somewhere back down the corridor.',
+    prose:
+      'There is more here than they have hands for, and every hour spent on it is another hour walking home in the dark.',
+    options: {
+      pack: { detail: 'they walk on, while the walk is short' },
+      stay: { label: 'Work on anyway', detail: 'two hours more, and two more of them in the dark' },
+    },
+  },
+
+  too_much_to_carry: {
+    title: 'The arithmetic, done by torch',
+    scene:
+      'It is all lying where it came down and nobody has been through it since. The survivor stands in the middle of it doing the usual arithmetic, with the difference that the pile has no edge to it — the light stops before the heap does.',
+    prose: 'More than one back can take, and no way of knowing how much more.',
+    options: {
+      best: { label: 'The best the light found', detail: 'they walk on' },
+      strap: { detail: 'a third again, and slower going over ground they cannot see' },
+    },
+  },
+
+  the_ford: {
+    title: 'The ford, heard and not seen',
+    scene:
+      'Upstream the channel widens out over gravel, and by day the bottom of it is visible the whole way across. Tonight there is the noise it makes, which gives them roughly where it is and roughly how fast, and nothing at all about how deep.',
+    prose: 'The long way round is still a long way. The short way is a thing they find out about with a leg.',
+    options: {
+      around: { detail: 'they walk on' },
+      ford: { label: 'Wade it blind', detail: 'an hour and a half saved, and whatever the water takes' },
+    },
+  },
+
+  the_medkit: {
+    title: 'The line they will not see',
+    scene:
+      'By day the hot ground announces itself: there is a place where the grass gives up and it can be seen from a hundred yards. In the dark the grass is grass, and the first thing that knows is the dosimeter.',
+    prose: 'The hot ground starts somewhere here, and a long way across it, and they will be in it before they see it.',
+    options: {
+      later: { label: 'Save it for later', detail: 'they walk on' },
+      ahead: { detail: 'one from the pack, before ground they cannot see the edge of' },
+    },
+  },
+
+  trade_the_spear: {
+    title: 'The man beside the cart',
+    scene:
+      'He has not moved the cart and he has not lit anything, and he heard them coming a hundred yards back — copper and cut plate heaped up, and a man sitting beside it who chose to stay sitting rather than get off the road. He looks at the spear first, the same as he would have at noon.',
+    prose: 'A man with nothing wants a weapon, and there are hours of dark still to walk through with or without one.',
+    options: {
+      keep: { detail: 'they walk on, armed' },
+      sell: { label: 'Give him the spear', detail: 'the weapon off their back, and the rest of the night without it' },
+    },
+  },
+
+  the_roadblock: {
+    title: 'The lamp on the roadblock',
+    scene:
+      'Two vehicles nose to nose across both lanes with the weeds up through the wheel arches, and a lamp on the bonnet of the nearer one pointed out along the road rather than down at whoever is behind it. That is a decision somebody made about being walked up on in the dark.',
+    prose: 'They have been seen, and they cannot be seen back. Nobody sitting at a roadblock enjoys that arrangement.',
+    options: {
+      around: { label: 'Go around in the dark', detail: 'the long way, and nothing to give them away' },
+      talk: { label: 'Walk into the lamp', detail: 'whoever they are, and whatever they make of the camp' },
+    },
+  },
+
+  the_wounded: {
+    title: 'Someone calling from the dark',
+    scene:
+      'The wall is the only thing standing for fifty yards in any direction, and from the foot of it a voice asks for help in a tone that is either honest or very well practised. Turning the torch on it would answer that question, and would answer it for anybody else in the valley at the same time.',
+    prose: 'One of theirs, and the leg will not take weight. Helping means being the brightest thing out here for as long as it takes.',
+    options: {
+      pass: { label: 'Keep walking', detail: 'nobody sees them do it' },
+      help: { label: 'Get them upright, lit', detail: 'an hour, a ration, a story, and a light everyone can see' },
+    },
+  },
+};
+
+/**
  * Offered at every moment rather than being a moment of its own.
  *
  * That is what makes the mid-trip report load-bearing: you turn back *because* the news
@@ -720,6 +1018,51 @@ export function walkHomeHours(hours, travelHours) {
  * so two windows can touch but never overlap. That is what makes the coverage figure
  * above true rather than approximate.
  */
+const HOUR_MS = 3_600_000;
+
+/**
+ * A region, plus when the trip that is walking it left and what the sky was doing.
+ *
+ * Every caller that renders or logs a moment's words has to place them in the same hour, or
+ * the page offers "The failing light" while the log that comes home says "The light coming
+ * back". Both of those callers already compose the sky for `travelFactors` — the same three
+ * values, in the same place, four lines apart — so this exists to be called *beside* that,
+ * off the same three expressions, rather than to be assembled independently twice.
+ *
+ * It is not needed to *resolve* a trip and deliberately does not affect one: night changes
+ * text and never mechanics, so `tools/moment-balance.mjs` and every other pure caller can go
+ * on handing `momentsFor` a bare region. A region without these fields reads as daylight,
+ * which is what every trip taken before this existed replays as.
+ */
+export function withClock(region, departedAt, clockOffset, solarNoon) {
+  return { ...region, departedAt, clockOffset, solarNoon };
+}
+
+/**
+ * Which words this moment gets, from the hour it actually happens at.
+ *
+ * Merged rather than swapped: the option objects stay the daylight ones and only pick up a
+ * `label` and a `detail`, so nothing in `NIGHT` can change what an option costs, spends or
+ * pays. See the note on the table.
+ */
+function wordsFor(key, at, region) {
+  const night = NIGHT[key];
+  if (!night || at === null) return MOMENTS[key];
+
+  const lit = isLit(at, region.clockOffset ?? 0, region.solarNoon ?? DEFAULT_SOLAR_NOON);
+  if (lit) return MOMENTS[key];
+
+  return {
+    ...MOMENTS[key],
+    title: night.title,
+    scene: night.scene,
+    prose: night.prose,
+    options: MOMENTS[key].options.map((option) =>
+      night.options?.[option.key] ? { ...option, ...night.options[option.key] } : option,
+    ),
+  };
+}
+
 export function momentsFor(region, seed) {
   const travelHours = Number(region?.travelHours) || 0;
   /*
@@ -759,9 +1102,33 @@ export function momentsFor(region, seed) {
   const band = (travelHours * 0.8) / count;
   const room = Math.max(0, band - window);
 
+  /*
+   * Where the trip started, or null for a caller that has not said.
+   *
+   * Read once outside the loop so that every moment on one trip is placed against the same
+   * departure — and so that the whole question is answered in one place rather than per
+   * moment. Null means daylight everywhere below, which is how a bare region behaves and
+   * therefore how every trip taken before Phase 14 replays.
+   */
+  const departedAt = Number.isFinite(region?.departedAt) ? Number(region.departedAt) : null;
+
   return chosen.map((key, index) => {
     const centre = from + band * (index + 0.5);
     const atHour = centre + (random() - 0.5) * room;
+
+    /*
+     * Day or night, decided *after* the hour is placed and never before it.
+     *
+     * That order is the constraint the phase is built on: the count comes from the region,
+     * the axes and the hours come from the seed, and none of them has heard of the clock. So
+     * a trip that leaves at nine at night offers the same moments, on the same axes, in the
+     * same windows as the same seed leaving at nine in the morning. Only the words differ.
+     *
+     * Deciding it here rather than in the caller also means the two ends of a long trip can
+     * disagree, which is right: a fourteen-hour walk that leaves in the afternoon meets its
+     * first moment in daylight and its last one after dark.
+     */
+    const words = wordsFor(key, departedAt === null ? null : departedAt + atHour * HOUR_MS, region);
 
     // Whose fire it is, for the moments that are about that. Drawn immediately after
     // the placement of the moment it belongs to, so the order stays stated and stable.
@@ -779,13 +1146,13 @@ export function momentsFor(region, seed) {
       // read in full: the answered line on the camp page, and the log line its outcome
       // eventually produces. The prose is the situation; the title is what to call it
       // afterwards, and without one an outcome comes home attached to nothing.
-      title: MOMENTS[key].title,
-      scene: MOMENTS[key].scene,
-      prose: MOMENTS[key].prose,
+      title: words.title,
+      scene: words.scene,
+      prose: words.prose,
       // Turning back is assembled in here rather than written into every moment: the
       // content declares what is particular to it, and the trip adds what is always
       // true. It is last because it is the way out, not one of the things on offer.
-      options: [...MOMENTS[key].options, TURN_BACK],
+      options: [...words.options, TURN_BACK],
       atHour,
       // Half-open, and clamped: a window running past the return is hours in which the
       // trip is already over.

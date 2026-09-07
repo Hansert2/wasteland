@@ -5,6 +5,7 @@ import {
   AXES,
   LONG_REGIONS,
   MOMENTS,
+  NIGHT,
   TURN_BACK,
   optionEffects,
   isOpen,
@@ -13,6 +14,7 @@ import {
   momentsFor,
   walkHomeHours,
   windowHours,
+  withClock,
   worstCase,
 } from '../../src/game/moments.js';
 
@@ -425,4 +427,192 @@ test('an hours chip agrees with the sentence sitting above it', () => {
 
   const cut = MOMENTS.the_long_way.options.find((option) => option.key === 'cut');
   assert.ok(optionEffects(cut).some((effect) => effect.label === '−30m out'));
+});
+
+/*
+ * ---------------------------------------------------------------------------------------
+ * After dark.
+ *
+ * Phase 14. A trip that crosses a dark hour meets the same moments in different words, and
+ * every test below exists to pin one half of that sentence: *the same moments*, and *only
+ * the words*.
+ * ---------------------------------------------------------------------------------------
+ */
+
+/** A region as the two real callers hand it over, plus a departure. */
+const leavingAt = (slug, travelHours, at) =>
+  withClock({ slug, travelHours }, at, 0, 12);
+
+// Midsummer on the idealised sky: sunrise 04:30, sunset 19:30. Both departures below put
+// every moment of an eighteen-hour walk well clear of an edge in the direction named.
+const MIDSUMMER_DAWN = Date.UTC(2026, 5, 21, 5);
+const MIDWINTER_DUSK = Date.UTC(2026, 11, 21, 17);
+
+/** What a moment is, less the words — the part the clock is not allowed to touch. */
+const skeleton = (moments) =>
+  moments.map((moment) => ({
+    index: moment.index,
+    key: moment.key,
+    axis: moment.axis,
+    faction: moment.faction,
+    atHour: moment.atHour,
+    closesAt: moment.closesAt,
+    options: moment.options.map(({ label, detail, ...rest }) => rest),
+  }));
+
+test('every night mirror names a moment that exists, and only overrides its words', () => {
+  // The constraint the whole table is built on, and the one that is easy to lose by hand:
+  // an entry here may carry a title, a scene, a turn and per-option label and detail, and
+  // nothing else. A stray `hours` or `lootFactor` would be applied by `answerMoment`
+  // without anything else noticing, because it finds the chosen option on the moment it was
+  // handed. The first draft of this table lost `consumes` off three options exactly that
+  // way, which is why this test is here and not a comment.
+  for (const [key, night] of Object.entries(NIGHT)) {
+    const day = MOMENTS[key];
+    assert.ok(day, `${key} mirrors a moment that does not exist`);
+
+    assert.deepStrictEqual(
+      Object.keys(night).sort(),
+      ['options', 'prose', 'scene', 'title'],
+      `${key} carries something other than words`,
+    );
+
+    const offered = new Set(day.options.map((option) => option.key));
+    for (const [optionKey, override] of Object.entries(night.options)) {
+      assert.ok(offered.has(optionKey), `${key}: no option "${optionKey}" to override`);
+      for (const field of Object.keys(override)) {
+        assert.ok(
+          field === 'label' || field === 'detail',
+          `${key}/${optionKey}: "${field}" is not a word, and would change what the option does`,
+        );
+      }
+    }
+  }
+});
+
+test('a night moment is readable in the same places a day one is', () => {
+  const dayTitles = new Set(Object.values(MOMENTS).map((moment) => moment.title));
+  const seen = new Set();
+
+  for (const [key, night] of Object.entries(NIGHT)) {
+    // Same line, same cap. The title is what the log line and the answered-moment chip
+    // carry, and neither of them wraps.
+    assert.ok(night.title.length <= 32, `${key}: "${night.title}" fits on a line`);
+    assert.ok(!seen.has(night.title), `${key}: "${night.title}" is not already taken`);
+    assert.ok(!dayTitles.has(night.title), `${key}: "${night.title}" is a daylight title`);
+    seen.add(night.title);
+
+    assert.ok(night.scene.length > 0, `${key} sets its scene`);
+    assert.notEqual(night.scene, night.prose, `${key}: the scene is not the turn again`);
+    assert.notEqual(night.title, MOMENTS[key].title, `${key} says something new`);
+    assert.notEqual(night.prose, MOMENTS[key].prose, `${key}: the turn turns differently`);
+
+    for (const [optionKey, override] of Object.entries(night.options)) {
+      if (override.label !== undefined) {
+        assert.ok(
+          override.label.length <= 28,
+          `${key}/${optionKey}: "${override.label}" fits a button`,
+        );
+      }
+    }
+  }
+});
+
+test('a region that says nothing about the clock is the game as it was', () => {
+  // The escape hatch, and the guarantee underneath it. `tools/moment-balance.mjs`,
+  // `applyChoices` in a test, and every trip taken before Phase 14 hand over a bare region;
+  // all of them must get the daylight table, exactly, or the balance measured against it
+  // stops describing the game.
+  let checked = 0;
+  for (const slug of LONG_REGIONS) {
+    for (let seed = 1; seed < 200; seed += 1) {
+      for (const moment of momentsFor({ slug, travelHours: 12 }, seed)) {
+        const day = MOMENTS[moment.key];
+        assert.equal(moment.title, day.title);
+        assert.equal(moment.scene, day.scene);
+        assert.equal(moment.prose, day.prose);
+        assert.deepStrictEqual(moment.options.slice(0, -1), day.options);
+        checked += 1;
+      }
+    }
+  }
+  assert.ok(checked > 100, `${checked} moments is not a sweep`);
+});
+
+test('leaving after dark changes the words and nothing else', () => {
+  /*
+   * The phase's first constraint, and the reason the swap happens after placement rather
+   * than during it: how many moments a trip offers comes from the region, which axes and
+   * which hours come from the seed, and neither has heard of the clock. Two departures,
+   * one seed, one region — identical skeletons.
+   *
+   * A four-hour walk, so that the whole of it falls on one side of the light and the test
+   * is about the swap rather than about a trip that crosses dusk. The long-trip case is the
+   * test below.
+   */
+  let differed = 0;
+  for (let seed = 1; seed < 120; seed += 1) {
+    const day = momentsFor(leavingAt('ruined_city', 4, MIDSUMMER_DAWN + 6 * 3_600_000), seed);
+    const night = momentsFor(leavingAt('ruined_city', 4, MIDWINTER_DUSK + 3_600_000), seed);
+
+    assert.deepStrictEqual(skeleton(night), skeleton(day), `seed ${seed}`);
+
+    for (let i = 0; i < day.length; i += 1) {
+      if (!NIGHT[day[i].key]) continue;
+      assert.equal(night[i].title, NIGHT[day[i].key].title, `seed ${seed}`);
+      assert.equal(day[i].title, MOMENTS[day[i].key].title, `seed ${seed}`);
+      differed += 1;
+    }
+  }
+  assert.ok(differed > 0, 'no moment was ever read differently, so nothing was tested');
+});
+
+test('the words come from the hour the moment happens at, not the hour they left', () => {
+  /*
+   * The sweep in `tools/night-share.mjs` is what makes this the ordinary case rather than an
+   * edge: from the Deep Zone up, no departure hour in the year avoids darkness and none is
+   * entirely dark, so a long trip is *always* mixed. A departure-time flag would have made
+   * every one of those trips read as a single time of day for eighteen hours.
+   */
+  const dawn = Date.UTC(2026, 5, 21, 14); // out at two, back at eight the next morning
+  const moments = momentsFor(leavingAt('the_deep_zone', 18, dawn), 42);
+  assert.ok(moments.length >= 3, 'a long trip to argue about');
+
+  const readings = moments.map((moment) => ({
+    key: moment.key,
+    atHour: moment.atHour,
+    night: NIGHT[moment.key] !== undefined && moment.title === NIGHT[moment.key].title,
+  }));
+
+  assert.ok(
+    readings.some((one) => !one.night) && readings.some((one) => one.night),
+    `one trip read entirely one way: ${JSON.stringify(readings)}`,
+  );
+
+  // And in the right order: this one leaves in daylight and walks into the night.
+  const firstDark = readings.findIndex((one) => one.night);
+  assert.ok(firstDark > 0, 'the first moment of an afternoon departure is in daylight');
+  assert.ok(
+    readings.slice(firstDark).every((one) => one.night || !NIGHT[one.key]),
+    'the light does not come back on before dawn',
+  );
+});
+
+test('an option means the same thing after dark as before it', () => {
+  // What `answerMoment` reads off the option it was handed: the key it matches on, the
+  // hours it moves the return by, what it spends out of the pack. A night mirror that
+  // changed any of these would be a difficulty that depends on the clock, on top of the one
+  // `coefficientsAt` has already priced.
+  for (let seed = 1; seed < 200; seed += 1) {
+    const day = momentsFor(leavingAt('the_deep_zone', 18, MIDSUMMER_DAWN + 4 * 3_600_000), seed);
+    const night = momentsFor(leavingAt('the_deep_zone', 18, MIDWINTER_DUSK), seed);
+
+    for (let i = 0; i < day.length; i += 1) {
+      for (let j = 0; j < day[i].options.length; j += 1) {
+        const { label: _dl, detail: _dd, ...was } = day[i].options[j];
+        const { label: _nl, detail: _nd, ...now } = night[i].options[j];
+        assert.deepStrictEqual(now, was, `seed ${seed}, ${day[i].key}/${was.key}`);
+      }
+    }
+  }
 });
