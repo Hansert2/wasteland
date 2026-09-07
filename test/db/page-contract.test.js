@@ -345,6 +345,28 @@ test('each view has something on it, and Contact is on all of them', async () =>
     camp.includes('body:not([data-pane="camp"]) main #s-moment:not(:has(.contact)) { display: none; }'),
     'the empty Contact line belongs to the check-in view alone',
   );
+
+  /*
+   * And nothing inside the box is hidden on any one view.
+   *
+   * The Survivor view used to take the state line away, reasoning that the roster on the
+   * same screen already said it. That is a claim about scroll position rather than about
+   * the document — a camp of four puts the roster most of a viewport above the box — and
+   * it left a block that is whole on four screens and a fragment on the fifth.
+   *
+   * Pinned as the *absence* of a rule rather than the presence of one, because that is the
+   * shape the regression takes: somebody hides one more part of the box on one more view
+   * for one more locally good reason. The box is answerable from five views and must be
+   * readable from five views. A rule that hides the whole section is a different question
+   * and is asserted above.
+   */
+  const hidesPart = [...camp.matchAll(/body\[data-pane="[a-z]+"\][^{}]*#s-moment\s+[^{}]+\{([^}]*)\}/g)]
+    .filter((match) => /display\s*:\s*none/.test(match[1]));
+  assert.deepStrictEqual(
+    hidesPart.map((match) => match[0]),
+    [],
+    'a view is hiding part of the Contact box',
+  );
 });
 
 test('Records is a view of the camp, not a page beside it', async () => {

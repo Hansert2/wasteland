@@ -1547,12 +1547,26 @@ ${PANE_CSS}
    */
 
   /*
-   * The Contact box repeats the trip's state on purpose — the decision needs those facts
-   * beside it rather than a click away. On this view they are not a click away: the roster
-   * is on the same screen saying the same sentence about the same trip. So the line goes
-   * there and only there, and the box keeps it everywhere else.
+   * The Contact box repeats the trip's state on purpose, on every view including this one.
+   *
+   * This used to hide the line on the Survivor view, on the grounds that the roster is on
+   * the same screen saying the same sentence about the same trip. That was true and it was
+   * still the wrong rule, for two reasons that only showed up in play.
+   *
+   * The first is that "the same screen" is a claim about scroll position, not about the
+   * document. A camp with four people puts the roster above a moment box that can be most
+   * of a viewport further down, and the sentence was hidden exactly where the player could
+   * no longer see the thing it was deferring to.
+   *
+   * The second is that the box is now the only complete statement of the trip anywhere: who
+   * is on the wire, where they are standing, which contact this is, what they are carrying,
+   * and what the hours have cost them. A block that is answerable from five views should be
+   * readable from five views, and hiding a line on one of them made it a block that is
+   * whole on four screens and a fragment on the fifth.
+   *
+   * So the duplication on this view is deliberate now rather than avoided. It costs one
+   * line of small print beside a decision that is worth more than one line of small print.
    */
-  body[data-pane="survivor"] #s-moment .state { display: none; }
 
   /* The away log beside Next, on the one view that has both. Unpicked when the log has
      a list in it rather than a line — half a column is not where you read the longest
@@ -1788,7 +1802,16 @@ ${PANE_CSS}
    * on the line, over the hour it happened at.
    */
 
-  .choices { display: grid; grid-template-columns: repeat(3, 1fr);
+  /*
+   * As many columns as there are answers, set on the element by renderMoment().
+   *
+   * A fixed three was right exactly when a moment offered three cells, which stopped being
+   * true in both directions once turning back moved out of the row: two answers leave a
+   * third of the row empty, and before that, three answers plus the way out put a fourth
+   * cell in a second row with two empty cells beside it. The fallback is three so a row
+   * rendered without the property still looks like the row it always did.
+   */
+  .choices { display: grid; grid-template-columns: repeat(var(--cols, 3), 1fr);
              border-top: 1px solid var(--rule); }
   .choice { display: flex; flex-direction: column; gap: 11px;
             padding: 15px 20px; border-right: 1px solid var(--rule-in); }
@@ -1823,6 +1846,45 @@ ${PANE_CSS}
   .eff.risk { color: var(--oxide-light); border-color: var(--warn-rule);
               background: var(--warn-strip); }
 
+  /*
+   * The way out, under the answers rather than among them.
+   *
+   * One line, and every part of it a step quieter than the same part of a choice: the name
+   * at 15px against 17 and in --dim against --bone, the sentence at 14 against 15.5, the
+   * button outlined in the panel's own rule rather than in --control. That is the whole of
+   * how it says "a different kind of thing" -- no accent, no icon, no italics.
+   *
+   * It has to stay legible as a *control*, though, because on a trip that has gone badly it
+   * is the right answer and the player is looking for it. Hence the fill behind the strip
+   * and the hover that brings the button back to --bone: quieter than a choice, never
+   * quieter than the footnote under it.
+   */
+  .wayout { display: flex; flex-wrap: wrap; align-items: center;
+            justify-content: space-between; gap: 10px 18px; padding: 12px 20px;
+            background: #1A1917; border-top: 1px solid var(--rule); }
+  .wayout .what { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px;
+                  min-width: 0; }
+  .wayout .title { font-family: var(--label); font-size: 15px; line-height: 1.3;
+                   color: var(--dim); }
+  .wayout .detail { font-size: 14px; line-height: 1.45; color: var(--faint); }
+  /* The chips and the control travel together, so a wrap drops them as one group rather
+     than stranding the button on a line of its own. Grouped rather than pushed across with
+     an auto margin, which is the trap .figures already records: an auto margin survives
+     the wrap and holds the group against the far edge of a line it now has to itself. */
+  .wayout .taking { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+  .wayout button { padding: 8px 16px; border-color: var(--rule); color: var(--dim); }
+  .wayout button:hover { border-color: var(--dim); color: var(--bone); }
+
+  /*
+   * The trip's band, inside the block rather than beside a roster row.
+   *
+   * The .afield.plated band is a card in the roster and carries its own frame; here it is a course
+   * across a block that already has one, so it loses its border and keeps the rule under
+   * it. Nothing else changes -- same plate, same veil, same figures -- because the point of
+   * using this band is that the two read as the same fact.
+   */
+  .contact .afield.plated { border: 0; border-bottom: 1px solid var(--rule); }
+
   /* The one thing the chips cannot fit inside themselves. Set below every other size on
      the block, because a reader who has understood "+55% haul" never needs to read it
      twice and a reader who has not needs it exactly once. */
@@ -1841,6 +1903,26 @@ ${PANE_CSS}
                                   padding-left: 24px; }
   .contact.warned > .block-body { padding-left: 24px; }
   .contact.warned .choice:first-child { padding-left: 24px; }
+  /*
+   * Two things the rail needs from the courses added under it, and they are not the same
+   * thing.
+   *
+   * The padding is alignment: every course that sets its own left padding has to set the
+   * same one, or the band's place name and the choices' titles start on different verticals
+   * from the prose between them.
+   *
+   * The shadow is the rail itself. An inset box-shadow paints under the element's own
+   * children but over its own background only -- a child that sets a background of its own
+   * covers it. The block head has always done that and reads fine, because the rail simply
+   * begins below it. The way out is the case that does not: it sits between the choices and
+   * the footnote, which both show the rail, so without this the accent runs down the block,
+   * stops for one strip, and starts again. That reads as a rendering fault rather than as a
+   * warning. The band needs no such rule -- like the head, it is above where the rail
+   * starts.
+   */
+  .contact.warned .afield-head { padding-left: 24px; }
+  .contact.warned .wayout { padding-left: 24px;
+                            box-shadow: inset 4px 0 0 var(--oxide); }
   /* The health figure is the point, so the state line is where the warning is felt. */
   .contact.warned .state { color: var(--oxide-light); }
   .choice.warned { background: #211A15; }
@@ -1853,6 +1935,11 @@ ${PANE_CSS}
     .choices { grid-template-columns: 1fr; }
     .choice { border-right: 0; border-top: 1px solid var(--rule-in); }
     .choice:first-child { border-top: 0; }
+    /* The strip stops being a row: name over sentence over chips and control, all left
+       aligned, because space-between on one narrow line puts a two-word button an inch
+       from a two-word name with nothing at all in between them. */
+    .wayout { justify-content: flex-start; }
+    .wayout .what { flex-direction: column; gap: 3px; }
   }
 
   /* ---- the sky ---- */
@@ -5695,70 +5782,96 @@ function renderGate(gate) {
  * answers "what is this person doing" on its own, and the Away block could go back to being
  * only about where to send somebody.
  */
-function tripReadout(away) {
-  if (!away) return '';
-  const report = away.report;
-  const line = away.line;
-
-  /*
-   * The haul, and then what it has cost — two kinds of fact, and the row says so twice:
-   * an outer rule where one stops and the other starts, and the accent on the figures
-   * that are being taken rather than gathered.
-   *
-   * A cost that has not happened yet is not a column. This used to render "damage —" and
-   * "rads —" always, which put two em-dashes at the weight of a haul across two-fifths of
-   * the cell to report that nothing had gone wrong; the trip's first hours are mostly
-   * that, so the widest thing in the cell was usually its emptiest.
-   */
-  const carried = Object.entries(report?.carrying ?? {}).map(([kind, amount]) => ({
+/**
+ * The haul, and then what it has cost — as a row of instrument cells.
+ *
+ * Two kinds of fact, and the row says so twice: an outer rule where one stops and the
+ * other starts, and the accent on the figures that are being taken rather than gathered.
+ *
+ * A cost that has not happened yet is not a column. This used to render "damage —" and
+ * "rads —" always, which put two em-dashes at the weight of a haul across two-fifths of
+ * the cell to report that nothing had gone wrong; the trip's first hours are mostly
+ * that, so the widest thing in the cell was usually its emptiest.
+ *
+ * `clean` is the one caller that wants the opposite, and it is a real difference rather
+ * than a preference. The roster's band is glanced at, repeatedly, and an absent cost cell
+ * is read correctly as "nothing yet" by anybody who has seen the band before. The Contact
+ * box is read *once*, against a clock, to answer "can they afford this" — and seven of
+ * the twenty moments are the radiation decision. There, "no dose yet" is the answer to the
+ * question rather than the absence of one, and one small cell is a cheap way to say it.
+ */
+function tripFigures({ carrying, damage, radiation }, { clean = false } = {}) {
+  const carried = Object.entries(carrying ?? {}).map(([kind, amount]) => ({
     tag: kind,
     value: String(amount),
   }));
 
   const spent = [];
-  if (Number(report?.damage) > 0) {
-    spent.push({ tag: 'health', value: `−${n(report.damage, 0)}`, tone: 'hurt', cost: true });
+  if (Number(damage) > 0) {
+    spent.push({ tag: 'health', value: `−${n(damage, 0)}`, tone: 'hurt', cost: true });
   }
-  if (Number(report?.radiation) > 0) {
-    spent.push({ tag: 'rads', value: `+${n(report.radiation, 1)}`, tone: 'hurt', cost: spent.length === 0 });
+  if (Number(radiation) > 0) {
+    spent.push({ tag: 'rads', value: `+${n(radiation, 1)}`, tone: 'hurt', cost: spent.length === 0 });
   }
+  if (clean && spent.length === 0) spent.push({ tag: 'taken', value: 'none', cost: true });
 
   const cells = [...carried, ...spent];
-  const figures =
-    cells.length > 0
-      ? `<div class="figures">${cells
-          .map(
-            (cell) =>
-              `<div class="read${cell.cost ? ' cost' : ''}"><span class="tag">${escape(
-                cell.tag,
-              )}</span><span class="fig${
-                cell.tone ? ` ${cell.tone}` : ''
-              }">${escape(cell.value)}</span></div>`,
-          )
-          .join('')}</div>`
-      : '';
+  if (cells.length === 0) return '';
 
-  /*
-   * On the ground of the place they are in.
-   *
-   * The same treatment as a dispatch row and deliberately so: the readout and the table
-   * below it are two views of one place, and a photograph that is a band in one and a
-   * ground in the other makes them look like two different kinds of thing.
-   */
-  return `<div class="afield plated"${plateGround(away.regionSlug)}>
+  return `<div class="figures">${cells
+    .map(
+      (cell) =>
+        `<div class="read${cell.cost ? ' cost' : ''}"><span class="tag">${escape(
+          cell.tag,
+        )}</span><span class="fig${
+          cell.tone ? ` ${cell.tone}` : ''
+        }">${escape(cell.value)}</span></div>`,
+    )
+    .join('')}</div>`;
+}
+
+/**
+ * Where a survivor is, what they are carrying and what it has cost — on the ground of the
+ * place itself.
+ *
+ * **One function, because there are two of these on the page and they are the same fact.**
+ * The roster shows it for every trip in flight; the Contact box shows it for the trip with
+ * a window open, and the two are frequently on screen together. Composed separately they
+ * drifted immediately: the Contact box had this as a sentence — "4 hours into The Deep
+ * Zone, carrying 4 scrap, at 100 health" — which is the shape this band itself started as
+ * and grew out of, for the reason recorded below.
+ *
+ * The place is set at the size a person's name is, because being away is the largest thing
+ * true of them and it used to be the smallest type in the cell. The figures ride beside it
+ * rather than under it: they were a sentence for one version and a full-width readout for
+ * another, and a sentence is prose in the one part of the cell that is not prose, while the
+ * readout cost a whole band to say what five columns say in the width already going spare
+ * next to a two-word place name.
+ *
+ * The plate is the same treatment a dispatch row gets, deliberately: this and the table are
+ * two views of one place, and a photograph that is a band in one and a ground in the other
+ * makes them look like two different kinds of thing.
+ */
+function awayBand(where, report, { clean = false, inner = '' } = {}) {
+  return `<div class="afield plated"${plateGround(where.regionSlug)}>
       <div class="afield-head">
         <div class="whereabouts">
           <span class="tag">away at</span>
-          <span class="where-name">${escape(away.regionName)}</span>
+          <span class="where-name">${escape(where.regionName)}</span>
           <span class="back-in">
             <span class="tag">back in</span>
-            <span class="fig">${countdown(away.returnsAt, 'now')}</span>
+            <span class="fig">${countdown(where.returnsAt, 'now')}</span>
           </span>
         </div>
-        ${figures}
+        ${tripFigures(report, { clean })}
       </div>
-      ${tripLine(line)}
+      ${inner}
     </div>`;
+}
+
+function tripReadout(away) {
+  if (!away) return '';
+  return awayBand(away, away.report ?? {}, { inner: tripLine(away.line) });
 }
 
 /**
@@ -6614,7 +6727,7 @@ function renderNoSurvivor(everHeld, arriving) {
  * never do is look identical to an option you can take and refuse after the click,
  * which is what it did until 2026-08-19, on a window with eleven minutes left on it.
  */
-function momentAction(moment, option, filled, trip = null) {
+function momentAction(moment, option, filled, trip = null, label = 'Choose') {
   if (option.missing) return `<span class="short">needs ${escape(option.needs)}</span>`;
 
   /*
@@ -6630,7 +6743,7 @@ function momentAction(moment, option, filled, trip = null) {
             <input type="hidden" name="index" value="${moment.index}">
             ${trip ? `<input type="hidden" name="trip" value="${Number(trip)}">` : ''}
             <input type="hidden" name="option" value="${escape(option.key)}">
-            <button type="submit"${filled ? ' class="fill"' : ''}>Choose</button>
+            <button type="submit"${filled ? ' class="fill"' : ''}>${escape(label)}</button>
           </form>`;
 }
 
@@ -6648,12 +6761,35 @@ function renderMoment(expedition) {
    * that is neither warned nor priced in something the survivor is not carrying — and
    * if every option is one of those, nothing is filled and no choice is a default.
    */
-  const filled = moment.options.find((option) => !option.warned && !option.missing);
+  /*
+   * Turning back is the way out, not one of the answers.
+   *
+   * `momentsFor` has said so since it was written — *"it is last because it is the way
+   * out, not one of the things on offer"* — and then the layout put it in the row as a
+   * peer, which had two costs. The visible one was arithmetic: the row is three columns
+   * and a moment offers two or three answers, so with turning back among them seven of the
+   * twenty moments rendered four cells and the fourth landed in a second row on its own
+   * with two thirds of the block empty beside it. The quieter one is that "leave now with
+   * what you have" was being compared like an answer to a situation, when it is the same
+   * offer on every moment in the game.
+   *
+   * So the row holds the answers, sized to how many there are, and the exit gets its own
+   * strip under them. It reads quieter than a choice because it is a different kind of
+   * thing, not because it is a worse idea — on a bad trip it is frequently the best one.
+   *
+   * The key is a literal because this file imports nothing on purpose; a unit test pins it
+   * against `TURN_BACK.key` so the two cannot drift apart in silence.
+   */
+  const WAY_OUT = 'turn_back';
+  const offered = moment.options.filter((option) => option.key !== WAY_OUT);
+  const wayOut = moment.options.find((option) => option.key === WAY_OUT);
+
+  const filled = offered.find((option) => !option.warned && !option.missing);
 
   // The glyph goes on the consequence, not on the title. A title says what you would be
   // choosing; the consequence says what it would cost, and the warning is about the
   // cost. Marking the title would read as "this option is disabled".
-  const choices = moment.options
+  const choices = offered
     .map(
       (option) => `<div class="choice${option.warned ? ' warned' : ''}">
         <span class="title">${escape(option.label)}</span>
@@ -6690,13 +6826,42 @@ function renderMoment(expedition) {
         <span class="tag">Contact${expedition?.who ? ` &middot; ${escape(expedition.who)}` : ''}</span>
         <span class="clock deadline">${countdown(moment.closesAt, 'gone')}<small>to answer</small></span>
       </div>
+      ${/*
+         * The trip, in the same band the roster reads it from — see `awayBand`. This was a
+         * sentence in the numeral face above the subject line, which was right while it
+         * carried three facts and stopped being right when it carried six.
+         *
+         * "Back in" arrives with the band and was on no version of the sentence, which is
+         * the part worth noticing: it is a figure these options *change*. Pressing on moves
+         * the return, turning back moves it a long way, and until now the block asked for
+         * that decision without showing the number it moves.
+         */ ''}
+      ${awayBand(expedition, expedition, { clean: true })}
       <div class="block-body">
-        <p class="state">${escape(condition(expedition))}</p>
         ${moment.title ? `<p class="subject">${escape(moment.title)}</p>` : ''}
         ${moment.scene ? `<p class="scene">${escape(moment.scene)}</p>` : ''}
         <p class="turn">${escape(moment.prose)}</p>
       </div>
-      <div class="choices">${choices}</div>
+      ${/*
+         * Sized to the answers there are rather than to a number picked in advance. Two
+         * answers make two columns and three make three; the old fixed three left a hole on
+         * one and orphaned a cell on the other.
+         */ ''}
+      <div class="choices" style="--cols:${offered.length}">${choices}</div>
+      ${
+        wayOut
+          ? `<div class="wayout">
+               <span class="what">
+                 <span class="title">${escape(wayOut.label)}</span>
+                 <span class="detail">${escape(wayOut.detail)}</span>
+               </span>
+               <span class="taking">
+                 ${effects(wayOut)}
+                 ${momentAction(moment, wayOut, false, expedition?.expeditionId, 'Turn back')}
+               </span>
+             </div>`
+          : ''
+      }
       ${scaled ? '<p class="footnote">Haul and rads change only for what is left of the trip.</p>' : ''}
     </div>`;
 }
@@ -6721,60 +6886,7 @@ function effects(option) {
     .join('')}</ul>`;
 }
 
-/** "Six hours into the Deep Zone, carrying 22 scrap, at 61 health." */
-/**
- * How long they have been gone, in hours and deliberately not in seconds.
- *
- * This used to be `duration()`, which is a countdown formatter, so the page printed
- * "17m 08s into The Millrace" directly beneath a due-back timer that was actually
- * ticking: one live clock and one frozen one, and the frozen one reads as broken.
- *
- * Wiring it to tick would have been the wrong fix. The two would then be counting the
- * same span from opposite ends — two timers to say one thing — and the page contract
- * has exactly one job for a live countdown, which is to fetch fresh state when it
- * expires. Elapsed time never expires.
- *
- * Rounded to hours it changes about as slowly as the thing it measures, which is the
- * argument the haul is already rendered on: a number that changes slowly because the
- * thing it counts changes slowly is telling the truth.
- */
-function elapsed(hoursOut, region) {
-  // Under a few minutes there is nothing to round to, and "0 hours in" is a worse
-  // answer than saying what actually happened.
-  if (hoursOut < 0.05) {
-    return region ? `Just set out for ${region}` : 'Just set out';
-  }
 
-  const into = region ? ` into ${region}` : ' in';
-  if (hoursOut < 1) return `Less than an hour${into}`;
-
-  const whole = Math.floor(hoursOut);
-  return `${whole} hour${whole === 1 ? '' : 's'}${into}`;
-}
-
-/**
- * The one-line state of a trip, for the moment box.
- *
- * The Away report used to share this and no longer does — six facts in one breath is
- * the wrong container for a set of independent figures, and that block reads them off
- * a `readout()` now. Here the sentence is still right: it is small print under a
- * decision, read once to answer "can they afford this", and a row of instrument cells
- * above three choices would out-shout the choices.
- *
- * The region is named because the heading over it is "Contact" rather than the place,
- * and a decision needs to know where they are standing.
- */
-function condition(expedition) {
-  const carried = Object.entries(expedition.carrying)
-    .map(([kind, amount]) => `${amount} ${kind}`)
-    .join(', ');
-
-  return [
-    elapsed(expedition.hoursOut, expedition.regionName),
-    carried ? `carrying ${carried}` : 'carrying nothing yet',
-    `at ${n(expedition.health, 0)} health`,
-  ].join(', ') + '.';
-}
 
 /**
  * A row of labelled figures: a set of independent numbers, as an instrument.

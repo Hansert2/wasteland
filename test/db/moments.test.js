@@ -426,6 +426,184 @@ test('an answered moment stays on the page instead of vanishing', async () => {
   });
 });
 
+/** The Contact box as rendered, cut out of the page by the section that holds it. */
+function contactBox(html) {
+  const section = /<section id="s-moment">([\s\S]*?)<\/section>/.exec(html);
+  assert.ok(section, 'no moment section on the page');
+  const box = section[1];
+  assert.ok(box.includes('class="block contact'), 'the moment section holds no Contact box');
+
+  const cells = [...box.matchAll(
+    /<div class="read( cost)?"><span class="tag">([^<]*)<\/span><span class="fig( hurt)?">([^<]*)<\/span><\/div>/g,
+  )];
+
+  return {
+    box,
+    who: /<span class="tag">Contact &middot; ([^<]*)<\/span>/.exec(box)?.[1] ?? null,
+    where: /<span class="where-name">([^<]*)<\/span>/.exec(box)?.[1] ?? null,
+    subject: /<p class="subject">([^<]*)<\/p>/.exec(box)?.[1] ?? null,
+    // Label -> figure, which is the whole of what the band claims.
+    figures: new Map(cells.map((cell) => [cell[2], cell[4]])),
+    columns: Number(/<div class="choices" style="--cols:(\d+)">/.exec(box)?.[1] ?? 0),
+    choices: (box.match(/<div class="choice[ "]/g) ?? []).length,
+    // No nested <div> in the strip — it is spans, a <ul> and a <form> — so the first
+    // closing tag is its own.
+    wayOut: /<div class="wayout">[\s\S]*?<\/div>/.exec(box)?.[0] ?? null,
+  };
+}
+
+test('the Contact box states the whole trip, and hides none of it on any view', async () => {
+  /*
+   * The block is answerable from all five views — `main #s-moment { display: block }` — so
+   * it has to be *readable* from all five, and for a while it was not: the Survivor view
+   * hid the trip's state on the grounds that the roster was saying the same thing further
+   * up the same page. "Further up the same page" is a claim about scroll position.
+   *
+   * What the box has to carry is the set of facts the decision needs and nothing else on
+   * the page supplies at that moment: who is on the wire, where they are standing, which
+   * contact this is, what they are holding, what the hours have cost, and when they are due
+   * back. Asserted against the view object rather than against literals, so this stays a
+   * test about completeness rather than about one fixture's numbers.
+   */
+  await withRollback(async (client) => {
+    const now = LEAVES_IN_DAYLIGHT;
+    const { settlementId, slug } = await setup(client);
+    await sendFixed(client, settlementId, slug, now);
+
+    const at = now + hours(5);
+    const view = await viewCamp(client, settlementId, at);
+    const contact = view.contact;
+    assert.ok(contact?.moment, 'a window is open to render');
+
+    // Every view renders one document and differs by a body attribute, so the content is
+    // asserted once here and the visibility is asserted in the page contract, where the
+    // rule that used to hide it lives.
+    const seen = contactBox(campPage(view, { pane: 'camp' }));
+
+    assert.ok(contact.who, 'the trip knows whose it is');
+    assert.equal(seen.who, contact.who, 'the head says who is on the wire');
+    assert.equal(seen.subject, contact.moment.title, 'the subject says which contact this is');
+    assert.equal(seen.where, contact.regionName, 'the band says where they are standing');
+
+    // Due back, which arrived with the band and was on no version of the sentence before
+    // it — and is a figure these options move.
+    assert.ok(
+      seen.box.includes(`data-until="${contact.returnsAt.getTime()}"`),
+      'the band carries a live countdown to the return',
+    );
+
+    // The place they are standing in, as ground. The eleven photographs exist so that
+    // being out there is not a form field, and this is the block most about being out
+    // there.
+    assert.ok(
+      seen.box.includes(`--plate:url(/img/${contact.regionSlug}.webp)`),
+      'the band stands on the region plate',
+    );
+
+    // What they are carrying, kind by kind, so a haul of two resources cannot report one.
+    const carried = Object.entries(contact.carrying);
+    assert.ok(carried.length > 0, 'five hours into the Deep Zone is not empty-handed');
+    for (const [kind, amount] of carried) {
+      assert.equal(seen.figures.get(kind), String(amount), `${kind} is wrong or missing`);
+    }
+
+    /*
+     * The dose, which the sentence never carried at all and which the block most needs:
+     * seven of the twenty moments are the radiation decision, and their options are priced
+     * in "−55% rads from here" against a number the player could not see.
+     */
+    assert.ok(contact.radiation > 0, 'five hours in the Deep Zone is not a clean trip');
+    assert.ok(seen.figures.has('rads'), `the dose is missing: ${[...seen.figures.keys()]}`);
+
+    // And only what has actually happened: this trip has taken no damage, so there is no
+    // cell claiming any.
+    assert.equal(contact.damage, 0, 'the fixture is unhurt at five hours');
+    assert.ok(!seen.figures.has('health'), 'damage claimed where there is none');
+  });
+});
+
+test('a trip that has taken nothing says so rather than saying nothing', async () => {
+  // The one place this band parts company with the roster's, which drops a cost that has
+  // not happened because an empty column at the weight of a haul is a wide way to say
+  // nothing. This box is read once, against a clock, to answer "can they afford this" — so
+  // "taken · none" is the answer to the question rather than the absence of one.
+  await withRollback(async (client) => {
+    const now = LEAVES_IN_DAYLIGHT;
+    const { settlementId } = await setup(client, 'the_service_road');
+    await sendFixed(client, settlementId, 'the_service_road', now);
+
+    // Read inside the window rather than at a guessed hour: seed 8 puts the service road's
+    // one moment at 0.38–0.63, which no round number lands in.
+    const [only] = momentsFor({ slug: 'the_service_road', travelHours: 0.75 }, FIXED_SEED);
+    assert.ok(only, 'seed 8 offers the service road a window at all');
+
+    const view = await viewCamp(client, settlementId, now + hours(only.atHour + 0.02));
+    const contact = view.contact;
+    assert.ok(contact?.moment, 'the service road opens its one window early');
+    assert.equal(contact.radiation, 0);
+    assert.equal(contact.damage, 0);
+
+    const seen = contactBox(campPage(view, { pane: 'camp' }));
+    assert.equal(seen.figures.get('taken'), 'none');
+    assert.ok(!seen.figures.has('rads') && !seen.figures.has('health'));
+  });
+});
+
+test('turning back is the way out of the block, not a column in it', async () => {
+  /*
+   * `momentsFor` has always said what turning back is — "it is last because it is the way
+   * out, not one of the things on offer" — and the layout used to contradict it by putting
+   * it in the row as a peer. That cost arithmetic as well as meaning: the row was three
+   * fixed columns, so a moment with three answers rendered a fourth cell alone in a second
+   * row with two thirds of the block empty beside it.
+   *
+   * Both halves are pinned. The row holds only the answers and is sized to how many there
+   * are; the exit is still there, still posts the same option key, and is still reachable.
+   */
+  await withRollback(async (client) => {
+    const now = LEAVES_IN_DAYLIGHT;
+    const { settlementId, slug } = await setup(client);
+    await sendFixed(client, settlementId, slug, now);
+
+    const view = await viewCamp(client, settlementId, now + hours(5));
+    const { moment } = view.contact;
+    const answers = moment.options.filter((option) => option.key !== 'turn_back');
+    assert.equal(answers.length, 3, 'counter_clicks is one of the seven that used to break');
+
+    const seen = contactBox(campPage(view, { pane: 'camp' }));
+
+    assert.equal(seen.choices, answers.length, 'the row holds the answers and nothing else');
+    assert.equal(seen.columns, answers.length, 'and is as wide as there are answers');
+
+    assert.ok(seen.wayOut, 'the way out is still on the block');
+    assert.ok(
+      seen.wayOut.includes('<input type="hidden" name="option" value="turn_back">'),
+      'and still posts the option it always did',
+    );
+    assert.ok(seen.wayOut.includes('Turn back'), 'with a control that says what it does');
+    assert.ok(!seen.wayOut.includes('class="choice"'), 'without being a choice');
+  });
+});
+
+test('a moment offering two answers fills the row with two', async () => {
+  // The other half of the arithmetic, and the one a fix for the orphan could easily have
+  // introduced: thirteen of the twenty moments offer two answers, and against a fixed three
+  // columns they would now leave a third of the row empty.
+  await withRollback(async (client) => {
+    const now = LEAVES_IN_DAYLIGHT;
+    const { settlementId } = await setup(client, 'the_service_road');
+    await sendFixed(client, settlementId, 'the_service_road', now);
+
+    const [only] = momentsFor({ slug: 'the_service_road', travelHours: 0.75 }, FIXED_SEED);
+    const view = await viewCamp(client, settlementId, now + hours(only.atHour + 0.02));
+    const answers = view.contact.moment.options.filter((o) => o.key !== 'turn_back');
+
+    const seen = contactBox(campPage(view, { pane: 'camp' }));
+    assert.equal(seen.columns, answers.length);
+    assert.equal(seen.choices, answers.length);
+  });
+});
+
 test('the same trip after dark is the same moment in different words', async () => {
   /*
    * Phase 14's whole claim, end to end through the database: an identical seed leaving at a

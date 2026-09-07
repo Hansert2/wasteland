@@ -5,6 +5,7 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
 import { landingPage } from '../../src/web/render.js';
+import { TURN_BACK } from '../../src/game/moments.js';
 
 /**
  * The stylesheet is a template literal, and that is a worse place to be wrong than it
@@ -105,5 +106,35 @@ test('no backtick is written inside the stylesheet', async () => {
   assert.ok(
     body.slice(0, closed).trim().endsWith('}') || closed > 1000,
     `a backtick ends STYLE ${closed} characters in, which is far too early`,
+  );
+});
+
+test('the renderer and the content agree on what turning back is called', async () => {
+  /*
+   * `renderMoment` lifts turning back out of the choice row and gives it its own strip, and
+   * it finds it by key — `'turn_back'`, written as a literal, because `render.js` imports
+   * nothing and that is deliberate: it is a template file, and every game module it reached
+   * into would be a rule about the page leaking into a rule about the world.
+   *
+   * The cost of that is a string in two places, and the failure it buys is silent in the
+   * worst way. Rename the option in `moments.js` and the renderer stops finding it: the way
+   * out reappears as a fourth column in a three-column row, the row's `--cols` is off by
+   * one, and nothing throws. So the literal is pinned here rather than trusted.
+   *
+   * Read as source text for the same reason the backtick lint above is: the coupling is
+   * between a constant and a piece of writing, and there is no runtime moment at which the
+   * two are both available to compare.
+   */
+  const source = await readFile(
+    fileURLToPath(new URL('../../src/web/render.js', import.meta.url)),
+    'utf8',
+  );
+
+  const declared = /const WAY_OUT = '([a-z_]+)';/.exec(source);
+  assert.ok(declared, "renderMoment no longer declares WAY_OUT, so nothing pins it");
+  assert.equal(
+    declared[1],
+    TURN_BACK.key,
+    'the renderer is looking for an option key the content does not use',
   );
 });
