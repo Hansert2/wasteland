@@ -695,12 +695,18 @@ test('the bed row says what it costs, and which ceiling is holding it', async ()
       [settlementId],
     );
 
+    /*
+     * The bed's card off the workbench, read as text.
+     *
+     * It was an inset row on the shelter's line until the structures block became a ladder
+     * and a bench; the two facts below are the same two, asked of the card that replaced it.
+     */
     const bedRow = async () => {
       const view = await viewCamp(client, settlementId);
       const html = campPage(view, { pane: 'camp' });
-      const row = /<span class="tag">A Bed<\/span>[^]*?<span>([^]*?)<\/span>\s*<\/span>/.exec(html);
-      assert.ok(row, 'the shelter offers a bed');
-      return row[1].replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+      const card = /<div class="fitcard [^"]*">[^]*?<span class="nm">A Bed<\/span>([^]*?)<\/div>/.exec(html);
+      assert.ok(card, 'the workbench carries a bed');
+      return card[1].replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
     };
 
     assert.match(await bedRow(), /12 scrap, 30m/, 'priced in the currency it actually takes');
@@ -718,7 +724,8 @@ test('the bed row says what it costs, and which ceiling is holding it', async ()
     // first, so the row says that rather than claiming the shelter is full.
     const held = await bedRow();
     assert.match(held, /the spare is empty/, 'the page names the ceiling that is actually binding');
-    assert.doesNotMatch(held, /fitted/, 'and does not claim the shelter has no room');
+    assert.doesNotMatch(held, /[Ff]itted/, 'and does not claim the shelter has no room');
+    assert.doesNotMatch(held, /another at/, 'nor points at a level that would not help');
   });
 });
 
@@ -761,10 +768,10 @@ test('a full bed row names the level that buys the next one', async () => {
     assert.equal(bed.nextAt, 6, 'the third bed wants a shelter at 6');
 
     const html = campPage(view, { pane: 'camp' });
-    const row = /<span class="tag">A Bed<\/span>[^]*?<span>([^]*?)<\/span>\s*<\/span>/.exec(html);
-    assert.ok(row, 'the shelter still offers the bed');
-    const said = row[1].replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-    assert.match(said, /fitted/, 'the row still says there is no room');
+    const card = /<div class="fitcard [^"]*">[^]*?<span class="nm">A Bed<\/span>([^]*?)<\/div>/.exec(html);
+    assert.ok(card, 'the workbench still carries the bed');
+    const said = card[1].replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    assert.match(said, /2 fitted/, 'the card still says there is no room, and how many stand');
     assert.match(said, /another at shelter 6/, 'and says what buys the room');
   });
 });
@@ -954,5 +961,211 @@ test('the stores line counts every mouth in the camp, and what recovery draws', 
       drawOf(two, 'food') - CONFIG.foodPerHour,
       'a sleeper leaves the stores line entirely',
     );
+  });
+});
+
+/*
+ * ---------------------------------------------------------------------------------------
+ * The structures block as a ladder and a bench.
+ * ---------------------------------------------------------------------------------------
+ */
+
+test('every structure is drawn on the same scale, so the gates line up', async () => {
+  /*
+   * The reason the table went. **Level 4 is the only reward level in the game** — after the
+   * shelter's clock at 1 and its bed at 2, all four remaining fittings sit at 4, on four
+   * different structures — and a table could not say it, because rows are read one at a time
+   * and that is a fact about the column.
+   *
+   * Which means the thing to pin is not that a ladder exists but that every ladder covers the
+   * *same* levels. The moment two rows disagree, the header above them is a lie and the wall
+   * stops being a column.
+   */
+  await withRollback(async (client) => {
+    const settlementId = await setup(client);
+    await client.query(
+      `update camp_structures set level = case kind
+         when 'shelter' then 3 when 'watchtower' then 1 else 2 end
+       where settlement_id = $1`,
+      [settlementId],
+    );
+
+    const view = await viewCamp(client, settlementId);
+    const scales = view.structures.map((one) => one.ladder.map((stop) => stop.level).join(','));
+    assert.equal(new Set(scales).size, 1, `the ladders disagree: ${[...new Set(scales)].join(' | ')}`);
+    assert.equal(view.structures[0].ladder.length, 7, 'seven stops');
+
+    // And the gates really are all at 4, which is the finding the layout exists to show.
+    const gates = view.structures.flatMap((one) =>
+      one.ladder.filter((stop) => stop.opens.length > 0).map((stop) => stop.level),
+    );
+    assert.deepStrictEqual(gates.filter((at) => at > 2).sort(), [4, 4, 4], 'four is the wall');
+  });
+});
+
+test('a ladder reaches far enough to show the gate it is working toward', async () => {
+  // The one judgement in `ladderFor`: the window ends three past where the camp stands, and
+  // never before the furthest gate still ahead. A watchtower at 1 has to be able to see 4 or
+  // the block cannot say what the levels are for — which was the whole complaint.
+  await withRollback(async (client) => {
+    const settlementId = await setup(client);
+    await client.query(
+      "update camp_structures set level = 1 where settlement_id = $1 and kind = 'watchtower'",
+      [settlementId],
+    );
+
+    const low = (await viewCamp(client, settlementId)).structures
+      .find((one) => one.kind === 'watchtower');
+    assert.ok(low.ladder.some((stop) => stop.level === 4 && stop.opens.length === 2),
+      'the Glass and the Radio are visible from level 1');
+
+    // And past every gate the window follows the camp rather than staying at the bottom:
+    // six levels of history would be six stops of nothing to buy.
+    await client.query(
+      "update camp_structures set level = 9 where settlement_id = $1 and kind = 'watchtower'",
+      [settlementId],
+    );
+    const high = (await viewCamp(client, settlementId)).structures
+      .find((one) => one.kind === 'watchtower');
+    assert.equal(high.ladder.at(-1).level, 12, 'three past where it stands');
+    assert.equal(high.ladder[0].level, 6, 'and seven stops back from there');
+  });
+});
+
+test('a stop carries the whole walk to it, not just its own step', async () => {
+  // "How far is the wall" is the question the block was never able to answer. The stop knows
+  // it: builds, scrap and hours from where the camp stands, added up in the view so the page
+  // never sums a column itself.
+  await withRollback(async (client) => {
+    const settlementId = await setup(client);
+    await client.query(
+      "update camp_structures set level = 1 where settlement_id = $1 and kind = 'watchtower'",
+      [settlementId],
+    );
+
+    const tower = (await viewCamp(client, settlementId)).structures
+      .find((one) => one.kind === 'watchtower');
+    const gate = tower.ladder.find((stop) => stop.level === 4);
+
+    assert.equal(gate.run.builds, 3, 'three levels from 1 to 4');
+    // 10 + 14 + 18 on the watchtower's curve — the same figures the cost column used to show
+    // one at a time and nothing ever added together.
+    assert.equal(gate.run.scrap, 42);
+    assert.ok(gate.run.hours > 0, 'and the time it takes');
+
+    // A level already standing has no walk to it, and says so rather than reporting zero.
+    assert.equal(tower.ladder.find((stop) => stop.level === 1).run, null);
+    assert.equal(tower.ladder.find((stop) => stop.level === 1).cost, null);
+  });
+});
+
+test('a build in flight names the level, the hands and both ends of the window', async () => {
+  /*
+   * Three facts the page has stored and never shown. `built_by` has been on the row since
+   * builds could be assigned; the start is derived from the cost curve rather than stored,
+   * so the fill costs no migration.
+   *
+   * The window matters as much as the name: without both ends the bar can only be a spinner,
+   * and the whole argument for a fill over a pulse is that it says *how far along*.
+   */
+  await withRollback(async (client) => {
+    const settlementId = await setup(client);
+    const { rows: who } = await client.query(
+      'select id, name from characters where settlement_id = $1 and died_at is null limit 1',
+      [settlementId],
+    );
+    await startBuild(client, settlementId, 'watchtower', Date.now(), who[0].id);
+
+    const tower = (await viewCamp(client, settlementId)).structures
+      .find((one) => one.kind === 'watchtower');
+
+    assert.ok(tower.building, 'the view reports the build');
+    assert.equal(tower.building.who, who[0].name, 'and whose hands it is in');
+    assert.equal(tower.building.toLevel, Number(tower.level) + 1);
+    assert.ok(tower.building.from < tower.building.until, 'a window, not an instant');
+
+    const html = campPage(await viewCamp(client, settlementId), { pane: 'camp' });
+    assert.match(html, new RegExp(`class="whose">${who[0].name}<`), 'the row says who');
+    assert.match(html, new RegExp(`${who[0].name} is raising the watchtower`), 'and so does the block');
+    assert.match(html, /class="rung [^"]*building[^"]*"[^>]*data-from="\d+" data-took="\d+"/,
+      'and the stop being raised carries the window the fill is computed from');
+  });
+});
+
+test('the fill is never marked with the attribute that drives the countdown', async () => {
+  /*
+   * `data-until` is the clock loop's own marker: it walks every element wearing it and
+   * **replaces the text**. Putting it on the stop meant the loop overwrote the whole button —
+   * dot, number, label and panel — with "11s", which is a bug you can only see by rendering
+   * the page and looking at what the script did to it.
+   *
+   * So the fill carries a start and a span, and nothing that is a container may wear
+   * `data-until`. Asserted here because the failure is silent: the markup is right, the
+   * script is right, and the page is wrong.
+   */
+  await withRollback(async (client) => {
+    const settlementId = await setup(client);
+    await startBuild(client, settlementId, 'watchtower', Date.now());
+    const html = campPage(await viewCamp(client, settlementId), { pane: 'camp' });
+
+    const marked = [...html.matchAll(/<(\w+)[^>]*\sdata-until="\d+"[^>]*>/g)].map((m) => m[1]);
+    assert.ok(marked.length > 0, 'something on this page is counting down');
+    assert.ok(
+      !marked.includes('button') && !marked.includes('div'),
+      `a container is wearing data-until: ${[...new Set(marked)].join(', ')}`,
+    );
+
+    // The fill's own pair, on the element that draws it.
+    assert.match(html, /data-from="\d+" data-took="\d+"/);
+  });
+});
+
+test('the workbench carries every fitting in the camp, with what it is for', async () => {
+  /*
+   * The summaries were a hover popup — `.note` flips to one under `(hover: hover)` — so the
+   * block never said what a Glass was at rest. The card is the first place it is readable
+   * without a pointer, and that is most of why the fittings came off the rows.
+   */
+  await withRollback(async (client) => {
+    const settlementId = await setup(client);
+    const html = campPage(await viewCamp(client, settlementId), { pane: 'camp' });
+
+    const cards = [...html.matchAll(/<div class="fitcard ([a-z]+)">([^]*?)<\/div>/g)];
+    assert.equal(cards.length, Object.keys(UPGRADES).length, 'one card per fitting');
+
+    for (const [, , body] of cards) {
+      assert.match(body, /class="on">on the /, 'each says which structure it goes on');
+      assert.match(body, /class="sm">[^<]{20,}/, 'and what it is for, at rest');
+    }
+  });
+});
+
+test('one crew, said on the page rather than after the click', async () => {
+  /*
+   * `start-upgrade` refuses with "the watchtower is already being worked on" and
+   * `buildInFlight` has always known — `some(build_completes_at) || beingFitted` — but the
+   * only way to find out was to press something and read an error. Every other control now
+   * says so before it is pressed.
+   */
+  await withRollback(async (client) => {
+    const settlementId = await setup(client);
+    // Filled to the cap rather than to a number: `resources_within_cap` is a real constraint
+    // and the shelter decides what it is.
+    await client.query(
+      `update resources set amount = storage_cap
+        where settlement_id = $1 and kind in ('scrap', 'fuel')`,
+      [settlementId],
+    );
+
+    const before = campPage(await viewCamp(client, settlementId), { pane: 'camp' });
+    assert.ok(before.includes('action="/build"'), 'a free crew can be sent to build');
+
+    await startBuild(client, settlementId, 'watchtower', Date.now());
+    const after = campPage(await viewCamp(client, settlementId), { pane: 'camp' });
+
+    assert.ok(!after.includes('action="/build"'), 'and a busy one is offered nothing to press');
+    assert.ok(!after.includes('action="/upgrade"'), 'on either bench');
+    assert.match(after, /Crew busy/, 'the rows say why');
+    assert.match(after, /the camp has one crew/, 'and the block says it once, properly');
   });
 });

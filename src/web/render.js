@@ -1942,6 +1942,218 @@ ${PANE_CSS}
     .wayout .what { flex-direction: column; gap: 3px; }
   }
 
+  /*
+   * ---- the level ladder ----
+   *
+   * Five structures on one scale, so the gates line up in a column and the wall at level 4 is
+   * drawn rather than described. Three tracks: identity, the axis, and the control. The first
+   * and last are fixed widths and the axis takes what is left -- which is the whole reason the
+   * control is pinned rather than sized to its content, because a Build menu and a survivor's
+   * name are different widths and the difference would come off the axis every time a build
+   * started, shifting the ladder under the fill running along it.
+   */
+  .ladders { padding: 4px 18px 14px; }
+  .lrow { display: grid; grid-template-columns: 196px minmax(0, 1fr) 96px; align-items: center;
+          gap: 0 20px; padding: 12px 0; border-bottom: 1px solid var(--rule-in); }
+  .lrow:last-child { border-bottom: 0; }
+  .lrow > .lact { display: flex; justify-content: flex-end; }
+  .ladhead { padding: 10px 0 2px; border-bottom: 0; }
+  .ladhead .rung { padding-top: 0; cursor: default; }
+  .ladhead .rung b { font-size: 10.5px; letter-spacing: .1em; color: var(--faint); }
+
+  /* Identity and nothing else: a name, a level, what it makes now. Three lines that never
+     grow, which is what keeps five rows the same height. */
+  .who2 { min-width: 0; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .who2 .nm { font-family: var(--label); font-size: 16px; line-height: 1.2; color: var(--bone); }
+  .who2 .lv { font-family: var(--numer); font-size: 12px; color: var(--quiet); }
+  .who2 .fx { display: block; width: 100%; margin-top: 3px; font-family: var(--numer);
+              font-size: 13.5px; line-height: 1; color: var(--value);
+              font-variant-numeric: tabular-nums; }
+
+  .rungs { display: flex; align-items: flex-start; margin: 0; padding: 0; }
+  /*
+   * A stop is a button so it can be tabbed to, which means it arrives wearing the page's
+   * button styling: bold, uppercase and tracked out. "font: inherit" undoes the face and the
+   * size and leaves the rest, so the labels read "7 SCRAP" and "53S" until the case and the
+   * tracking are handed back too.
+   */
+  .rung { flex: 1 1 0; position: relative; padding: 16px 0 0; min-width: 0; text-align: center;
+          background: none; border: 0; font: inherit; color: inherit; cursor: pointer;
+          text-transform: none; letter-spacing: normal; }
+  /* The segment joining this stop to the one before it, drawn per stop so the run can be lit
+     up to the level standing and stay dark past it. */
+  .rung::before { content: ''; position: absolute; top: 5px; left: -50%; width: 100%; height: 1px;
+                  background: var(--rule); }
+  .rung:first-child::before { display: none; }
+  .rung.done::before { background: var(--dim); }
+  .rung i { position: absolute; top: 1px; left: 50%; margin-left: -4.5px; width: 9px; height: 9px;
+            display: block; background: var(--rule); }
+  .rung.done i { background: var(--dim); }
+  .rung.at i { background: var(--bone); }
+  .rung.next i { background: var(--oxide); }
+  /*
+   * A gate is a diamond because it is a different kind of stop, not a louder one.
+   *
+   * "gated" and not "gate": the landing page's wrapper already owns a bare .gate at 30rem
+   * with 48px of padding, and a bare rule reaches any element wearing the name. A stop that
+   * inherited it stood 176px tall against its neighbours' 48. Found by reading the computed
+   * padding in the browser -- a script that greps for the rule missed it, and the browser is
+   * the thing that decides.
+   */
+  .rung.gated i { background: var(--warn-strip); box-shadow: inset 0 0 0 1.5px var(--oxide-light);
+                 transform: rotate(45deg); }
+  .rung.gated.done i { background: var(--oxide-light); box-shadow: none; }
+  .rung b { display: block; font-family: var(--numer); font-size: 11px; line-height: 1;
+            color: var(--fainter); font-weight: 400; }
+  .rung.at b, .rung.next b { color: var(--dim); }
+  /*
+   * A line's worth of box whether there is a line in it or not.
+   *
+   * The rungs are a grid cell like any other, so a stop with an empty label made the whole
+   * column shorter and the row sat below its neighbours -- which is the same fault
+   * ".band-note" already reserves against on the roads band, for the same reason.
+   */
+  .rung em { display: block; margin-top: 6px; min-height: 15px; font-style: normal;
+             font-family: var(--numer); font-size: 11px; line-height: 1.35;
+             color: var(--oxide-light); font-variant-numeric: tabular-nums; }
+  .rung em.ask { color: var(--faint); }
+  .rung:focus-visible { outline: 2px solid var(--oxide-light); outline-offset: -2px; }
+  .rung:hover i, .rung:focus-visible i { box-shadow: 0 0 0 3px var(--panel), 0 0 0 4px var(--oxide); }
+  .rung.building:hover i, .rung.building:focus-visible i { box-shadow: inset 0 0 0 1.5px var(--oxide); }
+
+  /*
+   * The build in flight: the run between here and there fills.
+   *
+   * A gauge, on the track that is already there. The width is a fraction the clock loop writes
+   * each second from the two timestamps on the element -- never a transition with a duration
+   * of its own, because a background tab gets no frames at all and a fixed animation would
+   * come back out of step with the clock it is supposed to be showing.
+   */
+  .rung.building u { position: absolute; top: 4.5px; left: -50%; height: 2px;
+                     width: calc(100% * var(--worked, 0)); background: var(--oxide); }
+  .rung.building i { background: var(--warn-strip); box-shadow: inset 0 0 0 1.5px var(--oxide); }
+  .rung.building.gated i { transform: rotate(45deg); }
+  /* The same 2.6s oxide breath a working survivor gets, and staggered for the same reason:
+     five rows breathing together read as the page pulsing rather than as work going on. */
+  .rung.building em { animation: busy-fig 2.6s ease-in-out infinite; }
+  .lrow:nth-child(2n) .rung.building em { animation-delay: -0.9s; }
+  .lrow:nth-child(3n) .rung.building em { animation-delay: -1.7s; }
+  @keyframes busy-fig { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+
+  /* Whose hands, where the control was, in the box the control had. Ellipsised rather than
+     allowed to widen the track, because widening it is what moves the axis. */
+  .whose { display: inline-flex; align-items: center; justify-content: center; height: 26px;
+           max-width: 100%; padding: 0 8px; font-family: var(--label); font-size: 13px;
+           color: var(--oxide-light); background: var(--warn-strip);
+           border: 1px solid var(--warn-rule); white-space: nowrap; overflow: hidden;
+           text-overflow: ellipsis; }
+  .lrow .sendmenu .lead, .lrow .sendmenu.shut { height: 26px; }
+
+  /* ---- what a stop says when asked ---- */
+  .pop { position: absolute; left: 50%; bottom: calc(100% + 6px); transform: translateX(-50%);
+         width: 244px; padding: 10px 12px 11px; text-align: left; background: #14130F;
+         border: 1px solid var(--edge); z-index: 20; visibility: hidden; opacity: 0;
+         pointer-events: none; }
+  .rung:hover .pop, .rung:focus-visible .pop { visibility: visible; opacity: 1; }
+  /* Near either end the panel would leave the block, so those stops anchor from the edge. */
+  .rung:nth-child(-n+2) .pop { left: 0; transform: none; }
+  .rung:nth-last-child(-n+2) .pop { left: auto; right: 0; transform: none; }
+  .pop .ph { display: block; padding-bottom: 6px; margin-bottom: 7px;
+             border-bottom: 1px solid var(--rule-in); font-family: var(--numer);
+             font-size: 11.5px; color: var(--faint); }
+  .pop .ph.live { color: var(--oxide-light); }
+  .pop .pl { display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+             margin-top: 5px; }
+  .pop .pl .k { font-size: 12.5px; line-height: 1.3; color: var(--dim); }
+  .pop .pl .v { font-family: var(--numer); font-size: 12.5px; line-height: 1.3;
+                color: var(--value); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .pop .pl .v.live { color: var(--oxide-light); }
+  .pop .pw { display: block; margin-top: 8px; font-size: 12.5px; line-height: 1.4;
+             color: var(--faint); }
+  .pop .opens { display: block; margin-top: 10px; padding-top: 8px;
+                border-top: 1px solid var(--rule-in); }
+  .pop .oh { display: block; font-family: var(--label); font-size: 9.5px; letter-spacing: .18em;
+             text-transform: uppercase; color: var(--oxide); }
+  .pop .oi { display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+             margin-top: 6px; }
+  .pop .on { font-family: var(--label); font-size: 13.5px; color: var(--oxide-light); }
+  .pop .op { font-family: var(--numer); font-size: 11px; color: var(--faint); white-space: nowrap; }
+  .pop .ow { display: block; margin-top: 4px; font-size: 12px; line-height: 1.4; color: var(--dim); }
+
+  /*
+   * ---- the workbench ----
+   *
+   * The fittings came off the structure rows because they are a different purchase: a level
+   * repeats forever on a rising curve, a fitting happens once and is permanent. On a row they
+   * also had nowhere to say what they do -- the summary was a hover popup and the card is the
+   * first place it is readable at rest.
+   */
+  .bench { border-top: 1px solid var(--rule); }
+  .benchhead { display: flex; align-items: baseline; justify-content: space-between; gap: 14px;
+               flex-wrap: wrap; padding: 9px 18px; background: var(--strip);
+               border-bottom: 1px solid var(--rule-in); }
+  .benchhead .n { font-family: var(--numer); font-size: 11.5px; color: var(--faint); }
+  .fits { display: grid; grid-template-columns: repeat(auto-fit, minmax(236px, 1fr)); }
+  .fitcard { position: relative; display: flex; flex-direction: column; gap: 8px;
+             padding: 14px 16px 15px; border-right: 1px solid var(--rule-in);
+             border-bottom: 1px solid var(--rule-in); }
+  .fitcard .on { font-family: var(--numer); font-size: 10.5px; color: var(--fainter); }
+  .fitcard .nm { font-family: var(--label); font-size: 16px; line-height: 1.2; color: var(--bone); }
+  .fitcard .sm { flex: 1; font-size: 13.5px; line-height: 1.5; color: var(--dim); }
+  /*
+   * 36 and not 26, and the difference is the padding.
+   *
+   * "box-sizing: border-box" counts it, so a line holding a 26px control came to 36 while one
+   * holding only text sat at its floor -- and the cards are a grid, so the whole first row
+   * stood ten pixels taller until the control went away. Measured.
+   */
+  .fitcard .ln { display: flex; align-items: center; justify-content: space-between; gap: 10px;
+                 min-height: 36px; padding-top: 10px; border-top: 1px solid var(--rule-in); }
+  .fitcard .pc { font-family: var(--numer); font-size: 12px; color: var(--value); }
+  .fitcard .short { font-family: var(--numer); font-size: 11.5px; color: var(--faint); }
+  .fitcard .gated { font-family: var(--numer); font-size: 11.5px; color: var(--oxide-light); }
+  .fitcard .have { font-family: var(--label); font-size: 11px; letter-spacing: .14em;
+                   text-transform: uppercase; color: var(--faint); }
+  .fitcard .again { font-family: var(--numer); font-size: 11px; color: var(--fainter); }
+  .fitcard .by { font-family: var(--label); font-size: 13px; color: var(--oxide-light); }
+  .fitcard .lft { font-family: var(--numer); font-size: 12px; color: var(--oxide-light);
+                  font-variant-numeric: tabular-nums; }
+  .fitcard .sendmenu .lead, .fitcard .sendmenu.shut { height: 26px; }
+
+  /* Fitted, gated and blocked are three different kinds of quiet, not three shades of one. */
+  .fitcard.done, .fitcard.spare { background: #1B1A17; }
+  .fitcard.done .nm, .fitcard.spare .nm, .fitcard.locked .nm { color: var(--dim); }
+  .fitcard.busy .pc, .fitcard.nobody .pc { color: var(--faint); }
+  .fitcard.doing { background: #221E19; }
+
+  /*
+   * The one being fitted, in the same ink and on the same arithmetic as the axis -- but a card
+   * has no run between two stops, so the gauge is a hairline on its own edge. Deliberately not
+   * the left rail: that mark means *this is dangerous* on the Contact box, and spending it on
+   * *this is in progress* would put two meanings on one stroke.
+   */
+  .fitcard .worked { position: absolute; left: 0; right: 0; bottom: -1px; height: 2px;
+                     background: var(--rule-in); }
+  .fitcard .worked i { display: block; height: 100%; background: var(--oxide);
+                       width: calc(100% * var(--worked, 0)); }
+  .fitcard.doing .lft { animation: busy-fig 2.6s ease-in-out infinite; }
+  .fitcard:nth-child(2n).doing .lft { animation-delay: -0.9s; }
+
+  /* One crew, said once, under both benches. */
+  .crew { margin: 0; padding: 11px 18px 13px; border-top: 1px solid var(--rule);
+          background: var(--strip); font-size: 14px; line-height: 1.5; color: var(--dim); }
+
+  @media (prefers-reduced-motion: reduce) {
+    /* The state, held still. The fill stays, because it is a figure rather than a flourish. */
+    .rung.building em, .fitcard.doing .lft { animation: none; }
+  }
+
+  @media (max-width: 760px) {
+    .lrow { grid-template-columns: 1fr; gap: 10px; }
+    .lrow > .lact { justify-content: flex-start; }
+    .ladhead { display: none; }
+  }
+
   /* ---- the sky ---- */
 
   /* Two narrow columns beside the prose, and the labels repeat in every cell rather
@@ -3940,6 +4152,7 @@ export const TIMERS = `
   let stores = [];
   let gauges = [];
   let counters = [];
+  let works = [];
   let clocks = [];
   let nowlines = [];
   let trips = [];
@@ -4170,6 +4383,21 @@ export const TIMERS = `
     counters = [...document.querySelectorAll('[data-count]')];
 
     /*
+     * Work in flight: a level being raised, or a fitting being fitted.
+     *
+     * Both are the same arithmetic on two timestamps the markup carries, and both write one
+     * custom property the stylesheet turns into a width. Recomputed every second rather than
+     * handed to a CSS transition, because a background tab is given no frames at all — a
+     * fixed-duration animation would keep its own time there and come back out of step with
+     * the clock it is meant to be showing. This way the fill simply stops, and the first
+     * paint after the player returns is correct.
+     *
+     * Re-read on every swap like everything else here: apply() can replace the section
+     * mid-build, so nothing about the fill may live outside the DOM.
+     */
+    works = [...document.querySelectorAll('[data-from][data-took]')];
+
+    /*
      * What the ticked boxes would hold back, worked out as they are ticked.
      *
      * One in the product for each of them, which is standTogether on the server written the
@@ -4382,6 +4610,13 @@ export const TIMERS = `
       const share = value / of;
       fill.style.width = 100 * Math.max(0, Math.min(1, share)) + '%';
       fill.style.setProperty('--heat', (el.dataset.rising ? share : 1 - share).toFixed(3));
+    }
+
+    for (const el of works) {
+      const from = Number(el.dataset.from);
+      const span = Math.max(1, Number(el.dataset.took));
+      const done = Math.max(0, Math.min(1, (Date.now() - from) / span));
+      el.style.setProperty('--worked', done.toFixed(4));
     }
 
     for (const el of counters) {
@@ -8344,17 +8579,10 @@ function renderResources(resources) {
  * it look like a separate purchase.
  */
 /**
- * Which structure's Build button is filled, and why exactly one of them is.
+ * Which structure the camp's own advice points at, by the shape of the trouble.
  *
- * `Next` sits three blocks up and names a structure in prose — "the workshop is the one
- * structure that changes that" — and then the table below offered five identical
- * buttons and left the player to match the sentence to the row. Filling the one it
- * named closes that gap with the accent the design already has, and it costs no new
- * colour: this is the same "one filled control per decision" rule the Contact panel and
- * the empty camp already follow.
- *
- * Keys that do not name a structure fill nothing, which is correct — most of what the
- * direction says is about sending somebody out, not about building.
+ * Kept beside the block that wears it rather than beside `renderDirection`, because what it
+ * decides is which row gets the one filled control on this view.
  */
 const ADVISED = {
   workshop: 'workshop',
@@ -8363,226 +8591,349 @@ const ADVISED = {
   undefended: 'watchtower',
 };
 
+/**
+ * The camp's two benches, on one block, because the camp has one crew.
+ *
+ * This was a table: a name, a run of prose, a price joined with a comma, a button. It went
+ * because of what could not be said in it rather than because of how it looked. Counting the
+ * gates settled that — **level 4 is the only reward level in the game.** After the shelter's
+ * clock at 1 and its bed at 2, every remaining fitting sits at 4, on four different
+ * structures, and so do both locked recipes. Six things, one number, and no row could say it:
+ * rows are read one at a time and that is a fact about the column.
+ *
+ * So the level stops being a number and becomes a run of stops, all five structures on one
+ * scale. The gates line up as a column and the wall is a thing you see rather than a thing
+ * you are told. Everything else follows from having an axis: a build in flight fills the run
+ * between where the camp stands and where it is going, and the stop under the pointer answers
+ * for itself.
+ *
+ * **The row carries identity and nothing else** — a name, a level, what it produces now. That
+ * is three lines and it never grows. The plan, the prices and the prizes live in the panel on
+ * each stop, and the fittings live on the bench below, which is where they belonged all
+ * along: a level repeats forever on a rising curve and a fitting happens once and is
+ * permanent, and the old table gave them the same weight in the same cell.
+ *
+ * The ladder itself is assembled in `viewCamp` — see `ladderFor`. This file imports nothing
+ * and is not about to start; every figure on a stop arrives ready to print.
+ */
 function renderStructures(structures, buildInFlight, someoneAlive, direction, quiet = true, ask = () => '') {
-  // One filled control per view. A window that closes in eleven minutes outranks
-  // standing advice about what to build next, so while contact is open the table stops
-  // pointing — otherwise the page has two things marked as *the* thing to do and the
-  // accent stops meaning either of them.
+  // One filled control per view. A window that closes in eleven minutes outranks standing
+  // advice about what to build next, so while contact is open the block stops pointing.
   const advised = quiet ? ADVISED[direction?.key] : undefined;
 
-  const rows = structures
-    .map((s) => {
-      const name = escape(s.kind.replaceAll('_', ' '));
-      const status = statusCell(s, buildInFlight, someoneAlive, s.kind === advised, ask);
-      // An unbuilt structure produces nothing, and saying so is more useful than
-      // an empty cell the player has to interpret.
-      const doing = s.effect
-        ? `<span class="effect">${escape(s.effect)}</span>`
-        : '<span class="effect nil">nothing yet</span>';
-      const step = stepOf(s);
-      return `<tr class="noted">
-        <td><span class="name">${name}</span><span class="lvl">level ${s.level}</span></td>
-        <td class="lede">
-          ${doing}
-          ${step ? `<span class="step">${step}</span>` : ''}
-          <span class="note">${escape(s.summary ?? '')}</span>
-          ${fittingIn(s, buildInFlight, someoneAlive, ask)}
-        </td>
-        ${status}
-      </tr>`;
-    })
-    .join('');
-  // No aside: the block used to carry a 'working' selector in its strip, and the rows ask
-  // for themselves now.
-  return block('Structures', `<table>${rows}</table>`, { flush: true });
-}
-
-/**
- * The fuel branch, where a structure has one.
- *
- * Kept on its own row rather than folded into the level track, because that is the
- * point: scrap makes the thing bigger and fuel makes it do something new, and the
- * page should not make those look like the same purchase.
- */
-function fittingIn(structure, buildInFlight, someoneAlive, ask = () => '') {
-  // A structure can carry more than one branch — the watchtower sells the hour of the
-  // next raid and the sky as two separate purchases — so each gets its own inset in
-  // declaration order. A structure with none renders nothing at all, as the shelter does.
-  return (structure.upgrades ?? [])
-    .map((upgrade) => oneFittingIn(structure, upgrade, buildInFlight, someoneAlive, ask))
-    .join('');
-}
-
-function oneFittingIn(structure, upgrade, buildInFlight, someoneAlive, ask = () => '') {
   /*
-   * The fitting lives *inside* its structure's description, behind a 2px inset.
+   * What the crew is on, from whichever bench has it.
    *
-   * It used to be a sibling `<tr>`, which is the shape the handoff's prose asks for and
-   * the wrong one: a row in a table is a sibling purchase however it is indented, and
-   * the whole claim being made is that a fitting is not a separate thing to buy but a
-   * property of the structure above it. Scrap makes the thing bigger and fuel makes it
-   * do something new, and the page should not make those look like two entries in one
-   * shopping list. Inside the cell, it cannot.
-   *
-   * Its own price and button ride in the same inset rather than in the table's cost and
-   * action columns, for the same reason — those columns belong to the level track.
+   * `buildInFlight` already answers *whether* — it is `some(build_completes_at) || beingFitted`
+   * — and this answers *what*, which is the same question `start-upgrade` answers with
+   * "the watchtower is already being worked on" after the click. That refusal has always
+   * existed and has never been on the page.
    */
-  /*
-   * The fitting's popup, as figures — the house style stated on `stats`.
-   *
-   * It was the summary and nothing else: one sentence, and every number about the thing
-   * living somewhere else on the row or not on the page at all. What it needs to hold a
-   * decision is what it costs, how long it takes, what it wants first and — for the one
-   * fitting there can be more than one of — how many are standing.
-   *
-   * The summary stays, as the one line of prose the rule allows: "somewhere for one more
-   * person to sleep" is what a bed is *for*, and no row of figures says it.
-   */
-  const costLabel =
-    (upgrade.fuel ?? 0) > 0 ? `${upgrade.fuel} fuel` : `${upgrade.scrap} scrap`;
-  const rows = [
-    ['costs', costLabel],
-    ['takes', duration(upgrade.hours)],
-    ['needs', `${structure.kind.replaceAll('_', ' ')} ${upgrade.requiresLevel}`],
-  ];
-  // Only where more than one can stand, which is the bed and nothing else. "1 of 1" on an
-  // instrument is a row that exists to have a row.
-  if (upgrade.allowed > 1 || upgrade.standing > 0) {
-    rows.push(['standing', `${upgrade.standing} of ${upgrade.allowed}`]);
-  }
+  const raising = structures.find((s) => s.building) ?? null;
+  const bench = benchOf(structures);
+  const laying = bench.find((f) => f.fittingUntil) ?? null;
+  const hands = raising?.building.who ?? laying?.fittingBy ?? null;
 
-  const inset = (tail) => `<span class="fitting noted">
-      <span class="tag">${escape(upgrade.name)}</span>
-      <span class="note">
-        <span class="stat-head">${escape(upgrade.name)}</span>
-        <span class="what">${escape(upgrade.summary)}</span>
-        ${rows
-          .map(
-            ([key, value]) =>
-              `<span class="stat-row"><span class="k">${escape(key)}</span><span class="v">${escape(
-                value,
-              )}</span></span>`,
-          )
-          .join('')}
-      </span>
-      <span>${tail}</span>
-    </span>`;
-
-  /*
-   * Held by the camp rather than by the structure, which is a different sentence.
-   *
-   * A bed the shelter has no depth for is "fitted" in the sense the page means: there is no
-   * room for another and a deeper shelter is what buys one. A bed standing empty is not —
-   * the room is there, the scrap is there, and what is missing is a person. Saying "fitted"
-   * to that would send the player to the shelter's level track to fix something the level
-   * track has nothing to do with.
-   */
-  if (upgrade.waiting) {
-    return inset('<span class="needs">the spare is empty</span>');
-  }
-
-  /*
-   * Fitted, and where the next one comes from.
-   *
-   * "fitted" alone is true and useless on a bed: the row beside it is offering the shelter's
-   * next level, and for a bed every second level buys nothing — a shelter at 4 and a shelter
-   * at 5 both hold two. A player reads the full row as "upgrade the shelter", takes the level
-   * the page is showing, and gets storage. Naming the level is what makes the row honest
-   * about the wait, and it is only ever a level on the structure this fitting is already in.
-   */
-  if (upgrade.fitted) {
-    const another = upgrade.nextAt
-      ? ` &mdash; another at ${escape(`${structure.kind.replaceAll('_', ' ')} ${upgrade.nextAt}`)}`
+  const said = raising
+    ? `${hands ? `${escape(hands)} is` : 'The crew is'} raising the ${escape(
+        raising.kind.replaceAll('_', ' '),
+      )}`
+    : laying
+      ? `${hands ? `${escape(hands)} is` : 'The crew is'} fitting ${escape(laying.name)}`
       : '';
-    return inset(`<em class="needs">fitted${another}</em>`);
-  }
 
-  if (upgrade.fittingUntil) {
-    const hoursLeft = (new Date(upgrade.fittingUntil).getTime() - Date.now()) / 3600000;
-    const when =
-      hoursLeft > 0
-        ? `<span class="cost">being fitted, ${countdown(upgrade.fittingUntil, 'now')} left</span>`
-        : '<span class="short">fitted &mdash; reload</span>';
-    return inset(when);
-  }
+  return block(
+    'Structures',
+    `<div class="ladders">
+      ${ladderHead(structures)}
+      ${structures.map((s) => ladderRow(s, someoneAlive, buildInFlight, s.kind === advised, ask)).join('')}
+    </div>
+    ${benchCourse(bench, someoneAlive, buildInFlight, ask)}
+    ${said ? `<p class="crew">${said}, and the camp has one crew &mdash; nothing else can be
+       started until it is done.</p>` : ''}`,
+    { flush: true },
+  );
+}
 
-  if (structure.level < upgrade.requiresLevel) {
-    return inset(`<span class="needs">needs level ${upgrade.requiresLevel}</span>`);
-  }
+/**
+ * Every fitting in the camp, flattened off the structures that carry them.
+ *
+ * The bench is one surface and the data is nested, so this is the join. The structure's name
+ * and level come along because a card has to be able to say "needs watchtower 4" without
+ * going back for them.
+ */
+function benchOf(structures) {
+  return structures.flatMap((s) =>
+    (s.upgrades ?? []).map((branch) => ({
+      ...branch,
+      on: s.kind.replaceAll('_', ' '),
+      onKind: s.kind,
+      onLevel: Number(s.level),
+    })),
+  );
+}
+
+/**
+ * The scale, once, above the rows.
+ *
+ * Every structure's ladder is the same seven stops — `ladderFor` sizes the window to the
+ * furthest gate still ahead — so the numbers are a header rather than a repeat on every row.
+ * If that ever stops being true the header is the thing that will look wrong first, which is
+ * the right place for it to show.
+ */
+function ladderHead(structures) {
+  const stops = structures[0]?.ladder ?? [];
+  if (stops.length === 0) return '';
+  return `<div class="lrow ladhead"><span></span>
+      <div class="rungs">${stops
+        .map((stop) => `<span class="rung"><b>level ${stop.level}</b></span>`)
+        .join('')}</div>
+      <span></span></div>`;
+}
+
+/** One structure: what it is, its ladder, and the control that starts the next step. */
+function ladderRow(s, someoneAlive, buildInFlight, advised, ask) {
+  const kind = s.kind.replaceAll('_', ' ');
+  const building = s.building;
+
+  return `<div class="lrow">
+      <span class="who2">
+        <span class="nm">${escape(kind)}</span>
+        <span class="lv">level ${s.level}</span>
+        <span class="fx">${escape(s.effect ?? '')}</span>
+      </span>
+      <div class="rungs">${(s.ladder ?? []).map((stop) => rung(s, stop)).join('')}</div>
+      <span class="lact">${
+        building
+          ? `<span class="whose">${escape(building.who ?? 'the crew')}</span>`
+          : buildStart(s, someoneAlive, buildInFlight, advised, ask)
+      }</span>
+    </div>`;
+}
+
+/**
+ * One stop, and the panel that answers for it.
+ *
+ * A button, not a span: the panel and the lit run have to be reachable from the keyboard,
+ * and a stop is genuinely a thing you interrogate. It carries no href and submits nothing —
+ * pressing it does what hovering does.
+ */
+function rung(s, stop) {
+  const here = Number(s.level);
+  const building = s.building?.toLevel ?? null;
+  const classes = [
+    stop.level <= here ? 'done' : '',
+    stop.level === here ? 'at' : '',
+    stop.level === here + 1 && building === null ? 'next' : '',
+    stop.opens.length > 0 ? 'gated' : '',
+    stop.level === building ? 'building' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
 
   /*
-   * In whatever it is priced in. Fuel only comes home from expeditions, so the cost is worth
-   * spelling out — but a bed is scrap, and this said `${upgrade.fuel} fuel` for everything,
-   * so the one scrap-priced fitting in the game advertised "undefined fuel, 30m". The view
-   * already had to learn this same distinction for `shortBy`; the label never did.
+   * The label under the stop, and it is emitted empty rather than omitted.
+   *
+   * The rungs are a grid cell like any other, so a stop with nothing to say made the whole
+   * column shorter than its neighbours and the row sat two pixels low. Reserve the line; see
+   * the note on `.rung em`.
    */
-  const cost = `<span class="cost">${escape(`${costLabel}, ${duration(upgrade.hours)}`)}</span>`;
+  const label =
+    stop.level === building
+      ? `<em data-until="${s.building.until.getTime()}" data-done="done"></em>`
+      : stop.level === here + 1 && building === null
+        ? `<em class="ask">${escape(`${stop.cost.scrap} scrap`)}</em>`
+        : '<em></em>';
 
-  if (upgrade.shortBy) {
-    return inset(`${cost} <span class="short">${escape(upgrade.shortBy)}</span>`);
-  }
-  if (buildInFlight || !someoneAlive) return inset(cost);
+  /*
+   * The fill's window, and deliberately not `data-until`.
+   *
+   * That attribute is the countdown's own marker: the clock loop walks every element wearing
+   * it and *replaces its text*. Putting it on the stop meant the loop overwrote the whole
+   * button — dot, number, label and panel — with "11s". So the fill carries a start and a
+   * span instead, which is all the arithmetic needs and which no other loop answers to.
+   */
+  const worked =
+    stop.level === building
+      ? ` data-from="${s.building.from.getTime()}" data-took="${
+          s.building.until.getTime() - s.building.from.getTime()
+        }"`
+      : '';
 
-  return inset(`${cost}
-    <form method="post" action="/upgrade">
-      <input type="hidden" name="upgrade" value="${escape(upgrade.slug)}">
-      ${ask('Fit')}
-    </form>`);
+  return `<button type="button" class="rung ${classes}"${worked}
+      aria-label="${escape(`${s.kind.replaceAll('_', ' ')} level ${stop.level}`)}"
+      ><u></u><i></i><b>${stop.level}</b>${label}${rungPanel(s, stop)}</button>`;
 }
 
-/** What it is for, plus what the next level actually buys. */
+/** What a stop is worth saying when it is asked directly. */
+function rungPanel(s, stop) {
+  const here = Number(s.level);
+  const building = s.building?.toLevel ?? null;
+  const opens =
+    stop.opens.length === 0
+      ? ''
+      : `<span class="opens"><span class="oh">Opens on the bench</span>${stop.opens
+          .map(
+            (one) => `<span class="oi"><span class="on">${escape(one.name)}</span>
+              <span class="op">${escape(
+                `${one.fuel > 0 ? `${one.fuel} fuel` : `${one.scrap} scrap`}, ${duration(one.hours)}`,
+              )}</span></span>
+              <span class="ow">${escape(one.summary)}</span>`,
+          )
+          .join('')}</span>`;
+
+  if (stop.level === building) {
+    return `<span class="pop">
+        <span class="ph live">level ${stop.level} &mdash; being raised now</span>
+        ${s.building.who ? `<span class="pl"><span class="k">whose hands</span>
+          <span class="v live">${escape(s.building.who)}</span></span>` : ''}
+        <span class="pl"><span class="k">will give</span>
+          <span class="v">${escape(stop.effect)}</span></span>
+        <span class="pl"><span class="k">done in</span>
+          <span class="v live" data-until="${s.building.until.getTime()}" data-done="now"></span></span>
+        ${opens}</span>`;
+  }
+
+  if (stop.level <= here) {
+    return `<span class="pop">
+        <span class="ph">level ${stop.level} &mdash; standing</span>
+        <span class="pl"><span class="k">gives</span>
+          <span class="v">${escape(stop.effect)}</span></span>
+        <span class="pw">${
+          stop.opens.length
+            ? `${escape(listOf(stop.opens.map((one) => one.name)))} opened here.`
+            : 'Nothing opened at this level.'
+        }</span></span>`;
+  }
+
+  return `<span class="pop">
+      <span class="ph">level ${stop.level} &mdash; ${stop.run.builds} away</span>
+      <span class="pl"><span class="k">would give</span>
+        <span class="v">${escape(stop.effect)}</span></span>
+      <span class="pl"><span class="k">builds from here</span>
+        <span class="v">${stop.run.builds}</span></span>
+      <span class="pl"><span class="k">scrap in total</span>
+        <span class="v">${n(stop.run.scrap, 0)}</span></span>
+      <span class="pl"><span class="k">building time</span>
+        <span class="v">${escape(duration(stop.run.hours))}</span></span>
+      ${opens}</span>`;
+}
+
 /**
- * What the next level buys, as a figure rather than as a sentence.
+ * The control that starts the next level, or the reason there is not one.
  *
- * This used to be glued onto the end of the structure's description — "Grows food. One
- * level already outpaces what a survivor eats. Level 3 makes that +1.8 food/h." — which
- * put a number the player is deciding on at the end of two lines of prose they have
- * read fifty times. Split out, it sits directly under the current effect in the same
- * face, so what a level costs and what it buys are one glance apart:
- *
- *     +1.2 food/h
- *     level 3 → +1.8 food/h
- *
- * The prose it was attached to is the thing that moved into the note. It explains the
- * world; this is the decision.
+ * Same shape the bench and the dispatch table use: a row that cannot act keeps its control
+ * and says why, because losing the column moves every row and hiding the price hides the
+ * goal. The queue's refusal is stated here rather than after the click.
  */
-function stepOf(structure) {
-  if (!structure.nextEffect) return '';
-  return `level ${structure.level + 1} &rarr; ${escape(structure.nextEffect)}`;
-}
+function buildStart(s, someoneAlive, buildInFlight, advised, ask) {
+  if (!s.nextCost) return '';
+  if (s.shortBy) return `<span class="sendmenu shut">${escape(s.shortBy)}</span>`;
+  if (buildInFlight) return '<span class="sendmenu shut">Crew busy</span>';
+  if (!someoneAlive) return '<span class="sendmenu shut">Nobody free</span>';
 
-function statusCell(structure, buildInFlight, someoneAlive, advised, ask = () => '') {
-  if (structure.build_completes_at) {
-    const hoursLeft = (new Date(structure.build_completes_at).getTime() - Date.now()) / 3600000;
-    const when =
-      hoursLeft > 0
-        ? `<span class="clock">${countdown(structure.build_completes_at, 'now')}</span>`
-        : '<span class="short">done &mdash; reload</span>';
-    return `<td class="cost-col"><span class="needs">building level ${structure.level + 1}</span></td>
-      <td class="act">${when}</td>`;
-  }
-
-  if (!structure.nextCost) return '<td class="cost-col"></td><td class="act"></td>';
-
-  const cost = `<td class="cost-col"><span class="cost">${escape(
-    `${structure.nextCost.scrap} scrap, ${duration(structure.nextCost.hours)}`,
-  )}</span>${
-    structure.shortBy ? `<span class="short">${escape(structure.shortBy)}</span>` : ''
-  }</td>`;
-
-  // The queue holds one build, starting work needs living hands, and an unaffordable
-  // level keeps its row and its price without a button to press.
-  if (buildInFlight || !someoneAlive || structure.shortBy) {
-    return `${cost}<td class="act"></td>`;
-  }
-
-  return `${cost}
-    <td class="act"><form method="post" action="/build">
-      <input type="hidden" name="kind" value="${escape(structure.kind)}">
-      ${/* Whose hands, asked on the row that needs them. */ ''}
+  return `<form method="post" action="/build">
+      <input type="hidden" name="kind" value="${escape(s.kind)}">
       ${ask('Build', advised ? 'fill' : '')}
-    </form></td>`;
+    </form>`;
 }
+
+/**
+ * The bench: every fitting in the camp, as cards.
+ *
+ * They came off the structure rows because they are a different kind of purchase — one
+ * repeats forever on a rising curve, the other happens once and is permanent — and because
+ * on a row they had nowhere to say what they do. A card has room for the sentence, which the
+ * table only ever showed on hover.
+ */
+function benchCourse(bench, someoneAlive, buildInFlight, ask) {
+  if (bench.length === 0) return '';
+
+  const standing = bench.filter((f) => f.fitted || f.waiting).length;
+  const ready = bench.filter((f) => fitState(f, someoneAlive, buildInFlight) === 'ready').length;
+
+  return `<div class="bench">
+      <div class="benchhead">
+        <span class="tag">The workbench</span>
+        <span class="n">${standing} fitted &middot; ${ready} you can start now</span>
+      </div>
+      <div class="fits">${bench
+        .map((f) => fitCard(f, someoneAlive, buildInFlight, ask))
+        .join('')}</div>
+    </div>`;
+}
+
+/**
+ * Which of the six a fitting is in, asked in the order the answers matter.
+ *
+ * One function so the cards and the count above them cannot disagree about what is on the
+ * bench — the count was the thing most likely to drift, because it is the same question asked
+ * from a different place.
+ */
+function fitState(f, someoneAlive, buildInFlight) {
+  if (f.fittingUntil) return 'doing';
+  if (f.onLevel < f.requiresLevel) return 'locked';
+  if (f.waiting) return 'spare';
+  if (f.fitted) return 'done';
+  if (f.shortBy) return 'poor';
+  if (buildInFlight) return 'busy';
+  if (!someoneAlive) return 'nobody';
+  return 'ready';
+}
+
+function fitCard(f, someoneAlive, buildInFlight, ask) {
+  const state = fitState(f, someoneAlive, buildInFlight);
+  const price = (f.fuel ?? 0) > 0 ? `${f.fuel} fuel` : `${f.scrap} scrap`;
+
+  /*
+   * Lazy, and not as a style preference: an object literal indexed by state evaluates every
+   * arm before it picks one, so the `doing` arm would read a null fitting on every card that
+   * is not being fitted.
+   */
+  const line = {
+    doing: () => `<span class="by">${escape(f.fittingBy ?? 'the crew')}</span>
+      <span class="lft" data-until="${f.fittingUntil.getTime()}" data-done="done"></span>`,
+    locked: () => `<span class="gated">needs ${escape(f.on)} ${f.requiresLevel}</span>`,
+    /*
+     * Two ways to be full, and they are undone by two different things.
+     *
+     * `waiting` is a bed standing in a room with nobody in it: the shelter has space for
+     * another and the camp has not got a person for the one already there. Saying "fitted"
+     * would send the player to the level track to fix something the level track has nothing
+     * to do with — somebody walking up the road is what undoes it. `fitted` is the other
+     * one, where the structure itself is the ceiling, and there the level is exactly the
+     * answer, so the card names it.
+     */
+    spare: () => `<span class="have">${f.standing} standing</span>
+      <span class="again">the spare is empty</span>`,
+    done: () => `<span class="have">${f.standing > 1 ? `${f.standing} fitted` : 'Fitted'}</span>${
+      f.nextAt ? `<span class="again">another at ${escape(f.on)} ${f.nextAt}</span>` : ''
+    }`,
+    poor: () => `<span class="pc">${escape(price)}</span>
+      <span class="short">${escape(f.shortBy)}</span>`,
+    busy: () => `<span class="pc">${escape(`${price}, ${duration(f.hours)}`)}</span>
+      <span class="sendmenu shut">Crew busy</span>`,
+    nobody: () => `<span class="pc">${escape(`${price}, ${duration(f.hours)}`)}</span>
+      <span class="sendmenu shut">Nobody free</span>`,
+    ready: () => `<span class="pc">${escape(`${price}, ${duration(f.hours)}`)}</span>
+      <form method="post" action="/upgrade">
+        <input type="hidden" name="upgrade" value="${escape(f.slug)}">
+        ${ask('Fit')}
+      </form>`,
+  }[state]();
+
+  return `<div class="fitcard ${state}">
+      ${state === 'doing'
+        ? `<span class="worked" data-from="${f.fittingFrom.getTime()}"
+             data-took="${f.fittingUntil.getTime() - f.fittingFrom.getTime()}"><i></i></span>`
+        : ''}
+      <span class="on">on the ${escape(f.on)}</span>
+      <span class="nm">${escape(f.name)}</span>
+      <span class="sm">${escape(f.summary ?? '')}</span>
+      <span class="ln">${line}</span>
+    </div>`;
+}
+
 
 /**
  * A pointer rather than a table. The detail — what they were carrying, where they

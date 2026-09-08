@@ -1024,7 +1024,8 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
   );
 
   const { rows: structures } = await client.query(
-    'select kind, level, build_completes_at from camp_structures where settlement_id = $1 order by kind',
+    `select kind, level, build_completes_at, built_by
+       from camp_structures where settlement_id = $1 order by kind`,
     [settlementId],
   );
 
@@ -1246,7 +1247,8 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
   }
 
   const { rows: upgradeRows } = await client.query(
-    'select kind, upgrade, completes_at, installed_at from structure_upgrades where settlement_id = $1',
+    `select kind, upgrade, completes_at, installed_at, fitted_by
+       from structure_upgrades where settlement_id = $1`,
     [settlementId],
   );
   const fitted = new Set(
@@ -1296,6 +1298,69 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
   const bedsStanding = Math.min(bedRows.length, fittingsAllowed('bed', shelterLevel));
   const livingCount = state.survivors?.length ?? 0;
   const bedsFree = bedsToRoster(bedsStanding) - livingCount;
+
+  /**
+   * Whose hands, from an id the page has always stored and never shown.
+   *
+   * Null for a job started before the column existed, and null for a builder who has since
+   * died — the roster is the living, and a dead builder's name on a live job would be worse
+   * than no name. The block falls back to "the crew" in both cases.
+   */
+  const nameOf = (id) =>
+    id === null || id === undefined
+      ? null
+      : ((state.survivors ?? []).find((one) => Number(one.id) === Number(id))?.name ?? null);
+
+  /**
+   * A structure's levels as a run of stops, from where it is worth starting to where it is
+   * worth stopping.
+   *
+   * Seven, because that is what the block draws, and the window rather than 1..7 because a
+   * camp does not stay near the bottom. It ends three past the level standing — far enough
+   * that the next two or three steps are all visible — and never before the furthest gate
+   * still ahead, so the wall at level 4 is on the ladder from a standing start of 1.
+   *
+   * Every figure comes from `structures.js` and none of it is stored: the cost curve, the
+   * effect at each level, and which fittings arrive where. That is the whole reason this
+   * lives in the view rather than the renderer, which imports nothing on purpose.
+   */
+  const LADDER_STOPS = 7;
+  const ladderFor = (kind, level) => {
+    const gates = upgradesFor(kind).map((branch) => branch.requiresLevel);
+    const furthestAhead = Math.max(0, ...gates.filter((at) => at > level));
+    const to = Math.max(level + 3, furthestAhead, LADDER_STOPS);
+    const from = Math.max(1, to - (LADDER_STOPS - 1));
+
+    const stops = [];
+    for (let l = from; l <= to; l += 1) {
+      stops.push({
+        level: l,
+        effect: structureEffect(kind, l),
+        // What that one step costs, which is the cost of standing at the level below it.
+        cost: l > level ? upgradeCost(kind, l - 1) : null,
+        // And what the whole walk costs from here, so a stop can say "three builds, 42
+        // scrap" without the page adding up a column of steps.
+        run: l > level
+          ? Array.from({ length: l - level }, (_, i) => upgradeCost(kind, level + i))
+              .reduce(
+                (a, c) => ({ builds: a.builds + 1, scrap: a.scrap + c.scrap, hours: a.hours + c.hours }),
+                { builds: 0, scrap: 0, hours: 0 },
+              )
+          : null,
+        opens: upgradesFor(kind)
+          .filter((branch) => branch.requiresLevel === l)
+          .map((branch) => ({
+            slug: branch.slug,
+            name: branch.name,
+            summary: branch.summary,
+            fuel: branch.fuel ?? 0,
+            scrap: branch.scrap ?? 0,
+            hours: branch.hours,
+          })),
+      });
+    }
+    return stops;
+  };
   const newestBedAt = bedRows.length
     ? Math.max(...bedRows.map((row) => row.installed_at.getTime()))
     : null;
@@ -2065,6 +2130,36 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
     })),
     structures: structures.map((s) => ({
       ...s,
+      /*
+       * The level as a run of stops rather than a number, because that is what the block
+       * draws now — and it is assembled here because `render.js` imports nothing. Every
+       * figure on it comes from `structures.js`: the cost curve, the effect at each level,
+       * and which fittings arrive where.
+       *
+       * Seven stops, and *which* seven is the only judgement in here. It ends at least three
+       * past where the camp stands, and never before the furthest gate still ahead of it, so
+       * a watchtower at level 1 can see the Glass waiting at 4 and a purifier at level 9 —
+       * where nothing is gated any more — sees the three steps it might actually buy rather
+       * than six levels of history.
+       */
+      ladder: ladderFor(s.kind, Number(s.level)),
+      /*
+       * The build in flight, as the page needs it: which level, whose hands, and both ends
+       * of the window so the fill can be a fraction rather than a guess.
+       *
+       * `built_by` has been stored since builds could be assigned and has never been read.
+       * The start is derived rather than stored — `upgradeCost` knows what this step takes,
+       * and the finish is on the row — so this costs no migration.
+       */
+      building: s.build_completes_at === null ? null : {
+        toLevel: Number(s.level) + 1,
+        who: nameOf(s.built_by),
+        from: new Date(
+          s.build_completes_at.getTime()
+          - (upgradeCost(s.kind, s.level)?.hours ?? 0) * 3_600_000,
+        ),
+        until: s.build_completes_at,
+      },
       nextCost: upgradeCost(s.kind, s.level),
       // What the next level is short by, or null when the camp can pay for it.
       shortBy: shortfall(purse, pack, upgradeCost(s.kind, s.level) ?? {}),
@@ -2136,6 +2231,12 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
           nextAt: standing > 0 && standing >= ceiling ? levelForFitting(branch.slug, ceiling + 1) : null,
           shortBy: shortfall(purse, pack, price),
           fittingUntil: beingFitted?.upgrade === branch.slug ? beingFitted.completes_at : null,
+          // Whose hands, and when they started — the same pair the axis needs, for the same
+          // reason. `fitted_by` is the fitting's `built_by` and was equally unread.
+          fittingBy: beingFitted?.upgrade === branch.slug ? nameOf(beingFitted.fitted_by) : null,
+          fittingFrom: beingFitted?.upgrade === branch.slug
+            ? new Date(beingFitted.completes_at.getTime() - (branch.hours ?? 0) * 3_600_000)
+            : null,
         };
       }),
     })),
