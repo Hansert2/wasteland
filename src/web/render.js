@@ -1957,9 +1957,15 @@ ${PANE_CSS}
           gap: 0 20px; padding: 12px 0; border-bottom: 1px solid var(--rule-in); }
   .lrow:last-child { border-bottom: 0; }
   .lrow > .lact { display: flex; justify-content: flex-end; }
-  .ladhead { padding: 10px 0 2px; border-bottom: 0; }
-  .ladhead .rung { padding-top: 0; cursor: default; }
-  .ladhead .rung b { font-size: 10.5px; letter-spacing: .1em; color: var(--faint); }
+  /*
+   * No header over the axis, on purpose.
+   *
+   * It read "level 1 level 2 ... level 7" and the labels measured exactly the width of the
+   * cells holding them -- seven 52px strings in seven 52px columns, touching, reading as one
+   * run of words. Shrinking them would have kept a row that repeats what is already printed
+   * under every stop, on a block where each row also says "garden level 2" in its own first
+   * line. The scale names itself three times over; it did not need a fourth.
+   */
 
   /* Identity and nothing else: a name, a level, what it makes now. Three lines that never
      grow, which is what keeps five rows the same height. */
@@ -2017,6 +2023,9 @@ ${PANE_CSS}
              font-family: var(--numer); font-size: 11px; line-height: 1.35;
              color: var(--oxide-light); font-variant-numeric: tabular-nums; }
   .rung em.ask { color: var(--faint); }
+  /* The price of a step the stores cannot cover. Oxide is this page's ink for a price you
+     cannot pay, which is the same thing a short recipe row has always used it for. */
+  .rung em.ask.over { color: var(--oxide); }
   .rung:focus-visible { outline: 2px solid var(--oxide-light); outline-offset: -2px; }
   .rung:hover i, .rung:focus-visible i { box-shadow: 0 0 0 3px var(--panel), 0 0 0 4px var(--oxide); }
   .rung.building:hover i, .rung.building:focus-visible i { box-shadow: inset 0 0 0 1.5px var(--oxide); }
@@ -2047,7 +2056,24 @@ ${PANE_CSS}
            color: var(--oxide-light); background: var(--warn-strip);
            border: 1px solid var(--warn-rule); white-space: nowrap; overflow: hidden;
            text-overflow: ellipsis; }
-  .lrow .sendmenu .lead, .lrow .sendmenu.shut { height: 26px; }
+  /*
+   * Both states of the control in one box, and the box is centred rather than padded.
+   *
+   * "sendmenu.shut" is a label with 9px of padding on it, which in a 26px cell leaves eight
+   * pixels for a ten-and-a-half pixel line -- so it spilled instead of sitting in the middle.
+   * The form is here for the same reason: a block form around a 26px button measured 28, and
+   * two pixels is enough to put one row off the four beside it.
+   */
+  /* And the wrapper stops being inline: "sendmenu" is an inline-block, so a 26px button
+     inside it sits on a text baseline and the box comes to 29 -- three pixels of descender
+     that put the control below everything it lines up with. */
+  .lrow .sendmenu, .fitcard .sendmenu { display: inline-flex; }
+  .lrow .sendmenu .lead, .lrow .sendmenu.shut,
+  .fitcard .sendmenu .lead, .fitcard .sendmenu.shut {
+    height: 26px; padding: 0 10px; display: inline-flex; align-items: center;
+    justify-content: center;
+  }
+  .lrow form, .fitcard .ln form { display: flex; }
 
   /* ---- what a stop says when asked ---- */
   .pop { position: absolute; left: 50%; bottom: calc(100% + 6px); transform: translateX(-50%);
@@ -2068,6 +2094,7 @@ ${PANE_CSS}
   .pop .pl .v { font-family: var(--numer); font-size: 12.5px; line-height: 1.3;
                 color: var(--value); font-variant-numeric: tabular-nums; white-space: nowrap; }
   .pop .pl .v.live { color: var(--oxide-light); }
+  .pop .pl .v.over { color: var(--oxide); white-space: normal; text-align: right; }
   .pop .pw { display: block; margin-top: 8px; font-size: 12.5px; line-height: 1.4;
              color: var(--faint); }
   .pop .opens { display: block; margin-top: 10px; padding-top: 8px;
@@ -2118,7 +2145,6 @@ ${PANE_CSS}
   .fitcard .by { font-family: var(--label); font-size: 13px; color: var(--oxide-light); }
   .fitcard .lft { font-family: var(--numer); font-size: 12px; color: var(--oxide-light);
                   font-variant-numeric: tabular-nums; }
-  .fitcard .sendmenu .lead, .fitcard .sendmenu.shut { height: 26px; }
 
   /* Fitted, gated and blocked are three different kinds of quiet, not three shades of one. */
   .fitcard.done, .fitcard.spare { background: #1B1A17; }
@@ -2151,7 +2177,6 @@ ${PANE_CSS}
   @media (max-width: 760px) {
     .lrow { grid-template-columns: 1fr; gap: 10px; }
     .lrow > .lact { justify-content: flex-start; }
-    .ladhead { display: none; }
   }
 
   /* ---- the sky ---- */
@@ -8645,7 +8670,6 @@ function renderStructures(structures, buildInFlight, someoneAlive, direction, qu
   return block(
     'Structures',
     `<div class="ladders">
-      ${ladderHead(structures)}
       ${structures.map((s) => ladderRow(s, someoneAlive, buildInFlight, s.kind === advised, ask)).join('')}
     </div>
     ${benchCourse(bench, someoneAlive, buildInFlight, ask)}
@@ -8673,23 +8697,6 @@ function benchOf(structures) {
   );
 }
 
-/**
- * The scale, once, above the rows.
- *
- * Every structure's ladder is the same seven stops — `ladderFor` sizes the window to the
- * furthest gate still ahead — so the numbers are a header rather than a repeat on every row.
- * If that ever stops being true the header is the thing that will look wrong first, which is
- * the right place for it to show.
- */
-function ladderHead(structures) {
-  const stops = structures[0]?.ladder ?? [];
-  if (stops.length === 0) return '';
-  return `<div class="lrow ladhead"><span></span>
-      <div class="rungs">${stops
-        .map((stop) => `<span class="rung"><b>level ${stop.level}</b></span>`)
-        .join('')}</div>
-      <span></span></div>`;
-}
 
 /** One structure: what it is, its ladder, and the control that starts the next step. */
 function ladderRow(s, someoneAlive, buildInFlight, advised, ask) {
@@ -8742,7 +8749,7 @@ function rung(s, stop) {
     stop.level === building
       ? `<em data-until="${s.building.until.getTime()}" data-done="done"></em>`
       : stop.level === here + 1 && building === null
-        ? `<em class="ask">${escape(`${stop.cost.scrap} scrap`)}</em>`
+        ? `<em class="ask${s.shortBy ? ' over' : ''}">${escape(`${stop.cost.scrap} scrap`)}</em>`
         : '<em></em>';
 
   /*
@@ -8816,6 +8823,10 @@ function rungPanel(s, stop) {
         <span class="v">${n(stop.run.scrap, 0)}</span></span>
       <span class="pl"><span class="k">building time</span>
         <span class="v">${escape(duration(stop.run.hours))}</span></span>
+      ${stop.level === here + 1 && s.shortBy
+        ? `<span class="pl"><span class="k">the stores are</span>
+             <span class="v over">${escape(s.shortBy)}</span></span>`
+        : ''}
       ${opens}</span>`;
 }
 
@@ -8828,7 +8839,16 @@ function rungPanel(s, stop) {
  */
 function buildStart(s, someoneAlive, buildInFlight, advised, ask) {
   if (!s.nextCost) return '';
-  if (s.shortBy) return `<span class="sendmenu shut">${escape(s.shortBy)}</span>`;
+  /*
+   * One word, because the cell is 96px and pinned.
+   *
+   * `shortBy` is a sentence -- "needs 5 more scrap" -- and it was going into a tracked
+   * uppercase label eight pixels tall, where it simply ran out of the box. The sentence has
+   * two better homes and now uses both: the stop's own price turns oxide so the eye lands on
+   * the figure, and the panel on that stop says how much is missing. This is left saying only
+   * that there is a reason, which is what a 96px control can hold.
+   */
+  if (s.shortBy) return '<span class="sendmenu shut">Short</span>';
   if (buildInFlight) return '<span class="sendmenu shut">Crew busy</span>';
   if (!someoneAlive) return '<span class="sendmenu shut">Nobody free</span>';
 
