@@ -8617,7 +8617,7 @@ const ADVISED = {
 };
 
 /**
- * The camp's two benches, on one block, because the camp has one crew.
+ * The camp's two benches, on one block, because raising and fitting share a queue.
  *
  * This was a table: a name, a run of prose, a price joined with a comma, a button. It went
  * because of what could not be said in it rather than because of how it looked. Counting the
@@ -8673,8 +8673,19 @@ function renderStructures(structures, buildInFlight, someoneAlive, direction, qu
       ${structures.map((s) => ladderRow(s, someoneAlive, buildInFlight, s.kind === advised, ask)).join('')}
     </div>
     ${benchCourse(bench, someoneAlive, buildInFlight, ask)}
-    ${said ? `<p class="crew">${said}, and the camp has one crew &mdash; nothing else can be
-       started until it is done.</p>` : ''}`,
+    ${/*
+       * Scoped to this block, because the workshop is not on this queue.
+       *
+       * "Nothing else can be started" was false the moment a camp had two people:
+       * `startCraft` asks only for a free pair of hands and never looks at `buildInFlight` --
+       * "sharing it with builds would mean crafting a spear blocks upgrading the garden, and
+       * that is not a decision worth making interesting. They are different workbenches."
+       * So this says what is actually true: raising and fitting share one queue, and the
+       * bench keeps its own.
+       */ ''}
+    ${said ? `<p class="crew">${said}. The camp raises and fits one thing at a time, so
+       nothing else here can start until it is done &mdash; the workshop keeps its own
+       bench.</p>` : ''}`,
     { flush: true },
   );
 }

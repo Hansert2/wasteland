@@ -1166,6 +1166,12 @@ test('one crew, said on the page rather than after the click', async () => {
     assert.ok(!after.includes('action="/build"'), 'and a busy one is offered nothing to press');
     assert.ok(!after.includes('action="/upgrade"'), 'on either bench');
     assert.match(after, /Crew busy/, 'the rows say why');
-    assert.match(after, /the camp has one crew/, 'and the block says it once, properly');
+    assert.match(after, /raises and fits one thing at a time/, 'and the block says it once, properly');
+    // And says it about itself. `startCraft` asks only for free hands and never looks at
+    // `buildInFlight`, so a camp of two can craft while it builds -- claiming otherwise here
+    // would be the page inventing a rule the services do not have.
+    // Whitespace-tolerant: the template wraps mid-sentence, which HTML collapses and a
+    // literal regex does not.
+    assert.match(after, /the workshop keeps its own\s+bench/, 'without claiming the bench is blocked');
   });
 });
