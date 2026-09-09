@@ -6,6 +6,8 @@ import { loadWorld } from '../../src/db/world.js';
 import { advanceSettlement } from '../../src/services/advance-settlement.js';
 import { startBuild } from '../../src/services/start-build.js';
 import { startCraft } from '../../src/services/start-craft.js';
+import { viewCamp } from '../../src/services/view-camp.js';
+import { campPage } from '../../src/web/render.js';
 import { foundSettlement, raiseSuccessor } from '../../src/services/settlement-lifecycle.js';
 import { InputError } from '../../src/errors.js';
 
@@ -294,6 +296,222 @@ test('unknown recipes are refused', async () => {
     const { settlementId } = await setup(client);
     await assert.rejects(startCraft(client, settlementId, 'moonshine'), InputError);
     await assert.rejects(startCraft(client, settlementId, null), InputError);
+  });
+});
+
+/*
+ * ---------------------------------------------------------------------------------------
+ * The bench as a block: a slot, four things that can go in it, and the material they want.
+ * ---------------------------------------------------------------------------------------
+ */
+
+/** The workshop block's own markup, so a page assertion cannot be satisfied by another block. */
+function benchOf(html) {
+  const at = html.indexOf('id="s-workshop"');
+  assert.ok(at > -1, 'the page has a workshop section');
+  const end = html.indexOf('<section', at);
+  return html.slice(at, end === -1 ? html.length : end);
+}
+
+test('the time on the row is the time the order will take', async () => {
+  /*
+   * The bug this block existed with for as long as the Machine Shop has.
+   *
+   * The view sent `craft_hours` straight off the row while `startCraft` multiplied it by
+   * `craftHoursMultiplier`, so with powered tools fitted every figure on the block was a
+   * third too long — and the reward of the most expensive fitting in the game was invisible
+   * on the one block it improves.
+   *
+   * Asserted against the order the service actually creates rather than against a number,
+   * so retuning the fitting cannot make this pass while the page lies.
+   */
+  await withRollback(async (client) => {
+    const { settlementId, recipeSlug } = await setup(client, { workshop: 4, craftHours: 3 });
+    await client.query(
+      `insert into structure_upgrades (settlement_id, kind, upgrade, completes_at, installed_at)
+       values ($1, 'workshop', 'machine_shop', now(), now())`,
+      [settlementId],
+    );
+
+    const view = await viewCamp(client, settlementId);
+    const probe = view.recipes.find((one) => one.slug === recipeSlug);
+    assert.ok(probe, 'the probe recipe reaches the page');
+    assert.ok(
+      Number(probe.craftHours) < Number(probe.craft_hours),
+      'the tools shorten it, and the page knows',
+    );
+
+    const now = Date.now();
+    const { completesAt } = await startCraft(client, settlementId, recipeSlug, now);
+    const willTake = (completesAt.getTime() - now) / 3_600_000;
+    assert.ok(
+      Math.abs(willTake - Number(probe.craftHours)) < 1e-9,
+      `the block says ${probe.craftHours}h and the order takes ${willTake}h`,
+    );
+  });
+});
+
+test('an order in flight does not take the rest of the bench away with it', async () => {
+  /*
+   * The block used to replace itself with a one-line head while it worked, so the state a
+   * player meets most often was the one where the block stopped being the block. The slot
+   * holds its place; the four recipes stay where they were.
+   */
+  await withRollback(async (client) => {
+    const { settlementId, recipeSlug } = await setup(client, { workshop: 4 });
+
+    const before = benchOf(campPage(await viewCamp(client, settlementId), { pane: 'camp' }));
+    const names = (await viewCamp(client, settlementId)).recipes.map((one) => one.name);
+    for (const name of names) assert.ok(before.includes(name), `${name} is on the idle bench`);
+
+    await startCraft(client, settlementId, recipeSlug, Date.now());
+    const after = benchOf(campPage(await viewCamp(client, settlementId), { pane: 'camp' }));
+
+    for (const name of names) assert.ok(after.includes(name), `${name} is still there`);
+    assert.match(after, /class="onbench live"/, 'and the slot is holding the order');
+    assert.ok(!after.includes('action="/craft"'), 'with nothing else pressable');
+    assert.match(after, /Bench in use/, 'which the cells say for themselves');
+  });
+});
+
+test('the fill carries a window, and no container wears the countdown marker', async () => {
+  /*
+   * `data-until` is the clock loop's own marker: it walks every element wearing it and
+   * **replaces the text**. On a container that means the whole thing is overwritten with
+   * "11s" — markup right, script right, page wrong. The fill carries a start and a span
+   * instead, exactly as a rung being raised does.
+   */
+  await withRollback(async (client) => {
+    const { settlementId, recipeSlug } = await setup(client, { workshop: 4 });
+    await startCraft(client, settlementId, recipeSlug, Date.now());
+    const bench = benchOf(campPage(await viewCamp(client, settlementId), { pane: 'camp' }));
+
+    assert.match(bench, /class="worked" data-from="\d+" data-took="\d+"/);
+
+    const marked = [...bench.matchAll(/<(\w+)[^>]*\sdata-until="\d+"/g)].map((m) => m[1]);
+    assert.ok(marked.length > 0, 'something on the bench is counting down');
+    assert.ok(
+      !marked.includes('div') && !marked.includes('form'),
+      `a container is wearing data-until: ${[...new Set(marked)].join(', ')}`,
+    );
+  });
+});
+
+test('a material is explained once, on its own counter, not once per recipe', async () => {
+  /*
+   * Everything about `scavenged_parts` used to be printed inside the hover panel of every
+   * recipe that needed them — identically, twice, and attached to the wrong noun. It is a
+   * fact about the material: where it is found, who wants it, and how much is in the camp.
+   */
+  await withRollback(async (client) => {
+    const { settlementId } = await setup(client, { workshop: 4 });
+
+    const view = await viewCamp(client, settlementId);
+    const parts = (view.materials ?? []).find((one) => one.slug === 'scavenged_parts');
+    assert.ok(parts, 'the seeded material has a counter of its own');
+
+    // Every region whose find table names it, and nothing else.
+    const { rows: regions } = await client.query(
+      `select name from regions where finds @> '[{"slug": "scavenged_parts"}]'::jsonb`,
+    );
+    assert.equal(parts.roads.length, regions.length, 'every road that drops them is named');
+    assert.deepStrictEqual(
+      parts.roads.map((one) => one.name).sort(),
+      regions.map((one) => one.name).sort(),
+    );
+
+    // Best first, so the list can be read as a ranking rather than a table.
+    for (let i = 1; i < parts.roads.length; i += 1) {
+      assert.ok(parts.roads[i - 1].chance >= parts.roads[i].chance, 'ordered by odds');
+    }
+
+    // A miss returns nothing rather than one, so the average is chance × the middle of
+    // the range — which is the figure "how far is a vest" is derived from.
+    for (const road of parts.roads) {
+      assert.ok(road.perTrip > 0 && road.perTrip <= 3, `${road.name} averages ${road.perTrip}`);
+    }
+
+    assert.ok(parts.wantedBy.length > 0, 'and it says what wants it');
+    for (const want of parts.wantedBy) assert.ok(want.qty > 0);
+  });
+});
+
+test('the counter counts what is in the camp, and says where it is', async () => {
+  await withRollback(async (client) => {
+    const { settlementId } = await setup(client, { workshop: 4 });
+
+    const none = (await viewCamp(client, settlementId)).materials.find(
+      (one) => one.slug === 'scavenged_parts',
+    );
+    assert.equal(none.held, 0, 'a camp that has never walked holds none');
+    assert.deepStrictEqual(none.holders, []);
+
+    await give(client, settlementId, 'scavenged_parts', 2);
+    await client.query(
+      `insert into store_items (settlement_id, item_id, qty)
+       select $1, id, 1 from items where slug = 'scavenged_parts'`,
+      [settlementId],
+    );
+
+    const some = (await viewCamp(client, settlementId)).materials.find(
+      (one) => one.slug === 'scavenged_parts',
+    );
+    assert.equal(some.held, 3, 'packs and the box together');
+    assert.equal(some.box, 1);
+    assert.equal(some.holders.length, 1);
+    assert.ok(some.holders[0].name, 'and whose pack they are in');
+
+    // The counter is a readout in a label strip, so it is spelled off the slug rather than
+    // off `items.name` — which is titled, and made the strip change case with the stock.
+    assert.equal(some.name, 'scavenged parts');
+  });
+});
+
+test('the bench remembers what last came off it', async () => {
+  await withRollback(async (client) => {
+    const { settlementId, recipeSlug } = await setup(client, { workshop: 4 });
+
+    const fresh = campPage(await viewCamp(client, settlementId), { pane: 'camp' });
+    assert.match(benchOf(fresh), /has not turned anything out/, 'and says so when it has not');
+
+    await startCraft(client, settlementId, recipeSlug, Date.now());
+    await client.query(
+      `update craft_orders set status = 'delivered', resolved_at = now() - interval '41 minutes'
+        where settlement_id = $1 and status = 'active'`,
+      [settlementId],
+    );
+
+    const view = await viewCamp(client, settlementId);
+    assert.ok(view.lastCraft, 'the order row outlives the event');
+    assert.equal(view.lastCraft.name, 'Probe Spear');
+    assert.ok(view.lastCraft.hands, 'and whose hands made it');
+    assert.ok(view.lastCraft.worth, 'and what it is worth, in the pack’s own words');
+
+    const bench = benchOf(campPage(view, { pane: 'camp' }));
+    assert.match(bench, /Last off the bench/);
+    assert.match(bench, /41m ago/);
+  });
+});
+
+test('what a recipe makes is said in the words the pack already uses', async () => {
+  /*
+   * `armour 30` is a column name, not a unit of anything. `worthOf` is the pack's own
+   * phrasing, exported so the two blocks cannot drift into two vocabularies for one number.
+   */
+  await withRollback(async (client) => {
+    const { settlementId } = await setup(client, { workshop: 4 });
+    await give(client, settlementId, 'plate_vest', 1);
+
+    const view = await viewCamp(client, settlementId);
+    const recipe = view.recipes.find((one) => one.slug === 'plate_vest');
+    const inPack = view.roster
+      .flatMap((one) => one.inventory ?? [])
+      .find((one) => one.slug === 'plate_vest');
+
+    assert.ok(recipe.worth, 'the bench says what it does');
+    assert.equal(recipe.worth, inPack.worth, 'and says it exactly as the pack does');
+    assert.match(recipe.worth, /%/, 'gear reads as a percentage');
+    assert.ok(recipe.weighs, 'and what it weighs, which decides where it lands');
   });
 });
 

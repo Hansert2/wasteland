@@ -1650,6 +1650,7 @@ ${PANE_CSS}
   .block > h2:has(.tabs),
   /* A holding puts its total in the strip beside its name, and a strip with two things
      on it is a row rather than a label. Same rule, third occupant. */
+  .block > h2:has(.wsum),
   .block > h2:has(.val) {
     display: flex;
     align-items: center;
@@ -2165,13 +2166,158 @@ ${PANE_CSS}
   .fitcard.doing .lft { animation: busy-fig 2.6s ease-in-out infinite; }
   .fitcard:nth-child(2n).doing .lft { animation-delay: -0.9s; }
 
+  /*
+   * ---- the bench ----
+   *
+   * A slot and four things that can go in it. The slot holds its place in both states,
+   * which is the whole design: an order starting changes what is in the slot and nothing
+   * else moves.
+   */
+  .benchgrid { display: grid; grid-template-columns: 384px minmax(0, 1fr); }
+  .slotside { display: flex; flex-direction: column; gap: 10px;
+              padding: 15px 18px 17px; border-right: 1px solid var(--rule); }
+  .benchlab { font-family: var(--label); font-size: 10px; font-weight: 700;
+              letter-spacing: .18em; text-transform: uppercase; color: var(--faint); }
+
+  /* Empty, the frame takes whatever the column has spare: the slack belongs inside the
+     thing that means "room for work", not in a gap beside it. */
+  .onbench { flex: 1; display: flex; flex-direction: column; justify-content: center;
+             gap: 9px; padding: 14px; border: 1px dashed var(--rule); }
+  .onbench .empty { color: var(--faint); font-size: 13px; }
+  .onbench.live { justify-content: space-between; border-style: solid;
+                  border-color: var(--edge); background: var(--panel); }
+  .onbench .on { display: flex; align-items: baseline; justify-content: space-between;
+                 gap: 12px; }
+  .onbench .nm { font-family: var(--label); font-size: 15px; color: var(--bone); }
+  .onbench .qty { margin-left: 7px; font-family: var(--numer); font-size: 11.5px;
+                  color: var(--faint); }
+  .onbench .lft { font-family: var(--numer); font-size: 12.5px; color: var(--oxide-light);
+                  font-variant-numeric: tabular-nums; }
+  /* The same fill and the same arithmetic as a rung being raised, on the same pair of
+     attributes -- a start and a span, never data-until, which is the countdown's marker
+     and replaces the text of everything wearing it. */
+  .onbench .worked { display: block; height: 8px; border: 1px solid var(--rule);
+                     background: var(--rule-in); }
+  .onbench .worked i { display: block; height: 100%; background: var(--oxide);
+                       width: calc(100% * var(--worked, 0)); }
+  .onbench .ends { display: flex; justify-content: space-between;
+                   font-family: var(--numer); font-size: 11.5px; color: var(--quiet); }
+  .onbench .hands { display: flex; align-items: baseline; justify-content: space-between;
+                    gap: 12px; font-size: 12.5px; color: var(--dim); }
+  .onbench .hands em { font-style: normal; color: var(--bone); }
+  .onbench.live .lft { animation: busy-fig 2.6s ease-in-out infinite; }
+
+  .wasmade { display: grid; gap: 5px; padding-top: 12px; border-top: 1px solid var(--rule); }
+  .mrow { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+  .wasmade .nm { font-family: var(--label); font-size: 15px; color: var(--bone); }
+  .wasmade .qty { margin-left: 7px; font-family: var(--numer); font-size: 11.5px;
+                  color: var(--faint); }
+  .wasmade .ago, .wasmade .went { font-family: var(--numer); font-size: 11.5px;
+                                  color: var(--quiet); }
+  .wasmade .never { color: var(--fainter); font-size: 12.5px; }
+
+  /*
+   * Three rows to a cell, each reaching both edges.
+   *
+   * Measured: two across a full-width block gives a cell 306px wide, and the widest thing
+   * most of them hold is "20 scrap" at about sixty. Stacked left-aligned, the middle of
+   * every cell was empty, which reads as a block somebody stopped working on.
+   */
+  .crafts { display: grid; grid-template-columns: 1fr 1fr; }
+  .craft { display: flex; flex-direction: column; justify-content: space-between; gap: 8px;
+           padding: 13px 16px 14px; border-right: 1px solid var(--rule-in);
+           border-bottom: 1px solid var(--rule-in); }
+  .craft.lastcol { border-right: 0; }
+  .craft.lastrow { border-bottom: 0; }
+  .craft.inuse { background: var(--panel); box-shadow: inset 2px 0 0 var(--oxide); }
+  .trow { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+  .trow.act { align-items: center; }
+  /* The Rad Scrubber's price measures ~270px against 274px of cell, so it can share a row
+     with nothing. It gets one. */
+  .trow.solo { display: block; }
+  .craft .cname { position: relative; font-family: var(--label); font-size: 15px;
+                  color: var(--bone); cursor: help;
+                  border-bottom: 1px dotted var(--fainter); }
+  .craft:hover .cname, .craft:focus-within .cname { border-bottom-color: var(--oxide); }
+  .craft .qty { margin-left: 7px; font-family: var(--numer); font-size: 11.5px;
+                color: var(--faint); }
+  .craft .cost { font-family: var(--numer); font-size: 12.5px; color: var(--value); }
+  .craft .sep { padding: 0 3px; color: var(--fainter); }
+  .craft .wt { font-family: var(--numer); font-size: 11.5px; color: var(--fainter);
+               white-space: nowrap; }
+  .craft .tm { font-family: var(--numer); font-size: 12.5px; color: var(--dim);
+               white-space: nowrap; }
+  .craft .tm.cut { color: var(--oxide-light); }
+  .craft .tm s { margin-right: 5px; color: var(--fainter); }
+  .craft .shut { display: inline-flex; align-items: center; justify-content: center;
+                 height: 26px; padding: 0 10px; border: 1px solid var(--rule);
+                 font-family: var(--label); font-size: 12px; letter-spacing: .06em;
+                 color: var(--faint); white-space: nowrap; }
+  .craft .shut.over { border-color: var(--warn-edge); color: var(--oxide); }
+  .craft .sendmenu { display: inline-flex; }
+  .craft .sendmenu .lead, .craft .sendmenu.shut {
+    height: 26px; padding: 0 10px; display: inline-flex; align-items: center;
+    justify-content: center;
+  }
+  .craft form { display: flex; }
+
+  /* What the thing does, in the words the pack already uses for it. */
+  .chip { display: inline-block; padding: 1px 8px; border: 1px solid var(--rule-in);
+          background: var(--rail); font-family: var(--numer); font-size: 11px;
+          color: var(--quiet); white-space: nowrap; }
+
+  /*
+   * The material counter, and the one place everything about a material is said.
+   *
+   * It sits hard right in the strip, so its panel opens leftwards and downwards.
+   */
+  .wsum { font-family: var(--numer); font-size: 11px; letter-spacing: .02em;
+          text-transform: none; color: var(--faint); }
+  .wsum em { font-style: normal; color: var(--oxide-light); }
+  .material { position: relative; display: inline-block; margin-left: 10px; }
+  /* Both resets are deliberate: the page's own button rule uppercases and tracks out
+     every button on it, which turned "7 scrap" into "7 SCRAP" the last time this was
+     forgotten. */
+  .material .cnt { appearance: none; background: none; border: 0; padding: 0;
+                   font: inherit; text-transform: none; letter-spacing: normal;
+                   color: var(--faint); cursor: help;
+                   border-bottom: 1px dotted var(--fainter); }
+  .material:hover .cnt, .material:focus-within .cnt {
+    color: var(--dim); border-bottom-color: var(--oxide);
+  }
+
+  .craft .pop, .material .pop { top: calc(100% + 6px); bottom: auto; left: 0;
+                                transform: none; }
+  .craft.lastcol .pop, .material .pop { left: auto; right: 0; }
+  .craft:hover .pop, .craft:focus-within .pop,
+  .material:hover .pop, .material:focus-within .pop { visibility: visible; opacity: 1; }
+  .pop.wide { width: 320px; }
+  .pop .pv { display: block; margin-top: 2px; font-family: var(--numer); font-size: 11.5px;
+             line-height: 1.45; color: var(--quiet); }
+  .pop .pct { color: var(--oxide-light); }
+  .pop .pw b { font-weight: 400; color: var(--oxide-light); }
+  .pop .pf { display: block; margin-top: 8px; padding-top: 8px;
+             border-top: 1px solid var(--rule-in); font-size: 12px; line-height: 1.45;
+             color: var(--dim); }
+  .pop .pf b { font-weight: 400; color: var(--oxide-light); }
+  .pop .pf.over { color: var(--oxide); }
+
+  @media (max-width: 760px) {
+    /* Deferred rather than designed: one column, so nothing overlaps while the small
+       screen waits for a pass of its own. */
+    .benchgrid { grid-template-columns: 1fr; }
+    .slotside { border-right: 0; border-bottom: 1px solid var(--rule); }
+    .crafts { grid-template-columns: 1fr; }
+    .craft { border-right: 0; }
+  }
+
   /* One crew, said once, under both benches. */
   .crew { margin: 0; padding: 11px 18px 13px; border-top: 1px solid var(--rule);
           background: var(--strip); font-size: 14px; line-height: 1.5; color: var(--dim); }
 
   @media (prefers-reduced-motion: reduce) {
     /* The state, held still. The fill stays, because it is a figure rather than a flourish. */
-    .rung.building em, .fitcard.doing .lft { animation: none; }
+    .rung.building em, .fitcard.doing .lft, .onbench.live .lft { animation: none; }
   }
 
   @media (max-width: 760px) {
@@ -8267,65 +8413,320 @@ function renderStorage(view) {
 }
 
 /**
- * The bench. A recipe with no button keeps its row and says why — a workshop level
- * you have not reached yet is a thing to build towards, and hiding it hides the goal.
+ * The bench: a slot, and the four things that can go in it.
+ *
+ * The table went for two reasons, and neither is that a table is ugly.
+ *
+ * **The block used to delete itself while it worked.** An order in flight replaced the
+ * whole list with a one-line head, so the state a player meets most often was the one
+ * where the block stopped being the block. The slot holds its place in both states and
+ * the four recipes never move, which is the whole of the design: an order starting
+ * changes what is in the slot and nothing else.
+ *
+ * **And a recipe's price has two halves the comma flattened.** `costs` come out of
+ * settlement stores, which fill on their own while you are offline; `inputs` come off a
+ * survivor's back, and the nearest region that drops any is eight hours out. `45 scrap,
+ * 2 × scavenged parts, 24m` priced an errand and a wait in one string. The material now
+ * has one home — the counter in the strip — where it can say where it is found, who at
+ * the bench wants it, and what a Plate Vest's worth costs in hours on the road.
  */
 function renderWorkshop(view) {
-  if (view.craft) {
-    const hoursLeft = (new Date(view.craft.completesAt).getTime() - Date.now()) / 3600000;
-    const due =
-      hoursLeft > 0
-        ? `<span class="clock">${countdown(view.craft.completesAt, 'now')}<small>until ready</small></span>`
-        : '<span class="short">ready &mdash; reload to collect it</span>';
-    return `<div class="block contact"><div class="block-head">
-        <span class="tag">On the bench &mdash; ${escape(view.craft.name)}</span>${due}
-      </div></div>`;
-  }
-
   if (!view.recipes || view.recipes.length === 0) return '';
 
-  const rows = view.recipes
-    .map((recipe) => {
-      // Most recipes are named after what they make, so naming it twice reads as a
-      // bug. Only the quantity is news in that case.
-      const yields =
-        recipe.output_name === recipe.name
-          ? recipe.output_qty > 1
-            ? `× ${recipe.output_qty}`
-            : ''
-          : `${recipe.output_qty} × ${escape(recipe.output_name)}`;
-      const price = escape(`${priceOf(recipe)}, ${duration(recipe.craft_hours)}`);
-      return `<tr class="noted">
-        <td><span class="name">${escape(recipe.name)}${
-          yields ? `<span class="qty">${yields}</span>` : ''
-        }</span></td>
-        <td class="lede"><span class="note">${escape(recipe.description ?? '')}</span></td>
-        <td class="cost-col"><span class="cost">${price}</span>${craftPrice(recipe, view)}</td>
-        <td class="act">${craftCell(recipe, view)}</td>
-      </tr>`;
-    })
+  const tiles = view.recipes
+    .map((recipe, at) => craftTile(recipe, at, view.recipes.length, view))
     .join('');
 
-  // No aside: the bench asked in its strip until 2026-09-02, and was the last block that
-  // did. Every row asks for itself now, the way a road and a structure do.
-  return block('Workshop', `<table>${rows}</table>`, { flush: true });
+  return block(
+    'Workshop',
+    `<div class="benchgrid">
+      <div class="slotside">
+        <span class="benchlab">The bench</span>
+        ${theSlot(view)}
+        ${lastOffTheBench(view)}
+      </div>
+      <div class="crafts">${tiles}</div>
+    </div>`,
+    { flush: true, aside: benchAside(view) },
+  );
 }
 
-/** Stores and carried materials read as one price, because that is how they are paid. */
-function priceOf(recipe) {
-  const parts = Object.entries(recipe.costs ?? {}).map(([kind, amount]) => `${amount} ${kind}`);
-  for (const input of recipe.inputs ?? []) {
-    parts.push(`${input.qty} × ${input.slug.replaceAll('_', ' ')}`);
+/**
+ * The strip: what the bench is, and how much of the material it wants is in the camp.
+ *
+ * The Machine Shop is read off the figures rather than off the fittings list — a recipe
+ * whose true hours are under its written hours is a bench with powered tools on it, and
+ * deriving it here means the strip cannot claim a fitting the times do not show.
+ */
+function benchAside(view) {
+  const cut = (view.recipes ?? []).some(
+    (one) => Number(one.craftHours) < Number(one.craft_hours),
+  );
+
+  const said = [`workshop ${view.workshopLevel}`];
+  if (cut) said.push('<em>machine shop</em>');
+
+  return `<span class="wsum">${said.join(' &middot; ')}${(view.materials ?? [])
+    .map(materialCount)
+    .join('')}</span>`;
+}
+
+/**
+ * A material the bench wants, as a count you can ask.
+ *
+ * Everything about `scavenged_parts` used to be printed inside the hover panel of every
+ * recipe that needed them — twice, identically, and attached to the wrong noun. It is a
+ * fact about the material, so it hangs off the material.
+ */
+function materialCount(m) {
+  const held =
+    m.held > 0
+      ? `<b>${m.held}</b> in camp &mdash; ${saysWhere(m)}.`
+      : `<b>None</b> in camp. Nothing that needs them can be started until somebody
+         brings some back.`;
+
+  const roads = m.roads
+    .map(
+      (road, at) =>
+        `${escape(road.name)} <span class="pct">${Math.round(road.chance * 100)}%</span>${
+          // The unit rides on the first one rather than five times over. Once the unit is
+          // a trip it follows that a trip either finds them or does not, which is what
+          // `rollFinds` does: one draw, and a miss returns nothing rather than one.
+          at === 0 ? ' of trips' : ''
+        }`,
+    )
+    .join(', ');
+
+  const wants = m.wantedBy
+    .map((one) => `${escape(one.name)} takes <span class="pct">${one.qty}</span>`)
+    .join(', ');
+
+  return `<span class="material">
+      <button type="button" class="cnt">${escape(m.name)} ${m.held}</button>
+      <span class="pop wide">
+        <span class="pw">${held}</span>
+        <span class="pl"><span class="k">Found in</span></span>
+        <span class="pv">${roads || 'nowhere anybody has walked yet'}</span>
+        <span class="pl"><span class="k">Wanted by</span></span>
+        <span class="pv">${wants}</span>
+        ${saysWalk(m)}
+      </span>
+    </span>`;
+}
+
+/** Where they are, because a pile split across two packs is not a pile the bench can spend. */
+function saysWhere(m) {
+  const said = m.holders.map(
+    (one) => `${one.qty} in ${one.name ? `${escape(one.name)}&rsquo;s pack` : 'a pack'}`,
+  );
+  if (m.box > 0) said.push(`${m.box} in the box`);
+  return said.join(', ');
+}
+
+/**
+ * What the material costs in hours, which is the figure the odds hide.
+ *
+ * A miss returns nothing rather than one, so the haul from a trip averages the chance
+ * times the middle of the range — and that is where 55% against 30% stops meaning a fifth
+ * better and starts meaning nearly five times: the Deep Zone gives two or three, the
+ * Millrace gives one.
+ */
+function saysWalk(m) {
+  if (m.roads.length === 0 || m.wantedBy.length === 0) return '';
+
+  const want = Math.max(...m.wantedBy.map((one) => one.qty));
+  const best = m.roads[0];
+  const worst = m.roads[m.roads.length - 1];
+  const walk = (road) => Math.round((want / road.perTrip) * road.hours);
+
+  return `<span class="pf">${want} of them: about <b>${walk(best)}h</b> of walking to
+      ${escape(best.name)}${
+        worst === best ? '' : `, or <b>${walk(worst)}h</b> to ${escape(worst.name)}`
+      }.</span>`;
+}
+
+/**
+ * A fixed instant on the camp's own clock.
+ *
+ * Not `data-worldclock`, which is the ticking one and rewrites itself from `Date.now()`
+ * every second. Both ends of a window are instants that have already been decided, so
+ * they are printed once — and printed from the camp's offset rather than the browser's
+ * locale, because the hour is a fact about the camp.
+ */
+const campHour = (when, offsetMinutes) => {
+  const shifted = new Date(new Date(when).getTime() + Number(offsetMinutes || 0) * 60000);
+  return at(shifted.getUTCHours(), shifted.getUTCMinutes());
+};
+
+/** What is on the bench, or the space where it would be. */
+function theSlot(view) {
+  const job = view.craft;
+
+  if (!job) {
+    return `<div class="onbench">
+        <span class="empty">The bench is clear.</span>
+        <span class="empty">${
+          view.recipes.length === 1 ? 'One thing can' : `${view.recipes.length} things can`
+        } go on it, one at a time.</span>
+      </div>`;
   }
-  return parts.join(', ');
+
+  const from = new Date(job.startedAt).getTime();
+  const until = new Date(job.completesAt).getTime();
+
+  /*
+   * The two ends, only where the camp can read a clock.
+   *
+   * A wall-clock hour is what the Clock fitting buys; printing one here would hand out
+   * its reward for nothing. Without it the window is still a fill and still a countdown,
+   * which are both spans rather than times.
+   */
+  const ends = view.hour?.clock
+    ? `<span class="ends"><span>${escape(campHour(from, view.hour.offset))}</span>
+        <span>ready ${escape(campHour(until, view.hour.offset))}</span></span>`
+    : '';
+
+  return `<div class="onbench live">
+      <span class="on"><span class="nm">${escape(job.name)}</span>${saysYield(job)}
+        <span class="lft" data-until="${until}" data-done="ready"></span></span>
+      ${/* The fill's own pair. Never `data-until` on a container: that marker is the
+           countdown's, and the loop replaces the text of everything wearing it. */ ''}
+      <span class="worked" data-from="${from}" data-took="${until - from}"><i></i></span>
+      ${ends}
+      ${/* One span for the sentence and one for the weight: a flex row spreads its
+           children, and a bare text node either side of the name is a child. */ ''}
+      <span class="hands"><span>in <em>${escape(
+        job.hands ?? 'the crew',
+      )}&rsquo;s</em> hands</span>${
+        job.weighs ? `<span class="wt">${escape(job.weighs)}</span>` : ''
+      }</span>
+    </div>`;
 }
 
-function craftCell(recipe, view) {
-  // A recipe you cannot afford keeps its row and says why, in the cost column where the
-  // rest of the price is. Hiding it would hide the goal.
-  if (view.workshopLevel < recipe.requires_workshop) return '';
-  if (!view.survivor) return ''; // Starting work needs living hands, as builds do.
-  if (recipe.shortBy) return '';
+/**
+ * What last came off it.
+ *
+ * The workshop was the only thing in the camp that produced something and then showed no
+ * sign of having done it. Where it went is not claimed: the order row knows what was made
+ * and whose hands made it, and whether it fit in the pack is a fact about an event.
+ */
+function lastOffTheBench(view) {
+  const last = view.lastCraft;
+
+  if (!last) {
+    return `<div class="wasmade">
+        <span class="mrow"><span class="benchlab">Last off the bench</span></span>
+        <span class="never">Nothing yet. This bench has not turned anything out.</span>
+      </div>`;
+  }
+
+  return `<div class="wasmade">
+      <span class="mrow"><span class="benchlab">Last off the bench</span>
+        <span class="ago">${escape(
+          duration(Math.max(0, (Date.now() - new Date(last.at).getTime()) / 3_600_000)),
+        )} ago</span></span>
+      <span class="mrow"><span><span class="nm">${escape(last.name)}</span>${saysYield(
+        last,
+      )}</span><span class="chip">${escape(last.worth)}</span></span>
+      <span class="mrow"><span class="went">from ${escape(
+        last.hands ?? 'the crew',
+      )}&rsquo;s hands</span><span class="went">${escape(last.weighs ?? '')}</span></span>
+    </div>`;
+}
+
+/**
+ * One recipe, as three rows that each reach both edges of the cell.
+ *
+ * Measured: two across a full-width block gives a cell 306px wide, and the widest thing
+ * most of them hold is `20 scrap` at about sixty. Composed as a stack of left-aligned
+ * lines the middle of every cell was empty, which reads as a block that is not finished.
+ * So: name against what it does, the price on a line of its own — the Rad Scrubber's is
+ * 270px against 274px of cell and can share a row with nothing — and the weight against
+ * the control.
+ */
+function craftTile(recipe, at, total, view) {
+  const cols = 2;
+  const last = at % cols === cols - 1 ? ' lastcol' : '';
+  const bottom = at >= Math.ceil(total / cols - 1) * cols ? ' lastrow' : '';
+  const busy = view.craft && view.craft.name === recipe.name ? ' inuse' : '';
+
+  return `<div class="craft${last}${bottom}${busy}">
+      <span class="trow"><span class="cname">${escape(recipe.name)}${saysYield(
+        recipe,
+      )}${craftPop(recipe)}</span>
+        <span class="chip">${escape(recipe.worth)}</span></span>
+      <span class="trow solo">${craftPrice(recipe)}</span>
+      <span class="trow act"><span class="wt">${escape(recipe.weighs ?? '')}</span>
+        ${saysCraftTime(recipe)}${craftControl(recipe, view)}</span>
+    </div>`;
+}
+
+/**
+ * The price, with the two halves still distinguishable.
+ *
+ * Stores read as figures; a material reads as `2 × scavenged parts`, which is the form
+ * every other path in the app prints it in — the name comes off the slug rather than out
+ * of a second table of shorter names.
+ */
+function craftPrice(recipe) {
+  const parts = Object.entries(recipe.costs ?? {}).map(
+    ([kind, amount]) => `<span class="cost">${amount} ${escape(kind)}</span>`,
+  );
+  const stores = parts.join('<span class="sep">&middot;</span>');
+
+  const inputs = (recipe.inputs ?? [])
+    .map(
+      (input) =>
+        `<span class="cost">${input.qty} &times; ${escape(
+          input.slug.replaceAll('_', ' '),
+        )}</span>`,
+    )
+    .join('<span class="sep">&middot;</span>');
+
+  if (!inputs) return stores;
+  return `${stores}<span class="sep">+</span>${inputs}`;
+}
+
+/**
+ * The time the order will take, and the time it would have taken.
+ *
+ * The row used to send `craft_hours` raw while `startCraft` multiplied it, so with a
+ * Machine Shop fitted every figure here was a third too long — and the reward of the most
+ * expensive fitting in the game was invisible on the one block it improves.
+ */
+function saysCraftTime(recipe) {
+  const took = duration(recipe.craftHours ?? recipe.craft_hours);
+  const raw = duration(recipe.craft_hours);
+  if (took === raw) return `<span class="tm">${escape(took)}</span>`;
+  return `<span class="tm cut"><s>${escape(raw)}</s>${escape(took)}</span>`;
+}
+
+/** What a recipe yields, said only where the name does not already say it. */
+function saysYield(of) {
+  const qty = Number(of.output_qty ?? of.qty ?? 1);
+  if (of.output_name && of.output_name !== of.name) {
+    return `<span class="qty">${qty} &times; ${escape(of.output_name)}</span>`;
+  }
+  return qty > 1 ? `<span class="qty">&times; ${qty}</span>` : '';
+}
+
+/**
+ * A recipe you cannot start keeps its cell and says why.
+ *
+ * A tier you have not reached is a goal; a shortfall is an errand. Both are answers to
+ * "what would this take", so both sit where the button would be rather than hiding it.
+ */
+function craftControl(recipe, view) {
+  if (view.workshopLevel < recipe.requires_workshop) {
+    return `<span class="shut">Workshop ${recipe.requires_workshop}</span>`;
+  }
+  if (view.craft) return '<span class="shut">Bench in use</span>';
+  if (!view.survivor) return '<span class="shut">Nobody here</span>';
+  if (recipe.shortBy) {
+    // No `title`: the cell's own panel opens on hover anywhere in the cell and already
+    // carries the shortfall, and two tooltip mechanisms for one fact is one too many.
+    return '<span class="shut over">Short</span>';
+  }
 
   return `<form method="post" action="/craft">
       <input type="hidden" name="recipe" value="${escape(recipe.slug)}">
@@ -8334,21 +8735,26 @@ function craftCell(recipe, view) {
     </form>`;
 }
 
-/**
- * The second line of a price: the reason there is no button.
- *
- * Under the cost rather than where the button would be, because both are answers to
- * "what would this take" — and a tier you have not reached reads as part of the price
- * rather than as a refusal when it sits with the rest of it.
- */
-function craftPrice(recipe, view) {
-  if (view.workshopLevel < recipe.requires_workshop) {
-    return `<span class="needs">needs workshop ${recipe.requires_workshop}</span>`;
-  }
-  if (view.survivor && recipe.shortBy) {
-    return `<span class="short">${escape(recipe.shortBy)}</span>`;
-  }
-  return '';
+/** What the recipe is, at rest — the description was a hover popup and nothing else. */
+function craftPop(recipe) {
+  return `<span class="pop">
+      <span class="pw">${escape(recipe.description ?? '')}</span>
+      <span class="pl"><span class="k">yields</span>
+        <span class="v">${Number(recipe.output_qty)} &times; ${escape(
+          recipe.output_name,
+        )}</span></span>
+      <span class="pl"><span class="k">each one</span>
+        <span class="v">${escape(recipe.worth)}</span></span>
+      <span class="pl"><span class="k">weight</span>
+        <span class="v">${escape(recipe.weighs ?? '')}</span></span>
+      <span class="pl"><span class="k">bench</span>
+        <span class="v">${escape(duration(recipe.craftHours ?? recipe.craft_hours))}</span></span>
+      ${
+        recipe.shortBy
+          ? `<span class="pf over">${escape(recipe.shortBy)}</span>`
+          : ''
+      }
+    </span>`;
 }
 
 /**

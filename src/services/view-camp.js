@@ -61,6 +61,7 @@ import {
   fittingsBuildable,
   levelForFitting,
   campWealth,
+  craftHoursMultiplier,
   productionRates,
   structureEffect,
   upgradeCost,
@@ -996,6 +997,20 @@ function vitalsOf(radDecayPerHour) {
  *
  * Returns null when the camp can pay, so the caller can treat it as a plain guard.
  */
+export function worthOf(kind, potency) {
+  const round = (value) => Math.round(value * 10) / 10;
+  const points = Number(potency) * POTENCY_TO_POINTS;
+
+  if (kind === 'ration') return `+${round(points)} health`;
+  if (kind === 'antirad') return `\u2212${round(points)} rads`;
+  // Both capped where `equipment.js` caps them, so the figure shown is the one a trip
+  // would actually apply rather than the one on the row.
+  if (kind === 'armour') return `blunts ${Math.min(60, Number(potency))}% of damage`;
+  if (kind === 'weapon') return `avoids ${Math.min(50, Number(potency))}% of hazards`;
+
+  return 'used at the bench';
+}
+
 function shortfall(resources, pack, costs = {}, inputs = []) {
   const missing = [];
 
@@ -1052,7 +1067,7 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
    */
   const { rows: regionRows } = await client.query(
     `select slug, name, danger, travel_hours, description, requires_link,
-            loot, radiation_per_trip
+            loot, radiation_per_trip, finds
        from regions order by danger, travel_hours`,
   );
 
@@ -1091,7 +1106,8 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
   const { rows: recipes } = await client.query(
     `select rec.slug, rec.name, rec.costs, rec.inputs, rec.output_qty,
             rec.requires_workshop, rec.craft_hours, rec.description,
-            i.name as output_name
+            i.name as output_name, i.kind as output_kind,
+            i.potency as output_potency, i.weight_grams as output_grams
        from recipes rec
        join items i on i.id = rec.output_item_id
       order by rec.requires_workshop, rec.craft_hours`,
@@ -1100,10 +1116,37 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
   // Re-read for the same reason the expedition is: the tick may have just lifted an
   // order off the bench, and what the page wants is whatever is on it *now*.
   const { rows: onTheBench } = await client.query(
-    `select rec.name, co.completes_at
+    `select rec.name, rec.output_qty, co.started_at, co.completes_at, c.name as hands,
+            i.kind as output_kind, i.potency as output_potency, i.weight_grams as output_grams
        from craft_orders co
        join recipes rec on rec.id = co.recipe_id
+       join items i on i.id = rec.output_item_id
+       left join characters c on c.id = co.crafted_by
       where co.settlement_id = $1 and co.status = 'active'`,
+    [settlementId],
+  );
+
+  /*
+   * What last came off the bench.
+   *
+   * The workshop is the only thing in the camp that produces something and then shows no
+   * sign of having done it: `craft_delivered` reaches the away log and nowhere else, and
+   * that log covers only the tick this page happened to run. The order row outlives it.
+   *
+   * Where it went is deliberately not claimed. `advance-settlement` puts a finished order
+   * in the crafter's pack and boxes whatever did not fit, and which of those happened is a
+   * fact about an event rather than about this row.
+   */
+  const { rows: lastOff } = await client.query(
+    `select rec.name, rec.output_qty, co.resolved_at, c.name as hands,
+            i.kind as output_kind, i.potency as output_potency, i.weight_grams as output_grams
+       from craft_orders co
+       join recipes rec on rec.id = co.recipe_id
+       join items i on i.id = rec.output_item_id
+       left join characters c on c.id = co.crafted_by
+      where co.settlement_id = $1 and co.status = 'delivered'
+      order by co.resolved_at desc
+      limit 1`,
     [settlementId],
   );
 
@@ -1199,7 +1242,7 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
         idle: health >= 100 ? 'nothing to mend' : null,
         // What it is worth in the abstract, for the note: the row above is capped by how
         // hurt they happen to be, and "+0.4 health" says nothing about the item.
-        worth: `+${round(points)} health`,
+        worth: worthOf('ration', row.potency),
       };
     }
 
@@ -1209,7 +1252,7 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
         ...row,
         use: dose <= 0 ? null : { effect: `−${round(scrubs)} rads` },
         idle: dose <= 0 ? 'no dose to scrub' : null,
-        worth: `−${round(points)} rads`,
+        worth: worthOf('antirad', row.potency),
       };
     }
 
@@ -1231,13 +1274,13 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
      */
     const potency = Number(row.potency);
     if (row.kind === 'armour') {
-      return { ...row, use: null, idle: null, worth: `blunts ${Math.min(60, potency)}% of damage` };
+      return { ...row, use: null, idle: null, worth: worthOf('armour', potency) };
     }
     if (row.kind === 'weapon') {
-      return { ...row, use: null, idle: null, worth: `avoids ${Math.min(50, potency)}% of hazards` };
+      return { ...row, use: null, idle: null, worth: worthOf('weapon', potency) };
     }
 
-    return { ...row, use: null, idle: null, worth: 'used at the bench' };
+    return { ...row, use: null, idle: null, worth: worthOf(row.kind, row.potency) };
   });
 
   for (const [i, row] of inventoryRows.entries()) {
@@ -1310,6 +1353,74 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
     id === null || id === undefined
       ? null
       : ((state.survivors ?? []).find((one) => Number(one.id) === Number(id))?.name ?? null);
+
+  /*
+   * The materials the bench asks somebody to go and find.
+   *
+   * `costs` come out of settlement stores, which fill on their own while you are offline.
+   * `inputs` come off a survivor's back, and that half is the one that needs explaining --
+   * once, rather than once per recipe: where it is found, who at the bench wants it, and
+   * how much of it is in the camp right now.
+   *
+   * Built from whatever the recipes actually name, so a second material added to the seed
+   * gets its own counter without anything here changing.
+   */
+  const materials = [
+    ...new Set(recipes.flatMap((one) => (one.inputs ?? []).map((input) => input.slug))),
+  ].map((slug) => {
+    const holders = inventoryRows
+      .filter((row) => row.slug === slug)
+      .map((row) => ({ name: nameOf(row.character_id), qty: Number(row.qty) }))
+      .sort((a, b) => b.qty - a.qty);
+    const box = Number(boxRows.find((row) => row.slug === slug)?.qty ?? 0);
+
+    const roads = regionRows
+      .map((region) => {
+        const find = (region.finds ?? []).find((one) => one.slug === slug);
+        if (!find) return null;
+
+        const [low, high] = find.qty ?? [1, 1];
+        return {
+          name: region.name,
+          hours: Number(region.travel_hours),
+          chance: Number(find.chance),
+          /*
+           * The average haul from one completed trip.
+           *
+           * `rollFinds` takes a single draw per find per trip and a miss returns *nothing*
+           * rather than one, so the mean is the chance times the middle of the range. It
+           * matters because the odds alone flatten the difference: 55% against 30% reads as
+           * a fifth better when the Deep Zone gives two or three and the Millrace gives one.
+           */
+          perTrip: Number(find.chance) * ((Number(low) + Number(high)) / 2),
+        };
+      })
+      .filter(Boolean)
+      // Best first, and a tie broken by the shorter walk.
+      .sort((a, b) => b.chance - a.chance || a.hours - b.hours);
+
+    return {
+      slug,
+      /*
+       * From the slug, always -- never `items.name`.
+       *
+       * The item is titled "Scavenged Parts", so reading the name made the counter change
+       * case depending on whether anybody happened to be holding one. Every other path in
+       * the app spells a material off its slug, and this is a readout in a label strip.
+       */
+      name: slug.replaceAll('_', ' '),
+      held: holders.reduce((sum, one) => sum + one.qty, 0) + box,
+      holders,
+      box,
+      roads,
+      wantedBy: recipes
+        .filter((one) => (one.inputs ?? []).some((input) => input.slug === slug))
+        .map((one) => ({
+          name: one.name,
+          qty: Number((one.inputs ?? []).find((input) => input.slug === slug).qty),
+        })),
+    };
+  });
 
   /**
    * A structure's levels as a run of stops, from where it is worth starting to where it is
@@ -2281,12 +2392,51 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
     recipes: recipes.map((recipe) => ({
       ...recipe,
       shortBy: shortfall(purse, pack, recipe.costs ?? {}, recipe.inputs ?? []),
+      /*
+       * The time the order will take, not the time the recipe is written in.
+       *
+       * `startCraft` multiplies `craft_hours` by `craftHoursMultiplier` when the order is
+       * placed, so with a Machine Shop fitted every figure on this block was a third too
+       * long -- and the reward of the most expensive fitting in the game was invisible on
+       * the one block it improves. Both are sent: the row shows what it will take, and
+       * strikes through what it would have taken without the tools.
+       */
+      craftHours: Number(recipe.craft_hours) * craftHoursMultiplier([...fitted]),
+      /** What comes off the bench, in the words the pack already uses for it. */
+      worth: worthOf(recipe.output_kind, recipe.output_potency),
+      /** And what it weighs, which decides whether it lands in a pack or on the shelf. */
+      grams: Number(recipe.output_grams) * Number(recipe.output_qty),
+      weighs: saysWeight(Number(recipe.output_grams) * Number(recipe.output_qty)),
     })),
+    materials,
     // What the bench can take on is gated by the workshop, so the page has to know
     // its level to explain why a recipe has no button rather than just hiding it.
     workshopLevel: Number(structures.find((s) => s.kind === 'workshop')?.level ?? 0),
     craft: onTheBench[0]
-      ? { name: onTheBench[0].name, completesAt: onTheBench[0].completes_at }
+      ? {
+          name: onTheBench[0].name,
+          qty: Number(onTheBench[0].output_qty),
+          // Both ends of the window, so the fill is a fraction rather than a spinner --
+          // the same pair the structures block computes its own from.
+          startedAt: onTheBench[0].started_at,
+          completesAt: onTheBench[0].completes_at,
+          hands: onTheBench[0].hands,
+          worth: worthOf(onTheBench[0].output_kind, onTheBench[0].output_potency),
+          weighs: saysWeight(
+            Number(onTheBench[0].output_grams) * Number(onTheBench[0].output_qty),
+          ),
+        }
+      : null,
+    /** What last came off it, so the bench shows some sign of having been used. */
+    lastCraft: lastOff[0]
+      ? {
+          name: lastOff[0].name,
+          qty: Number(lastOff[0].output_qty),
+          at: lastOff[0].resolved_at,
+          hands: lastOff[0].hands,
+          worth: worthOf(lastOff[0].output_kind, lastOff[0].output_potency),
+          weighs: saysWeight(Number(lastOff[0].output_grams) * Number(lastOff[0].output_qty)),
+        }
       : null,
     expedition,
     /*
