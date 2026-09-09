@@ -2235,10 +2235,14 @@ ${PANE_CSS}
   /* The Rad Scrubber's price measures ~270px against 274px of cell, so it can share a row
      with nothing. It gets one. */
   .trow.solo { display: block; }
-  .craft .cname { position: relative; font-family: var(--label); font-size: 15px;
-                  color: var(--bone); cursor: help;
-                  border-bottom: 1px dotted var(--fainter); }
-  .craft:hover .cname, .craft:focus-within .cname { border-bottom-color: var(--oxide); }
+  /* Both resets again: the page's own button rule uppercases and tracks out every
+     button on it, and a recipe's name is a name. */
+  .craft .cname { position: relative; appearance: none; background: none; border: 0;
+                  padding: 0; text-align: left; text-transform: none;
+                  letter-spacing: normal; border-bottom: 1px dotted var(--fainter);
+                  font-family: var(--label); font-size: 15px; line-height: inherit;
+                  color: var(--bone); cursor: help; }
+  .craft .cname:hover, .craft .cname:focus-visible { border-bottom-color: var(--oxide); }
   .craft .qty { margin-left: 7px; font-family: var(--numer); font-size: 11.5px;
                 color: var(--faint); }
   .craft .cost { font-family: var(--numer); font-size: 12.5px; color: var(--value); }
@@ -2289,7 +2293,7 @@ ${PANE_CSS}
   .craft .pop, .material .pop { top: calc(100% + 6px); bottom: auto; left: 0;
                                 transform: none; }
   .craft.lastcol .pop, .material .pop { left: auto; right: 0; }
-  .craft:hover .pop, .craft:focus-within .pop,
+  .craft .cname:hover .pop, .craft .cname:focus-visible .pop,
   .material:hover .pop, .material:focus-within .pop { visibility: visible; opacity: 1; }
   .pop.wide { width: 320px; }
   .pop .pv { display: block; margin-top: 2px; font-family: var(--numer); font-size: 11.5px;
@@ -8651,9 +8655,9 @@ function craftTile(recipe, at, total, view) {
   const busy = view.craft && view.craft.name === recipe.name ? ' inuse' : '';
 
   return `<div class="craft${last}${bottom}${busy}">
-      <span class="trow"><span class="cname">${escape(recipe.name)}${saysYield(
-        recipe,
-      )}${craftPop(recipe)}</span>
+      <span class="trow"><button type="button" class="cname">${escape(
+        recipe.name,
+      )}${saysYield(recipe)}${craftPop(recipe)}</button>
         <span class="chip">${escape(recipe.worth)}</span></span>
       <span class="trow solo">${craftPrice(recipe)}</span>
       <span class="trow act"><span class="wt">${escape(recipe.weighs ?? '')}</span>
