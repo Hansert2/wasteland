@@ -315,6 +315,57 @@ export async function buildStates(client, now = Date.now()) {
     states['banked'] = campPage(await viewCamp(client, id, now + 0.1 * HOUR));
   }
 
+  /*
+   * 6e. Somebody at the gate, which no state in this file has ever reached.
+   *
+   * That absence is the reason this pair exists. `atTheGate` needs a camp that has a bed
+   * *and* a spare place in it *and* has passed the eight-in-the-morning hour after the bed
+   * was ready — three conditions no fixture here happened to satisfy, so `s-gate` rendered
+   * empty in every state, the contract test never saw the block, and a layout nobody could
+   * draw against went out with a control welded to the pips beside it.
+   *
+   * The bed is inserted rather than built: `startUpgrade` wants scrap, a free pair of hands
+   * and half an hour of clock, and none of those three is what this fixture is about. What
+   * matters is that it was ready yesterday, because the gate hour counts from the newest bed
+   * and a bed fitted this morning would put the arrival tomorrow.
+   */
+  const bedFor = (id, at) =>
+    client.query(
+      `insert into structure_upgrades (settlement_id, kind, upgrade, started_at, completes_at, installed_at)
+       values ($1, 'shelter', 'bed', $2, $2, $2)`,
+      [id, new Date(at)],
+    );
+
+  {
+    const id = await camp(client, now);
+    await raiseSuccessor(client, id, { now });
+    await bedFor(id, now - 30 * HOUR);
+    states['at-the-gate'] = campPage(await viewCamp(client, id, now + 0.1 * HOUR), {
+      pane: 'survivor',
+    });
+  }
+
+  /*
+   * 6f. The same person, and nowhere to put them.
+   *
+   * The state the block refused to render at all until 2026-09-09: `atTheGate` returned null
+   * the moment `bedsFree` hit zero, so the camp with the most reason to hear about an arrival
+   * was the one told nothing, and the two refusals `takeInWanderer` writes were sentences no
+   * player could reach. One bed and two people is the whole of the setup.
+   */
+  {
+    const id = await camp(client, now);
+    await raiseSuccessor(client, id, { now });
+    await bedFor(id, now - 30 * HOUR);
+    await client.query(
+      `insert into characters (settlement_id, name, born_at) values ($1, 'Marek', $2)`,
+      [id, new Date(now - HOUR)],
+    );
+    states['gate-full'] = campPage(await viewCamp(client, id, now + 0.1 * HOUR), {
+      pane: 'survivor',
+    });
+  }
+
   // 7. The ledger, and the empty camp that follows a death.
   {
     const id = await camp(client, now);

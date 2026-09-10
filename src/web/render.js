@@ -45,11 +45,23 @@
  * got the box, and could not see it. The page went and got the thing, then hid it.
  */
 const PANES = {
+  /*
+   * `gate` is on Camp and not on Survivors, which reads backwards and is the whole point.
+   *
+   * The arrival itself lives *inside* the Survivors block now, below a ruled threshold — see
+   * `renderAtGate`. What is left in `s-gate` is one line saying somebody is there and where to
+   * go, so the section is the camp-view half of one idea and the block is the other half. The
+   * caravan has worked this way since Phase 5 for the same reason: a thing that belongs to one
+   * view still has to be *discoverable* from the view a player actually checks in on.
+   *
+   * Listing it under `survivor` as well would print the line above the block that contains the
+   * person it is announcing.
+   */
   camp: [
-    'raid', 'sky', 'forecast', 'events', 'direction', 'structures', 'workshop',
+    'raid', 'sky', 'forecast', 'events', 'direction', 'gate', 'structures', 'workshop',
     'caravan', 'roster',
   ],
-  survivor: ['gate', 'survivor', 'expedition', 'forecast'],
+  survivor: ['survivor', 'expedition', 'forecast'],
   /*
    * Storage is one board and nothing else on it.
    *
@@ -3245,6 +3257,62 @@ ${PANE_CSS}
   .rest select, .rest button { font-size: 9.5px; padding-top: 5px; padding-bottom: 5px; }
   .rest button { padding-left: 10px; padding-right: 10px; }
 
+  /* ---- the threshold, and whoever is on the other side of it ---- */
+
+  /*
+   * A strip on the block's own label fill, ruled top and bottom, so it reads as the end of
+   * the roster rather than as another row in it. It is the one thing in this block that is
+   * about the camp instead of about a person, which is why it takes the strip idiom rather
+   * than the card one.
+   */
+  .thresh {
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+    padding: 10px 18px;
+    background: var(--strip);
+    border-top: 1px solid var(--rule);
+    border-bottom: 1px solid var(--rule);
+  }
+  .thresh .tag { flex: 0 0 auto; color: var(--dim); }
+  .thresh .th-line { font-family: var(--numer); font-size: 13px; line-height: 1.4;
+                     color: var(--faint); }
+
+  /*
+   * The same three columns the cards above use, so a name below the line sits under the names
+   * above it. That alignment is the whole reason this is not a separate block: the eye reads
+   * one column of people and one of them happens to be outside.
+   */
+  .atgate { display: grid; grid-template-columns: 190px minmax(0, 1fr) auto; gap: 0 26px;
+            align-items: start; padding: 15px 18px; }
+  .atgate.empty { display: block; }
+  .atgate .waiting { margin: 0; font-size: 15px; line-height: 1.5; color: var(--quiet); }
+  .gate-who .nm { display: block; font-family: var(--label); font-weight: 700; font-size: 17px;
+                  line-height: 1.2; color: var(--bone); }
+  .gate-who .tag { display: block; margin-top: 5px; color: var(--oxide-light); }
+  .atgate.shut .gate-who .nm { color: var(--prose); }
+  .atgate.shut .gate-who .tag { color: var(--faint); }
+  .gate-body .said { margin: 0 0 12px; font-size: 15.5px; line-height: 1.55;
+                     color: var(--prose); max-width: 60ch; }
+  /*
+   * Two across, and not the one-per-line the cards use.
+   *
+   * A pip is flex: 1 1 0 inside its row, so the component takes whatever width it is given:
+   * in the card's 190px column a pip measures about 30px, and left to fill this block it
+   * measures 139 — seven bars a hand-span wide, which reads as a progress bar rather than as a
+   * seven-point scale. Two fixed columns put it back at the size it was drawn for.
+   */
+  .gate-body .skills { grid-template-columns: 210px 210px; gap: 22px; }
+  .gate-act { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+  .gate-act .caption { text-align: right; max-width: 22ch; }
+
+  @media (max-width: 760px) {
+    .atgate { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+    .gate-act { align-items: flex-start; }
+    .gate-act .caption { text-align: left; }
+    .gate-body .skills { grid-template-columns: minmax(0, 1fr); }
+  }
+
   @media (max-width: 760px) {
     .person { grid-template-columns: minmax(0, 1fr); gap: 10px; }
     /*
@@ -5429,7 +5497,13 @@ export function campPage(view, { error, pane = 'camp', place = null } = {}) {
         ? renderSurvivors(view)
         : renderNoSurvivor(view.fallenCount > 0, view.arriving),
     )}
-    ${section('gate', renderGate(view.atTheGate))}
+    ${/*
+      * Emitted here, between the roster and the road, and read on Camp between Next and the
+      * structures — because the sections either side of it are Survivors-only and collapse
+      * out of the camp stream. That lands the line beside the advice and above the block that
+      * sells beds, which is the pair of neighbours it wants.
+      */ ''}
+    ${section('gate', renderGateLine(view.atTheGate))}
     ${section(
       'expedition',
       view.roster?.length ? renderExpeditions(view, place) : quiet('Away', NOTHING.expedition),
@@ -6151,27 +6225,144 @@ function strainNote(strain) {
  * player reloading — the same trick the returning expedition uses, and the reason the hour
  * is worth having at all.
  */
-function renderGate(gate) {
+/**
+ * What a bed costs from where the camp stands, as one clause.
+ *
+ * Written once because three places want it and they must not drift: the line on Camp, the
+ * threshold in the roster, and the note beside the refusal.
+ */
+function bedPrice(nextBed) {
+  if (!nextBed) return 'the shelter cannot hold another';
+  // A shelter already tall enough to hold it is not a thing to go and raise. The starting
+  // camp is at 2 and its first bed wants 2, so this is the state a new camp is in — and
+  // "12 scrap and the shelter at 2" tells it to build what it already has.
+  if (nextBed.builds === 0) return `${nextBed.scrap} scrap`;
+  return `${nextBed.scrap} scrap and the shelter at ${nextBed.level}`;
+}
+
+/**
+ * The Camp view's half of the gate: one line, and where to go.
+ *
+ * The block used to be on Survivors and nowhere else, and nothing anywhere else knew. The
+ * Next block has eleven pieces of advice and none of them is about a person; the away log
+ * records a build finishing and not somebody arriving; the rail counts four stores and no
+ * people. So a camp with a made bed could have somebody standing at the gate for days while
+ * every view a player actually opens said nothing at all.
+ *
+ * This is the caravan's answer rather than a new one: a quiet row on Camp naming who is
+ * there, and the whole of it a click away. `quiet` and `onward` are the two helpers that
+ * shape already exists in.
+ *
+ * It is a line and not a block on purpose. A second full card on Camp would be the same
+ * person rendered twice on one page, and the pane filter only stops that by accident of
+ * which view you happen to be on.
+ */
+function renderGateLine(gate) {
   if (!gate) return '';
 
-  if (!gate.wanderer) {
-    return block(
+  const where = onward('/camp/survivor', 'Survivors');
+
+  if (gate.wanderer) {
+    // Named, because the name is the reason to go and look. "Somebody is at the gate" is
+    // the same sentence every morning and stops being read.
+    return quiet(
       'The gate',
-      `<p>The bed is made. Somebody comes up the road most mornings.</p>
-       <p class="soft" data-until="${gate.dueAt.getTime()}">Nobody yet.</p>`,
+      gate.room
+        ? `<strong>${escape(gate.wanderer.name)}</strong> is at the gate, and there is a bed.${where}`
+        : `<strong>${escape(gate.wanderer.name)}</strong> is at the gate. Every bed is taken &mdash;
+           ${escape(bedPrice(gate.nextBed))}.${where}`,
     );
   }
 
-  const who = gate.wanderer;
-  return block(
+  if (gate.dueAt) {
+    return quiet(
+      'The gate',
+      `The bed is made. Somebody comes up the road most mornings &mdash;
+       ${countdown(gate.dueAt, 'any time now')} until the gate hour.${where}`,
+    );
+  }
+
+  // No bed has ever been ready here. The refusal `takeInWanderer` writes for this case is
+  // about a thing to go and build, so the line says that rather than naming a person.
+  return quiet(
     'The gate',
-    `<p><strong>${escape(who.name)}</strong> is at the gate. ${escape(who.arrival)}</p>
-     ${skillStats(who.skills)}
-     <form method="post" action="/gate">
-       <button type="submit" class="fill">Let them stay</button>
-     </form>`,
-    { wants: true },
+    `There is nowhere for anybody to sleep. A bed goes in the shelter &mdash;
+     ${escape(bedPrice(gate.nextBed))}.${where}`,
   );
+}
+
+/**
+ * The threshold, and whoever is standing on the other side of it.
+ *
+ * **Below the line is deliberately not a roster row.** The Survivors block's strip is one
+ * control for every card at once — Inventory and Skills — and a person at the gate has no
+ * pack: `insertSurvivor` writes a name, a birth time and two skills and nothing else. A card
+ * that answered the strip would therefore be blank on the tab a player lands on, with its
+ * whole argument one click away. A card that ignored the strip while sitting inside the
+ * roster would be a row disagreeing with a control that claims to govern every row.
+ *
+ * So it sits under a ruled strip that closes the roster, and the tabs do not reach it because
+ * it is not one of the things the tabs are about. `.tabbed` never appears down here.
+ *
+ * The line carries the room, which is what makes the empty states a shape rather than a
+ * sentence: the strip is there whether or not anybody is, and what changes is what is under
+ * it. It is also the only place in the game that says what a bed costs in the same breath as
+ * what a bed is *for*, which the structures ladder cannot do — over there a bed is a fitting
+ * on a scale, and here it is a person.
+ */
+function renderAtGate(gate) {
+  if (!gate) return '';
+
+  const line = gate.room
+    ? `${gate.roster} of ${gate.holds} held &middot; one bed made up`
+    : `${gate.roster} of ${gate.holds} held &middot; a bed is ${escape(bedPrice(gate.nextBed))}`;
+
+  const strip = `<div class="thresh"><span class="tag">At the gate</span>
+      <span class="th-line">${line}</span></div>`;
+
+  if (!gate.wanderer) {
+    /*
+     * Nobody there, and the two reasons are different facts about the camp.
+     *
+     * A countdown, and not the string it replaced: the old line was `<p class="soft"
+     * data-until="…">Nobody yet.</p>`, and the clock loop overwrites the text of every
+     * element carrying `data-until` — so the sentence survived one tick and the paragraph
+     * then read as a bare duration, emptying entirely at the gate hour because no
+     * `data-done` was ever set. The countdown belongs in a span of its own inside the
+     * sentence, which is how every other deadline on this page is written.
+     */
+    const said = gate.dueAt
+      ? `Nobody yet &mdash; ${countdown(gate.dueAt, 'any time now')} until the gate hour.`
+      : 'There is nowhere for anybody to sleep. A bed goes in the shelter.';
+    return `${strip}<div class="atgate empty"><p class="waiting">${said}</p></div>`;
+  }
+
+  const who = gate.wanderer;
+
+  /*
+   * The control, or the reason there is not one — the rule the bench and the dispatch table
+   * already follow. A camp that cannot house them keeps the row and says what is missing,
+   * because hiding the refusal is what hid the whole block for as long as it did.
+   */
+  const act = gate.room
+    ? `<form method="post" action="/gate">
+         <button type="submit" class="fill">Let them stay</button>
+       </form>`
+    : `<span class="short">no bed</span>
+       <span class="caption">${escape(bedPrice(gate.nextBed))}</span>`;
+
+  return `${strip}
+    <div class="atgate${gate.room ? '' : ' shut'}">
+      <div class="gate-who">
+        <span class="nm">${escape(who.name)}</span>
+        <span class="tag">${gate.room ? 'wants the bed' : 'no room'}</span>
+      </div>
+      <div class="gate-body">
+        <p class="said">${escape(who.arrival)}</p>
+        ${skillStats(who.skills)}
+      </div>
+      <div class="gate-act">${act}</div>
+    </div>`;
 }
 
 /**
@@ -6486,8 +6677,22 @@ function renderSurvivors(view) {
     )
     .join('');
 
-  return block('Survivors', `<div class="roster">${people}</div>`, {
+  /*
+   * The gate closes the block rather than opening it.
+   *
+   * Above the line is the camp; below it is somebody who is not in the camp yet, and reading
+   * down the roster in that order is the order the decision is actually made in — you look at
+   * who you have before you decide whether to take another. It also keeps the first card at
+   * the top of the block, which is where a player's eye goes on every check-in.
+   *
+   * `wants` only when the answer is available: a block wearing the "answer me" edge over a
+   * refusal it cannot lift would be asking for something the player cannot give.
+   */
+  const gate = renderAtGate(view.atTheGate);
+
+  return block('Survivors', `<div class="roster">${people}</div>${gate}`, {
     flush: true,
+    wants: Boolean(view.atTheGate?.wanderer && view.atTheGate.room),
     aside: `${away}${tabs}`,
   });
 }

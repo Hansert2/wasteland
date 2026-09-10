@@ -842,3 +842,61 @@ test('a mark says what is acting before it says how much', () => {
     }
   }
 });
+
+test('the arrival is below the roster, and outside everything the roster strip governs', () => {
+  /*
+   * The one invariant Option E rests on, and the one a later hand would drop without
+   * noticing what it had done.
+   *
+   * The Survivors strip is a single control for every card at once — Inventory and Skills,
+   * with Inventory the default — and a person at the gate has no pack: `insertSurvivor`
+   * writes a name, a birth time and two skills and nothing else. So the arrival is deliberately
+   * **not** a row of the thing the tabs are about. It sits under a ruled threshold that closes
+   * the roster, and it carries no `.tabbed` panel, which is what keeps the generated tab CSS
+   * from reaching it.
+   *
+   * Move it inside `.roster`, or give it a panel to be tabbed, and it acquires the strip's
+   * state: on the tab a player lands on, the one card asking a question renders blank. Nothing
+   * errors. The block simply stops making its case, which is the state this whole design was
+   * written to get out of.
+   */
+  const html = STATES['at-the-gate'];
+  assert.ok(html, 'the gate has a state of its own to be checked in');
+
+  const roster = html.indexOf('<div class="roster">');
+  const thresh = html.indexOf('<div class="thresh">');
+  const card = html.indexOf('<div class="atgate');
+
+  assert.ok(thresh > roster, 'the threshold must close the roster, not open it');
+  assert.ok(card > thresh, 'the arrival belongs under the line');
+
+  const rosterEnd = html.indexOf('<div class="thresh">');
+  assert.ok(
+    !html.slice(roster, rosterEnd).includes('class="atgate'),
+    'the arrival has been moved inside the roster, where the tab strip governs it',
+  );
+
+  const below = html.slice(card, html.indexOf('</section>', card));
+  assert.ok(!below.includes('tabbed'), 'the arrival has grown a tab panel and joined the strip');
+  assert.ok(!below.includes('class="person'), 'the arrival has become a roster row');
+
+  /*
+   * And the half that made the block worth rendering at all: a camp with no room still meets
+   * whoever is at the gate, and is told what a bed costs instead of being told nothing.
+   */
+  const full = STATES['gate-full'];
+  assert.ok(full.includes('<div class="atgate shut"'), 'a full camp renders no arrival at all');
+  assert.match(full, /class="thresh"[^]*?2 of 2 held/, 'the threshold does not say how full it is');
+  assert.match(full, /class="short">no bed</, 'the refusal is missing from the full camp');
+
+  /*
+   * The Camp view's half. The block lives on Survivors; every view a player actually checks in
+   * on used to know nothing about it, so a person could stand at the gate for days unmentioned.
+   */
+  for (const name of ['at-the-gate', 'gate-full', 'home']) {
+    const line = /<section id="s-gate">([^]*?)<\/section>/.exec(STATES[name]);
+    assert.ok(line, `${name}: the gate section is missing`);
+    assert.ok(line[1].includes('class="quiet"'), `${name}: Camp is not told about the gate`);
+    assert.ok(line[1].includes('/camp/survivor'), `${name}: the line does not say where to go`);
+  }
+});

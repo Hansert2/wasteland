@@ -11,6 +11,7 @@ import { foundSettlement, raiseSuccessor } from '../../src/services/settlement-l
 import { viewCamp } from '../../src/services/view-camp.js';
 import { campPage } from '../../src/web/render.js';
 import { takeInWanderer } from '../../src/services/take-in-wanderer.js';
+import { levelForFitting } from '../../src/game/structures.js';
 import { UPGRADES } from '../../src/game/structures.js';
 import { CONFIG } from '../../src/game/constants.js';
 import { InputError } from '../../src/errors.js';
@@ -476,7 +477,21 @@ test('a bed makes room, and somebody is at the gate the next morning', async () 
     const evening = Date.UTC(2287, 2, 4, 19);
     const gateOf = async (when) => (await viewCamp(client, settlementId, when)).atTheGate;
 
-    assert.equal(await gateOf(evening), null, 'no bed, no gate');
+    /*
+     * A camp with no bed is told what it is missing rather than told nothing.
+     *
+     * This used to be `null`, and the block that reads it therefore did not render — which is
+     * how the two refusals `takeInWanderer` writes ended up being sentences no player could
+     * reach. Nobody is at the gate here, because the gate hour counts from the newest bed and
+     * there has never been one; what the camp gets is the price of the first one.
+     */
+    const noBed = await gateOf(evening);
+    assert.ok(noBed, 'a camp with no bed still hears about the gate');
+    assert.equal(noBed.wanderer, null, 'and nobody is standing at it');
+    assert.equal(noBed.dueAt, null, 'no bed has ever been ready, so there is no hour');
+    assert.equal(noBed.room, false, 'and no room');
+    assert.equal(noBed.holds, 1, 'the camp holds one: the first survivor needs no bed');
+    assert.equal(noBed.nextBed.level, 2, 'a bed goes in the shelter at 2');
 
     await startUpgrade(client, settlementId, 'bed', evening);
     await advanceSettlement(client, settlementId, evening + hours(1));
@@ -508,7 +523,33 @@ test('a bed makes room, and somebody is at the gate the next morning', async () 
 
     const world = await loadWorld(client, settlementId);
     assert.equal(world.survivors.length, 2, 'two people, both loaded');
-    assert.equal(await gateOf(Date.UTC(2287, 2, 5, 10)), null, 'and the bed is taken');
+
+    /*
+     * The state the whole change is for: every bed taken, and somebody still standing there.
+     *
+     * The page used to go quiet here, which meant the camp with the most reason to be told
+     * about an arrival was the one told nothing. Nobody is conjured by showing them —
+     * `wandererFor` is a pure function of the seed and the count, so this is the person who
+     * would have been at the gate either way — and the refusal names the same price the
+     * structures ladder does.
+     */
+    const full = await gateOf(Date.UTC(2287, 2, 5, 10));
+    assert.ok(full, 'a full camp still hears about the gate');
+    assert.equal(full.room, false, 'but there is no room');
+    assert.ok(full.wanderer, 'and somebody is standing there');
+    assert.notEqual(
+      full.wanderer.name,
+      wanderer.name,
+      'not the person who just walked in — the camp is not offered somebody it holds',
+    );
+    assert.equal(full.roster, 2, 'two held');
+    assert.equal(full.holds, 2, 'of two the shelter can hold');
+    assert.equal(full.nextBed.level, 4, 'a second bed needs the shelter at 4');
+    assert.equal(
+      full.nextBed.level,
+      levelForFitting('bed', 2),
+      'and the gate names the level the ladder names',
+    );
 
     await assert.rejects(
       () => takeInWanderer(client, settlementId, { now: Date.UTC(2287, 2, 5, 11) }),

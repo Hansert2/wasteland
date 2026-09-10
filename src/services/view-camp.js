@@ -2489,12 +2489,53 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
      *
      * Null when the camp is empty: that is succession and goes through `arriving` below,
      * which halves what is left because a camp nobody held has been standing open.
+     *
+     * **It is no longer null when every bed is taken, and that is the point of the change.**
+     * It was, and the effect was that the camp with the most reason to be told about an
+     * arrival was the one told nothing: the block simply did not render, so the two refusals
+     * `takeInWanderer` already writes — *"Every bed in this camp is taken"* and *"There is
+     * nowhere for them to sleep"* — were sentences no player could reach. Meeting somebody
+     * you have no room for is the decision the bed exists to create, and a decision cannot be
+     * put by a block that is absent.
+     *
+     * Nobody is conjured by this. `wandererFor` is a pure function of the camp's seed and how
+     * many it has held, so the person standing at a full gate is the same person who would be
+     * standing at a gate with room — shown rather than derived differently — and taking them
+     * in later still goes through `takeInWanderer`, which computes them again from the same
+     * two numbers. No counter moves because the page looked.
+     *
+     * **A camp that has never made a bed has no hour and no arrival.** `gateOpensAt` counts
+     * from the newest bed, so with none there is nothing to count from; and a brand new camp
+     * being told every morning about somebody it cannot house would be noise from hour one.
+     * It gets the other refusal instead — a bed goes in the shelter — which is a thing to go
+     * and build rather than a person to turn away.
      */
     atTheGate: (() => {
-      if (!state.survivor || bedsFree <= 0 || newestBedAt === null) return null;
+      if (!state.survivor) return null;
+
+      const holds = bedsToRoster(bedsStanding);
+      /*
+       * What the next bed would cost from where the camp stands: the shelter levels between
+       * here and the one that holds it, and then the bed itself. `levelForFitting` is the
+       * same function the structures ladder names its stops with, so the two blocks cannot
+       * disagree about which level buys a bed.
+       */
+      const nextBed = (() => {
+        const level = levelForFitting('bed', bedsStanding + 1);
+        if (level === null) return null;
+        let scrap = UPGRADES.bed.scrap;
+        for (let at = shelterLevel; at < level; at += 1) scrap += upgradeCost('shelter', at).scrap;
+        return { level, scrap, hours: UPGRADES.bed.hours, builds: Math.max(0, level - shelterLevel) };
+      })();
+
+      const room = bedsFree > 0;
+      const shape = { room, holds, roster: livingCount, bedsStanding, nextBed };
+
+      // No bed has ever been ready here, so there is no morning to count from.
+      if (newestBedAt === null) return { ...shape, dueAt: null, wanderer: null };
 
       const due = gateOpensAt(newestBedAt, clock);
-      if (now < due) return { dueAt: new Date(due), wanderer: null };
+      if (room && now < due) return { ...shape, dueAt: new Date(due), wanderer: null };
 
       /*
        * The same `taken` the service passes. `wandererFor` will not offer somebody the camp
@@ -2504,7 +2545,11 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
       const who = wandererFor(settlements[0].caravan_seed, everHeld, {
         taken: (state.survivors ?? []).map((one) => one.name).filter(Boolean),
       });
-      return { dueAt: new Date(due), wanderer: { ...who, skills: skillsOf(who, CONFIG.radThreshold) } };
+      return {
+        ...shape,
+        dueAt: new Date(due),
+        wanderer: { ...who, skills: skillsOf(who, CONFIG.radThreshold) },
+      };
     })(),
     arriving: state.survivor
       ? null
