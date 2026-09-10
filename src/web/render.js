@@ -2571,7 +2571,26 @@ ${PANE_CSS}
    * .rest and the clock picker is .place, and both are declared after this, so a bare
    * modifier of the same name simply loses.
    */
-  .band-who { display: grid; gap: 5px; margin-top: 8px; max-width: 330px; }
+  /*
+   * Four to a column, and then another column -- because the band's height is not negotiable
+   * and the roster's length is not bounded.
+   *
+   * Reported from play on 2026-09-10, on a camp of six: the list is one row per survivor at
+   * 28px, the band is a fixed 148, and four rows plus the lead is 134. The fifth reached the
+   * edge and the sixth put 51px of names through the table header and the first place on it.
+   * Every fixture in this file had one survivor or two, so nothing here had ever drawn it.
+   *
+   * The band's height is the thing that must not give: it is fixed in both states precisely so
+   * the eleven rows below do not jump when a place is pressed, which was the whole objection to
+   * opening a row inline on a page made of countdowns. So the list wraps sideways instead.
+   * grid-auto-flow: column over four explicit rows needs no count of people and no query --
+   * four or fewer is the single column it has always been, and every four after that is another
+   * column beside it. The columns take what width there is rather than a fixed 330, so a camp
+   * of nine narrows them instead of reaching for a scrollbar; .st already ellipsises, which
+   * is what makes that survivable rather than clipped.
+   */
+  .band-who { display: grid; grid-auto-flow: column; grid-template-rows: repeat(4, auto);
+              grid-auto-columns: minmax(0, 330px); gap: 5px 26px; margin-top: 8px; }
   .band-who .p { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; gap: 10px;
             align-items: baseline; }
   .band-who .nm { font-family: var(--label); font-size: 14.5px; color: var(--bone); }
@@ -2752,7 +2771,10 @@ ${PANE_CSS}
     .band-note { min-height: 0; }
     .band-act { flex-direction: row; align-items: center; justify-content: flex-start;
                 gap: 16px; }
-    .band-who { max-width: none; }
+    /* One column again down here: the band's height is auto below this query, so the list
+       has room to run down the page and a second column would only narrow six names to fit a
+       height nothing is enforcing. */
+    .band-who { grid-auto-flow: row; grid-template-rows: none; grid-auto-columns: auto; }
   }
   /* The contact count is four fixed phrases and never wraps. It was borrowing the cost
      column, whose 140px minimum exists for the workshop's long prices — which is what

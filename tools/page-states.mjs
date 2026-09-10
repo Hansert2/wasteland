@@ -366,6 +366,47 @@ export async function buildStates(client, now = Date.now()) {
     });
   }
 
+  /*
+   * 6g. A camp of six, which is the state the roads band was never drawn against.
+   *
+   * Reported from play on 2026-09-10: with more than four people the "Who can go" list ran
+   * out of the band and printed over the table header and the first row of places. The band
+   * is a fixed 148px on purpose -- the list below must not move when a place is pressed --
+   * and the list inside it grows one row per survivor, so the two rules collide at five.
+   *
+   * Every fixture in this file had one survivor or two, so nothing here could show it. Beds
+   * are not the constraint on the roster the page draws: `view.roster` is whoever is alive,
+   * so this inserts people directly rather than raising a shelter to ten to earn them.
+   *
+   * The jobs are varied deliberately. The row is a name, a job in one word and the clock that
+   * ends it, and a camp where everybody is idle renders the one column that cannot overflow.
+   */
+  {
+    const id = await camp(client, now);
+    await raiseSuccessor(client, id, { now });
+    // Named from outside the wanderer pool, for the reason the `banked` state records: the
+    // successor is drawn from that pool, and a fixture that reuses a name from it renders a
+    // camp holding two Alders -- which `wandererFor` is written to make impossible and which
+    // a reader would take for the bug rather than for the fixture.
+    for (const name of ['Marek', 'Juna', 'Halle', 'Tove', 'Bex']) {
+      await client.query(
+        `insert into characters (settlement_id, name, born_at) values ($1, $2, $3)`,
+        [id, name, new Date(now - HOUR)],
+      );
+    }
+    const { rows: out } = await client.query(
+      `select id from characters where settlement_id = $1 and name in ('Marek', 'Tove')`,
+      [id],
+    );
+    // `who` is a bare id here, not an options object: see `dispatchExpedition`.
+    for (const one of out) {
+      await dispatchExpedition(client, id, 'the_deep_zone', now, one.id);
+    }
+    states['crowded'] = campPage(await viewCamp(client, id, now + 0.2 * HOUR), {
+      pane: 'survivor',
+    });
+  }
+
   // 7. The ledger, and the empty camp that follows a death.
   {
     const id = await camp(client, now);
