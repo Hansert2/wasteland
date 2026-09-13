@@ -5019,6 +5019,10 @@ it will read as a bug the moment the page says litres. **That question was asked
 and is now Phase 19 below**, which recommends splitting the two — and records why the split
 has to stay out of this phase.
 
+**Order revised 2026-09-13:** Phase 20 (the hunt) was designed after these and sits **between
+15 and 16** — see its own section at the end of this file for the argument. The order is 15, 20,
+16, 17, 18, with 19 still behind 18.
+
 ### Phase 19 — thirst, proposed 2026-09-02 and deliberately deferred
 
 *Against: a camp with no water reports the shortage as hunger.*
@@ -5648,6 +5652,182 @@ tables and has not been told either one exists.
 single digits under one itinerary and never under the other two, and it would price a real
 mechanic against a corner. *Raising `BARE_STAND`* makes the unarmed camp stronger and the weapon
 worth less, which is the one lever the player currently has. Neither is worth spending.
+
+## Phase 20 — the hunt, designed 2026-09-13 and not built
+
+*Asked for from play, in the user's own words: "more to do actively, without timer. Like
+hunting or something, like a turn based combat system fighting things for food and loot, that's
+instant and no timer."*
+
+Nothing in `wasteland-overhaul.md` asks for this and nothing in the lore mentions an animal, so
+unlike Phases 14 to 18 it is not a thing the game already half-believes. It is a second **mode**
+rather than a second feature, and that is the reason it is a phase of its own rather than a
+block on an existing view.
+
+### The one line it rests on: this is the only verb that runs the chain backwards
+
+The whole game is one arrow:
+
+    stores -> hunger -> stamina -> work
+
+and every phase since Phase 10 has been about making each crossing the only way across. **A
+hunt spends stamina to make stores.** It is the reverse arrow, and that — not the combat, not
+the content — is what makes it worth building. It also says exactly where the danger is: a
+reverse arrow priced generously is a perpetual motion machine, and a camp that can sleep, hunt,
+and sleep again has solved food and hunger for ever.
+
+### The argument it has to beat, which is already written down
+
+*Dead time, 2026-08-21* rejected an at-camp work action, and the rejection was not a shrug:
+
+> Loot tables are flat totals rather than per-hour, so scrap per *survivor-hour* runs The Fence
+> Line 23.5 against the Deep Zone 1.8. Priced under the Fence Line an idle-work action is
+> strictly worse than clicking it; priced over, it replaces the game.
+
+The hunt is not that thing — it is attention rather than hours, and its reward is not scrap —
+but the arithmetic still has to be answered rather than stepped around. **It is answered by
+keeping the currencies apart:**
+
+- **A hunt may never pay scrap.** Scrap is what the roads are for, and the moment a hunt pays
+  any, the Fence Line comparison decides the whole design.
+- **A hunt may never pay fuel.** Same rule as trade, and for the same reason: fuel is the one
+  resource nothing in the camp produces, which is what the entire fuel track is priced against.
+  The existing test guards only that no *structure* produces fuel, so a hunt would walk straight
+  past it exactly as a trader would. **Widen that test when this is built.**
+- **What it pays is meat and material**, and neither is a currency any other verb prints.
+
+### The three prices, and the third is the design
+
+**Stamina**, which is what makes it cost a day rather than an hour. `staminaPerHourWorked` is
+3.8 and a hundred points is the longest walk on the map, so a hunt in the region of 25 points
+is about a quarter of a survivor's working day — enough that hunting instead of walking is a
+real choice, which is the whole point of spending the same gauge an expedition spends.
+
+**Blood.** Health, which recovers slowly and has no fast lever the way stamina has sleep. This
+is what stops a hunt being a button pressed until the stores are full.
+
+**And the walk away.** Every turn must offer leaving with nothing, and leaving must sometimes
+be right. Without it a hunt is a slot machine with extra steps: the player presses through
+because there is no other verb on the screen, and the outcome was decided by the seed before
+they arrived. `moments.js` already has this shape — the ground option, the one that spends
+nothing and takes nothing — and the hunt should be read as a chain of moments rather than as a
+new kind of thing.
+
+### The arithmetic that keeps the reverse arrow honest
+
+The plan's own measured figure is the anchor: **a full stamina gauge costs the camp 50 food**,
+so a point of stamina is about half a unit of food. A hunt costing 25 points has therefore
+already spent about 12 food in recovery before it pays anything.
+
+> **So a hunt that pays around 12 food is a wash, and that is the correct place to price it.**
+> The meat is not the reward. The meat is the reason a *starving* camp hunts — spending
+> tomorrow's working hours to eat tonight, which is a decision the game cannot currently offer
+> because the chain only runs one way. The reward is the material.
+
+A garden at level 2 already makes 1.2 food an hour against a mouth's 0.5, so food is not
+scarce in a settled camp and a hunt priced to *beat* the garden would be both pointless and
+broken. Pricing it at a wash makes it worthless exactly when the camp is fine and precious
+exactly when it is not, which is the right shape for an emergency verb.
+
+**What the material is for is the open half of this design.** The item table has seven rows and
+one material in it. Hide, sinew and bone want recipes to feed, and recipes are content: that is
+either part of this phase or the phase after it, and it is the largest fork in the design.
+
+### What a turn is, mechanically
+
+**No countdown anywhere in it**, which is the user's actual request and is why this cannot be
+built out of `expeditions`. A hunt is a row that holds its own state and advances on a POST:
+each turn renders a scene and two to four options, the answer resolves immediately, and the
+next turn renders from the state the last one left. The page has no timer on it at all, which
+will make it the only block in the game that does not move on its own.
+
+Everything else is the machinery that already exists. The scene and the options are `moments.js`
+in shape and should reuse its vocabulary. The outcome is drawn from a seed on the row, so a hunt
+is a pure function of `(seed, choices)` the way a trip is — it replays identically, it cannot be
+re-rolled by reloading, and `applyTick` never has to know it happened.
+
+**Where the tick does have to know:** the stamina and the health it spends, and the items it
+grants. Those are writes the service makes, not the walk, in the same shape
+`advance-settlement.js` grants finds.
+
+### What is deliberately not proposed
+
+**A timer on any part of it.** Including a cooldown between hunts. Stamina is the limiter and a
+second one would make it a countdown block wearing a different hat — which is the thing the
+user asked for the opposite of.
+
+**A quarry population that depletes and regrows.** The obvious ceiling, and unnecessary: the
+break-even pricing above means hunting cannot be farmed for food, and stamina already caps how
+often anybody can do anything. A stock is a second constraint doing the first one's job, and it
+would need its own table, its own regrowth rate and its own balance pass.
+
+**Hunting while away.** A survivor on the road already has moments; giving them a second content
+system out there would make the trip a place two generators argue over.
+
+### The four open questions, settled 2026-09-13
+
+**1. It can kill — but never on a turn the player was not warned about.**
+
+Death is the stake everywhere else in this game, and a hunt that cannot kill would be the only
+dangerous thing in it that is safe. The real objection to lethality was never the death: it was
+that every other death here has hours of travel in front of it, and a sudden one is a different
+kind of loss.
+
+So the answer comes free from the third price above rather than from a new rule: **a lethal turn
+must always be preceded by a turn on which the danger is visible and leaving is offered.** The
+quarry turns, the ground gives, the light goes — and the walk-away option is on that screen. A
+player who presses on has decided; a player who leaves is alive and has nothing. No threshold,
+no "only below 20 health" clause to explain, and the fairness is a property of the content
+rather than of the arithmetic.
+
+**2. The weapon and the survivor both matter — but the survivor's half is not a combat skill.**
+
+The user asked for both, and there is a recorded reason the obvious version of "both" is wrong.
+Measured before skills were designed a sixth time: **a `skill_combat` that softened hits would
+have been scenery.** Health at 60 changes which option wins on *no* moment, because the game
+already guarantees a healthy survivor cannot die, so damage mitigation is only a decision in the
+last few points before death. Radiation changes the winner on 44% of moments and a loot skill on
+18%; softening changes nothing.
+
+So the two halves read as:
+
+- **The weapon decides whether the quarry can be taken at all**, mirroring `standFor` at the
+  fence exactly — unarmed is possible and bad. That gives the scrap spear a second use and makes
+  a stocked box worth having.
+- **`skill_scavenging` decides what the carcass yields**, reusing the reader that has been worth
+  ten percent a point since migration `013` rather than adding a column. What comes off a
+  carcass is a scavenging question in the plainest sense.
+
+**No new skill and no `skill_combat`.** A third column would also reach into `wandererFor`,
+which generates the two the game has, and it would be a migration spent on the one axis already
+measured as scenery.
+
+**3. Both the hunt and what the loot feeds, in one phase — with the recipe set kept small.**
+
+A reward the bench cannot use is a number in a pack, and this phase exists to answer *"we need
+more content, more to do actively"*. Shipping the half that produces material and not the half
+that consumes it would answer that complaint halfway and leave the loop open across a release.
+
+The cost is controlled rather than accepted: **one recipe per material, three in total**, on the
+bench that already exists, with no new crafting mechanic. The item table has seven rows in it —
+three more and three recipes is a day's content, not a phase of its own.
+
+**4. It goes after Phase 15, and ahead of 16 to 18.**
+
+Phase 15 is small, it lands directly on the gate surface just rebuilt, and it forces an answer
+to the one question that rebuild left open — whether refusing an arrival advances `wandererFor`'s
+counter. It should not be stepped over for being small.
+
+After that, the hunt comes before body recovery, factions and grams-and-litres, all three of
+which **deepen** what exists. This widens it, and *"there is not enough to do"* is the only
+complaint in this project's history that has ever repeated: **"a bit dull"**, then **"still very
+thin"**, and now *"I do feel we need more content eventually. More to do actively."* Three times
+is a pattern, and the two phases that answered it before — the short regions, and the moments —
+are the two that changed how the game reads most.
+
+Numbering is left at 20 because renumbering a plan that records its own history would make every
+earlier reference wrong. **The order is 15, 20, then 16, 17, 18**, and 19 stays deferred behind
+18 as it always was.
 
 ## Not planned
 
