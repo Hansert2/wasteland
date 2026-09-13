@@ -81,7 +81,7 @@ test('every moment has exactly one default, and the default does nothing', () =>
   // stands. Attending may add upside and a chosen risk; it may never restore a baseline
   // that absence took away. A default carrying an effect would break that silently.
   const effects = ['hours', 'lootFactor', 'radiationFactor', 'findChance', 'consumes',
-    'heals', 'hazard', 'clearsHazard', 'parley', 'turnBack', 'dropsCarried'];
+    'heals', 'hazard', 'clearsHazard', 'parley', 'turnBack', 'dropsCarried', 'bringsSomebody'];
 
   for (const [key, moment] of Object.entries(MOMENTS)) {
     const defaults = moment.options.filter((option) => option.verb === 'default');
@@ -614,5 +614,31 @@ test('an option means the same thing after dark as before it', () => {
         assert.deepStrictEqual(now, was, `seed ${seed}, ${day[i].key}/${was.key}`);
       }
     }
+  }
+});
+
+test('bringing somebody home is a consequence no moment can hand out for free', () => {
+  /*
+   * Phase 15. An arrival is the largest thing a moment can do — it is a person, and the camp
+   * is capped at what its beds hold — so the two rules that keep it from being a lever are
+   * pinned here rather than trusted to the one entry that exists today.
+   *
+   * It costs something, and it is never the default. The second is already covered for every
+   * other effect above; this adds the field to that list *and* asserts the first, which no
+   * other effect needs because no other effect is somebody's life.
+   */
+  const bringers = Object.entries(MOMENTS).flatMap(([key, moment]) =>
+    moment.options.filter((option) => option.bringsSomebody).map((option) => [key, option]),
+  );
+
+  assert.ok(bringers.length > 0, 'the phase shipped with no way to meet anybody');
+
+  for (const [key, option] of bringers) {
+    assert.notEqual(option.verb, 'default', `${key}: an arrival cannot be the unattended path`);
+    assert.ok(
+      option.consumes || option.hours || option.hazard,
+      `${key}: bringing somebody home has to cost something`,
+    );
+    assert.equal(option.bringsSomebody, true, `${key}: the flag is a flag, not a count`);
   }
 });

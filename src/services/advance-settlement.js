@@ -2,6 +2,8 @@ import { applyTick } from '../game/tick.js';
 import { loadWorld, saveWorld, grantItems, storeItems } from '../db/world.js';
 import { WORLD_SEED, ensureWorldEvents, loadWorldEvents } from '../db/world-events.js';
 import { deriveEventsBetween } from '../game/world-events.js';
+import { roomToSpare, whoWouldArrive } from './take-in-wanderer.js';
+import { insertSurvivor } from './settlement-lifecycle.js';
 
 /**
  * Bring a settlement up to date: load, simulate, write back.
@@ -119,6 +121,35 @@ export async function advanceSettlement(client, settlementId, now) {
    * deals in state and cannot run a query, so the caller applies what it decided. By id, not
    * by name — two survivors can share one, as the page-state fixtures prove.
    */
+  /*
+   * Phase 15: somebody followed a survivor home, and the gate decides whether they stay.
+   *
+   * Settled here rather than in the walk for the two reasons the finds above give — who it is
+   * comes from a row count, and whether there is a bed is a question about
+   * `structure_upgrades` — and it uses `roomToSpare` and `whoWouldArrive`, the gate's own two
+   * functions, so the two doors into this camp cannot disagree about its capacity or about who
+   * is standing at them.
+   *
+   * **The bed is checked now and not when they were met**, which is the decision rather than
+   * an implementation detail: a survivor agrees to bring somebody back from twenty hours away
+   * and finds out at the gate whether the camp can keep them. A rescue does not conjure a room.
+   *
+   * The turned-away case is an event rather than a silence. Nothing else on the page would ever
+   * mention it, and a player who spent a ration on the road is owed the sentence.
+   */
+  const followed = events.filter((event) => event.type === 'walked_in_with_them');
+  for (const arrival of followed) {
+    void arrival;
+    const { room } = await roomToSpare(client, settlementId);
+    if (room <= 0) {
+      events.push({ at: now, type: 'arrival_turned_away' });
+      continue;
+    }
+    const wanderer = await whoWouldArrive(client, settlementId);
+    await insertSurvivor(client, settlementId, wanderer, now);
+    events.push({ at: now, type: 'joined_the_camp', who: wanderer.name });
+  }
+
   const woken = events.filter((event) => event.type === 'woken' && event.characterId != null);
   if (woken.length > 0) {
     await client.query('update characters set sleep_until = null where id = any($1)', [

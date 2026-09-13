@@ -41,7 +41,7 @@ export function resolveExpedition({ region, survivor, seed, weather, choices, st
   const { damage, cause } = rollHazard(random, region, equipment, log);
 
   const trip = applyChoices(
-    { loot, finds, radiation, damage, cause, healed: 0, heals: [], log },
+    { loot, finds, radiation, damage, cause, healed: 0, heals: [], brings: false, log },
     { region, survivor, seed, choices, standings },
   );
 
@@ -70,6 +70,9 @@ export function resolveExpedition({ region, survivor, seed, weather, choices, st
     healed: trip.healed,
     // Each helping and its hour, so the timeline can put them where they happened.
     heals: trip.heals ?? [],
+    // Whether anybody is walking in behind them. False on a trip nobody came home from:
+    // somebody who followed a survivor that died out there did not arrive anywhere.
+    brings: Boolean(trip.brings) && !died,
     died,
     cause: died ? trip.cause : null,
     log: trip.log,
@@ -173,6 +176,20 @@ function attend(trip, moments, answered, { region, survivor, seed, standings }) 
     }
     if (option.findChance) {
       investigate(trip, region, random, option.findChance, option.finding);
+    }
+
+    /*
+     * Phase 15: somebody walks back with them.
+     *
+     * A flag and a line, and deliberately nothing else. Who it turns out to be is not decided
+     * here and must not be — `wandererFor` answers that from the camp's seed at the gate, so
+     * that a trip cannot be retaken for a better person. Nor is whether the camp has a bed:
+     * this function is a pure roll over a region and a seed, and the shelter is somewhere else
+     * entirely. Both are the caller's, hours later.
+     */
+    if (option.bringsSomebody) {
+      trip.brings = true;
+      trip.log.push('They shared what was in the pack, and picked up a shadow for the walk home.');
     }
     if (option.parley) {
       parley(trip, timeline, at, random, standingOf(standings ?? {}, moment.faction));

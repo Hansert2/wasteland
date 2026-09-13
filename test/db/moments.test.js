@@ -9,6 +9,7 @@ import { MOMENTS, NIGHT, momentCount, momentsFor, walkHomeHours } from '../../sr
 import { viewCamp } from '../../src/services/view-camp.js';
 import { campPage } from '../../src/web/render.js';
 import { answerMoment } from '../../src/services/answer-moment.js';
+import { whoWouldArrive } from '../../src/services/take-in-wanderer.js';
 import { InputError } from '../../src/errors.js';
 
 const hours = (h) => h * 60 * 60 * 1000;
@@ -31,7 +32,14 @@ async function withRollback(fn) {
  * The other expedition tests invent a probe region with a random slug, which is right
  * for them and useless here: no content names it, so it offers no moments at all.
  */
-async function setup(client, slug = 'the_deep_zone') {
+/*
+ * `now` is optional and only the tests that let a trip *resolve* need it. Without it the camp
+ * is founded on the real clock while the trip runs in the fixed midsummer week below, so
+ * `last_tick_at` sits months ahead of the return and the walk covers nothing — the trip never
+ * comes home and the test reads as a feature that does not work. Every test here predating
+ * Phase 15 only ever reads the page mid-trip, which is why it had not come up.
+ */
+async function setup(client, slug = 'the_deep_zone', now = undefined) {
   const { rows: regions } = await client.query(
     'select slug, travel_hours from regions where slug = $1',
     [slug],
@@ -42,8 +50,9 @@ async function setup(client, slug = 'the_deep_zone') {
     email: `${uniq()}@example.test`,
     password: 'correct horse battery staple',
     settlementName: 'Testcamp',
+    ...(now === undefined ? {} : { now }),
   });
-  await raiseSuccessor(client, settlementId, { name: 'Vera' });
+  await raiseSuccessor(client, settlementId, { name: 'Vera', ...(now === undefined ? {} : { now }) });
 
   // Enough in the stores that nobody starves during an eighteen-hour trip.
   await client.query(
@@ -1024,5 +1033,151 @@ test('with two out, the box shows whose window is open and the answer goes to th
       answerMoment(client, settlementId, { index: 0, option, trip: 0 }, at),
       (error) => error instanceof InputError && /that trip is over/i.test(error.message),
     );
+  });
+});
+
+/**
+ * A seed whose Deep Zone trip offers the meeting, searched rather than guessed.
+ *
+ * Same trick the early-window fixture uses: which moments a trip offers is a pure function of
+ * the region and the seed, so the seed can be looked up instead of the content being pinned.
+ * A hand-picked number would go stale the first time a moment is added to the supplies axis.
+ */
+function seedOffering(slug, travelHours, key) {
+  for (let seed = 1; seed < 4000; seed += 1) {
+    const moment = momentsFor({ slug, travelHours }, seed).find((one) => one.key === key);
+    if (moment) return { seed, moment };
+  }
+  throw new Error(`no seed under 4000 offers ${key} in ${slug}`);
+}
+
+test('somebody met on the road walks in behind them, and is who the gate would have offered', async () => {
+  /*
+   * Phase 15, end to end and through the real services: the meeting is answered out there, the
+   * arrival happens at the gate hours later, and the person is `wandererFor`'s answer rather
+   * than anything the trip decided.
+   *
+   * **That last assertion is the phase.** If the trip could choose, a player who disliked the
+   * skills would take another trip and roll again, and the backstory would become a stat block
+   * — the exact failure `wanderers.js` is written to avoid.
+   */
+  await withRollback(async (client) => {
+    const now = LEAVES_IN_DAYLIGHT;
+    const { settlementId, slug, travelHours } = await setup(client, 'the_deep_zone', now);
+
+    // A bed, or there is nowhere to put anybody. The shelter starts at 2, which holds one.
+    await client.query(
+      `insert into structure_upgrades (settlement_id, kind, upgrade, completes_at, installed_at)
+       values ($1, 'shelter', 'bed', $2, $2)`,
+      [settlementId, new Date(now)],
+    );
+    await give(client, settlementId, 'preserved_meal', 1);
+
+    const { seed, moment } = seedOffering(slug, travelHours, 'walking_out');
+    const { expeditionId } = await dispatchExpedition(client, settlementId, slug, now);
+    await client.query('update expeditions set seed = $2 where id = $1', [expeditionId, seed]);
+
+    // Who the gate would offer, asked before the trip resolves so the two cannot be confused.
+    const expected = await whoWouldArrive(client, settlementId);
+
+    const atMoment = now + (moment.atHour + 0.1) * hours(1);
+    await advanceSettlement(client, settlementId, atMoment);
+    await answerMoment(client, settlementId, { index: moment.index, option: 'feed' }, atMoment);
+
+    // The ration was spent on the road, which is the price of the offer.
+    assert.equal((await pack(client, settlementId)).get('preserved_meal') ?? 0, 0);
+
+    /*
+     * Through `viewCamp` rather than `advanceSettlement`, because that is what a page load
+     * does: the same walk, and then the words a player actually reads. An arrival that lands
+     * in the database and says nothing on the page is the shape of fault this project keeps
+     * finding in itself.
+     */
+    const view = await viewCamp(client, settlementId, now + hours(travelHours + 1));
+
+    const joined = view.events.filter((one) => one.type === 'joined_the_camp');
+    assert.equal(joined.length, 1, 'the gate says somebody stayed');
+    assert.equal(joined[0].who, expected.name, 'and it is the person the seed had waiting');
+
+    const page = campPage(view, { pane: 'camp' });
+    assert.match(page, new RegExp(`${expected.name} walked in behind them`), 'and the log says so');
+    assert.doesNotMatch(page, /walked_in_with_them/, 'the meeting is narrated by the trip, not here');
+
+    const { rows: roster } = await client.query(
+      'select name from characters where settlement_id = $1 and died_at is null order by born_at, id',
+      [settlementId],
+    );
+    assert.equal(roster.length, 2, 'the camp is two people now');
+    assert.equal(roster[1].name, expected.name);
+  });
+});
+
+test('meeting somebody you have no room for costs the ration and gains nobody', async () => {
+  /*
+   * The decision the bed exists to create, and the reason the check is at the gate rather than
+   * at the meeting: a survivor agrees to bring somebody back from eighteen hours away and finds
+   * out at home whether the camp can keep them. A rescue must not conjure a room.
+   *
+   * The turned-away line is asserted as well as the absence. Nothing else on the page would
+   * ever mention it, and a player who spent a ration out there is owed the sentence.
+   */
+  await withRollback(async (client) => {
+    const now = LEAVES_IN_DAYLIGHT;
+    const { settlementId, slug, travelHours } = await setup(client, 'the_deep_zone', now);
+
+    // No bed at all: the shelter holds exactly the one survivor it has.
+    await give(client, settlementId, 'preserved_meal', 1);
+
+    const { seed, moment } = seedOffering(slug, travelHours, 'walking_out');
+    const { expeditionId } = await dispatchExpedition(client, settlementId, slug, now);
+    await client.query('update expeditions set seed = $2 where id = $1', [expeditionId, seed]);
+
+    const atMoment = now + (moment.atHour + 0.1) * hours(1);
+    await advanceSettlement(client, settlementId, atMoment);
+    await answerMoment(client, settlementId, { index: moment.index, option: 'feed' }, atMoment);
+
+    const { events } = await advanceSettlement(client, settlementId, now + hours(travelHours + 1));
+
+    assert.equal(events.filter((one) => one.type === 'joined_the_camp').length, 0);
+    assert.equal(events.filter((one) => one.type === 'arrival_turned_away').length, 1);
+
+    const { rows: roster } = await client.query(
+      'select name from characters where settlement_id = $1 and died_at is null',
+      [settlementId],
+    );
+    assert.equal(roster.length, 1, 'still the one of them');
+
+    // And the ration is gone regardless, which is what makes the offer a decision.
+    assert.equal((await pack(client, settlementId)).get('preserved_meal') ?? 0, 0);
+  });
+});
+
+test('walking on past somebody is not a reroll — the next occasion is the same person', async () => {
+  /*
+   * The question the gate rebuild left open on 2026-09-10, answered by arithmetic rather than
+   * by a rule: `whoWouldArrive` counts people who have *held* the camp, so declining moves
+   * nothing. Refusal cannot be used to shop for a better arrival, at the gate or on the road.
+   */
+  await withRollback(async (client) => {
+    const now = LEAVES_IN_DAYLIGHT;
+    const { settlementId, slug, travelHours } = await setup(client, 'the_deep_zone', now);
+    await give(client, settlementId, 'preserved_meal', 1);
+
+    const before = await whoWouldArrive(client, settlementId);
+
+    const { seed, moment } = seedOffering(slug, travelHours, 'walking_out');
+    const { expeditionId } = await dispatchExpedition(client, settlementId, slug, now);
+    await client.query('update expeditions set seed = $2 where id = $1', [expeditionId, seed]);
+
+    const atMoment = now + (moment.atHour + 0.1) * hours(1);
+    await advanceSettlement(client, settlementId, atMoment);
+    await answerMoment(client, settlementId, { index: moment.index, option: 'pass' }, atMoment);
+    await advanceSettlement(client, settlementId, now + hours(travelHours + 1));
+
+    const after = await whoWouldArrive(client, settlementId);
+    assert.equal(after.name, before.name, 'the same person is still out there');
+
+    // And the ration was never spent, because walking on is the option that costs nothing.
+    assert.equal((await pack(client, settlementId)).get('preserved_meal') ?? 0, 1);
   });
 });

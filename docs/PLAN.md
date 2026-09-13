@@ -4853,7 +4853,7 @@ Probably no migration; the moment tables are code and the hour is a pure functio
 claim wants enumerating rather than asserting when the phase is designed — Phase 9 made the
 same claim, and it only held because it was checked line by line.
 
-### Phase 15 — recruitment through the world
+### Phase 15 — recruitment through the world ✅ *(built 2026-09-13; written up below)*
 
 *Against: a bed is a purchase, and a person should be a story.*
 
@@ -5652,6 +5652,91 @@ tables and has not been told either one exists.
 single digits under one itinerary and never under the other two, and it would price a real
 mechanic against a corner. *Raising `BARE_STAND`* makes the unarmed camp stronger and the weapon
 worth less, which is the one lever the player currently has. Neither is worth spending.
+
+## Phase 15 — recruitment through the world, built 2026-09-13 ✅
+
+*The design above asked for the other sources of people: someone met in a moment, someone
+rescued off the road, someone a faction introduces. This builds the first, and the shape it
+establishes is what the other two would be built on.*
+
+**One moment, one flag, and no new surface anywhere.** `walking_out` sits on the `supplies`
+axis in the five long regions: somebody on the road with nothing, going the other way. Walk on,
+or give them a meal out of the pack and they follow. The Contact box renders it like any other
+moment because it *is* like any other moment — the phase adds no block, no page and no table.
+
+### The line that makes it safe, kept exactly
+
+**The world chooses when, the seed chooses who.** The option carries `bringsSomebody: true` and
+nothing else. Who walks in is `wandererFor`'s answer at the gate, off the camp's own seed and
+the number of people who have ever held it — the same two numbers the gate uses — so a player
+who dislikes the skills cannot take another trip and roll again.
+
+`take-in-wanderer.js` now exports the two functions that decide this, `roomToSpare` and
+`whoWouldArrive`, and both doors call them. **Two copies of the bed arithmetic would have been
+two camps' worth of capacity the first time one was retuned**, and two copies of the wanderer
+draw would have been two different people standing at one camp.
+
+### And it answers the question the gate rebuild left open
+
+*Does refusing an arrival advance the counter?* **No, and by arithmetic rather than by a rule.**
+`whoWouldArrive` counts people who have *held* the camp, which only moves when somebody actually
+joins. Walking on past a stranger — or turning one away at the gate — changes nothing, so the
+next occasion meets the same person. Refusal is not a reroll, and the no-shopping rule holds
+without a clause of its own. A db test pins it.
+
+### Where the bed is checked, which is the decision
+
+**At the gate, hours after the meeting.** A survivor agrees to bring somebody back from eighteen
+hours away and finds out at home whether there is a room. A rescue does not conjure capacity —
+that was the design's requirement, and putting the check at the far end is what makes *meeting
+someone you have no room for* a thing that happens to a player rather than a thing the content
+quietly avoids.
+
+It is also the only place it could go: `momentsFor` is a pure function of a region and a seed,
+and the shelter is a table it may not read. The arrival is settled in
+`advance-settlement.js` beside the finds and the raid's wake, for the reason all three share —
+the tick deals in state and may not run a query.
+
+**The turned-away case is an event, not a silence.** Nothing else on the page would ever mention
+it, and a player who spent a ration out there is owed the sentence.
+
+### Three smaller decisions worth their lines
+
+**Nobody follows a survivor who did not come home.** `brings` is `false` when the trip killed
+them. The alternative — a camp gaining a person on the trip that cost it one — is the grimmest
+arithmetic error the game could make.
+
+**The price is a ration, not hours.** Time would have made it a walking-speed decision, which
+the axis rule already keeps for `the_long_way`, and hours are the one price a camp with a full
+larder does not feel. A meal is small, real, and occasionally the last one. `consumes` is
+enforced at answer time, so a survivor with an empty pack cannot make the offer at all.
+
+**`walked_in_with_them` is in `NARRATED_ELSEWHERE`.** The trip's own log says they picked up a
+shadow for the walk home; what the away log adds is only what happened at the gate. Two lines
+for one event would read as two people.
+
+### What this does to the moment pool
+
+A twenty-first moment, and the fourth on `supplies`. **The count of moments a trip offers does
+not move** — `momentCount` is a fact about the region — and the axis rule means a trip still
+offers at most one supplies moment. What changes is which one, which is exactly what adding
+content to an axis is supposed to do.
+
+One test fixture had to learn something it had been getting away with: `setup` in
+`moments.test.js` founded its camp on the real clock while the trips run in a fixed midsummer
+week, so `last_tick_at` sat months ahead of the return and the trip never came home. Every test
+there predating this one only ever read the page *mid*-trip, which is why it had never come up.
+It takes the clock now.
+
+### What is deliberately not built
+
+**A faction introducing somebody.** The third source in the design, and it wants Phase 17's
+relations to exist first — an introduction from a crew you are on poor terms with should read
+differently, and there is nothing yet for it to read.
+
+**A rescue that is not a meeting.** Pulling somebody out of something — the `hazard` shape — is
+the same arrival with a different price, and it should wait until this one has been played. The
+flag is the extension point: any option on any moment can carry it.
 
 ## Phase 20 — the hunt, designed 2026-09-13 and not built
 

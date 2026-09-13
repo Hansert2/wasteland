@@ -214,6 +214,46 @@ export const MOMENTS = {
     ],
   },
 
+  /**
+   * Phase 15's moment, and the only one whose consequence is a person.
+   *
+   * **The world chooses when, the seed chooses who.** This is the occasion for an arrival and
+   * nothing more: who walks back with them still comes from `wandererFor`, off the camp's own
+   * seed and the number of people who have ever held it, exactly as the gate does. So a player
+   * who dislikes the traits cannot take another trip and roll again — the next trip meets the
+   * same person, because the counter only moves when somebody actually joins.
+   *
+   * The price is a ration rather than hours, and that is the argument for putting it on
+   * `supplies`. Time would have made it a walking-speed decision, which the axis rule keeps
+   * away from `the_long_way`; hours are also the one price a camp with a full larder does not
+   * feel. A meal out of the pack is small, real, and occasionally the last one.
+   *
+   * **It does not check for a bed, and cannot.** `momentsFor` is a pure function of a region
+   * and a seed and knows nothing about the camp it left. Whether there is anywhere to put
+   * somebody is decided at the gate, hours later, by `advance-settlement.js` — which is the
+   * honest shape as well as the only possible one: you meet a person out there and find out at
+   * home whether you can keep them.
+   */
+  walking_out: {
+    axis: 'supplies',
+    title: 'Walking the other way',
+    regions: LONG_REGIONS,
+    scene:
+      'They are a long way from anywhere and walking, which is the wrong thing to be doing out here on your own. No pack worth the name. When they see the survivor they stop, and wait to be told to move on.',
+    prose: 'Somebody on the road with nothing, going the other way and slowing down.',
+    options: [
+      { key: 'pass', verb: 'default', label: 'Walk on', detail: 'they are not your problem' },
+      {
+        key: 'feed',
+        verb: 'spend',
+        label: 'Give them a meal',
+        detail: 'one ration, and they follow you home if there is a bed for them',
+        consumes: ['preserved_meal', 'tinned_stew'],
+        bringsSomebody: true,
+      },
+    ],
+  },
+
   the_tin: {
     axis: 'supplies',
     title: 'The last tin',

@@ -5584,7 +5584,9 @@ export function campPage(view, { error, pane = 'camp', place = null } = {}) {
  * own log line already reported the find in the middle of the story, so rendering
  * the event as well reads as a bug rather than as emphasis.
  */
-const NARRATED_ELSEWHERE = new Set(['item_found']);
+// `walked_in_with_them` joins it: the trip's own log already says somebody picked up a shadow
+// for the walk home, and what the away log has to add is what happened at the gate.
+const NARRATED_ELSEWHERE = new Set(['item_found', 'walked_in_with_them']);
 
 /**
  * What the sky is doing, and for how much longer.
@@ -6193,6 +6195,16 @@ function describe(event) {
       return `the crew finished fitting the ${event.name.toLowerCase()}.`;
     case 'craft_delivered':
       return `the workshop turned out ${event.qty} × ${event.name}, onto the shelf.`;
+    /*
+     * Phase 15. The meeting itself is in the trip's own log — `walked_in_with_them` is the
+     * fact that they reached the gate — so this says only what happened at the gate, and the
+     * two refusals read as the two different things they are: a camp with no room, and a camp
+     * that made room.
+     */
+    case 'joined_the_camp':
+      return `${event.who ?? 'Somebody'} walked in behind them, and stayed.`;
+    case 'arrival_turned_away':
+      return 'Whoever followed them home found every bed taken, and went on.';
     // The raid waking the camp. It had no case here at all, so the log printed the bare event
     // type at whoever it happened to.
     case 'woken':

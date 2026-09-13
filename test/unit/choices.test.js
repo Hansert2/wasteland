@@ -297,3 +297,36 @@ test('a region with no moments cannot be answered at all', () => {
     resolveExpedition(args),
   );
 });
+
+test('somebody met on the road comes home with them, and not if they die out there', () => {
+  /*
+   * Phase 15. The flag is all the trip carries — who it turns out to be is `wandererFor`'s
+   * answer at the gate, off the camp's seed, so a trip cannot be retaken for a better person.
+   *
+   * The second half is the one worth pinning. Somebody who followed a survivor that did not
+   * make it home did not arrive anywhere, and the alternative — a camp gaining a person on the
+   * trip that cost it one — would be the game's grimmest arithmetic error.
+   */
+  const seed = SEEDS.find((one) => find(one, 'bringsSomebody'));
+  assert.ok(seed != null, 'no seed in the set offers the meeting');
+
+  const met = find(seed, 'bringsSomebody');
+  const answered = [{ index: met.index, option: met.option }];
+
+  assert.equal(trip(seed).brings, false, 'a trip nobody attended brings nobody');
+  assert.equal(
+    resolveExpedition({ region: DEEP_ZONE, survivor: survivor(), seed, choices: answered }).brings,
+    true,
+  );
+
+  // The same answer, from somebody the trip is going to kill.
+  const doomed = resolveExpedition({
+    region: DEEP_ZONE,
+    survivor: survivor({ health: 1 }),
+    seed,
+    choices: answered,
+  });
+  if (doomed.died) {
+    assert.equal(doomed.brings, false, 'nobody follows a survivor who did not come home');
+  }
+});

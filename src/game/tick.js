@@ -1138,6 +1138,21 @@ function returnExpedition(state, expedition, at, events, flight) {
     events.push({ at, type: 'item_found', slug: find.slug, qty: find.qty });
   }
 
+  /*
+   * Phase 15: and somebody walked in behind them.
+   *
+   * Raised here and settled by the caller, the same division the finds above follow and for
+   * the same two reasons: who it is comes out of `wandererFor` against a row count, and
+   * whether there is a bed for them is a question about `structure_upgrades`. `applyTick` is
+   * a pure function of the state it was handed and may ask neither.
+   *
+   * Before the return event rather than after, so the log reads in the order it happened:
+   * they came up the road, and then they were at the gate.
+   */
+  if (outcome.brings) {
+    events.push({ at, type: 'walked_in_with_them', expeditionId: expedition.id });
+  }
+
   events.push({
     at,
     type: 'expedition_returned',
