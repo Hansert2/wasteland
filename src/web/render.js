@@ -1113,6 +1113,12 @@ ${SURVIVOR_TAB_CSS}
      it, which is the one thing the choice lost by moving off the person. */
   .sendmenu .names .why { font-size: 9.5px; letter-spacing: .1em; color: var(--faint);
                           text-transform: lowercase; }
+  /* And what is left of their day, coloured off the same heat the roster's bars mix, so a
+     menu and a card cannot end up disagreeing about what a tired survivor looks like. */
+  .sendmenu .names .sta { font-size: 10px; letter-spacing: .06em; font-variant-numeric: tabular-nums;
+                          color: color-mix(in oklab, var(--dim), var(--oxide-light) calc(var(--heat, 0) * 100%)); }
+  .sendmenu .names button[disabled] .sta { color: var(--faint); }
+  .sendmenu .names .aside { display: inline-flex; align-items: baseline; gap: 9px; }
 
   .pick { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; }
   .pick .tag { color: var(--dim); font-size: 10px; letter-spacing: .18em; }
@@ -6626,14 +6632,36 @@ function whoMenu(view, label, klass = '') {
     return '<span class="sendmenu shut">Nobody free</span>';
   }
 
+  /*
+   * The gauge that decides the answer, printed on the control where the answer is given.
+   *
+   * Reported from play: picking who goes meant reading a card, holding a number in your
+   * head and coming back to a menu of bare names. Stamina is the one figure that changes
+   * this choice — health and the dose say how somebody *is*, stamina says how much of a day
+   * they have left in them — so it comes to the menu and the other three stay on the card.
+   *
+   * Printed rather than drifting. A gauge on a card carries `data-drift` and climbs between
+   * loads; this is a list read in the second it is open, and giving it those attributes
+   * would put a second claimant on them for the page contract to count.
+   *
+   * It rides every verb at once, which is the reason this menu exists as one function: the
+   * yard, the bench, the fittings and the roads all open it.
+   */
+  const worn = (one) => {
+    const left = Math.max(0, Math.min(100, Math.round(Number(one.stamina) || 0)));
+    return `<span class="sta" style="--heat:${((100 - left) / 100).toFixed(2)}">${left}</span>`;
+  };
+
   const name = (one) =>
     one.busy
-      ? `<li><button type="button" disabled>${escape(one.name ?? 'Survivor')}<span class="why">${escape(
+      ? `<li><button type="button" disabled>${escape(
+          one.name ?? 'Survivor',
+        )}<span class="aside">${worn(one)}<span class="why">${escape(
           occupiedAs(one.busy),
-        )}</span></button></li>`
+        )}</span></span></button></li>`
       : `<li><button type="submit" name="who" value="${escape(String(one.id))}">${escape(
           one.name ?? 'Survivor',
-        )}</button></li>`;
+        )}${worn(one)}</button></li>`;
 
   return `<span class="sendmenu">
       <button type="button" class="lead${klass ? ` ${klass}` : ''}">${escape(

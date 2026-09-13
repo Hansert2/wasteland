@@ -655,10 +655,21 @@ test('somebody already working is shown as working, and cannot be chosen', async
      * literal, where a lone backslash-s collapses to a bare s before RegExp ever sees it.
      */
     const inMenu = new RegExp(
-      `<ul class="names">[^]*?<button type="button" disabled>Odd<span class="why">([^<]*)</span>`,
+      `<ul class="names">[^]*?<button type="button" disabled>Odd<span class="aside">[^]*?<span class="why">([^<]*)</span>`,
     ).exec(html);
     assert.ok(inMenu, 'the Send menu still lists them');
     assert.equal(inMenu[1], 'fitting', 'and says what has them, where no card is beside it');
+
+    /*
+     * And what is left of their day, on every menu, for the same reason the refusal is here:
+     * there is no card beside this control, and stamina is the figure that decides the
+     * choice it is asking for. Reported from play, 2026-09-13.
+     */
+    const rested = [...html.matchAll(/<span class="sta" style="--heat:[0-9.]+">([0-9]+)<\/span>/g)];
+    assert.ok(rested.length >= 4, `only ${rested.length} names carry a stamina figure`);
+    for (const [, left] of rested) {
+      assert.ok(Number(left) >= 0 && Number(left) <= 100, `${left} is not a stamina reading`);
+    }
     assert.doesNotMatch(
       html,
       new RegExp(`<button type="submit" name="who" value="${odd}">`),
@@ -670,7 +681,11 @@ test('somebody already working is shown as working, and cannot be chosen', async
      * usual any-character class: this pattern is built in a template literal, where a lone
      * backslash-s collapses to a bare s before RegExp ever sees it.
      */
-    const refusals = [...html.matchAll(/<button type="button" disabled>Odd<span class="why">([^<]*)</g)];
+    const refusals = [
+      ...html.matchAll(
+        /<button type="button" disabled>Odd<span class="aside">[^]*?<span class="why">([^<]*)</g,
+      ),
+    ];
     assert.ok(refusals.length >= 4, `only ${refusals.length} menus refuse them`);
     for (const [, why] of refusals) assert.equal(why, 'fitting', 'and each says what has them');
 
