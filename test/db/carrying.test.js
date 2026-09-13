@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { pool } from '../../src/db/pool.js';
 import { grantItems } from '../../src/db/world.js';
 import { moveItem } from '../../src/services/move-item.js';
+import { answerRaid } from '../../src/services/answer-raid.js';
 import { startCraft } from '../../src/services/start-craft.js';
 import { advanceSettlement } from '../../src/services/advance-settlement.js';
 
@@ -163,27 +164,44 @@ test('a pack that cannot take it says how short it is', async () => {
   });
 });
 
-test('nothing changes hands while a raid is open', async () => {
+test('a raid freezes the hands at the fence, and nobody else’s', async () => {
   /*
-   * The raid rests on `standFor` reading a carried weapon. Free transfers mid-raid would
-   * turn "who stands" into "who can be handed the spear", which is the decision Phase 12 is
-   * built on.
+   * The raid rests on `standFor` reading a carried weapon, so handing the spear to whoever
+   * the damage is landing on would turn "who stands" into "who can be handed the spear" —
+   * the decision Phase 12 is built on. That rule is about the defenders' own hands.
+   *
+   * It used to freeze every pack in the camp for the raid's four hours, and play found what
+   * that cost: a camp is mostly not at the fence, and all of it stopped packing.
    */
   await withRollback(async (client) => {
     const { settlementId, characterId } = await seed(client);
+    const { rows } = await client.query(
+      `insert into characters (settlement_id, name, born_at) values ($1, 'Odd', $2) returning id`,
+      [settlementId, new Date(T0)],
+    );
+    const odd = rows[0].id;
+
     await give(client, characterId, 'scrap_spear', 1);
+    await give(client, odd, 'scrap_spear', 1);
 
     await client.query(
       `insert into raids (settlement_id, at, closes_at, seed, faction, per_hour)
        values ($1, $2, $3, 1, 'junction_crews', $4::jsonb)`,
       [settlementId, new Date(T0), new Date(T0 + 4 * 3600000), JSON.stringify({ food: 2 })],
     );
+    await answerRaid(client, settlementId, [characterId], T0 + 3600000);
 
+    // Vera is out there, and what she is holding is what the raid is reading.
     await assert.rejects(
       moveItem(client, settlementId, { from: characterId, to: 'box', slug: 'scrap_spear' }),
       /at the fence/,
     );
     assert.equal(await carried(client, characterId, 'scrap_spear'), 1);
+
+    // Odd is not, and an open raid is no reason he cannot put his own down.
+    await moveItem(client, settlementId, { from: odd, to: 'box', slug: 'scrap_spear' });
+    assert.equal(await carried(client, odd, 'scrap_spear'), 0);
+    assert.equal(await banked(client, settlementId, 'scrap_spear'), 1);
   });
 });
 

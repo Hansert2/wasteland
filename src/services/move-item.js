@@ -16,9 +16,21 @@ import { occupations, mustBeFree } from './who-is-free.js';
  *   road and so are they. This is the same line `answerRaid` draws — away is the occupation
  *   that nothing else can interrupt — and unlike `useItem`, which deliberately lets somebody
  *   open their own pack out there, this is about two things being in the same place.
- * - **Nothing moves while a raid is open.** The raid rests on `standFor` reading a *carried*
- *   weapon, so free transfers mid-raid would collapse "who stands" into "who can be handed
- *   the spear", and the decision the phase is built on would evaporate.
+ * - **Nothing moves in or out of the hands of somebody at the fence.** The raid rests on
+ *   `standFor` reading a *carried* weapon, so handing the spear to whoever the damage is
+ *   landing on would collapse "who stands" into "who can be handed the spear", and the
+ *   decision the phase is built on would evaporate.
+ *
+ *   This used to be the whole camp: *nothing* moved while a raid was open. Reported from
+ *   play, 2026-09-13 — a raid is four hours, and freezing every pack in the camp for them
+ *   froze the crafting and the packing of a camp that is mostly not at the fence. The rule
+ *   that was load-bearing was only ever about the defenders' own hands, and that is now all
+ *   it says. `occupations` already names them: standing is a job like any other.
+ *
+ *   **The loophole this leaves is deliberate and known.** Somebody idle can be armed and
+ *   *then* sent out, which is the same collapse one step longer. It is the user's call,
+ *   made with that named: the guard, if it is ever wanted, is that a survivor handed
+ *   something cannot stand until the next hour boundary.
  * - **The box has no cap and a pack does.** So the only end that can refuse for want of room
  *   is a survivor.
  *
@@ -35,14 +47,6 @@ export async function moveItem(client, settlementId, { from, to, slug, qty = 1 }
 
   await client.query('select id from settlements where id = $1 for update', [settlementId]);
 
-  const { rows: openRaids } = await client.query(
-    'select id from raids where settlement_id = $1 and resolved_at is null',
-    [settlementId],
-  );
-  if (openRaids.length > 0) {
-    throw new InputError('Not while they are at the fence. Whatever is in hand stays in hand.');
-  }
-
   const { rows: living } = await client.query(
     `select id, name from characters
       where settlement_id = $1 and died_at is null order by born_at, id`,
@@ -56,9 +60,17 @@ export async function moveItem(client, settlementId, { from, to, slug, qty = 1 }
   if (from !== 'box' && !source) throw new InputError('Nobody here answers to that.');
   if (to !== 'box' && !target) throw new InputError('Nobody here answers to that.');
 
+  /*
+   * The two occupations that are about *where the hands are*, and no others.
+   *
+   * Being busy at camp is not a refusal — a builder can put something in the box. Away is,
+   * because the pack is down the road with its owner. At the fence is, because what they
+   * hold is what the raid is reading.
+   */
+  const FROZEN = new Set(['away', 'defending']);
   const busy = await occupations(client, settlementId);
   for (const who of [source, target]) {
-    if (who && busy.get(Number(who.id))?.kind === 'away') {
+    if (who && FROZEN.has(busy.get(Number(who.id))?.kind)) {
       mustBeFree(busy, who, 'hand anything over');
     }
   }
