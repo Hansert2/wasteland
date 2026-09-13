@@ -20,6 +20,7 @@ import { startBuild } from '../services/start-build.js';
 import { startCraft } from '../services/start-craft.js';
 import { startSleep } from '../services/start-sleep.js';
 import { answerRaid } from '../services/answer-raid.js';
+import { startHunt, huntTurn } from '../services/hunt.js';
 import { setCampClock } from '../services/set-camp-clock.js';
 import { useItem } from '../services/use-item.js';
 import { moveItem } from '../services/move-item.js';
@@ -505,6 +506,39 @@ export function createApp() {
       const now = Date.now();
       await advanceSettlement(client, settlementId, now);
       await startSleep(client, settlementId, req.body.who || null, req.body.hours, now);
+    });
+
+    res.redirect(backToCamp(req));
+  });
+
+  /*
+   * Phase 20, and the two routes with no deadline behind them.
+   *
+   * They still advance first, like everything else: the stamina a hunt spends is read off a
+   * gauge that has been climbing since the page was drawn, and a survivor who walked in the
+   * gate a minute ago is a different person to the one the button was rendered for.
+   */
+  app.post('/hunt', requireAuth, async (req, res) => {
+    await withTransaction(async (client) => {
+      const settlementId = await settlementIdForPlayer(client, req.playerId);
+      if (!settlementId) throw new InputError('This account has no camp.');
+
+      const now = Date.now();
+      await advanceSettlement(client, settlementId, now);
+      await startHunt(client, settlementId, req.body.who ?? null, now);
+    });
+
+    res.redirect(backToCamp(req));
+  });
+
+  app.post('/hunt/turn', requireAuth, async (req, res) => {
+    await withTransaction(async (client) => {
+      const settlementId = await settlementIdForPlayer(client, req.playerId);
+      if (!settlementId) throw new InputError('This account has no camp.');
+
+      const now = Date.now();
+      await advanceSettlement(client, settlementId, now);
+      await huntTurn(client, settlementId, req.body.move, now);
     });
 
     res.redirect(backToCamp(req));

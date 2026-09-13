@@ -57,8 +57,14 @@ const PANES = {
    * Listing it under `survivor` as well would print the line above the block that contains the
    * person it is announcing.
    */
+  /*
+   * `hunt` sits between the raid and the sky, which is the only place it can go: it is the
+   * other block on this page that is *happening now* and wants answering, and the one thing a
+   * hunt must never be is something a player scrolls past. It is also the only block here with
+   * no clock on it, so nothing about its position has to leave room for a countdown.
+   */
   camp: [
-    'raid', 'sky', 'forecast', 'events', 'direction', 'gate', 'structures', 'workshop',
+    'raid', 'hunt', 'sky', 'forecast', 'events', 'direction', 'gate', 'structures', 'workshop',
     'caravan', 'roster',
   ],
   survivor: ['survivor', 'expedition', 'forecast'],
@@ -1217,6 +1223,32 @@ ${SURVIVOR_TAB_CSS}
                    gap: 18px; flex-wrap: wrap; margin-top: 15px; }
   .standers-foot .keeps { font-family: var(--numer); font-size: 12px; color: var(--dim);
                           font-variant-numeric: tabular-nums; }
+
+  /*
+   * Phase 20. The moves are a row of wide buttons rather than a menu, because unlike every
+   * other control on this page they are read *every* press: a menu that has to be opened puts
+   * a click between the player and the only block here that answers instantly.
+   *
+   * Backing off is in the row and not beside it. Set apart it reads as cancelling the block;
+   * in the row it reads as one of the things you can do, which is what it is.
+   */
+  .hunt .huntnow { margin: 0 0 4px; color: var(--bone); font-size: 15px; }
+  .hunt .huntlog { margin: 0 0 13px; color: var(--dim); font-size: 13px; line-height: 1.5; }
+  .huntmoves { display: flex; flex-wrap: wrap; gap: 9px; }
+  .huntmove { flex: 1 1 150px; display: flex; flex-direction: column; gap: 3px;
+              padding: 10px 13px; border: 1px solid var(--edge); background: var(--panel);
+              font-family: var(--label); font-size: 10.5px; font-weight: 700;
+              letter-spacing: .14em; text-transform: uppercase; color: var(--prose);
+              text-align: left; cursor: pointer; }
+  .huntmove:hover { background: var(--rule-in); color: var(--bone); }
+  .huntmove .why { font-size: 9.5px; font-weight: 400; letter-spacing: .1em;
+                   text-transform: lowercase; color: var(--faint); }
+  .huntmove.away { flex: 0 1 auto; }
+  /* Something has turned to face them, and this is the one screen that has to be read rather
+     than clicked through. The mark is on the block, not on a button: what changed is the
+     situation, and colouring an option would say the danger is in choosing it. */
+  .hunt.turned .huntnow { color: var(--oxide-light); }
+  .huntstart { display: inline-block; }
 
   /*
    * The road still to come. Greyed because none of it can be paid into yet — only the live
@@ -5335,6 +5367,9 @@ const NOTHING = {
   caravan: 'Nobody at the gate, and nobody on the road here.',
   roster: 'Nobody has died here.',
   forecast: 'No glass fitted. The sky is whatever you can see of it from here.',
+  /* Phase 20. It names the verb because this is the only block on the page that offers one
+     nothing else does, and a camp that has never hunted has no other way to find out. */
+  hunt: 'Nothing worth walking out for.',
   direction: 'Nothing to advise until somebody is standing here.',
   expedition: 'Nobody to send.',
   post: 'No link on the road opens one yet.',
@@ -5486,6 +5521,7 @@ export function campPage(view, { error, pane = 'camp', place = null } = {}) {
       error,
       inner: `
     ${section('raid', view.underRaid ? renderRaid(view) : renderRaidWarning(view.raidExpectedAt))}
+    ${section('hunt', renderHunt(view))}
     ${section('sky', renderWeather(view.weather))}
     ${section('forecast', renderForecast(view.forecast))}
 
@@ -6118,6 +6154,73 @@ function renderRaid(view) {
     </div>`;
 }
 
+
+
+/**
+ * The hunt: the only block on this page with no clock in it.
+ *
+ * Every other thing here counts down — a trip, a build, the bench, a raid, somebody asleep —
+ * and this one sits exactly where the last press left it, for a night or a week. That is the
+ * whole of Phase 20 and the reason it looks different: no `data-until`, no deadline strip, and
+ * nothing for the timer loop to find.
+ *
+ * Three states, and the quiet one is doing real work. Nothing out there is a line offering the
+ * verb; a hunt in progress is the block; a hunt that just ended says what came of it and
+ * offers the verb again. A block that vanished when the hunt ended would take the outcome with
+ * it, which is the fault `NOTHING` exists to avoid one level up.
+ */
+/** A quarry's name leads the sentence it is in, and "a hare" is not a capital letter. */
+const upperFirst = (line) => (line ? line[0].toUpperCase() + line.slice(1) : line);
+
+function renderHunt(view) {
+  const hunt = view.hunt;
+  if (!hunt) return quiet('The edge of the camp', NOTHING.hunt);
+
+  if (hunt.status !== 'active') {
+    return quiet(
+      'The edge of the camp',
+      `${escape(upperFirst(hunt.said || 'It came to nothing.'))} ${huntVerb(view, 'Go out again')}`,
+    );
+  }
+
+  /*
+   * The moves are the ones `movesFor` returned, not a list written here. The service validates
+   * against the same function, so the page cannot offer a press the service will refuse — the
+   * arrangement the Contact box has with a moment's options, and for the same reason.
+   */
+  const moves = (hunt.moves ?? [])
+    .map(
+      (move) => `<button type="submit" name="move" value="${escape(move.key)}"
+           class="huntmove${move.key === 'leave' ? ' away' : ''}">
+           ${escape(move.label)}<span class="why">${escape(move.detail)}</span>
+         </button>`,
+    )
+    .join('');
+
+  return block(
+    'The edge of the camp',
+    `<div class="hunt${hunt.turning ? ' turned' : ''}">
+       <p class="huntnow">${escape(upperFirst(hunt.said ?? ''))}</p>
+       ${hunt.lines?.length ? `<p class="huntlog">${escape(hunt.lines.join(' '))}</p>` : ''}
+       <form method="post" action="/hunt/turn" class="huntmoves">${moves}</form>
+     </div>`,
+    { flush: true },
+  );
+}
+
+/**
+ * The control that starts one, and what it refuses with.
+ *
+ * The stamina cost is on the button rather than in a popup: it is the entire decision, it is a
+ * quarter of somebody's day, and a player should not have to press a thing to find out what it
+ * takes. `whoMenu` already prints what each survivor has left, so the two read together.
+ */
+function huntVerb(view, label) {
+  if (!view.roster?.length) return '';
+  // Wrapped in its own form, because `whoMenu`'s names are submit buttons for whatever form
+  // encloses them — that is how the roads and the bench already ask whose hands.
+  return `<form method="post" action="/hunt" class="huntstart">${whoMenu(view, label, 'hunt')}</form>`;
+}
 
 function renderRaidWarning(expectedAt) {
   // No radio, so no hour — and that is a fact about the camp rather than a blank. The

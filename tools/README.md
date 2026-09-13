@@ -81,6 +81,17 @@ they have found something that reasoning and a green test suite both missed:
   outright — so the fix on the table is telling the player those exist, not changing when
   raiders come.
 
+- **A whole mode was shipped-shaped and broken in four places, and reading it found none of
+  them.** Phase 20's hunt looked right in the file. Four thousand hunts on three lines with
+  three weapons said otherwise: **zero maulings and no damage at all**, because the mauling
+  hung off a press nobody makes once they are within reach — the boar was danger 4 in the
+  content and the safest thing in the game. The patient line and the greedy line finished
+  within three points of each other, which is one strategy wearing two names. The best quarry
+  could not be taken at all by anybody playing carefully. And the meat was priced for a hunter
+  who never misses, at 6.8 expected food against the 12.5 of stamina a hunt spends. All four
+  were content, all four were measured, and none of them would have shown in a test suite that
+  asserts what the code does rather than what the game is like.
+
 The pattern worth keeping: the simulation is a pure function of `(state, now)`, so
 sixty days of play runs in milliseconds and a balance question can be answered rather
 than argued about. Before trusting a number, measure it.

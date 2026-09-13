@@ -73,6 +73,52 @@ const ITEMS = [
     weight: 365, // derived: 70 hunger x 5.2 g
     description: 'Camp food, sealed while it was still worth sealing.',
   },
+  /*
+   * Phase 20's two materials, and the only things in this table nothing else can produce.
+   *
+   * The hunt's meat goes into the stores as food, priced at a wash against the stamina it
+   * cost — so these are what a hunt is actually *for*. A trader may not sell them and a region
+   * does not drop them: the bench learns two things that can only be paid for by going out
+   * after something, which is what stops the hunt being an alternative source of the same
+   * gear the roads already buy.
+   */
+  {
+    slug: 'raw_hide',
+    name: 'Raw Hide',
+    kind: 'material',
+    potency: 0,
+    weight: 1400,
+    description: 'Still damp. Worth something once it is not.',
+  },
+  {
+    slug: 'sinew',
+    name: 'Sinew',
+    kind: 'material',
+    potency: 0,
+    weight: 90,
+    description: 'Dried and wound on a stick. Stronger than anything in the workshop.',
+  },
+  {
+    slug: 'hide_coat',
+    name: 'Hide Coat',
+    kind: 'armour',
+    // Two thirds of a plate vest at a third of the weight, which is the trade: the vest is
+    // still the better thing to own and this is the one a pack near its cap can carry.
+    potency: 18,
+    weight: 3000,
+    description: 'Heavy enough to turn a tooth, light enough to walk twenty hours in.',
+  },
+  {
+    slug: 'hunting_bow',
+    name: 'Hunting Bow',
+    kind: 'weapon',
+    // Above the scrap spear at 25, and the only weapon in the game that is not made of scrap.
+    // A bow at the fence is a defensible reading: what `standFor` measures is how much of a
+    // raid somebody can hold back, and reach is most of that.
+    potency: 35,
+    weight: 1100,
+    description: 'Sinew and a bent length of something that remembers being straight.',
+  },
   {
     slug: 'rad_scrubber',
     name: 'Rad Scrubber',
@@ -124,6 +170,36 @@ const RECIPES = [
     requires_workshop: 4,
     craft_hours: 0.4,
     description: 'The difference between limping home and not coming home.',
+  },
+  /*
+   * And the two the hunt feeds. Both are priced in materials nothing else produces, so the
+   * only way to a coat or a bow is to have gone out after something — which is what makes the
+   * hunt's reward a thing rather than a number in a box.
+   *
+   * Cheap in scrap on purpose. The interesting cost is already the hide, and charging the
+   * roads' currency on top would make the hunt a second way to spend what the roads earn.
+   */
+  {
+    slug: 'hide_coat',
+    name: 'Hide Coat',
+    output: 'hide_coat',
+    output_qty: 1,
+    costs: { scrap: 10 },
+    inputs: [{ slug: 'raw_hide', qty: 2 }, { slug: 'sinew', qty: 1 }],
+    requires_workshop: 2,
+    craft_hours: 0.3,
+    description: 'Armour for a camp that has not found a road sign worth cutting up.',
+  },
+  {
+    slug: 'hunting_bow',
+    name: 'Hunting Bow',
+    output: 'hunting_bow',
+    output_qty: 1,
+    costs: { scrap: 12 },
+    inputs: [{ slug: 'sinew', qty: 2 }, { slug: 'scavenged_parts', qty: 1 }],
+    requires_workshop: 3,
+    craft_hours: 0.25,
+    description: 'The better you hunt, the better you hunt.',
   },
   {
     slug: 'rad_scrubber',

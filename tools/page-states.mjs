@@ -26,6 +26,7 @@ import { pathToFileURL } from 'node:url';
 import { pool } from '../src/db/pool.js';
 import { foundSettlement, raiseSuccessor } from '../src/services/settlement-lifecycle.js';
 import { dispatchExpedition } from '../src/services/dispatch-expedition.js';
+import { startHunt, huntTurn } from '../src/services/hunt.js';
 import { viewCamp } from '../src/services/view-camp.js';
 import { viewGraveyard } from '../src/services/view-graveyard.js';
 import { campPage, graveyardPage } from '../src/web/render.js';
@@ -265,6 +266,42 @@ export async function buildStates(client, now = Date.now()) {
       new Date(now + 0.5 * HOUR),
     ]);
     states['under-raid'] = campPage(await viewCamp(client, id, now + HOUR));
+  }
+
+  /*
+   * 6c-ii. Somebody out after something, which is the one block on this page with no clock.
+   *
+   * Phase 20, and it is in here for the reason `at-the-gate` is: `s-gate` was empty in all
+   * twelve saved states until the gate was rebuilt, so the block had never appeared in the set
+   * a redesign works from and the contract test had never met it. A hunt is a harder case
+   * again — it is the only block whose markup is a row of *decisions*, and it renders three
+   * ways. This captures the one that matters, mid-hunt with the moves on offer.
+   *
+   * Two presses in, so the state is past its opening: one close puts them a few yards on and
+   * the page has a line of its own log to show.
+   */
+  {
+    const id = await camp(client, now);
+    await raiseSuccessor(client, id, { name: 'Sol', now });
+    await client.query(
+      `update resources set amount = 200, storage_cap = 100000 where settlement_id = $1`,
+      [id],
+    );
+    await client.query(
+      `insert into inventory_items (character_id, item_id, qty)
+       select c.id, i.id, 1 from characters c, items i
+        where c.settlement_id = $1 and c.died_at is null and i.slug = 'hunting_bow'`,
+      [id],
+    );
+
+    const { rows: hunter } = await client.query(
+      'select id from characters where settlement_id = $1 and died_at is null',
+      [id],
+    );
+    await startHunt(client, id, hunter[0].id, now);
+    await huntTurn(client, id, 'close', now);
+
+    states['hunting'] = campPage(await viewCamp(client, id, now));
   }
 
   /*

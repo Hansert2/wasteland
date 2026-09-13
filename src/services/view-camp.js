@@ -52,6 +52,7 @@ import {
 } from '../game/road.js';
 import { WORLD_SEED, loadWorldEvents } from '../db/world-events.js';
 import { FACTIONS, caravanVisit, postKeeper, priceAt, standingOf } from '../game/factions.js';
+import { movesFor, saysHunt } from '../game/hunting.js';
 import {
   STRUCTURES,
   UPGRADES,
@@ -1741,6 +1742,43 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
       };
     });
 
+  /*
+   * Phase 20: whoever is out after something, or the last thing that came of it.
+   *
+   * The most recent hunt rather than only an open one, because the block has to be able to say
+   * what happened on the press that ended it. One row: `hunts_one_active_idx` allows a single
+   * open hunt per camp, and a settled one is only interesting until the next begins.
+   *
+   * **Ordered by id as well as by hour**, which is not belt and braces. Two hunts started
+   * inside the same millisecond tie on `started_at`, and the tie was broken by whatever the
+   * planner felt like — so the page could show a finished hunt while an open one was running,
+   * offer the verb again, and be refused by a service that could see the row the view could
+   * not. Found by a test that hunted forty times without the clock moving.
+   */
+  const { rows: huntRows } = await client.query(
+    `select h.id, h.seed, h.state, h.status, c.name
+       from hunts h join characters c on c.id = h.character_id
+      where h.settlement_id = $1 order by h.started_at desc, h.id desc limit 1`,
+    [settlementId],
+  );
+
+  const hunt = huntRows[0]
+    ? {
+        status: huntRows[0].status,
+        who: huntRows[0].name,
+        turning: Boolean(huntRows[0].state?.turning),
+        // What it is, and what can be done about it — both from the pure module, so the page
+        // and the service read one answer rather than two.
+        said:
+          huntRows[0].status === 'active'
+            ? saysHunt(huntRows[0].state)
+            : (huntRows[0].state?.log ?? []).join(' '),
+        lines: huntRows[0].status === 'active' ? huntRows[0].state?.log ?? [] : [],
+        moves: huntRows[0].status === 'active' ? movesFor(huntRows[0].state) : [],
+        gained: huntRows[0].state?.gained ?? null,
+      }
+    : null;
+
   const openRow = roadRows.find((row) => row.completed_at === null);
   const nextIndex = openRow ? Number(openRow.link_index) : reached.length + 1;
   const nextCost = linkCost(nextIndex);
@@ -2177,6 +2215,16 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
             ),
           }
         : null,
+    /*
+     * Phase 20. The hunt as the page needs it, and every field of it derived rather than
+     * stored: `movesFor` and `saysHunt` read the same state the service acts on, so the page
+     * cannot offer a press the service will refuse.
+     *
+     * The resolved one is carried too, and that is deliberate. A block that disappeared the
+     * moment a hunt ended would take the outcome with it — the player would press "Take it"
+     * and the page would come back with nothing where the answer should be.
+     */
+    hunt,
     caravan,
     road,
     post,

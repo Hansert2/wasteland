@@ -29,6 +29,7 @@ const OCCUPATIONS = {
   crafting: 'at the bench',
   sleeping: 'asleep',
   defending: 'at the fence',
+  hunting: 'out after something',
 };
 
 /**
@@ -119,6 +120,25 @@ export async function occupations(client, settlementId, now = Date.now()) {
       what: null,
       until: row.closes_at?.getTime() ?? null,
     });
+  }
+
+  /*
+   * Out after something, which is an occupation with no clock on it.
+   *
+   * Every other job here has an hour it ends at and this one does not — a hunt advances when
+   * the player presses something, so it holds the survivor until they take it or leave it.
+   * That is not a leak: backing off is on every turn of it, so the only way to be held here
+   * forever is to choose to be, and a hunt nobody finishes is a survivor standing in a field.
+   *
+   * Last of the occupations that can be walked away from, and before the three that cannot,
+   * so a person who somehow held two would read as the one they have to finish.
+   */
+  const { rows: hunting } = await client.query(
+    `select character_id from hunts where settlement_id = $1 and status = 'active'`,
+    [settlementId],
+  );
+  for (const row of hunting) {
+    busy.set(Number(row.character_id), { kind: 'hunting', what: null, until: null });
   }
 
   /*

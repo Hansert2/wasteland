@@ -5738,7 +5738,7 @@ differently, and there is nothing yet for it to read.
 the same arrival with a different price, and it should wait until this one has been played. The
 flag is the extension point: any option on any moment can carry it.
 
-## Phase 20 — the hunt, designed 2026-09-13 and not built
+## Phase 20 — the hunt, designed and built 2026-09-13 ✅
 
 *Asked for from play, in the user's own words: "more to do actively, without timer. Like
 hunting or something, like a turn based combat system fighting things for food and loot, that's
@@ -5913,6 +5913,97 @@ are the two that changed how the game reads most.
 Numbering is left at 20 because renumbering a plan that records its own history would make every
 earlier reference wrong. **The order is 15, 20, then 16, 17, 18**, and 19 stays deferred behind
 18 as it always was.
+
+### Built 2026-09-13 ✅ — and four things the instrument found that reading did not
+
+The design above survived contact almost intact. What did not survive was the *content*, and
+every correction came from `tools/hunt-balance.mjs` rather than from argument.
+
+**A hunt is a stalk, not a fight**, and that is the one shape decision the design did not
+specify. There are no hit points: what you spend is the animal's patience (`alarm`), and what
+you are buying is distance (`closeness`). A quarry with a health bar would have made the weapon
+a damage number and the whole mode a slower version of the fence. `BOLTS_AT` is 3, reach is 2,
+and five presses is the whole hunt.
+
+### The four faults, in the order they were found
+
+**1. The danger was unreachable, so the dangerous animal was the safest thing in the game.**
+The mauling hung off `close` alone — and a player already within reach never presses close, they
+press strike. Four thousand hunts on three lines with three weapons recorded **zero maulings and
+not one point of damage**. The boar was danger 4 in the content and harmless in play. Now
+anything that has turned takes its own turn against every press but `leave`, striking included.
+
+**2. There was one strategy, and it was not a decision.** At six turns, closing twice and
+striking is three presses, so standing still was very nearly free: the patient line and the
+greedy line finished within three points of each other. Five turns, and closing now *always*
+costs a point of attention rather than half the time. Patient beats greedy by eight or nine
+points, and the careful line — leave the moment it turns — takes as much as either and bleeds
+for none of it.
+
+**3. The best quarry had no line through it.** The boar was `wary: 1`, on the reading that a
+boar notices you at once. That made it un-takeable: the patient line stood still at the first
+flicker and never reached striking distance inside five turns, and the greedy line walked into
+four points of danger. **What makes a boar a boar is `danger`, not `wary`** — it does not bolt,
+nothing above danger 3 does, so alarm on a boar is the count toward it turning round rather than
+fear of losing it.
+
+**4. The meat was priced against a hunter who never misses.** Measured at 6.8 expected food
+against the 12.5 a hunt spends, because the yields had been set for a *successful* hunt while
+three in ten fail. Raised by about two thirds. Now:
+
+    expected food a hunt          bare hands 3.7    scrap spear 8.3    hunting bow 10.5
+    what the stamina cost                                             12.5
+
+**Which is the shape the design asked for, arrived at from the other end.** A well-armed hunter
+about breaks even on food; a bare-handed one loses badly; nobody profits. So the meat can never
+be farmed, the weapon matters exactly as much as the user asked it to, and the hide and the
+sinew — which nothing else in the game produces — are what a hunt is actually for.
+
+### What it added, and what it deliberately did not
+
+`hunts` is the only table in this schema with no deadline in it, and a db test asserts that by
+reading `information_schema`: two timestamp columns, `started_at` and `resolved_at`, and **it
+must not grow a third**. The block carries no `data-until`, `data-done` or `data-drift`, and a
+test cuts the section out and checks. Hunting is an occupation with `until: null` — the first
+one — so the yard and the gate refuse a hunter in the words every other refusal uses.
+
+Two items and two recipes rather than three: `raw_hide` and `sinew`, into a `hide_coat`
+(armour 18, a third the weight of a plate vest) and a `hunting_bow` (weapon 35, above the scrap
+spear and the only weapon in the game not made of scrap). **Three recipes was a budget, not a
+requirement**, and a padded third is content nobody crafts twice.
+
+### Three bugs the tests found, and one of them was in the page
+
+**A hunt whose hunter died stayed open.** The pure module is handed a survivor and never told
+what a health column says, so ending the hunt is the service's job — exactly as writing the
+death is. Found by a test that pressed on at twelve health: the next page load asked for a
+survivor who was dead and the block refused to render.
+
+**Two hunts in the same millisecond tied on `started_at`**, and the planner broke the tie
+however it liked — so the page could show a finished hunt while an open one was running, offer
+the verb again, and be refused by a service that could see the row the view could not. Ordered
+by `id` as well now.
+
+**`could not determine data type of parameter $2`.** One `client.query` chose its SQL *and* its
+parameters with the same ternary, leaving an unused null the surviving branch never mentioned.
+It passed every time the hunter died and every time they were untouched, and failed only when
+somebody was hurt and lived — one run in eight. Two statements now.
+
+**And the assertion that would have lied.** The first version of "the block carries no
+countdown" matched the section id and `data-until` with a wildcard between them, across a
+three-hundred-kilobyte document. A wildcard between two points in a page that size finds
+anything you ask it for: it passed against a page that was fine and would have passed against
+one that was not.
+
+### Still open
+
+**Play it.** Every number above is measured against a simulated line, and the thing no
+instrument can price is whether pressing four buttons is *worth doing* between the countdowns.
+That is the whole question the phase was asked to answer.
+
+**Nobody has hunted on the deployed box**, and the page has not been measured in a browser —
+there was no Chrome connected to the session that built it. The block is a row of wide buttons
+and its geometry in a narrow column is unverified.
 
 ## Not planned
 
