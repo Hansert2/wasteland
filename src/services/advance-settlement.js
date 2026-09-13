@@ -72,33 +72,35 @@ export async function advanceSettlement(client, settlementId, now) {
   const found = events.filter((event) => event.type === 'item_found');
   const delivered = events.filter((event) => event.type === 'craft_delivered');
 
-  if (advanced.survivor?.alive && (found.length > 0 || delivered.length > 0)) {
-    /*
-     * Phase 13: the pack has a bottom, and where the overflow goes depends on where they are.
-     *
-     * These two event kinds used to be one list because a pack that could not be full made
-     * them the same act. They are not the same act any more. **A find is out there and the
-     * box is at home**, so what does not fit is left where it was found and the log says so.
-     * **A finished order is lifted off the bench, which is at home**, so what does not fit
-     * goes on the shelf beside it — refusing it would destroy something the player has
-     * already paid fuel and scrap for, over a pack they could empty in one press.
-     *
-     * The events are appended here rather than raised by the tick because the tick cannot
-     * know either: a pack's weight is a fact about rows in a table, and `applyTick` is a pure
-     * function of the state it was handed.
-     */
+  /*
+   * Phase 13: the pack has a bottom, and where a thing lands depends on where it was made.
+   *
+   * These two event kinds used to be one list because a pack that could not be full made
+   * them the same act. They are not the same act any more, and they no longer even go to
+   * the same place. **A find is out there**, carried home by whoever walked, so what does
+   * not fit is left where it was found and the log says so.
+   *
+   * **A finished order is lifted off the bench, and the bench is at home beside the box**,
+   * so the whole order goes on the shelf. It used to go into the crafter's pack with only
+   * the overflow boxed, and play found the fault in that: parts came out of the workshop
+   * owned by whoever was standing at it, so the next recipe could not reach them without a
+   * transfer. The shelf is the one place every recipe already draws from.
+   *
+   * The events are appended here rather than raised by the tick because the tick cannot
+   * know either: a pack's weight is a fact about rows in a table, and `applyTick` is a pure
+   * function of the state it was handed.
+   */
+  if (advanced.survivor?.alive && found.length > 0) {
     const leftBehind = await grantItems(client, advanced.survivor.id, found);
     for (const { slug, qty } of leftBehind) {
       events.push({ at: now, type: 'find_left_behind', slug, qty });
     }
+  }
 
-    const overflowed = await grantItems(client, advanced.survivor.id, delivered);
-    if (overflowed.length > 0) {
-      await storeItems(client, settlementId, overflowed);
-      for (const { slug, qty } of overflowed) {
-        events.push({ at: now, type: 'craft_boxed', slug, qty });
-      }
-    }
+  // No `alive` guard: the shelf outlives the people who filled it, which is what banking
+  // against death has meant since migration 001.
+  if (delivered.length > 0) {
+    await storeItems(client, settlementId, delivered);
   }
 
   return { state: advanced, events };

@@ -6173,8 +6173,6 @@ function describe(event) {
     // it, and nothing else on the page says it never made it home.
     case 'find_left_behind':
       return `left ${event.qty} × ${event.slug.replaceAll('_', ' ')} behind — no room to carry it.`;
-    case 'craft_boxed':
-      return `${event.qty} × ${event.slug.replaceAll('_', ' ')} came off the bench into the box — no room in the pack.`;
     case 'build_completed':
       return `the ${event.kind.replaceAll('_', ' ')} reached level ${event.level}.`;
     case 'raid':
@@ -6187,9 +6185,7 @@ function describe(event) {
     case 'upgrade_fitted':
       return `the crew finished fitting the ${event.name.toLowerCase()}.`;
     case 'craft_delivered':
-      return `the workshop turned out ${event.qty} × ${event.name}.`;
-    case 'craft_lost':
-      return `the ${event.name} was finished with nobody left to take it off the bench.`;
+      return `the workshop turned out ${event.qty} × ${event.name}, onto the shelf.`;
     default:
       return event.type;
   }

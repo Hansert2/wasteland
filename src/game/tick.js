@@ -509,26 +509,28 @@ function completeFitting(state, at, events) {
 }
 
 /**
- * Deliver a finished workshop order — or fail to.
+ * Deliver a finished workshop order to the shelf.
  *
  * Starting an order needs a living survivor and finishing it does not, the same rule
- * builds follow: the bench keeps working while the camp stands empty. Delivery is
- * where the two part company. A finished spear has to come off the bench into
- * somebody's pack, and a camp with nobody left in it has no pack to put it in, so the
- * order is forfeit exactly as an expedition's haul is when its survivor dies.
+ * builds follow: the bench keeps working while the camp stands empty. **Delivery does
+ * not part company with that any more.** It used to: a finished spear went into the
+ * crafter's pack, so a camp with nobody in it had nowhere to put one and the order was
+ * forfeit exactly as an expedition's haul is when its survivor dies.
+ *
+ * Phase 13 built the shelf the pack was standing in for, and it is at the camp, beside
+ * the bench. So the order comes off the bench onto it whether or not anybody is there
+ * to watch — and it keeps on being there for a successor, which is what the box is for.
+ * Reported from play: parts made at the bench landed on whoever happened to be crafting
+ * and had to be shuttled back before the next recipe could reach them.
+ *
+ * `'lost'` stays in the schema's check constraint for the rows already written under the
+ * old rule. Nothing produces it now.
  */
 function completeCraft(state, at, events) {
   const craft = state.craft;
   if (!craft || craft.status !== 'active' || craft.completesAt > at) return;
 
   craft.resolvedAt = at;
-
-  if (!state.survivor?.alive) {
-    craft.status = 'lost';
-    events.push({ at, type: 'craft_lost', craftId: craft.id, name: craft.name });
-    return;
-  }
-
   craft.status = 'delivered';
 
   // The goods are granted by the caller, for the same reason expedition finds are:

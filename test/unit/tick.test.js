@@ -475,16 +475,16 @@ test('an order still on the bench is left alone', () => {
   assert.equal(events.length, 0);
 });
 
-test('an order that finishes in an empty camp is forfeit', () => {
+test('an order that finishes in an empty camp still reaches the shelf', () => {
   const { state, events } = applyTick(craftState({ survivor: null }), T0 + hours(6));
 
-  assert.equal(state.craft.status, 'lost');
+  assert.equal(state.craft.status, 'delivered');
   assert.equal(state.craft.resolvedAt, T0 + hours(4));
-  assert.equal(events.filter((e) => e.type === 'craft_lost').length, 1);
-  assert.equal(events.filter((e) => e.type === 'craft_delivered').length, 0);
+  assert.equal(events.filter((e) => e.type === 'craft_delivered').length, 1);
+  assert.equal(events.filter((e) => e.type === 'craft_lost').length, 0, 'nothing is forfeit now');
 });
 
-test('the bench keeps working after a death, but there is nobody to take the result', () => {
+test('the bench keeps working after a death, and the shelf takes the result', () => {
   // Starvation kills at ~53h; the spear is finished at 80h, long after.
   const { state, events } = applyTick(
     craftState(starvingState(), { completesAt: T0 + hours(80) }),
@@ -493,9 +493,9 @@ test('the bench keeps working after a death, but there is nobody to take the res
 
   assert.equal(state.survivor.alive, false);
   assert.ok(state.survivor.diedAt < T0 + hours(80), 'died before it was finished');
-  assert.equal(state.craft.status, 'lost', 'the order was not cancelled at death, only unclaimed');
+  assert.equal(state.craft.status, 'delivered', 'the bench does not need hands to put it down');
   assert.equal(state.craft.resolvedAt, T0 + hours(80), 'it finished on schedule regardless');
-  assert.equal(events.filter((e) => e.type === 'craft_lost').length, 1);
+  assert.equal(events.filter((e) => e.type === 'craft_delivered').length, 1);
 });
 
 test('an order finished before a death is still delivered', () => {

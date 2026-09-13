@@ -86,6 +86,16 @@ async function give(client, settlementId, slug, qty) {
   );
 }
 
+async function stored(client, settlementId, slug) {
+  const { rows } = await client.query(
+    `select si.qty from store_items si
+       join items i on i.id = si.item_id
+      where si.settlement_id = $1 and i.slug = $2`,
+    [settlementId, slug],
+  );
+  return rows[0]?.qty ?? 0;
+}
+
 async function carried(client, settlementId, slug) {
   const { rows } = await client.query(
     `select ii.qty from inventory_items ii
@@ -105,7 +115,7 @@ const orderRow = async (client, settlementId) => {
   return rows[0];
 };
 
-test('a craft pays up front and lands in the pack later', async () => {
+test('a craft pays up front and lands on the shelf later', async () => {
   await withRollback(async (client) => {
     const { settlementId, recipeSlug, outputSlug } = await setup(client);
     const now = Date.now();
@@ -117,12 +127,17 @@ test('a craft pays up front and lands in the pack later', async () => {
     assert.equal(paid.settlement.resources.scrap.amount, 280, 'paid up front');
     assert.equal(paid.craft.status, 'active');
     assert.equal(paid.craft.output.slug, outputSlug);
-    assert.equal(await carried(client, settlementId, outputSlug), 0, 'not made yet');
+    assert.equal(await stored(client, settlementId, outputSlug), 0, 'not made yet');
 
     const { events } = await advanceSettlement(client, settlementId, now + hours(4));
     assert.equal(events.filter((e) => e.type === 'craft_delivered').length, 1);
 
-    assert.equal(await carried(client, settlementId, outputSlug), 1);
+    assert.equal(await stored(client, settlementId, outputSlug), 1, 'onto the shelf');
+    assert.equal(
+      await carried(client, settlementId, outputSlug),
+      0,
+      'and not into the crafter’s pack, which is what play found the fault in',
+    );
     const row = await orderRow(client, settlementId);
     assert.equal(row.status, 'delivered');
     assert.ok(row.resolved_at, 'a resolved order records when');
@@ -248,7 +263,12 @@ test('you cannot spend stores you do not have', async () => {
   });
 });
 
-test('the bench keeps working in an empty camp, but the goods are forfeit', async () => {
+test('the bench keeps working in an empty camp, and the shelf keeps the goods', async () => {
+  /*
+   * This used to assert the opposite, and the reason it flipped is the shelf: an order went
+   * into the crafter's pack, so a camp with nobody in it had nowhere to put one. The box is
+   * at the camp and outlives everybody in it, which is what a successor inherits.
+   */
   await withRollback(async (client) => {
     const { settlementId, recipeSlug, outputSlug } = await setup(client);
     const now = Date.now();
@@ -260,11 +280,14 @@ test('the bench keeps working in an empty camp, but the goods are forfeit', asyn
     );
 
     const { events } = await advanceSettlement(client, settlementId, now + hours(4));
-    assert.equal(events.filter((e) => e.type === 'craft_lost').length, 1);
+    assert.equal(events.filter((e) => e.type === 'craft_delivered').length, 1);
+    assert.equal(events.filter((e) => e.type === 'craft_lost').length, 0);
 
     const row = await orderRow(client, settlementId);
-    assert.equal(row.status, 'lost');
-    assert.ok(row.resolved_at, 'a lost order still records when it ended');
+    assert.equal(row.status, 'delivered');
+    assert.ok(row.resolved_at, 'a resolved order records when it ended');
+
+    assert.equal(await stored(client, settlementId, outputSlug), 1, 'waiting on the shelf');
 
     const { rows } = await client.query(
       `select count(*)::int as n from inventory_items ii
@@ -272,7 +295,7 @@ test('the bench keeps working in an empty camp, but the goods are forfeit', asyn
         where i.slug = $1`,
       [outputSlug],
     );
-    assert.equal(rows[0].n, 0, 'nothing was made for nobody');
+    assert.equal(rows[0].n, 0, 'and in nobody’s pack, there being nobody');
   });
 });
 
