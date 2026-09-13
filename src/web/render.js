@@ -6116,6 +6116,7 @@ function renderRaid(view) {
     </div>`;
 }
 
+
 function renderRaidWarning(expectedAt) {
   // No radio, so no hour — and that is a fact about the camp rather than a blank. The
   // line says what is missing and what happens without it, which is the difference
@@ -6192,6 +6193,10 @@ function describe(event) {
       return `the crew finished fitting the ${event.name.toLowerCase()}.`;
     case 'craft_delivered':
       return `the workshop turned out ${event.qty} × ${event.name}, onto the shelf.`;
+    // The raid waking the camp. It had no case here at all, so the log printed the bare event
+    // type at whoever it happened to.
+    case 'woken':
+      return `${event.who ?? 'somebody'} was woken by the raid, with the rest of their sleep unspent.`;
     default:
       return event.type;
   }

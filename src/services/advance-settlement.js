@@ -103,5 +103,28 @@ export async function advanceSettlement(client, settlementId, now) {
     await storeItems(client, settlementId, delivered);
   }
 
+  /*
+   * And the camp being woken by raiders arriving actually reaches the camp.
+   *
+   * `wakeTheCamp` in the tick has cleared `sleepUntil` on the state since raids gained a
+   * duration — the one exception to "there is no waking them", and the right one: it is the
+   * raid that wakes you, not the choice. But `saveWorld` deliberately does not write
+   * `sleep_until` ("a survivor's sleep is set by the service that started it and by nothing
+   * else"), so the column kept its old value and the next page load read them straight back
+   * under. The simulation had them up and every service still refused them — `occupations`
+   * asks the database, not the walk — which is this project's oldest failure shape: a page
+   * and a tick disagreeing about one fact.
+   *
+   * Written here rather than in `saveWorld` for the reason the grants above are: the tick
+   * deals in state and cannot run a query, so the caller applies what it decided. By id, not
+   * by name — two survivors can share one, as the page-state fixtures prove.
+   */
+  const woken = events.filter((event) => event.type === 'woken' && event.characterId != null);
+  if (woken.length > 0) {
+    await client.query('update characters set sleep_until = null where id = any($1)', [
+      woken.map((event) => event.characterId),
+    ]);
+  }
+
   return { state: advanced, events };
 }

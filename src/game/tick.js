@@ -733,7 +733,15 @@ function openRaid(state, at, events) {
   for (const person of state.survivors ?? (state.survivor ? [state.survivor] : [])) {
     if (person.alive && Number.isFinite(person.sleepUntil) && person.sleepUntil > raidAt) {
       person.sleepUntil = null;
-      events.push({ at: raidAt, type: 'woken', who: person.name ?? null });
+      // The id as well as the name, because the caller has to write this one down: the tick
+      // may not run a query, `saveWorld` does not touch `sleep_until`, and two survivors can
+      // share a name. See `advance-settlement.js`, where the column is actually cleared.
+      events.push({
+        at: raidAt,
+        type: 'woken',
+        who: person.name ?? null,
+        characterId: person.id ?? null,
+      });
     }
   }
 }

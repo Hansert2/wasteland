@@ -8,6 +8,7 @@ import { startBuild } from '../../src/services/start-build.js';
 import { dispatchExpedition } from '../../src/services/dispatch-expedition.js';
 import { occupations } from '../../src/services/who-is-free.js';
 import { viewCamp } from '../../src/services/view-camp.js';
+import { advanceSettlement } from '../../src/services/advance-settlement.js';
 
 const T0 = Date.UTC(2287, 0, 1);
 const HOUR = 60 * 60 * 1000;
@@ -175,5 +176,53 @@ test('a sleeper leaves the stores line, because they stop drawing on it', async 
       Math.abs(fell - gone) < 0.01,
       `expected the food drawn to fall by about ${gone}, got ${fell}`,
     );
+  });
+});
+
+test('raiders arriving wake the camp, and it stays woken', async () => {
+  /*
+   * The game has had this rule since a raid gained a duration: `wakeTheCamp` in the tick is
+   * the one exception to "there is no waking them", because it is the raid that wakes you
+   * rather than any choice you make. It did not work.
+   *
+   * The tick cleared `sleepUntil` on the state and `saveWorld` does not write the column, so
+   * the next load read the same survivor straight back under: the simulation had them up and
+   * every service still refused them, `occupations` asking the database rather than the walk.
+   * Nothing tested it at either level. This asserts the fact a player can actually see --
+   * what the camp may do with them afterwards -- rather than the state the walk returned.
+   */
+  await withRollback(async (client) => {
+    const { settlementId, ids } = await seed(client, { stamina: 40, people: 2 });
+
+    await startSleep(client, settlementId, ids[0], 12, T0);
+    await startSleep(client, settlementId, ids[1], 12, T0);
+    await client.query('update settlements set next_raid_at = $2 where id = $1', [
+      settlementId,
+      new Date(T0 + 0.5 * HOUR),
+    ]);
+    /*
+     * And the watchtower comes down first. The fixture builds one at level 2, and a raid that
+     * is turned away at the fence never reaches the camp to wake anybody -- which is a
+     * correct outcome and not the one under test. The larder is already deep enough that
+     * raiders think the walk worth it.
+     */
+    await client.query(
+      `update camp_structures set level = 0 where settlement_id = $1 and kind = 'watchtower'`,
+      [settlementId],
+    );
+
+    const { events } = await advanceSettlement(client, settlementId, T0 + HOUR);
+    assert.equal(events.filter((one) => one.type === 'woken').length, 2, 'both, and by name');
+
+    const { rows } = await client.query(
+      'select sleep_until from characters where settlement_id = $1',
+      [settlementId],
+    );
+    for (const row of rows) assert.equal(row.sleep_until, null, 'the column, not just the state');
+
+    const busy = await occupations(client, settlementId, T0 + HOUR);
+    assert.equal(busy.get(ids[0]), undefined, 'so the yard will take them');
+    assert.equal(busy.get(ids[1]), undefined);
+    await startBuild(client, settlementId, 'garden', T0 + HOUR, ids[0]);
   });
 });
