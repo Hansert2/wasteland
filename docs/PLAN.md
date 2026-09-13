@@ -4812,7 +4812,7 @@ with a weight, a cap and a box to bank against, there is nothing to recover *fro
 **the cap is derived in grams**, at Phase 18's conversion of 125 g to the food unit, rather
 than in abstract points that would only be re-derived later.
 
-### Phase 14 — night as a different thing, not a dimmer day
+### Phase 14 — night as a different thing, not a dimmer day ✅ *(built 2026-09-06; written up below)*
 
 *Against: the clock changed what an hour costs, and not what is out there.*
 
@@ -5432,6 +5432,222 @@ disabling the reload.
 
 This is the same shape as the existing guard that no structure produces fuel: cheap,
 specific, and aimed at the exact mistake a future change is likely to make.
+
+## Phase 14 — night, built 2026-09-06 ✅
+
+*The design above asked for three things, and the sweep answered the first one — which then
+decided the shape of the other two.*
+
+**`tools/night-share.mjs` was run before a word of content was written**, as the design said it
+should be, and what it found took an option off the table. From the Deep Zone outward, no
+departure hour in the year avoids darkness and none is entirely dark: those roads are *always*
+mixed, so night there can never be a thing the player chooses. The Fence Line is the opposite —
+a coin toss, 49% all-light against 49% all-dark. And for somebody who checks in at nine in the
+evening, every trip of six hours or less is 100% dark.
+
+So night could not be a set of new moments waiting out on the far roads, because nobody would
+ever have met them as a set. **It had to be a re-reading of the twenty that already exist**,
+worth meeting on the roads where darkness is unavoidable. Which reading a player gets is decided
+per moment, from the hour that moment happens at rather than the hour the trip left.
+
+### The constraint that made it safe, and it is a shape rather than a rule
+
+**`NIGHT` may override text and nothing else.** An entry carries a title, a scene, a turn, and
+per-option label and detail; a test pins that it carries nothing else. The option objects stay
+the daylight ones and are *merged* rather than replaced, so no night entry can change what an
+option costs, spends or pays.
+
+That was worth a rewrite to reach. `answerMoment` finds the chosen option on the moment it was
+handed and applies whatever is on it — so the first draft, which retyped each option in full,
+had already dropped `consumes` and `lootFactor` from three of them and nothing noticed. A table
+that *cannot* carry a number cannot lose one.
+
+The swap happens after the axes are picked and the hours placed, so a night trip offers the same
+count of moments, on the same axes, in the same windows: `tools/window-coverage.mjs` still
+measures what it measured. And `coefficientsAt` has already priced the hours, so nothing in the
+dark is worth more than its daylight partner — the constraint the design put first.
+
+### Where the day's answer becomes the wrong one
+
+Three, and they are the whole argument for this being content rather than a filter:
+
+- **`wind_turns`** — by day the dose is blowing past and sitting it out is right. At night the
+  cold air has sunk into the hollow and stopped, so sitting it out is sitting *in* it.
+- **The ford** — by day its bottom is a look. At night it is a thing you find out with a leg.
+- **`the_long_way`** — by day the short cut is a bet placed after looking at the ground. After
+  dark there is no looking at the ground first.
+
+**Underground, night is not about light**, because a gallery is dark at noon. Those four mirrors
+are about the survivor instead: the torch has been burning for hours by then, and there is no
+daylight to come back out into.
+
+### One seam, and two tests that had been lucky
+
+`withClock()` puts the departure on the region beside the `travelFactors` call in **both**
+`tick.js` and `view-camp.js`, off the same hoisted offset and noon — a disagreement there is a
+player shown one scene and told about a different one in the log. A region without those fields
+reads as daylight, and a sweep of 14,763 bare-region moments confirms they are identical to what
+shipped before, which is what keeps `moment-balance.mjs` measuring the game.
+
+Two db tests took their departures from `Date.now()`. Fine until this phase and a coin toss
+after it: the first run after dark failed on an assertion that was already there to catch it.
+They use a sun in a known place now.
+
+### What play said about it
+
+**"Night and day I didn't notice a real difference, but I think that's alright. It is more
+variation."** — 2026-09-13, and that is the phase landing where it was aimed rather than short
+of it. The design forbade night being *better*; what is left when you take that away is
+variation, and a player reporting variation is a player reporting that the constraint held.
+Nothing to tune. If night should ever become a thing a player *chooses*, the lever is not the
+content — it is `coefficientsAt`, and that trade was deliberately left alone.
+
+## Phase 7's gate, rebuilt 2026-09-10 as a threshold in the roster ✅
+
+*Three rounds of mockups: seven treatments across four camp states, then one option iterated
+four ways. The user picked E3. Argued and **not** taken, so not to be re-proposed as new — the
+arrival as a Contact-box moment, a second verb for turning somebody away, and deleting the block
+on the grounds that the bed is already the decision.*
+
+The arrival was twenty-three lines of prose and a button on the Survivors view, and three things
+were wrong with it that only appeared once it was rendered against real states.
+
+**It was not rendered at all when the camp was full.** `atTheGate` returned null the moment
+`bedsFree` hit zero, so the camp with the most reason to be told was told nothing, and the two
+refusals `takeInWanderer` has always carried were sentences no player could reach. *Meeting
+somebody you have no room for is the decision the bed exists to create, and a decision cannot be
+put by a block that is absent.* It carries `{room, holds, roster, bedsStanding, nextBed}` now.
+
+**Nobody is conjured by being shown.** `wandererFor` is a pure function of the camp's seed and
+how many it has held, so the person at a full gate is the person who would have been at a gate
+with room, and taking them in recomputes from the same two numbers. No counter moves because the
+page looked. A camp that has never made a bed still gets no arrival — the gate hour counts from
+the newest bed, and with none there is nothing to count from.
+
+**The arrival is below the roster and deliberately not a row of it.** The Survivors strip is one
+control for every card at once, and a person at the gate has no pack: `insertSurvivor` writes a
+name, a birth time and two skills. A card answering that strip would be blank on the tab a
+player lands on, with its whole argument one click away; a card ignoring the strip from inside
+the roster would be a row disagreeing with a control that claims to govern every row. So a ruled
+`.thresh` closes `.roster` and the arrival sits under it, carrying no `.tabbed` panel — which is
+what keeps the generated tab CSS from reaching it.
+
+**And the Camp view is told.** The block lived on one view and nothing else knew: the Next block
+has eleven pieces of advice and none about a person, the away log records a build finishing and
+not somebody arriving, the rail counts four stores and no people. `s-gate` renders one `quiet`
+line on the camp pane — the caravan's own `as-line` answer rather than a new one.
+
+### The two faults that only measuring found
+
+- **A skill pip was 139px wide.** The component is built for the card's 190px column, where a
+  pip measures about 30. Left to fill the block it took 993, so a seven-point scale drew as
+  seven bars a hand-span wide. Two fixed columns put it back.
+- **The wait line was overwritten by its own clock.** It was `<p class="soft"
+  data-until="...">Nobody yet.</p>`, and the timer loop replaces the text of *every* element
+  carrying `data-until` — so the sentence survived one tick, then read as a bare duration, and
+  emptied entirely at the gate hour for want of a `data-done`. The countdown is a span inside
+  the sentence now, like every other deadline on the page.
+
+### And the reason none of it had been seen
+
+**`s-gate` was empty in all twelve saved page states.** The block had never appeared in the set a
+redesign works from, and the contract test had never met it. There are fourteen states now, with
+`at-the-gate` and `gate-full` — and rendering against them caught a content bug no measurement
+would have found: a starting camp is at shelter 2 and its first bed wants shelter 2, so the price
+read "12 scrap and the shelter at 2", telling the camp to raise what it already had.
+
+A contract test now fails if the arrival is moved inside `.roster`, given a tab panel, or turned
+into a `.person`. **The general lesson, and it is the second time this file has had to learn
+it:** a block that is empty in every saved state is a block nothing is testing.
+
+### Still open, and it is the user's
+
+**Does turning somebody away advance `wandererFor`'s counter?** If it does, refusal is a reroll
+and the no-shopping rule this block rests on falls. Phase 15 forces the answer.
+
+**Play, 2026-09-13:** *"The gate feels good, even if you can't take them in, it's incentive to
+build a bed."* Which is the argument for rendering it on a full camp, confirmed from the other
+side.
+
+## A small camp and a raid — measured 2026-09-13, and the complaint was about the wrong thing
+
+*Reported from play: "with a single or two I think it may be just looking at them take it, since
+they may be away in that duration." The instrument is `tools/raid-at-home.mjs`.*
+
+The reading everybody had, including this file's first draft of a fix, was **absence**: a camp
+of one or two has its people on the road when raiders come, so the block asks a question with no
+answers on it. That is measurable, so it was measured before anything was built.
+
+### Nobody home is a corner case
+
+Forty-five camps — five roster sizes, three raid seeds each, three itineraries — played ninety
+days apiece through the real services, with the game's own `nextRaidAt` deciding when raiders
+came. Only raids that opened a **window** are counted: a camp under `NOT_WORTH_THE_WALK` is
+picked over and settled at its own hour, and a repelled raid writes no row at all, so neither
+asks the player anything.
+
+    itinerary                                    roster 1   2     3     4     5
+    long trips only, sleeping to afford them          9%   3%   11%    0%    0%
+    the furthest place they can reach                 0%   0%    0%    0%    0%
+    short hops only                                   0%   0%    0%    0%    0%
+
+The figure is the share of raids whose whole four-hour window opened and shut with nobody the
+player could have sent. **Two of the three itineraries never produce one at all**, across 541
+raids. Only the policy built to maximise absence does, and there it is single digits to low
+teens — on 35 raids a cell, which is thirty-ish trials, so read it as "uncommon" rather than as
+a two-digit number.
+
+**Stamina is why, and this is the load-bearing find.** A trip costs `staminaPerHourWorked` an
+hour, so Harrow End is 99 of a hundred-point gauge and one long walk empties it. Refilling even
+the fast way — sleeping, at 3.8/h against 1/h passive — takes hours of the same order. So **a
+survivor cannot be away more than about a third of the time even when the player optimises for
+it**: the measured ceiling is 35% of all survivor-hours, and an ordinary camp sits at 10–20%.
+The first three drafts of the instrument reported that nobody was ever away, and only the last
+of those was a bug in the tool. The other two were the game.
+
+### What the complaint actually is
+
+`standTogether`, over people who *are* at the fence:
+
+    holding back        1      2      3      4      5
+    unarmed            20%    36%    49%    59%    67%
+    with a scrap spear 45%    70%    83%    90%    90%
+
+**A lone unarmed survivor who stands for all four hours still watches 80% of the drain walk out
+of the gate.** They are not absent. They are present and very nearly powerless, which produces
+exactly the feeling reported — "just looking at them take it" — and does it on the *common* path
+rather than the rare one. Two unarmed is still 64% leaving.
+
+### The two answers the game already has
+
+**A weapon, which is the player's lever:** 20% to 45% for one person, 36% to 70% for two. As of
+2026-09-13 a crafted spear lands in the box rather than in the crafter's pack, so arming
+somebody is one transfer from a shelf everybody can reach.
+
+**The buildings, which are the camp's, and need nobody standing at all:**
+
+    fence + tower level   defence   repelled outright   food taken over four hours (of 200)
+    0                         0            0%                   81
+    2                         8           20%                   59
+    4                        16           40%                   38
+    6                        24           60%                   24
+
+A camp at fence and tower 4 never sees 40% of its raids, and the ones it sees cost less than
+half what they would bare.
+
+### So the fault to fix is a page, not a mechanic
+
+Both levers exist, both are strong, and **neither is stated anywhere a player would find it.**
+The weapon's contribution appears only inside a hover popup on a row of the raid block, phrased
+as a share rather than as advice; nothing on the page says a watchtower turns raids away, and
+`campDefence` is invisible. A player with one survivor and no spear is in the worst cell of both
+tables and has not been told either one exists.
+
+**What is deliberately not proposed.** *Refusing to open a raid while the whole roster is away*
+— the shape this measurement was started to justify — is a rule for a case that happens in
+single digits under one itinerary and never under the other two, and it would price a real
+mechanic against a corner. *Raising `BARE_STAND`* makes the unarmed camp stronger and the weapon
+worth less, which is the one lever the player currently has. Neither is worth spending.
 
 ## Not planned
 

@@ -69,6 +69,18 @@ they have found something that reasoning and a green test suite both missed:
   table a re-reading of the existing moments rather than a set of new ones: on the roads
   where it fires most it cannot be a choice, so it had to be worth meeting anyway.
 
+- **The small camp was not a spectator for the reason everybody said.** Play reported that a
+  camp of one or two "may be just looking at them take it, since they may be away". Measured
+  across forty-five camps: a whole roster away for a raid's entire window happens **0% of the
+  time on two of three itineraries** and single digits to low teens on the one built to
+  maximise absence. **Stamina is the reason** — a 26-hour walk is 99 points of a hundred-point
+  gauge, so nobody can be away more than about a third of the time however hard the player
+  tries. The real complaint was on the common path, not the rare one: a lone *unarmed*
+  defender who stands for all four hours holds back **20%** and watches the other 80% leave.
+  One spear takes that to 45%, and a fence and tower at level 4 turn 40% of raids away
+  outright — so the fix on the table is telling the player those exist, not changing when
+  raiders come.
+
 The pattern worth keeping: the simulation is a pure function of `(state, now)`, so
 sixty days of play runs in milliseconds and a balance question can be answered rather
 than argued about. Before trusting a number, measure it.
@@ -96,6 +108,22 @@ that is half dark across all departures can still be reliably light for a player
 ever plays at nine in the morning — and that is the player the content meets. Base travel
 hours, so it reads the table as a camp without shortcuts sees it; a link-opened shortcut can
 only move a trip toward the light it left in.
+
+`raid-at-home.mjs` needs the database and plays forty-five camps, which takes minutes rather
+than milliseconds — five roster sizes against three raid seeds against three itineraries, each
+ninety days. It counts only raids that opened a window, because a picked-over camp and a
+repelled raid both ask the player nothing:
+
+```
+node scripts/with-db.mjs node --env-file=.env tools/raid-at-home.mjs
+```
+
+**Three drafts of it reported that nobody is ever away, and only the third was a bug.** The
+first asked for the Deep Zone on day one and had every dispatch refused, because the far roads
+are behind the road; the second opened the road and found the camps still home, because a long
+walk empties the stamina gauge and the ladder fell through to ten-minute errands. That second
+answer was the game telling the truth. The fix was to make the policy honest — long trips only,
+sleeping to afford the next one — rather than to make the tool agree with the hypothesis.
 
 `check-in-density.mjs` needs the database, and answers a blunter question than any of the
 above: **when you load the page, what is there to do?** It probes rather than reasons —
