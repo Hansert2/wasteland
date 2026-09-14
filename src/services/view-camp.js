@@ -197,7 +197,9 @@ function hourStrip(state, now, fitted, clock = 0, noon = DEFAULT_SOLAR_NOON, net
    * Both are the same arithmetic over a different denominator, which is what lets one cell hold
    * either without the player having to be told which they are looking at.
    *
-   * Null only when nobody is drawing at all, which is a camp with nobody in it.
+   * Null only when nobody is drawing at all, which is a camp with nobody in it. `draw` is the
+   * *waking* draw rather than this instant's — see where it is built for why a nap must not
+   * take the figure off the strip.
    */
   const runway = (kind) => {
     const amount = Number(state.settlement.resources[kind]?.amount) || 0;
@@ -2300,11 +2302,27 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
    * than inventing a second definition that can drift.
    */
   const eats = { food: 0, water: 0 };
+  /*
+   * And the same again with everybody counted awake, for the strip's larder figure.
+   *
+   * `appetite` is 1 awake and 0 asleep, which is right for the *rate* — nobody eats in their
+   * sleep — and wrong for "how long does this last": a camp whose only survivor is asleep draws
+   * nothing, so the stock divided by the draw is infinite and the cell vanished until they woke
+   * up. A figure that disappears for the duration of a nap reads as the page glitching.
+   *
+   * Sleep is temporary and the larder is not, so the depth of it is measured against the mouths
+   * that will be drinking from it rather than the ones drinking this second. The falling branch
+   * still uses the real net rate, because when a store is actually emptying the question is when
+   * it hits zero and that depends on what is being taken right now.
+   */
+  const waking = { food: 0, water: 0 };
   for (const person of state.survivors ?? (state.survivor ? [state.survivor] : [])) {
     if (!person.alive) continue;
     const { appetite } = recoveryOf(state, person, now, CONFIG);
     eats.food += CONFIG.foodPerHour * appetite;
     eats.water += CONFIG.waterPerHour * appetite;
+    waking.food += CONFIG.foodPerHour;
+    waking.water += CONFIG.waterPerHour;
   }
 
   /**
@@ -2646,7 +2664,7 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
      * cost they cannot plan around. What fuel buys is precision: the clock sells the hour
      * and the exact turn of the light, the glass sells the temperature and the numbers.
      */
-    hour: hourStrip(state, now, fitted, clock, noon, netRates, eats),
+    hour: hourStrip(state, now, fitted, clock, noon, netRates, waking),
     /**
      * Where the camp stands — offered once, to a camp that was never actually placed, and
      * `null` for everybody else.
