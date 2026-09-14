@@ -6829,6 +6829,49 @@ side"* on the first page it was ever rendered to.
 Nothing in Phase 17. The next phases are 18 (grams and litres) and then 19, which the user
 deferred until 18 has shipped **and been played**.
 
+## What Phase 17c did once it was switched on, measured 2026-09-14 after deploy
+
+`tools/politics-in-play.mjs`. `politics-effects.mjs` measured each swing on its own — how often
+a crew is at one, and what it is worth to a price, a raid clock and a hazard roll. **That is
+not the same question as what happens to a camp**, and three gaps between the two were worth a
+number rather than an argument.
+
+### The raid clock has an asymmetry in it, and it is 0.24%
+
+`tempoFactor` stretches and compresses the *gap* between one crew's raids by up to fifteen
+percent either way. A player experiences raids *per hour*, which is its reciprocal, and
+`E[1/f] > 1/E[f]` for anything that varies at all — **so a swing that looks even makes raids
+strictly more frequent, whatever the design intended.** Measured over 144,000 readings: the
+mean multiplier on the gap is 1.00044 and on the rate is 1.00241.
+
+**A quarter of one percent. Recorded, not fixed** — correcting it would mean a compensating
+constant nothing derives, to undo an effect a camp could not detect over its whole life.
+
+### The road is where 17c is actually felt
+
+    place                  danger   trouble before   contested   quiet   worst swing
+    the_service_road            1             8.9%        9.9%    8.1%         11.2%
+    ruined_city                 2            17.7%       20.7%   14.9%         17.3%
+    underground_bunkers         3            27.0%       31.4%   23.5%         16.5%
+    sixteen_wells               4            36.0%       41.2%   31.1%         14.4%
+    harrow_end                  5            44.9%       51.8%   39.8%         15.3%
+
+Seven and a half percent on the odds is a **fifteen percent** change in how often somebody
+meets trouble, because the multiplier lands on a probability rather than on a count. Walking
+Harrow End twice a day for a season is 56 trips: **25.1 meetings with trouble in a calm season
+against 27.1 in a contested one — 1.9 extra, costing 59 health across the four weeks.**
+
+About half a survivor, spread over a month, on the one road a camp would be walking anyway.
+That is the right size: enough that a contested road is worth reading before pressing Send, and
+not enough that the season decides whether anybody lives.
+
+### And a trap for the next person who measures a trip
+
+The first cut of this file counted `outcome.cause` and reported that **nothing on the map is
+ever dangerous**. `resolveExpedition` returns `cause: died ? trip.cause : null` — the cause is
+what *killed* them, so a hazard somebody walked away from comes home with a cause of null.
+Count `damage`. The failure is silent and it reads exactly like a finding.
+
 ## Phase 18 — grams and litres, built 2026-09-14 ✅
 
 **The design above says re-denominate every stored number and migrate live saves. It was not
