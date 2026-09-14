@@ -549,10 +549,45 @@ export async function buildStates(client, now = Date.now()) {
     });
   }
 
-  // 7. The ledger, and the empty camp that follows a death.
+  /*
+   * 6f. Somebody lying out there, and the band that offers to go and get them.
+   *
+   * Phase 16's one piece of new markup, and without a state here it would be a block that is
+   * empty in all eighteen of the others — which is this file's definition of untested. The
+   * place is opened deliberately: the errand is a second form on the expanded band, and the
+   * band is the only place on the page it can appear.
+   *
+   * Three days out rather than one. At zero hours the caption reads 70% and the control's
+   * whole point — that it is going cold — has nothing to show; at three days it reads about a
+   * third, which is the sentence the block exists to say.
+   */
   {
     const id = await camp(client, now);
-    await raiseSuccessor(client, id, { now });
+    await raiseSuccessor(client, id, { name: 'Sol', now });
+    const { rows: gone } = await client.query(
+      `insert into characters (settlement_id, name, born_at, died_at, cause_of_death, health,
+                               died_at_region_id)
+       select $1, 'Wren', $2, $3, 'a bad dose', 0, r.id from regions r where r.slug = $4
+       returning id`,
+      [id, new Date(now - 200 * HOUR), new Date(now - 72 * HOUR), 'the_deep_zone'],
+    );
+    await client.query(
+      `insert into inventory_items (character_id, item_id, qty)
+       select $1, i.id, 2 from items i where i.slug in ('scavenged_parts', 'tinned_stew')`,
+      [gone[0].id],
+    );
+    states['errand'] = campPage(await viewCamp(client, id, now), {
+      // 'survivor', not 'road': `PANES` puts the dispatch table on the Survivors view, and
+      // the Road view is the links block. Named wrong, the state saves a page whose band is
+      // display:none — present in the markup, and never once looked at.
+      pane: 'survivor',
+      place: 'the_deep_zone',
+    });
+
+    /*
+     * And the same camp's ledger, which is where the other half of the phase shows: one stone
+     * still out at a named place beside one that never left the wire.
+     */
     await client.query(
       `update characters set died_at = $2, cause_of_death = 'radiation', health = 0
         where settlement_id = $1 and died_at is null`,

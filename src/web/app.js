@@ -321,7 +321,19 @@ export function createApp() {
       await advanceSettlement(client, settlementId, now);
       // Who goes, from the selector above the dispatch table. Absent means the first free
       // survivor, which is what every caller meant before there was a roster to choose from.
-      await dispatchExpedition(client, settlementId, req.body.region, now, req.body.who || null);
+      /*
+       * And whether they are going to look for somebody, which is a fact about this trip.
+       * `dispatchExpedition` refuses an errand for anybody who is not lying in that region,
+       * so a posted id that no longer applies is a refusal rather than wasted hours.
+       */
+      await dispatchExpedition(
+        client,
+        settlementId,
+        req.body.region,
+        now,
+        req.body.who || null,
+        req.body.recover || null,
+      );
     });
 
     res.redirect(backToCamp(req));

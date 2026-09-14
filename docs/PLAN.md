@@ -4875,7 +4875,7 @@ trip and rolls again, and the backstory becomes a stat block — the exact failu
 no room for is a real choice: improve the shelter, or walk away from a person. A rescue must
 not conjure capacity.
 
-### Phase 16 — body recovery *(designed 2026-09-14; one of its two premises was wrong — see below)*
+### Phase 16 — body recovery ✅ *(designed and built 2026-09-14; one of its two premises was wrong — see below)*
 
 *Against: what someone carried beyond the wire simply evaporates.*
 
@@ -6204,7 +6204,7 @@ counts, whether it is in a pack or on the shelf, because the box is a place hand
 A readout rather than advice — what to do about either is the player's. And it is on the block
 that *warns*, which is the only place a player can still act on it.
 
-## Phase 16 — body recovery, designed 2026-09-14
+## Phase 16 — body recovery, designed and built 2026-09-14 ✅
 
 *The design above rests on two facts about the schema. **One of them is wrong**, and checking it
 before starting is the only reason this section is shorter than the one it replaces.*
@@ -6346,11 +6346,64 @@ other. The death is starvation on the road now, which transfers.
 which it would have done seven times in ten. Nothing skips now; the setup makes the death
 certain and the test asserts it.
 
-### Still to build
+### The page, built the same day
 
-The graveyard saying which of its stones are still out there, and the dispatch control offering
-the errand. **And the figure to measure before any of it is tuned:** what `AT_ONCE` at 0.7 does
-to a camp's balance is the one number this phase adds.
+**The errand is a strip under the band, not a control beside Send.** It began beside Send,
+which is where the decision belongs and is also where it does not fit: measured at 1520px the
+action column is 215px, the sentence wrapped to three lines, and the column came out 235px tall
+inside a band pinned to 148 — eighty-seven pixels of it lying across the table underneath. A
+strip has the band's whole 1029px, which is one line for the sentence and room beside it for
+the cost and the control.
+
+It does move the list when you step between places, which is the one thing the band's fixed
+height exists to stop. Taken deliberately: that rule was written against a description that
+sets to one line or two, where the movement reports nothing. This reports that somebody of
+yours is lying in *this* place and nowhere else, and reserving the row on all eleven would
+spend 44px of every band forever on a state most camps never reach.
+
+What it says is that the errand is going cold — *"Wren, 3d out there — about 35% of what they
+carried is still there, and falling"* — beside *"4h 30m on top of the walk"*, and both figures
+are the ones `dispatchExpedition` charges and `advance-settlement` pays, so the control cannot
+promise what the service will not honour.
+
+**The graveyard says where they lie**, and a stone that has been emptied by a recovery reads
+*"Everything that could be carried came home with them"* rather than as somebody who died with
+nothing. It also stopped contradicting itself: `trips` counts *finished* trips, so a survivor
+killed on their first one had made none, and the stone printed "Never left the camp" two lines
+above "Still out at The Deep Zone." A death with a place is a death that left.
+
+**The state is saved as `errand`**, on the Survivors pane — `PANES` puts the dispatch table
+there and the Road view is the links block, and the first attempt at the fixture named `road`
+and saved a page whose band was `display: none`. Markup nobody has ever looked at is this
+file's definition of untested, which is the whole reason the fixture exists.
+
+### And the figure, measured before anything was tuned
+
+`tools/recovery-balance.mjs`. Nothing needed tuning; what it found is that **the rounding, not
+the share, is the mechanic.**
+
+    a stack of      comes home until
+             1                 1.5d
+             2                 4.5d
+             3                 6.2d
+            12                12.2d
+
+A stack of one — which most rows in a real pack are — survives while the share is over a half,
+so it is recoverable for **34.9 hours and not a minute more**. That single figure is what the
+rule actually says, and against the map it is a gradient rather than a wall:
+
+    The Fence Line     errand  0.2h    34.8h of dithering before a lone item is lost
+    Coastal Wreckage   errand 15.0h    20.0h
+    The Deep Zone      errand 22.5h    12.5h
+    Harrow End         errand 32.5h     2.5h
+
+Every place is reachable in time, and the far ones demand you turn round at once. That is the
+decision `HALF_LIFE_HOURS` was priced to create, and it lands.
+
+**A death inside the wire hands back 62% of what was carried, not 70.** Over the stacks this
+database actually holds, rounding costs eight points at zero hours and pays five back at three
+days. 0.7 is the nominal; 62% is the number to quote at the balance of a camp, and it is the
+one figure this phase adds.
 
 ## Not planned
 

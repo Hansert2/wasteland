@@ -2764,6 +2764,34 @@ ${PANE_CSS}
    * whichever condensed face the machine actually has -- Roboto Condensed is not resident on
    * Windows -- which would hand the misalignment to somebody else's screen.
    */
+  /*
+   * Going back for somebody: a strip under the band, across the whole width of it.
+   *
+   * It began inside the action column beside Send, which is where the decision belongs and
+   * is also where it does not fit. Measured at 1520px: the column is 215px, the sentence
+   * wrapped to three lines, and the column came out 235px tall inside a band pinned to 148 --
+   * eighty-seven pixels of it lying over the table underneath. A strip has the band's full
+   * 1029px, which is enough for the whole sentence on one line beside its own control.
+   *
+   * It does move the list when you step between places, which is the one thing the band's
+   * fixed height exists to stop. Taken deliberately: that rule was written against a
+   * description that sets to one line or two, where the movement reports nothing. This
+   * reports that somebody of yours is lying in this particular place and nowhere else, which
+   * is worth a row appearing -- and reserving the row on all eleven would spend 44px of every
+   * band forever on a state most camps never reach.
+   */
+  .errands { border-top: 1px solid var(--rule-in); }
+  .errand { display: flex; align-items: center; gap: 16px; padding: 9px 20px;
+            background: var(--strip); }
+  .errand + .errand { border-top: 1px solid var(--rule-in); }
+  /* The oxide edge, and it is the only one on this block. A body out there is the single
+     thing on the road pane that is losing value while you read it. */
+  .errand { border-left: 2px solid var(--oxide); }
+  .errand .lostline { display: flex; align-items: baseline; gap: 10px; flex: 1; min-width: 0; }
+  .errand .said { font-family: var(--numer); font-size: 12px; line-height: 1.5;
+                  color: var(--prose); }
+  .errand .caption { margin: 0; white-space: nowrap; }
+
   .band-act .sendmenu .lead, .band-act .sealed { height: 36px; display: inline-flex;
                                                  align-items: center; justify-content: center; }
   /* Set in prose, not --faint: this sits at the end of the band where the veil is read
@@ -3897,6 +3925,12 @@ ${PANE_CSS}
                 gap: 16px; }
   .stone-head .who-name { font-size: 20px; }
   .stone p { margin: 10px 0 0; max-width: 60ch; }
+  /* Where they lie, under what they were carrying, because the two are one fact: the pack is
+     out there with them until somebody goes. */
+  .stone .lies { margin: 6px 0 0; font-family: var(--numer); font-size: 12px;
+                 color: var(--oxide-light); }
+  .stone .lies.home { color: var(--faint); }
+
   .stone .state { margin-top: 9px; font-size: 14px; }
 
   /* ---- the gate ---- */
@@ -6867,11 +6901,6 @@ function describe(event) {
     // The raid waking the camp. It had no case here at all, so the log printed the bare event
     // type at whoever it happened to.
     /*
-     * Phase 16. A death in the camp leaves its pack where the camp can reach it, and the log
-     * says what came in and what did not — the loss is the point of the rule, so it is not
-     * left to be inferred from a shelf that grew by less than somebody was carrying.
-     */
-    /*
      * Phase 16. What came home with them, and what a fortnight out there had already taken —
      * the loss is the rule working rather than an accident, so the log says it rather than
      * leaving a player to notice a pack lighter than the headstone promised.
@@ -6882,6 +6911,11 @@ function describe(event) {
       }${event.dropped > 0 ? ` — ${event.dropped} would not fit in the pack and stayed where it lay` : ''}.`;
     case 'nobody_to_find':
       return `${event.who ?? 'Somebody'} had already been brought home. The hours spent looking were spent anyway.`;
+    /*
+     * Phase 16. A death in the camp leaves its pack where the camp can reach it, and the log
+     * says what came in and what did not — the loss is the point of the rule, so it is not
+     * left to be inferred from a shelf that grew by less than somebody was carrying.
+     */
     case 'pack_came_in':
       return `${event.who ?? 'Somebody'} died in the camp. ${event.kept} of what they carried came off them; ${event.lost} did not.`;
     case 'woken':
@@ -8415,6 +8449,45 @@ function campAtRest(view) {
 }
 
 /**
+ * And whoever of theirs is still lying out there, on the band that sends the trip.
+ *
+ * **A second control rather than a second entry in the Send menu.** That menu answers one
+ * question — whose hands — and an item in it reading "Odd, and bring Wren home" would answer
+ * two, with the second hidden inside the first. This is its own form because it is its own
+ * decision: it costs hours the plain walk does not, and it says how many before it is pressed.
+ *
+ * What it reports is that the errand is going cold. The share falls on a half-life, so "about
+ * half of what they had" three days on is the figure that makes going *now* worth something —
+ * and it is the same call `dispatchExpedition` charges and `advance-settlement` pays out, so
+ * the control cannot promise what the service will not honour.
+ */
+function huntForTheLost(view, region) {
+  const lost = region.lost ?? [];
+  if (lost.length === 0) return '';
+
+  const strips = lost
+    .map(
+      (one) => `<form method="post" action="/expedition" class="errand">
+        <input type="hidden" name="region" value="${escape(region.slug)}">
+        <input type="hidden" name="recover" value="${escape(String(one.id))}">
+        <span class="lostline">
+          <span class="tag">still out here</span>
+          <span class="said">${escape(one.name)}, ${escape(
+            duration(one.hours),
+          )} out there &mdash; about ${Math.round(
+            one.share * 100,
+          )}% of what they carried is still there, and falling</span>
+        </span>
+        <span class="caption">${escape(duration(region.searchHours))} on top of the walk</span>
+        ${whoMenu(view, `Bring ${one.name} home`, 'errand')}
+      </form>`,
+    )
+    .join('');
+
+  return `<div class="errands">${strips}</div>`;
+}
+
+/**
  * And what it says once they have: that place, standing on its own photograph.
  *
  * A fixed height in either state, because the list below must not move when the band
@@ -8470,7 +8543,7 @@ function placeBand(view, region, ceil) {
         }
         <a class="band-back" href="?">Back to camp</a>
       </div>
-    </div>`;
+    </div>${region.locked ? '' : huntForTheLost(view, region)}`;
 }
 
 /**
@@ -10389,19 +10462,45 @@ export function graveyardPage(view) {
 function headstone(person) {
   const died = new Date(person.diedAt).toISOString().slice(0, 10);
 
+  /*
+   * A count of finished trips, so a survivor killed on their first one has made none — and
+   * "Never left the camp" over "Still out at The Deep Zone" is the page contradicting itself
+   * two lines apart. The death's own place settles it: if there is one, they left.
+   */
   const trips =
     person.trips === 0
-      ? 'Never left the camp.'
+      ? person.diedRegion
+        ? 'Went out once and did not come back.'
+        : 'Never left the camp.'
       : `Made ${person.trips} ${person.trips === 1 ? 'trip' : 'trips'}${
           person.lastRegion ? `, the last to ${escape(person.lastRegion)}` : ''
         }.`;
 
-  // The detail that stings, and it was free: nothing cleans up after the dead, so
-  // their pack is still there to be read.
+  /*
+   * The detail that stings, and it was free: nothing cleans up after the dead, so their pack
+   * is still there to be read.
+   *
+   * Phase 16 made that sentence load-bearing rather than incidental — what is listed here is
+   * exactly what a trip could still go and fetch, thinning by the day. A stone that has been
+   * emptied has had somebody go for it, and says so below rather than reading as a person who
+   * died with nothing.
+   */
   const carrying =
     person.carrying.length === 0
-      ? 'Carrying nothing at all.'
+      ? person.broughtHome
+        ? 'Everything that could be carried came home with them.'
+        : 'Carrying nothing at all.'
       : `Carrying ${listOf(person.carrying.map((i) => `${i.qty} × ${escape(i.name)}`))}.`;
+
+  /*
+   * And where they lie, which is the one fact a headstone could not state until a death began
+   * recording its place. Inside the wire there is nothing to say: they are here.
+   */
+  const lies = !person.diedRegion
+    ? ''
+    : person.broughtHome
+      ? `<p class="lies home">Brought home from ${escape(person.diedRegion)}.</p>`
+      : `<p class="lies">Still out at ${escape(person.diedRegion)}.</p>`;
 
   return `<div class="stone">
       <div class="stone-head">
@@ -10411,6 +10510,7 @@ function headstone(person) {
       <p>Died of ${escape(String(person.cause ?? 'unknown causes').replaceAll('_', ' '))}
          on <span class="num">${escape(died)}</span>. ${trips}</p>
       <p class="state">${carrying}</p>
+      ${lies}
     </div>`;
 }
 

@@ -27,12 +27,15 @@ export async function viewGraveyard(client, settlementId, now = Date.now()) {
 
   const { rows: fallen } = await client.query(
     `select h.id, h.name, h.born_at, h.died_at, h.cause_of_death, h.days_survived,
+            c.recovered_at,
+            (select r.name from regions r where r.id = c.died_at_region_id) as died_region,
             (select count(*) from expeditions e where e.character_id = h.id) as trips,
             (select r.name
                from expeditions e join regions r on r.id = e.region_id
               where e.character_id = h.id
               order by e.departed_at desc limit 1) as last_region
        from character_history h
+       join characters c on c.id = h.id
       where h.settlement_id = $1
       order by h.died_at desc`,
     [settlementId],
@@ -75,6 +78,17 @@ export async function viewGraveyard(client, settlementId, now = Date.now()) {
       daysSurvived: Number(row.days_survived),
       trips: Number(row.trips),
       lastRegion: row.last_region,
+      /*
+       * Phase 16: where they actually fell, and whether anybody went back.
+       *
+       * `lastRegion` is their most recent *trip* and was the only thing the stone could say
+       * about a place — so somebody who starved in their own camp got a headstone naming
+       * somewhere they came back from alive. `diedRegion` is null for a death inside the wire,
+       * which is the honest answer and the one that decides whether the other line applies at
+       * all: there is nothing to go back for.
+       */
+      diedRegion: row.died_region,
+      broughtHome: row.recovered_at !== null,
       carrying: packs.get(String(row.id)) ?? [],
     })),
   };

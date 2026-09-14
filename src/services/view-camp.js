@@ -35,6 +35,7 @@ import { radThresholdFor, skillsOf, wandererFor } from '../game/wanderers.js';
 import { stateAt, timelineOf } from '../game/timeline.js';
 import { CONFIG } from '../game/constants.js';
 import { CARRY_CAP_GRAMS, saysLoad, saysWeight, weighPack } from '../game/carrying.js';
+import { searchHours, shareLeft } from '../game/recovery.js';
 
 /** The order the stores are read in, top to bottom, on every page. */
 const STORES = ['food', 'water', 'scrap', 'fuel'];
@@ -1987,6 +1988,34 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
    * a bug where one that will not be pressed reads as a thing you cannot have yet. The road
    * block already names the links ahead, so nothing here is a secret being spent.
    */
+  /*
+   * Everybody of this camp's who is still lying out there, by the place they are lying in.
+   *
+   * One query for the whole table rather than one per row: eleven regions is eleven round
+   * trips for a fact that is almost always the empty set.
+   */
+  const { rows: lostRows } = await client.query(
+    `select c.id, c.name, c.died_at, r.slug
+       from characters c join regions r on r.id = c.died_at_region_id
+      where c.settlement_id = $1 and c.died_at is not null and c.recovered_at is null
+      order by c.died_at`,
+    [settlementId],
+  );
+  const lostBySlug = new Map();
+  for (const row of lostRows) {
+    const lain = Math.max(0, (now - new Date(row.died_at).getTime()) / HOUR_MS);
+    if (!lostBySlug.has(row.slug)) lostBySlug.set(row.slug, []);
+    lostBySlug.get(row.slug).push({
+      id: row.id,
+      name: row.name,
+      /* Hours rather than days, so the band prints it through `duration` like every other
+         span on the page — a walk is "18h" and a body should not be "0.8 days". */
+      hours: lain,
+      /* What a trip that left now would find, so the row can say it is going cold. */
+      share: shareLeft(lain),
+    });
+  }
+
   const regionsOf = (plans) =>
     regionRows
       .map((region) => ({
@@ -2007,6 +2036,19 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
          */
         travel_hours: travelHoursFor(region.slug, Number(region.travel_hours), shortened),
         shortened: shortened.has(region.slug),
+        /*
+         * Phase 16: who of theirs is lying here, and what going for them would cost.
+         *
+         * On the region rather than in a list of its own, because the decision is made on the
+         * row that sends the trip — this is not a thing to be found on another view and then
+         * carried back. The hours are the ones `dispatchExpedition` will actually charge,
+         * computed off the same walk, so the control cannot promise a shorter errand than the
+         * service books.
+         */
+        lost: lostBySlug.get(region.slug) ?? [],
+        searchHours: searchHours(
+          travelHoursFor(region.slug, Number(region.travel_hours), shortened),
+        ),
       }));
 
   /**

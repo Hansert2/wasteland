@@ -6,6 +6,8 @@ import { advanceSettlement } from '../../src/services/advance-settlement.js';
 import { dispatchExpedition } from '../../src/services/dispatch-expedition.js';
 import { foundSettlement, raiseSuccessor } from '../../src/services/settlement-lifecycle.js';
 import { viewGraveyard } from '../../src/services/view-graveyard.js';
+import { viewCamp } from '../../src/services/view-camp.js';
+import { campPage, graveyardPage } from '../../src/web/render.js';
 import { shareLeft, survives } from '../../src/game/recovery.js';
 
 const hours = (h) => h * 60 * 60 * 1000;
@@ -381,13 +383,52 @@ test('a death on the road records the place, and a later trip brings them home',
     assert.equal(theirs[0].n, 0, 'nothing of theirs is left out there');
 
     /*
+     * And both halves of it reached a page, which is the part a service test cannot see.
+     *
+     * The stone says where they lie, and the road that holds them offers the errand with what
+     * it costs — the figures on the control are the ones the service charges, computed off the
+     * same walk, so the page cannot promise a shorter errand than the trip will book.
+     */
+    const stones = graveyardPage(await viewGraveyard(client, settlementId));
+    assert.match(stones, /Brought home from The Deep Zone/, 'the stone knows they came back');
+
+    // And a stone nobody has been for says so instead.
+    await client.query('update characters set recovered_at = null where id = $1', [walker]);
+    const waiting = graveyardPage(await viewGraveyard(client, settlementId));
+    assert.match(waiting, /Still out at The Deep Zone/);
+
+    /*
+     * Somebody alive first, and that is not scaffolding — it is the rule the control obeys.
+     *
+     * The heir does not survive this test: an emptied larder, a dead garden and forty-five
+     * hours of walking is what the death on the road needed, and it kills whoever goes back
+     * for them too. A camp with nobody standing in it has no dispatch table at all, so the
+     * errand had nowhere to render and the assertion below was reading a page that correctly
+     * had no roads on it.
+     */
+    await raiseSuccessor(client, settlementId, { name: 'Wren', now: T0 + hours(59) });
+    const { rows: standing } = await client.query(
+      'select id from characters where settlement_id = $1 and died_at is null',
+      [settlementId],
+    );
+    const roads = campPage(await viewCamp(client, settlementId, T0 + hours(60)), {
+      pane: 'survivor',
+      place: 'the_deep_zone',
+    });
+    assert.match(roads, /still out here/, 'the road that holds them offers the errand');
+    assert.match(roads, new RegExp(`name="recover" value="${walker}"`));
+    assert.match(roads, /of what they carried is still there, and falling/);
+
+    await client.query('update characters set recovered_at = now() where id = $1', [walker]);
+
+    /*
      * And a second errand for the same person is refused before anybody walks.
      *
-     * Rested first, deliberately: after twenty-two hours out there the heir is refused for
-     * stamina, and a test that accepts *any* refusal is a test that would pass with the
-     * recovery check deleted.
+     * Rested first, deliberately: a survivor short of stamina is refused for stamina, and a
+     * test that accepts *any* refusal is a test that would pass with the recovery check
+     * deleted. Asked of whoever is standing rather than of the heir, who is in the ground.
      */
-    await client.query('update characters set stamina = 100 where id = $1', [heir[0].id]);
+    await client.query('update characters set stamina = 100 where id = $1', [standing[0].id]);
     await assert.rejects(
       () =>
         dispatchExpedition(
@@ -395,7 +436,7 @@ test('a death on the road records the place, and a later trip brings them home',
           settlementId,
           'the_deep_zone',
           T0 + hours(80),
-          heir[0].id,
+          standing[0].id,
           walker,
         ),
       /Nobody of theirs is lying in/,
