@@ -1,4 +1,12 @@
-import { OVERLAP_MARGIN_SLOTS, eventForSlot, slotAt } from '../game/world-events.js';
+import {
+  OVERLAP_MARGIN_SLOTS,
+  WORLD_SEED,
+  eventForSlot,
+  slotAt,
+} from '../game/world-events.js';
+
+/* Re-exported, because every caller in `src/services` reaches the world through this file. */
+export { WORLD_SEED };
 
 /**
  * The world's weather, kept ahead of whoever is looking at it.
@@ -13,12 +21,6 @@ import { OVERLAP_MARGIN_SLOTS, eventForSlot, slotAt } from '../game/world-events
  * at the same instant both compute the missing slots, one wins the insert, and the
  * other's `do nothing` is the correct outcome rather than an error to handle.
  */
-
-/**
- * The world seed. Fixed rather than random: it *is* the world, and regenerating it
- * would silently rewrite history for every camp at once.
- */
-export const WORLD_SEED = 20260101;
 
 /**
  * Generate whatever weather is missing for the window `[from, until]`.

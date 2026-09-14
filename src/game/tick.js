@@ -19,7 +19,8 @@ import {
   repelChance,
 } from './raids.js';
 import { chance, makeRandom } from './random.js';
-import { activeAt, nextBoundaryAfter, productionFactors } from './world-events.js';
+import { WORLD_SEED, activeAt, nextBoundaryAfter, productionFactors } from './world-events.js';
+import { RELATIONS, changesBetween } from './relations.js';
 import { travelFactors } from './daylight.js';
 import {
   campDefence,
@@ -115,6 +116,36 @@ export function applyTick(state, now, config = CONFIG) {
   for (const trip of inFlight) {
     const flight = flightOf(next, trip);
     if (flight) flights.set(trip, flight);
+  }
+
+  /*
+   * What the crews did to each other while nobody was looking.
+   *
+   * Outside the slice walk rather than in it, and that is not an optimisation. A diplomatic
+   * change is a fact about a *window* — `changesBetween` is given two instants and returns the
+   * season boundaries between them — so cutting it into slices would ask the same question
+   * several times and rely on the boundary rules agreeing. Asked once, of the whole interval,
+   * it cannot double-report however the walk is divided.
+   *
+   * Half-open on the left exactly as the caravan checks are, so a tick that already announced
+   * a falling-out does not announce it again on the next page load.
+   */
+  for (const change of changesBetween(WORLD_SEED, next.lastTickAt, now)) {
+    events.push({
+      at: change.at,
+      type: 'crews_changed',
+      a: FACTIONS[change.a]?.name ?? change.a,
+      b: FACTIONS[change.b]?.name ?? change.b,
+      state: change.to,
+      /*
+       * The phrase rather than the slug, because `render.js` imports nothing — every fact it
+       * prints arrives on the view model or on the event. A lookup table over there would be
+       * the content living in two files.
+       */
+      says: RELATIONS[change.to]?.says ?? 'have changed how they stand',
+      warmer: change.warmer,
+      cause: change.cause,
+    });
   }
 
   let cursor = next.lastTickAt;

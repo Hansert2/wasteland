@@ -6405,7 +6405,7 @@ database actually holds, rounding costs eight points at zero hours and pays five
 days. 0.7 is the nominal; 62% is the number to quote at the balance of a camp, and it is the
 one figure this phase adds.
 
-## Phase 17 — faction relations, designed 2026-09-14 (17a built the same day)
+## Phase 17 — faction relations, designed 2026-09-14 (17a and 17b built the same day)
 
 *Against: two factions is a rivalry with a slider, not a world.*
 
@@ -6556,9 +6556,83 @@ caps the wait at four visits and stays derivable from seed and index. **Named, n
 because a number invented to fix a tail the ninetieth percentile says is fine is exactly the
 kind of figure this file keeps refusing.
 
-### Still to build: 17b, 17c, 17d
+### 17b — the relations themselves, built 2026-09-14
 
-The relations themselves, their effects, and the choice that takes a side.
+`src/game/relations.js`. Five states, three pairs, one fixed world seed, and **not one row of
+schema**.
+
+**A relation is a moving average, not a walk, and that is the whole design.** The obvious
+shape is to start at neutral and step warmer or colder each time something happens — and it
+is wrong here for a reason already written into `ensureWorldEvents`: a walk means season *n*
+cannot be computed without season *n-1*, so asking what two crews think of each other in the
+year 2287 is a fold twenty-four thousand seasons deep. `test/db/world.test.js` runs exactly
+that year, and the weather layer paid for this lesson once already in a hundred and fifty
+seconds of test time.
+
+So the value is the mean of three per-season draws. It is O(1) at any instant however old the
+world is, and it buys the property the walk was wanted for anyway: each step replaces one of
+three terms, so the wander is **bounded by construction** rather than by a rule somebody has
+to keep remembering. Measured over three hundred worlds and two hundred seasons, a change
+moves 1.16 states on average and has never once moved more than two.
+
+**The shares are declared and the thresholds derived**, which is `WORLD_EVENTS`' own hard-won
+lesson applied before rather than after. The value being cut is the mean of three uniforms,
+which piles up around a half, so eyeballed thresholds would not mean the shares they look
+like — the cut points are Irwin-Hall quantiles, found by bisection at load. Intended 8 / 17 /
+50 / 17 / 8; measured 8.2 / 17.0 / 49.7 / 16.9 / 8.2.
+
+    state       share   wanted   median run   9 in 10 under   longest
+    hostile      8.2%       8%           4w             12w       48w
+    tense       17.0%      17%           4w             12w       44w
+    neutral     49.7%      50%           8w             20w       76w
+    trading     16.9%      17%           4w             12w       40w
+    working      8.2%       8%           4w             12w       44w
+
+**A season is four weeks, priced against a measured figure.** `caravan-reach` put the mean
+wait for a particular crew at 8.2 days, and a relation that turns over faster than a camp can
+get to a caravan is a relation nobody can act on. Four weeks is two or three chances to meet
+each crew inside one state. It also makes the overhaul's *"major diplomatic choices should be
+rare"* true by arithmetic rather than by restraint: **the world hears something every 18
+days**, across all three pairs.
+
+**Every change carries a cause, which is the requirement rather than the decoration.** §13
+asks that relations change *"through visible world events rather than unexplained background
+randomness"* and that the player be told why. A state that moves with no sentence attached is
+a hidden slider, which is the thing this phase exists not to be. Eighteen lines of content,
+keyed on the state being *entered* rather than on direction alone — falling out of neutral is
+an incident, falling out of trading is an arrangement lapsing — and neutral needs two lists
+because it is arrived at from either side.
+
+Two of them were rewritten after being read aloud rather than after being reasoned about. The
+log line is the state and then the cause, so a cause that restates its own state reads as the
+page stuttering: *"keep out of each other's way. The taking has stopped. They are keeping out
+of each other's way instead."*
+
+**It arrives in the away log and on the Trade view.** The tick asks `changesBetween` once for
+the whole interval rather than per slice — a diplomatic change is a fact about a *window*, so
+asking once is what makes double-reporting impossible however the walk is divided. The
+Standing block then prints the crews' own politics under the camp's, in one table under one
+heading, because the two halves answer the same question from opposite ends and splitting
+them would make a player hold two tables in their head.
+
+**`WORLD_SEED` moved from `src/db/world-events.js` to `src/game/world-events.js`.** It was
+never a fact about the database — the cache layer merely happened to be the first thing that
+needed it — and a pure module cannot import from `src/db`. The alternative was duplicating the
+number or passing it in from a caller with no business choosing it, which is how two worlds
+start diverging.
+
+### What is deliberately *not* stored, and the exposure that buys
+
+The weather has a table because retuning `share` after a slot was shown to somebody would make
+the page contradict a line the player has already read; `014` keeps written slots and lets only
+unwritten ones follow new content. **The same exposure exists here and is accepted**, because
+nothing has ever been written from this file and there is nothing yet to contradict. The lever
+is `008`'s exact pattern — a slot table for which `changesBetween` is the generator — and it is
+named rather than built.
+
+### Still to build: 17c and 17d
+
+The effects, and the choice that takes a side.
 
 ## Not planned
 

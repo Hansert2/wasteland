@@ -52,6 +52,7 @@ import {
   travelHoursFor,
 } from '../game/road.js';
 import { WORLD_SEED, loadWorldEvents } from '../db/world-events.js';
+import { RELATIONS, relationsAt, warmthOf } from '../game/relations.js';
 import { FACTIONS, caravanVisit, postKeeper, priceAt, standingOf } from '../game/factions.js';
 import {
   BOLTS_AT,
@@ -2447,6 +2448,24 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
       slug,
       name: spec.name,
       standing: standingOf(standings, slug),
+    })),
+    /**
+     * And how the crews stand with *each other*, which the same block prints under the same
+     * heading because it is the same subject read the other way round.
+     *
+     * Not a block of its own, deliberately. What a camp does with either half is the same
+     * decision — whose caravan to spend at — and a second block would make the player hold
+     * two tables in their head to answer one question. It is also the only place on the page
+     * these three rows could go: they are not about the camp, so nothing on Camp is about
+     * them, and they are not a road, a person or a store.
+     */
+    relations: relationsAt(WORLD_SEED, now).map(({ a, b, state }) => ({
+      a: FACTIONS[a]?.name ?? a,
+      b: FACTIONS[b]?.name ?? b,
+      state,
+      says: RELATIONS[state]?.says ?? '',
+      name: RELATIONS[state]?.name ?? state,
+      warmth: warmthOf(state),
     })),
     /**
      * The strip across the top of every view: what hour it is, and what that costs.

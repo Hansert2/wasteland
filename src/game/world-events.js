@@ -20,6 +20,18 @@ const HOUR_MS = 60 * 60 * 1000;
 /** The world's calendar starts here. Slots are counted from it. */
 export const WORLD_EPOCH = Date.UTC(2026, 0, 1);
 
+/**
+ * The world seed. Fixed rather than random: it *is* the world, and regenerating it would
+ * silently rewrite history for every camp at once.
+ *
+ * Moved here from `src/db/world-events.js` when Phase 17b gave it a second reader. It was
+ * never a fact about the database — the cache layer merely happened to be the first thing
+ * that needed it — and a pure module cannot import from `src/db`, so the crews' politics
+ * would have had to either duplicate the number or take it as an argument from a caller that
+ * has no business choosing it. Both of those are how two worlds start diverging.
+ */
+export const WORLD_SEED = 20260101;
+
 /** Average hours between the start of one event and the next. */
 export const MEAN_GAP_HOURS = 96;
 

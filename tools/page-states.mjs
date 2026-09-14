@@ -563,8 +563,16 @@ export async function buildStates(client, now = Date.now()) {
    * than the seed being fixed and hoped over — the tick would have arrived here honestly.
    */
   {
-    const id = await camp(client, now);
-    await raiseSuccessor(client, id, { name: 'Sol', now });
+    /*
+     * Set in the world's third season rather than at `now`, and that is the state this fixture
+     * is really for. The crews' politics are a fact about the world, so the block's two
+     * interesting rows — the accent that only ever means a warning, and the warm end that
+     * deliberately gets no colour at all — are only on the page in a season that has them.
+     * February 2026 is the first that has both at once.
+     */
+    const politics = Date.UTC(2026, 2, 12);
+    const id = await camp(client, politics);
+    await raiseSuccessor(client, id, { name: 'Sol', now: politics });
     await client.query(
       `update resources set amount = least(200, storage_cap) where settlement_id = $1`,
       [id],
@@ -576,7 +584,7 @@ export async function buildStates(client, now = Date.now()) {
     await client.query(
       `update settlements set caravan_seed = $2, caravan_count = $3, next_caravan_at = $4
         where id = $1`,
-      [id, seed, count, new Date(now - HOUR)],
+      [id, seed, count, new Date(politics - HOUR)],
     );
 
     for (const [faction, standing] of [
@@ -590,7 +598,7 @@ export async function buildStates(client, now = Date.now()) {
       );
     }
 
-    states['trade'] = campPage(await viewCamp(client, id, now), { pane: 'trade' });
+    states['trade'] = campPage(await viewCamp(client, id, politics), { pane: 'trade' });
   }
 
   /*

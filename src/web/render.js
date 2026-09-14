@@ -2780,6 +2780,27 @@ ${PANE_CSS}
    * is worth a row appearing -- and reserving the row on all eleven would spend 44px of every
    * band forever on a state most camps never reach.
    */
+  /*
+   * The crews' own politics, under the camp's, in one table.
+   *
+   * A ruled caption rather than a second block: the two halves answer the same question from
+   * opposite ends — whose caravan is worth spending at — and splitting them would make a
+   * player hold two tables in their head to answer one.
+   *
+   * The colour is the accent's existing job and not a new one. On this page oxide means a
+   * clock, a price you cannot pay, or a warning, and two crews taking each other's people is
+   * the third of those: it is what puts armed strangers on the road you were about to walk.
+   * Warmth gets no colour at all, because good news is not a warning and the palette has no
+   * green in it on purpose.
+   */
+  .between-head td { padding-top: 14px; border-top: 1px solid var(--rule-in);
+                     color: var(--faint); font-family: var(--label); font-size: 10.5px;
+                     font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
+  .between .name { color: var(--prose); }
+  /* Set down rather than up: this is the world's business, and the camp's half out-ranks it. */
+  .between .name i { font-style: normal; color: var(--faint); }
+  .between.cold .cost { color: var(--oxide); }
+
   .errands { border-top: 1px solid var(--rule-in); }
   .errand { display: flex; align-items: center; gap: 16px; padding: 9px 20px;
             background: var(--strip); }
@@ -5811,7 +5832,7 @@ export function campPage(view, { error, pane = 'camp', place = null } = {}) {
 
     ${section('caravan', renderCaravan(view.caravan, Boolean(view.survivor)))}
     ${section('post', renderPost(view.post, Boolean(view.survivor)))}
-    ${section('standings', renderStandings(view.standings))}
+    ${section('standings', renderStandings(view.standings, view.relations))}
 
     ${section('roster', renderRoster(view.fallenCount))}`,
     }),
@@ -6880,6 +6901,16 @@ function describe(event) {
     case 'raid':
     case 'raid_repelled':
       return event.log.join(' ');
+    /*
+     * Phase 17b. The one line the whole relations mechanic is for: a state that moves with no
+     * sentence attached is a hidden slider, and the overhaul doc's requirement is exactly that
+     * the player be able to read why the world changed.
+     *
+     * Two sentences — what they are now, and what happened — because the cause on its own does
+     * not say which way it went, and the state on its own is the slider.
+     */
+    case 'crews_changed':
+      return `${event.a} and ${event.b} ${event.says}. ${event.cause}`;
     case 'caravan_arrived':
       return `a caravan from ${event.name} pulled up at the gate.`;
     case 'caravan_departed':
@@ -9878,19 +9909,41 @@ function renderCaravan(caravan, someoneAlive) {
 }
 
 /** Where the camp sits with each crew. One line each; the numbers earn no table. */
-function renderStandings(standings) {
-  if (!standings || standings.every((s) => s.standing === 0)) {
-    return quiet('Standings', NOTHING.standings);
-  }
-  const rows = standings
+function renderStandings(standings, relations) {
+  /*
+   * The crews' own politics print whether or not this camp has met anybody, and that is the
+   * point of them: the world has a state before you have an opinion about it. So the empty
+   * case is now only empty of *your* half.
+   */
+  const between = (relations ?? [])
     .map(
-      (s) => `<tr>
-        <td><span class="name">${escape(s.name)}</span></td>
-        <td class="right"><span class="cost">${describeStanding(s.standing)}</span></td>
+      (one) => `<tr class="between${one.warmth === 0 ? '' : one.warmth > 0 ? ' warm' : ' cold'}">
+        <td><span class="name">${escape(one.a)} <i>and</i> ${escape(one.b)}</span></td>
+        <td class="right"><span class="cost">${escape(one.says)}</span></td>
       </tr>`,
     )
     .join('');
-  return block('Standing', `<table>${rows}</table>`, { flush: true });
+
+  const mine = !standings || standings.every((s) => s.standing === 0)
+    ? ''
+    : standings
+        .map(
+          (s) => `<tr>
+        <td><span class="name">${escape(s.name)}</span></td>
+        <td class="right"><span class="cost">${describeStanding(s.standing)}</span></td>
+      </tr>`,
+        )
+        .join('');
+
+  if (!mine && !between) return quiet('Standings', NOTHING.standings);
+
+  return block(
+    'Standing',
+    `<table>${mine}${
+      mine && between ? '<tr class="between-head"><td colspan="2">Between the crews</td></tr>' : ''
+    }${between}</table>`,
+    { flush: true },
+  );
 }
 
 function describeStanding(standing) {

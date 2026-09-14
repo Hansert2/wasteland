@@ -112,7 +112,15 @@ test('a supplied survivor is fine after a month away', () => {
   assert.equal(state.survivor.alive, true);
   assert.equal(state.survivor.hunger, 0);
   assert.equal(state.survivor.health, 100, 'regenerated to full');
-  assert.equal(events.length, 0, 'a well-run camp is a quiet log');
+
+  /*
+   * A quiet log means nothing happened *to this camp*. Since Phase 17b the world keeps its own
+   * news — two crews falling out is a fact about the world, not about how well the camp is run
+   * — so the assertion filters rather than counting, and would still catch the thing it was
+   * written for: a camp event nobody asked for.
+   */
+  const mine = events.filter((event) => event.type !== 'crews_changed');
+  assert.deepEqual(mine, [], 'a well-run camp is a quiet log');
 });
 
 test('an unsupplied survivor starves to death', () => {
