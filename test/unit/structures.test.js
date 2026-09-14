@@ -17,6 +17,7 @@ import {
   upgradesFor,
 } from '../../src/game/structures.js';
 import { CONFIG } from '../../src/game/constants.js';
+import { saysRate } from '../../src/game/units.js';
 
 test('production scales with level and lands on the right resource', () => {
   const rates = productionRates([
@@ -95,11 +96,17 @@ test('the effect described is the effect produced', () => {
   // The description is derived from the same numbers as the rates, so the two cannot
   // drift: if this ever disagrees, one of them is lying to the player.
   // The page rounds; the simulation must not. Six tenths times seven is
-  // 4.199999999999999, and the player should read "+4.2 food/h" while the tick keeps
+  // 4.199999999999999, and the player should read "+525 g/h" while the tick keeps
   // every digit of it.
+  //
+  // Since Phase 18 the description is in the store's own unit, so the rounding it does is
+  // `units.js`'s and the store's name is dropped when the unit already names it: a garden
+  // says "+525 g/h" and the workshop, which has no unit, still says "+3.5 scrap/h".
   const level = 7;
   const expected = STRUCTURES.garden.perLevel * level;
-  assert.equal(structureEffect('garden', level), `+${Math.round(expected * 10) / 10} food/h`);
+  assert.equal(structureEffect('garden', level), saysRate(expected, 'food'));
+  assert.match(structureEffect('garden', level), /g\/h$/, 'the garden should read in grams');
+  assert.match(structureEffect('workshop', 2), /scrap\/h$/, 'and scrap in scrap');
   const rate = productionRates([{ kind: 'garden', level }]).food;
   assert.ok(Math.abs(rate - expected) < 1e-9, `described ${expected}, produces ${rate}`);
 

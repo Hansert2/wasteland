@@ -11,6 +11,8 @@
  * than the symmetry. It changes only when the shelter does.
  */
 
+import { UNITS, saysRate } from './units.js';
+
 export const STRUCTURE_KINDS = [
   'shelter',
   'garden',
@@ -385,7 +387,14 @@ export function structureEffect(kind, level) {
 
   if (spec.produces) {
     if (level === 0) return '';
-    return `+${round(spec.perLevel * level)} ${spec.produces}/h`;
+    /*
+     * Phase 18: in the store's own unit, so the garden advertises "+225 g/h" and not "+1.8
+     * food/h". The kind is dropped from the string when the unit names it — "225 g/h of food"
+     * says food twice — but kept for scrap, which has no unit of its own.
+     */
+    const said = saysRate(spec.perLevel * level, spec.produces);
+    if (!said) return '';
+    return UNITS[spec.produces]?.rate.unit ? said : `${said.replace('/h', '')} ${spec.produces}/h`;
   }
 
   if (spec.storagePerLevel) {

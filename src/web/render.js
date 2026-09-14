@@ -2884,7 +2884,14 @@ ${PANE_CSS}
 
   /* The pay, in figures, for the one place being read. */
   .pbars { display: grid; gap: 7px; margin-top: 12px; }
-  .pbar { display: grid; grid-template-columns: 40px minmax(0, 1fr) 48px; align-items: center;
+  /*
+   * The value column is 68px since Phase 18, not 48: a pay range reads "0–0.8 kg" now that
+   * food and water are written in their own units, and at 48 it wrapped to two lines and took
+   * the band past its fixed height. The bar gives up the twenty pixels rather than the figure,
+   * because the figure is the thing being compared and the bar is how it is compared *at a
+   * glance* — it loses 7% of its length and none of its job.
+   */
+  .pbar { display: grid; grid-template-columns: 40px minmax(0, 1fr) 68px; align-items: center;
           gap: 9px; }
   /* --dim, not --faint: these are read off a photograph rather than off the panel fill,
      and at --faint the 9px labels measured 2.9:1 against the city. */
@@ -4665,6 +4672,72 @@ function countdown(at, done = 'now') {
 const STORE_DECIMALS = 1;
 
 /**
+ * What each store is written in, for the handful of places that format a bare `{kind: amount}`
+ * pair — a recipe's price, a trade offer's cost, a trip's haul.
+ *
+ * **A second copy of `src/game/units.js`, deliberately and unhappily.** This file imports
+ * nothing: the client script at the bottom is inline JavaScript with no build step, and the
+ * whole module is written to be readable as one piece. Every other Phase 18 figure is
+ * converted at the view model and arrives here already written — see `shown` on the stores —
+ * but these four call sites are handed raw cost objects by helpers that never see the view.
+ *
+ * The duplication is pinned rather than trusted: `test/unit/units.test.js` asserts this table
+ * and `UNITS` say the same thing, so the two cannot drift without a red test.
+ */
+export const STORE_UNITS = {
+  food: { stock: { per: 0.125, unit: 'kg', dp: 1 }, rate: { per: 125, unit: 'g', dp: 0 } },
+  water: { stock: { per: 0.2, unit: 'L', dp: 1 }, rate: { per: 0.2, unit: 'L', dp: 2 } },
+};
+
+/**
+ * An amount of one store, in the unit that store is written in.
+ *
+ * Scrap and fuel have no unit and come back as a bare number, so this is safe to call without
+ * asking which store it is. Trailing zeroes are trimmed here — these are static rows in a
+ * price, not the rail's ticking figure, which is the distinction `units.js` records.
+ */
+function saysStore(amount, kind) {
+  const scale = STORE_UNITS[kind]?.stock;
+  if (!scale) return `${amount} ${kind}`;
+  return `${Number((Number(amount) * scale.per).toFixed(scale.dp))} ${scale.unit} of ${kind}`;
+}
+
+/**
+ * A signed per-hour figure in a store's own rate unit, for the panel that takes a rate apart.
+ *
+ * Unsigned magnitude with the sign supplied by the caller, because that panel writes its minus
+ * as an entity rather than as a hyphen — a hyphen and a minus are different widths in the mono
+ * face and a column of rates has to line up.
+ */
+/**
+ * A bare amount in a store's own unit, with no store name after it.
+ *
+ * Used where the label already says which store it is — a pay bar headed FOOD, a haul cell
+ * tagged `food` — and saying it again would be the row stuttering.
+ */
+function storeAmount(amount, kind) {
+  const scale = STORE_UNITS[kind]?.stock;
+  if (!scale) return String(amount);
+  return `${Number((Number(amount) * scale.per).toFixed(scale.dp))} ${scale.unit}`;
+}
+
+/** A range in a store's own unit, the unit once at the end. */
+function storeRange(low, high, kind) {
+  const scale = STORE_UNITS[kind]?.stock;
+  if (!scale) return `${low}–${high}`;
+  const a = Number((Number(low) * scale.per).toFixed(scale.dp));
+  const b = Number((Number(high) * scale.per).toFixed(scale.dp));
+  return `${a}–${b} ${scale.unit}`;
+}
+
+function saysStoreRate(value, kind) {
+  const scale = STORE_UNITS[kind]?.rate;
+  if (!scale) return `${rate(Math.abs(value))}/h`;
+  return `${Number((Math.abs(value) * scale.per).toFixed(scale.dp))} ${scale.unit}/h`;
+}
+
+
+/**
  * The whole of the client-side JavaScript, and it is meant to stay small.
  *
  * It does three things: ticks every visible timer once a second, extrapolates the
@@ -5128,7 +5201,14 @@ export const TIMERS = `
       const projected =
         Number(el.dataset.amount) + Number(el.dataset.rate) * elapsedHours;
       const clamped = Math.max(0, Math.min(cap, projected));
-      el.textContent = clamped.toFixed(${STORE_DECIMALS});
+      /*
+       * Phase 18: the attributes already carry this store's own unit, so the extrapolation is
+       * the same straight line it always was and only the rounding is per store. Falls back to
+       * the old fixed decimals for a store rendered without the attribute, which is what a
+       * page cached across the deploy looks like.
+       */
+      var places = el.dataset.dp === undefined ? ${STORE_DECIMALS} : Number(el.dataset.dp);
+      el.textContent = clamped.toFixed(places);
 
       // The fill bar reads off the same figure rather than off a second attribute, so
       // a track that disagrees with the number beside it is not a state this can be
@@ -7218,7 +7298,8 @@ function renderAtGate(gate) {
 function tripFigures({ carrying, damage, radiation }, { clean = false } = {}) {
   const carried = Object.entries(carrying ?? {}).map(([kind, amount]) => ({
     tag: kind,
-    value: String(amount),
+    /* Phase 18: in the store's own unit, and without repeating the tag beside it. */
+    value: storeAmount(amount, kind),
   }));
 
   const spent = [];
@@ -7968,8 +8049,14 @@ function gaugeNotes(strain, vitals) {
     ]),
     hunger: stats('0 fed – 100 starving', [
       ['eating', `-${rate(vitals.hungerFallPerHour)}/h`],
-      ['food drawn', `${rate(vitals.eats.food)}/h`],
-      ['water drawn', `${rate(vitals.eats.water)}/h`],
+      /*
+       * Phase 18: through the same formatter the stores panel uses, which is the whole point
+       * of there being one. The user found these two panels printing 0.75 and 0.8 for one
+       * constant in August, and converting one of them and not the other would have put a
+       * much bigger gap than a rounding between the same two lines.
+       */
+      ['food drawn', saysStoreRate(vitals.eats.food, 'food')],
+      ['water drawn', saysStoreRate(vitals.eats.water, 'water')],
       ['nothing to eat', `+${rate(vitals.hungerRisePerHour)}/h`],
       /*
        * Where recovery is paid for, which is the one thing about this gauge a player cannot
@@ -8603,7 +8690,7 @@ function placeBand(view, region, ceil) {
       100
     ).toFixed(1)}%"></i><u style="left:${((low / top) * 100).toFixed(
       1,
-    )}%"></u></span><span class="v">${low}&ndash;${high}</span></div>`;
+    )}%"></u></span><span class="v">${escape(storeRange(low, high, kind))}</span></div>`;
   }).join('');
 
   const dose = Number(region.radiation_per_trip) || 0;
@@ -8826,9 +8913,11 @@ function renderPost(post, alive) {
   const rows = post.offers
     .map(
       (offer) => `<tr>
-        <td><span class="name">${offer.qty} &times; ${escape(String(offer.what).replaceAll('_', ' '))}</span></td>
+        <td><span class="name">${escape(
+          offer.says ?? `${offer.qty} × ${String(offer.what).replaceAll('_', ' ')}`,
+        )}</span></td>
         <td class="cost-col"><span class="cost">${escape(
-          Object.entries(offer.costs).map(([kind, amount]) => `${amount} ${kind}`).join(', '),
+          Object.entries(offer.costs).map(([kind, amount]) => saysStore(amount, kind)).join(', '),
         )}</span>${
           offer.shortBy ? `<span class="short">${escape(offer.shortBy)}</span>` : ''
         }</td>
@@ -9797,7 +9886,7 @@ function craftTile(recipe, at, total, view) {
  */
 function craftPrice(recipe) {
   const parts = Object.entries(recipe.costs ?? {}).map(
-    ([kind, amount]) => `<span class="cost">${amount} ${escape(kind)}</span>`,
+    ([kind, amount]) => `<span class="cost">${escape(saysStore(amount, kind))}</span>`,
   );
   const stores = parts.join('<span class="sep">&middot;</span>');
 
@@ -9922,7 +10011,7 @@ function renderCaravan(caravan, someoneAlive) {
   }
 
   const price = (offer) =>
-    Object.entries(offer.costs).map(([kind, amount]) => `${amount} ${kind}`).join(', ');
+    Object.entries(offer.costs).map(([kind, amount]) => saysStore(amount, kind)).join(', ');
 
   const rows = caravan.offers
     .map((offer) => {
@@ -9937,7 +10026,7 @@ function renderCaravan(caravan, someoneAlive) {
             </form>`
           : '';
       return `<tr>
-        <td><span class="name">${offer.qty} × ${escape(offer.what)}</span></td>
+        <td><span class="name">${escape(offer.says ?? `${offer.qty} × ${offer.what}`)}</span></td>
         <td class="cost-col"><span class="cost">${escape(price(offer))}</span>${
           offer.shortBy ? `<span class="short">${escape(offer.shortBy)}</span>` : ''
         }</td>
@@ -10086,7 +10175,8 @@ function rateBreakdown(r) {
    * survivor drew &minus;0.8/h here and &minus;0.75/h in the vitals panel — the same constant,
    * contradicting itself across two blocks — and a blight at x0.35 printed as x0.4.
    */
-  const signed = (v) => `${v > 0 ? '+' : v < 0 ? '&minus;' : ''}${rate(Math.abs(v))}/h`;
+  const signed = (v) =>
+    `${v > 0 ? '+' : v < 0 ? '&minus;' : ''}${saysStoreRate(v, r.kind)}`;
 
   const body = rows
     .map(
@@ -10109,6 +10199,15 @@ function rateBreakdown(r) {
 function renderResources(resources) {
   const cells = resources
     .map((r) => {
+      /* What this store is written in — see `units.js`. Points elsewhere, units here. */
+      const shown = r.shown ?? {
+        amount: r.amount,
+        cap: r.cap,
+        rate: r.ratePerHour,
+        unit: '',
+        dp: STORE_DECIMALS,
+        rateSays: r.ratePerHour === 0 ? null : `${r.ratePerHour > 0 ? '+' : ''}${rate(r.ratePerHour)}/h`,
+      };
       /*
        * Oxide only when the store is draining, which is the one thing this table can tell
        * you that you would otherwise find out by running out. A zero rate is a dash rather
@@ -10122,12 +10221,18 @@ function renderResources(resources) {
        */
       // Not named `rate`: that is the module-level formatter this line calls, and a local
       // const of the same name shadows it into its own temporal dead zone.
+      /*
+       * Phase 18: the rate arrives already written in the store's own unit, because the
+       * conversion lives in `src/game/units.js` and this file imports nothing. Null is the
+       * same case the dash was always for — nothing is happening — and it now also covers a
+       * rate too small to show, which is a distinction the points never had to make.
+       */
       const rateCell =
-        r.ratePerHour === 0
+        !shown.rateSays
           ? '<span class="rate none">&mdash;</span>'
-          : `<span class="rate${r.ratePerHour < 0 ? ' down' : ''}">${
-              r.ratePerHour > 0 ? '+' : ''
-            }${rate(r.ratePerHour)}/h</span>`;
+          : `<span class="rate${r.ratePerHour < 0 ? ' down' : ''}">${escape(
+              shown.rateSays,
+            )}</span>`;
 
       // A zero store shows an empty track rather than no track. The four cells are the
       // same shape whatever is in them, or the eye has to re-find the layout each time.
@@ -10146,9 +10251,12 @@ function renderResources(resources) {
 
       return `<div class="store">
         <div class="store-top"><span class="tag">${escape(r.kind)}</span>${figure}</div>
-        <div class="store-fig"><span data-amount="${r.amount}" data-rate="${r.ratePerHour}"
-                data-cap="${r.cap}">${n(r.amount, STORE_DECIMALS)}</span><span
-                class="cap"> / ${n(r.cap, 0)}</span></div>
+        <div class="store-fig"><span data-amount="${shown.amount}" data-rate="${shown.rate}"
+                data-cap="${shown.cap}" data-dp="${shown.dp}" data-unit="${escape(shown.unit)}"
+                >${n(shown.amount, shown.dp)}</span><span
+                class="cap"> / ${n(shown.cap, 0)}${
+                  shown.unit ? ` ${escape(shown.unit)}` : ''
+                }</span></div>
         <div class="track"><i data-fill style="width:${bar(r.amount, r.cap)}%"></i></div>
       </div>`;
     })

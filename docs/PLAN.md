@@ -4921,7 +4921,7 @@ are exactly the kind of change that would overturn it by accident — a faction 
 from existing locations and lore, controlling a genuinely different necessity, rather than
 introduced as a distant government or an organised nation.
 
-### Phase 18 — food in grams, water in litres
+### Phase 18 — food in grams, water in litres ✅ *(built 2026-09-14; see "how it was actually built" below)*
 
 *Against: a camp with "340 food" in it, which is not a quantity of anything.*
 
@@ -6828,6 +6828,91 @@ side"* on the first page it was ever rendered to.
 
 Nothing in Phase 17. The next phases are 18 (grams and litres) and then 19, which the user
 deferred until 18 has shipped **and been played**.
+
+## Phase 18 — grams and litres, built 2026-09-14 ✅
+
+**The design above says re-denominate every stored number and migrate live saves. It was not
+built that way, and the reason is two things enumerating it turned up.**
+
+### What the enumeration found
+
+**Water goes fractional everywhere.** A loot range of `[2, 8]` becomes `[0.4, 1.6]` litres and
+`rollLoot` draws integers, so the draw would have needed a per-resource quantum to stay exact
+— a machine whose only visible effect is that a column holds 750 where it held 6.
+
+**The storage cap is one shared number.** `shelter.storagePerLevel` caps all four stores at
+once. Grams would have forced it to become per-resource, which is a real design change carried
+in by a re-labelling.
+
+Against that, the migration would have rescaled a live save on a database that holds the
+user's own camp — the one part of the phase the design itself flags as able to go wrong badly.
+**The user's call on 2026-09-14 was to convert at the display edge instead**, which buys the
+whole visible win for none of it.
+
+**The cost is recorded rather than hidden: two vocabularies.** A recipe reads `food: 20` in
+source and "2.5 kg" on the page. `src/game/units.js` exists partly to make that obvious — the
+conversion is in one file, and every figure a player reads goes through it.
+
+### What a player sees now
+
+    the rail          5.0 / 44 kg        8.0 / 70 L        10.0 / 350
+    the rates         +88 g/h           +0.35 L/h
+    the garden        +150 g/h          the purifier      +0.5 L/h
+    a recipe          2.5 kg of food
+    a caravan         18 L of water
+    a pay range       0–0.8 kg
+
+### The one rule it looks like it breaks, and why it does not
+
+**Stocks are kilograms and rates are grams per hour.** The pack table settled "one unit, never
+switched" for a *column read down*; a stock and a rate are two quantities in two places and
+neither is ever read against the other. The reason for the switch is derived rather than
+aesthetic: at two decimals in kilograms a survivor eating 62.5 g/h reads "0.06 kg/h", and a
+*net* rate of thirty grams an hour — 0.7 kg a day, half a person — rounds to "0.00 kg/h". A
+figure that says nothing is happening while the larder empties is the one thing the stores
+table must not print.
+
+Stocks keep one decimal rather than trimming, which `saysWeight` does. Also derived: the rail's
+figure ticks up between page loads, and a width that changes as it ticks makes the whole rail
+shuffle.
+
+### Where the conversion lives twice, and what stops it drifting
+
+`render.js` imports nothing — the client script at the bottom is inline JavaScript with no
+build step — so four call sites that are handed raw `{kind: amount}` objects carry a second
+copy of the table. **It is pinned rather than trusted:** `test/unit/units.test.js` asserts the
+renderer's copy and `UNITS` are deeply equal, so the two cannot drift without a red test. That
+file also pins the conversion against `CONFIG`: if somebody retunes `foodPerHour` without
+re-deriving the unit, the test says the page has started lying about what a person needs.
+
+### Two things that had to be made to agree
+
+**The client extrapolates the rail between page loads**, so the data attributes carry the
+converted figure and a per-store decimal rather than one global `STORE_DECIMALS`.
+
+**The survivor panel and the stores panel print the same constant**, which a test has pinned
+since the user found them disagreeing by a rounding in August. Converting one and not the other
+would have opened a much wider gap than the rounding did, in exactly the place that test
+watches.
+
+One measured layout change: the pay-range column went from 48px to 68px, because "0–0.8 kg"
+wrapped to two lines at 48 and took the road band past its fixed 148px height. The bar gave up
+the twenty pixels rather than the figure.
+
+### What is still in points, and deliberately
+
+**Only items have weight. Food, water, scrap and fuel do not** — the user's rule from
+2026-09-02, and the trap this phase sets for the next reader. Phase 13 weighs carried items and
+leaves the haul alone because weighing the haul would cap fuel per day, which is the axis every
+balance figure in this file is measured against. Grams make that look like an oversight. It is
+not.
+
+### Still open
+
+**Phase 19 (thirst) is next and stays behind play.** The user deferred it until 18 has shipped
+*and been played*, and the units make its premise conspicuous rather than changing it:
+`fedFraction` is `min(food drawn, water drawn)`, so a camp out of water still reports the
+shortage as hunger — and that reads as a bug the moment the page says litres.
 
 ## Not planned
 

@@ -10,6 +10,7 @@ import { campPage } from '../../src/web/render.js';
 import { STRUCTURES } from '../../src/game/structures.js';
 import { STEPS } from '../../src/game/direction.js';
 import { CONFIG } from '../../src/game/constants.js';
+import { UNITS, inUnits } from '../../src/game/units.js';
 import { ORDINARY, radThresholdFor } from '../../src/game/wanderers.js';
 
 const T0 = Date.UTC(2287, 0, 1);
@@ -618,13 +619,23 @@ test('the structure line and the stores line differ by exactly the survivor', as
     const garden = view.structures.find((st) => st.kind === 'garden');
     const food = view.resources.find((r) => r.kind === 'food');
 
-    // What the building advertises, read off the string the page prints.
+    /*
+     * What the building advertises, read off the string the page prints — and since Phase 18
+     * that string is in grams, so the comparison converts rather than assuming points. The
+     * relationship is what is pinned here, not the unit it is written in.
+     */
     const advertised = Number(/\+([\d.]+)/.exec(garden.effect)[1]);
 
-    assert.equal(food.breakdown.gross, advertised, 'the panel starts from what is advertised');
+    assert.equal(
+      Number(inUnits(food.breakdown.gross, 'food', 'rate').toFixed(UNITS.food.rate.dp)),
+      advertised,
+      'the panel starts from what is advertised',
+    );
     assert.equal(food.breakdown.eaten, CONFIG.foodPerHour, 'and subtracts one mouth');
     assert.ok(
-      Math.abs(advertised - CONFIG.foodPerHour - food.ratePerHour) < 1e-9,
+      Math.abs(
+        advertised - inUnits(CONFIG.foodPerHour + food.ratePerHour, 'food', 'rate'),
+      ) < 1e-9,
       'which is the whole of the difference between the two lines',
     );
   });
@@ -655,8 +666,9 @@ test('every panel that prints what the survivor drinks prints the same number', 
       ['food', CONFIG.foodPerHour],
       ['water', CONFIG.waterPerHour],
     ]) {
-      // What the survivor panel states the survivor draws.
-      const drawn = new RegExp(`>${kind} drawn</span><span[^>]*>([\\d.]+)/h<`).exec(html);
+      // What the survivor panel states the survivor draws, in that store's own rate unit.
+      const unit = UNITS[kind].rate.unit;
+      const drawn = new RegExp(`>${kind} drawn</span><span[^>]*>([\\d.]+) ${unit}/h<`).exec(html);
       assert.ok(drawn, `the survivor panel names what ${kind} is drawn`);
 
       // What the stores breakdown subtracts, in the row labelled for the camp. Sliced from
@@ -667,7 +679,9 @@ test('every panel that prints what the survivor drinks prints the same number', 
       assert.ok(head > -1, `the ${kind} store carries a breakdown`);
       const panel = html.slice(head, head + 600);
 
-      const taken = /the camp<\/span><span class="num">&minus;([\d.]+)\/h</.exec(panel);
+      const taken = new RegExp(
+        `the camp</span><span class="num">&minus;([\\d.]+) ${unit}/h<`,
+      ).exec(panel);
       assert.ok(taken, `the ${kind} breakdown subtracts the camp`);
 
       assert.equal(
@@ -675,7 +689,11 @@ test('every panel that prints what the survivor drinks prints the same number', 
         taken[1],
         `${kind}: survivor panel prints ${drawn[1]}, stores panel prints ${taken[1]}`,
       );
-      assert.equal(Number(drawn[1]), expected, `and both print the real ${kind} constant`);
+      assert.equal(
+        Number(drawn[1]),
+        Number(inUnits(expected, kind, 'rate').toFixed(UNITS[kind].rate.dp)),
+        `and both print the real ${kind} constant`,
+      );
     }
   });
 });

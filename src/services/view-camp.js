@@ -52,6 +52,7 @@ import {
   travelHoursFor,
 } from '../game/road.js';
 import { WORLD_SEED, loadWorldEvents } from '../db/world-events.js';
+import { UNITS, inUnits, says, saysRate } from '../game/units.js';
 import {
   RELATIONS,
   holderOf,
@@ -1742,6 +1743,14 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
               index,
               what: offer.item ? names.get(offer.item) ?? offer.item : titleOf(offer.resource),
               qty: offer.qty,
+              /*
+               * Phase 18: a bulk offer of a store reads in that store's own unit, so the
+               * Provisioners sell "7.5 kg of food" rather than "60 x Food". Items keep the
+               * count-and-name form, because a Rad Scrubber is a thing rather than a quantity.
+               */
+              says: offer.item
+                ? `${offer.qty} × ${names.get(offer.item) ?? offer.item}`
+                : `${says(offer.qty, offer.resource)} of ${offer.resource}`,
               costs,
               // Priced in stores alone, so the pack is not consulted. Standing has
               // already moved these numbers, which is why the shortfall is worked
@@ -2128,6 +2137,9 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
           index,
           what: offer.item ? names.get(offer.item) ?? offer.item : titleOf(offer.resource),
           qty: offer.qty,
+          says: offer.item
+            ? `${offer.qty} × ${names.get(offer.item) ?? offer.item}`
+            : `${says(offer.qty, offer.resource)} of ${offer.resource}`,
           costs,
           shortBy: shortfall(purse, pack, costs),
         };
@@ -3049,6 +3061,32 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
         gross: rates[kind] ?? 0,
         weather: weatherFactors[kind] ?? 1,
         eaten: eats[kind] ?? 0,
+      },
+      /*
+       * Phase 18: the same three numbers again, in the units the page writes them in.
+       *
+       * Sent alongside the points rather than instead of them, because the client script
+       * extrapolates the figure between page loads and has to do it in whatever unit the
+       * number on screen is already in — see `TIMERS`. `render.js` imports nothing by
+       * design, so the conversion cannot happen there; this is the edge it happens at, and
+       * `src/game/units.js` is the only place that knows the factor.
+       */
+      shown: {
+        amount: inUnits(r.amount, kind, 'stock'),
+        cap: inUnits(r.cap, kind, 'stock'),
+        rate: inUnits(
+          (rates[kind] ?? 0) * (weatherFactors[kind] ?? 1) - (eats[kind] ?? 0),
+          kind,
+          'stock',
+        ),
+        unit: UNITS[kind]?.stock.unit ?? '',
+        dp: UNITS[kind]?.stock.dp ?? 1,
+        rateSays: saysRate(
+          (rates[kind] ?? 0) * (weatherFactors[kind] ?? 1) - (eats[kind] ?? 0),
+          kind,
+        ),
+        grossSays: says(rates[kind] ?? 0, kind, 'rate'),
+        eatenSays: says(eats[kind] ?? 0, kind, 'rate'),
       },
     })),
   };
