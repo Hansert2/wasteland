@@ -3,6 +3,7 @@ import { loadWorld, saveWorld, grantItems, storeItems } from '../db/world.js';
 import { WORLD_SEED, ensureWorldEvents, loadWorldEvents } from '../db/world-events.js';
 import { deriveEventsBetween } from '../game/world-events.js';
 import { roomToSpare, whoWouldArrive } from './take-in-wanderer.js';
+import { whatIsLeft } from '../game/recovery.js';
 import { insertSurvivor } from './settlement-lifecycle.js';
 
 /**
@@ -148,6 +149,52 @@ export async function advanceSettlement(client, settlementId, now) {
     const wanderer = await whoWouldArrive(client, settlementId);
     await insertSurvivor(client, settlementId, wanderer, now);
     events.push({ at: now, type: 'joined_the_camp', who: wanderer.name });
+  }
+
+  /*
+   * Phase 16: somebody died inside the wire, and their pack is twenty feet from the shelf.
+   *
+   * **Only a death out on the road leaves anything to go and fetch.** A survivor who starved,
+   * or was taken in a raid, or was gored at the fence line, fell in a camp that can see them —
+   * so what happens to what they were carrying is settled now rather than by sending somebody
+   * to the fence line to collect it. The user's call, 2026-09-14.
+   *
+   * **And not all of it**, which is the other half of that call: death still costs something
+   * when it happens at home. The share is `shareLeft` read at zero hours — the same curve a
+   * recovery trip reads at however long they have lain out — so the two cases cannot drift
+   * apart, because they are one function.
+   *
+   * The rest is deleted rather than left on the row. `view-graveyard` reads a dead survivor's
+   * pack to print what they were carrying at the end, and leaving the unrecovered half there
+   * would make that headstone a list of things the camp actually has.
+   */
+  const fellAtHome = events.filter(
+    (event) => event.type === 'survivor_died' && event.inTheWire && event.characterId != null,
+  );
+  for (const death of fellAtHome) {
+    const { rows: pack } = await client.query(
+      `select i.slug, ii.qty from inventory_items ii
+         join items i on i.id = ii.item_id
+        where ii.character_id = $1 and ii.qty > 0`,
+      [death.characterId],
+    );
+    if (pack.length === 0) continue;
+
+    const saved = whatIsLeft(pack, 0);
+    if (saved.length > 0) await storeItems(client, settlementId, saved);
+
+    await client.query('delete from inventory_items where character_id = $1', [
+      death.characterId,
+    ]);
+
+    events.push({
+      at: now,
+      type: 'pack_came_in',
+      who: death.who,
+      kept: saved.reduce((sum, one) => sum + one.qty, 0),
+      lost: pack.reduce((sum, one) => sum + Number(one.qty), 0)
+        - saved.reduce((sum, one) => sum + one.qty, 0),
+    });
   }
 
   const woken = events.filter((event) => event.type === 'woken' && event.characterId != null);

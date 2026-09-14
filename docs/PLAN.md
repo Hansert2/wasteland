@@ -6279,11 +6279,52 @@ Nothing here should be tuned before that runs.
 
 ### And the body
 
-Bringing them home is the half the phase is named after, and mechanically it does nothing —
-which is the point, and is also why it needs saying out loud rather than being discovered as an
-omission. The graveyard would record it: *brought home* against *still out there*. Anything
-more — a burial, a bonus, a standing effect — would be a mechanic bolted to a gesture, and this
-game has been careful not to do that.
+**The user's call, 2026-09-14: recovering the pack and recovering them are one act.** You
+cannot fetch what somebody was carrying without fetching them, so there is no second choice to
+offer and no way to take the goods and leave the person — which is the version of this the game
+would have been embarrassed by. The graveyard records it: *brought home* against *still out
+there*, and nothing mechanical rides on it.
+
+### Built so far, 2026-09-14
+
+**Migration `026`, and no table.** `characters` gains `died_at_region_id` — null meaning inside
+the wire, which is the whole rule for whether there is anything to go and fetch — and
+`recovered_at`, null meaning still out there, under a check constraint that a recovery follows
+a death. The region is `on delete set null` rather than cascade: losing a headstone because a
+place was reorganised is worse than losing the place off it.
+
+**`src/game/recovery.js`, and one arithmetic with two callers.** A half-life rather than a
+straight line to zero, because a straight line needs an end and every such end is a number
+nothing derives. `AT_ONCE` is 0.7 — what killed them took something, and a pack recovered from
+the next room is not a pack that merely changed hands. `HALF_LIFE_HOURS` is 72, **priced against
+the map**: the longest walk is 26 hours, so a camp that turns a trip straight round is inside
+the first half and one that finishes what it was doing first is not. That is the decision the
+figure exists to create.
+
+    reached at once   0.70      after a day   0.56      after three days   0.35
+    after a week      0.14      after a month 0.001
+
+Rounded rather than floored when a stack is thinned, which matters at the small end: a pack
+holding one of something is the ordinary case, and flooring would make every single item in the
+game unrecoverable however fast anybody got there. Rounding lets the rule say the sentence it is
+for — **the spear comes home if you go within about two days, and not after.**
+
+**The home death is settled at once.** `kill()` records the region (their own trip's, so
+somebody dying at home while another is halfway to Harrow End still died at home) and the event
+carries who — it carried a cause and a span and no name at all, which was survivable with one
+survivor and is not now. `advance-settlement` reads it, puts `whatIsLeft(pack, 0)` on the shelf
+and deletes the rest, because leaving the unrecovered half on the row would make the headstone
+a list of things the camp actually has.
+
+### Still to build
+
+The verb. A region where somebody lies offers *"and bring back what you can of Wren"* at
+dispatch, costing hours on top of the walk, returning `whatIsLeft(pack, hours lain out)` onto
+whoever walked and stamping `recovered_at`. And the graveyard saying which of its stones are
+still out there.
+
+**And the figure to measure before any of it is tuned:** what `AT_ONCE` at 0.7 does to a camp's
+balance is the one number this phase adds, and the instrument is the one the raid used.
 
 ## Not planned
 

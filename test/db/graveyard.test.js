@@ -6,6 +6,7 @@ import { advanceSettlement } from '../../src/services/advance-settlement.js';
 import { dispatchExpedition } from '../../src/services/dispatch-expedition.js';
 import { foundSettlement, raiseSuccessor } from '../../src/services/settlement-lifecycle.js';
 import { viewGraveyard } from '../../src/services/view-graveyard.js';
+import { shareLeft, survives } from '../../src/game/recovery.js';
 
 const hours = (h) => h * 60 * 60 * 1000;
 const uniq = () => Math.random().toString(36).slice(2, 10);
@@ -182,4 +183,72 @@ test('an empty pack is remembered as an empty pack, not as missing data', async 
 
 test.after(async () => {
   await pool.end();
+});
+
+test('a death in the camp leaves part of the pack on the shelf, and records no place', async () => {
+  /*
+   * Phase 16, and the half of it that needs no trip. **Only a death out on the road leaves
+   * anything to go and fetch**: somebody who starved fell in a camp that can see them, so what
+   * they were carrying is settled at once rather than by sending a survivor to the fence line
+   * to collect it.
+   *
+   * And not all of it — death still costs something at home. The share is `shareLeft` read at
+   * zero hours, the same curve a recovery trip reads at however long they lay out there, so
+   * the two cases cannot drift apart: they are one function.
+   */
+  await withRollback(async (client) => {
+    const settlementId = await setup(client);
+    await raiseSuccessor(client, settlementId, { name: 'Vera', now: T0 });
+
+    const { rows: living } = await client.query(
+      'select id from characters where settlement_id = $1 and died_at is null',
+      [settlementId],
+    );
+    const characterId = living[0].id;
+
+    await client.query(
+      `insert into inventory_items (character_id, item_id, qty)
+       select $1, id, 4 from items where slug = 'scavenged_parts'`,
+      [characterId],
+    );
+
+    // An empty larder and nothing growing: starvation, at home, on a clock the test owns.
+    await client.query('update resources set amount = 0 where settlement_id = $1', [settlementId]);
+    await client.query(
+      `update camp_structures set level = 0
+        where settlement_id = $1 and kind in ('garden', 'water_purifier')`,
+      [settlementId],
+    );
+
+    const { events } = await advanceSettlement(client, settlementId, T0 + hours(400));
+
+    const died = events.filter((one) => one.type === 'survivor_died');
+    assert.equal(died.length, 1, 'they starved');
+    assert.equal(died[0].inTheWire, true, 'inside the wire, which is the whole rule');
+
+    const { rows: person } = await client.query(
+      'select died_at_region_id, recovered_at from characters where id = $1',
+      [characterId],
+    );
+    assert.equal(person[0].died_at_region_id, null, 'a death at home records no place');
+    assert.equal(person[0].recovered_at, null, 'and nobody went and got them');
+
+    // Four parts at seventy percent: three onto the shelf and one gone with them.
+    const { rows: shelf } = await client.query(
+      `select si.qty from store_items si join items i on i.id = si.item_id
+        where si.settlement_id = $1 and i.slug = 'scavenged_parts'`,
+      [settlementId],
+    );
+    assert.equal(Number(shelf[0]?.qty ?? 0), survives(4, shareLeft(0)), 'the share came in');
+
+    const { rows: left } = await client.query(
+      'select count(*)::int as n from inventory_items where character_id = $1',
+      [characterId],
+    );
+    assert.equal(left[0].n, 0, 'and the rest is gone rather than left on a headstone');
+
+    const came = events.filter((one) => one.type === 'pack_came_in');
+    assert.equal(came.length, 1, 'the log says what came in');
+    assert.equal(came[0].kept + came[0].lost, 4, 'and all four are accounted for');
+  });
 });

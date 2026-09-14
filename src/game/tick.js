@@ -1519,10 +1519,33 @@ function kill(state, survivor, at, cause, events) {
   // A craft in flight is deliberately *not* cancelled here. The workshop is a bench
   // in the camp, not something the survivor carried away with them, so it keeps
   // working; the order is only forfeit if nobody is alive on the hour it finishes.
+  /*
+   * Phase 16: where it happened, and null is the answer that matters.
+   *
+   * A death has recorded `died_at` and `cause_of_death` since migration 001 and nothing about
+   * where — so the graveyard printed their most recent *trip*, and a survivor who starved in
+   * their own camp got a headstone naming a place they came back from alive.
+   *
+   * Their own trip, not the camp's: `theirs` is already the dead person's, for the same reason
+   * it is used above. Somebody dying at home while another is halfway to Harrow End died at
+   * home, and null says so.
+   */
+  survivor.diedAtRegion = theirs?.region?.slug ?? null;
+
   events.push({
     at,
     type: 'survivor_died',
     cause,
+    /*
+     * Who, which this could not say before.
+     *
+     * The event carried a cause and a span and no name at all, which was survivable while a
+     * camp held one person and is not now: the caller has to settle what happens to *their*
+     * pack, and "somebody died" does not identify a pack.
+     */
+    characterId: survivor.id ?? null,
+    who: survivor.name ?? null,
+    inTheWire: theirs?.region?.slug == null,
     // character_history.days_survived wants the real elapsed time, not time-since-login.
     daysSurvived: (at - survivor.bornAt) / (24 * HOUR_MS),
   });

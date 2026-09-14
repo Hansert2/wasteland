@@ -6866,6 +6866,13 @@ function describe(event) {
       return 'Whoever followed them home found every bed taken, and went on.';
     // The raid waking the camp. It had no case here at all, so the log printed the bare event
     // type at whoever it happened to.
+    /*
+     * Phase 16. A death in the camp leaves its pack where the camp can reach it, and the log
+     * says what came in and what did not — the loss is the point of the rule, so it is not
+     * left to be inferred from a shelf that grew by less than somebody was carrying.
+     */
+    case 'pack_came_in':
+      return `${event.who ?? 'Somebody'} died in the camp. ${event.kept} of what they carried came off them; ${event.lost} did not.`;
     case 'woken':
       return `${event.who ?? 'somebody'} was woken by the raid, with the rest of their sleep unspent.`;
     default:

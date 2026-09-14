@@ -599,9 +599,18 @@ export async function saveWorld(client, state) {
     // Setting died_at is what retires the character: the partial unique index stops
     // matching them, so the next load returns no survivor and the camp ticks on alone.
     await client.query(
+      /*
+       * `died_at_region_id` resolved from the slug here rather than carried as an id on the
+       * state: `applyTick` may not run a query, and the region a trip is to reaches it as a
+       * slug and a name. `coalesce` so a living survivor's null does not wipe a dead one's
+       * place on a later pass — this statement runs over the whole roster every walk.
+       */
       `update characters
           set health = $2, hunger = $3, radiation = $4, stamina = $5,
-              died_at = $6, cause_of_death = $7
+              died_at = $6, cause_of_death = $7,
+              died_at_region_id = coalesce(
+                (select id from regions where slug = $8), died_at_region_id
+              )
         where id = $1`,
       [
         survivor.id,
@@ -614,6 +623,7 @@ export async function saveWorld(client, state) {
         Math.max(0, Math.min(100, Number(survivor.stamina))),
         survivor.diedAt === null ? null : new Date(survivor.diedAt),
         survivor.causeOfDeath ?? null,
+        survivor.diedAtRegion ?? null,
       ],
     );
 
