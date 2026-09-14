@@ -621,21 +621,23 @@ test('the structure line and the stores line differ by exactly the survivor', as
 
     /*
      * What the building advertises, read off the string the page prints — and since Phase 18
-     * that string is in grams, so the comparison converts rather than assuming points. The
+     * that string is in kilograms, so the comparison converts rather than assuming points. The
      * relationship is what is pinned here, not the unit it is written in.
+     *
+     * Both sides go through the *display* rounding before being compared. A string on a page
+     * is a rounded number, and holding it to 1e-9 against an exact one is a test of the
+     * rounding rather than of the relationship: the garden's 0.075 kg/h prints as 0.07, which
+     * is right, and would fail an exact comparison for a reason that is nobody's bug.
      */
+    const shownRate = (points) =>
+      Number(inUnits(points, 'food', 'rate').toFixed(UNITS.food.rate.dp));
     const advertised = Number(/\+([\d.]+)/.exec(garden.effect)[1]);
 
-    assert.equal(
-      Number(inUnits(food.breakdown.gross, 'food', 'rate').toFixed(UNITS.food.rate.dp)),
-      advertised,
-      'the panel starts from what is advertised',
-    );
+    assert.equal(shownRate(food.breakdown.gross), advertised, 'the panel starts from what is advertised');
     assert.equal(food.breakdown.eaten, CONFIG.foodPerHour, 'and subtracts one mouth');
-    assert.ok(
-      Math.abs(
-        advertised - inUnits(CONFIG.foodPerHour + food.ratePerHour, 'food', 'rate'),
-      ) < 1e-9,
+    assert.equal(
+      shownRate(CONFIG.foodPerHour + food.ratePerHour),
+      advertised,
       'which is the whole of the difference between the two lines',
     );
   });

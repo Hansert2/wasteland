@@ -6856,25 +6856,48 @@ conversion is in one file, and every figure a player reads goes through it.
 ### What a player sees now
 
     the rail          5.0 / 44 kg        8.0 / 70 L        10.0 / 350
-    the rates         +88 g/h           +0.35 L/h
-    the garden        +150 g/h          the purifier      +0.5 L/h
+    the rates         +0.09 kg/h        +0.35 L/h
+    the garden        +0.15 kg/h        the purifier      +0.5 L/h
     a recipe          2.5 kg of food
     a caravan         18 L of water
     a pay range       0–0.8 kg
 
-### The one rule it looks like it breaks, and why it does not
+### One unit per store, and the rule I broke and then did not need to
 
-**Stocks are kilograms and rates are grams per hour.** The pack table settled "one unit, never
-switched" for a *column read down*; a stock and a rate are two quantities in two places and
-neither is ever read against the other. The reason for the switch is derived rather than
-aesthetic: at two decimals in kilograms a survivor eating 62.5 g/h reads "0.06 kg/h", and a
-*net* rate of thirty grams an hour — 0.7 kg a day, half a person — rounds to "0.00 kg/h". A
-figure that says nothing is happening while the larder empties is the one thing the stores
-table must not print.
+The first cut had food's stock in kilograms and its rate in grams, on the claim that at two
+decimals a net rate of thirty grams an hour would round away to "0.00 kg/h". **That was
+arithmetic I got wrong — thirty grams is 0.03 kg, which prints perfectly well.** The user asked
+for one order of unit throughout on 2026-09-14 and was right to: the smallest quantum either
+store moves in is a tenth of a point, because the garden's per-level and the survivor's
+appetite are both tenths, and that is 12.5 g — 0.01 kg, still visible at two decimals. Nothing
+finer than a tenth exists in the game.
 
-Stocks keep one decimal rather than trimming, which `saysWeight` does. Also derived: the rail's
-figure ticks up between page loads, and a width that changes as it ticks makes the whole rail
-shuffle.
+So the pack table's rule holds here unchanged: **one unit, never switched**, because a reader
+comparing a rate against a stock should not have to convert in their head. A garden reads
+"+0.15 kg/h" over a larder of "42.5 kg".
+
+Stocks keep one decimal rather than trimming, which `saysWeight` does. That one is derived: the
+rail's figure ticks up between page loads, and a width that changes as it ticks makes the whole
+rail shuffle.
+
+### Scrap and fuel keep no unit, and that is an answer rather than an omission
+
+Asked directly the same day: should scrap be kilograms and fuel litres? **No, because neither
+has a conversion the game derives, and inventing one would be the first number in this phase
+that nothing supports.**
+
+Food and water had strong derivations — the consumption rates were *already* a realistic day,
+so naming the unit only said out loud what the simulation was doing. Scrap has two candidates
+and they disagree: a scrap spear is 20 scrap and weighs 2 kg, which is 100 g a point, while a
+plate vest is 45 scrap plus two parts and weighs 9 kg, which is 167. Fuel has none at all —
+nothing consumes it per hour and no item is made of it, so a litre would be a figure picked to
+look like one.
+
+They are also a different *kind* of thing. Food and water are drawn down by a body at a rate,
+so a unit tells you how long you have. Scrap and fuel are only ever spent against prices quoted
+in the same points, so a unit would tell you nothing the price does not. There is a test
+pinning it, so that adding one later is a deliberate act with a derivation behind it rather
+than something that happens because the rail looked uneven.
 
 ### Where the conversion lives twice, and what stops it drifting
 

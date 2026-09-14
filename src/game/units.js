@@ -54,24 +54,41 @@ export const LITRES_PER_WATER = 0.2;
 /**
  * How each store is written, in one table so that nothing has to remember a rule.
  *
- * `perHour` is a different unit from `stock` for food, and that is derived rather than a
- * matter of taste: at two decimals in kilograms a survivor eating 62.5 g/h reads "0.06 kg/h",
- * and a *net* rate of thirty grams an hour — 0.7 kg a day, which is half a person — rounds to
- * "0.00 kg/h". A figure that says nothing is happening while the larder empties is the one
- * thing this table must not print. Grams per hour cannot round away.
+ * **One unit per store, stocks and rates alike.** The first cut of this had food in kilograms
+ * and its rate in grams, on the claim that a net rate of thirty grams an hour would round away
+ * to "0.00 kg/h" at two decimals. **That was arithmetic I got wrong: thirty grams is 0.03 kg,
+ * which prints perfectly well.** The smallest quantum either store moves in is a tenth of a
+ * point — the garden's per-level and the survivor's appetite are both tenths — which is 12.5 g,
+ * or 0.01 kg, and still visible at two decimals. There was never a reason to switch.
  *
- * The rule it looks like it is breaking — one unit, never switched — is about a *column read
- * down*, which is where the pack table settled it. A stock and a rate are two quantities in
- * two places, and neither is ever read against the other.
+ * So the pack table's rule holds here unchanged: one unit, never switched, because a reader
+ * comparing a rate against a stock should not have to convert in their head.
  *
- * `dp` is one for every stock, which is the decimals the stores rail has always shown. Not a
- * detail: the figure ticks up between page loads, and a width that changes as it does makes
- * the whole rail shuffle. `saysWeight` trims for the pack table because those are static rows;
- * this does not, because these are not.
+ * `dp` is one for every stock and two for every rate, which is the precision the rail and the
+ * breakdown panel have always shown. Not a detail: the stock ticks up between page loads, and
+ * a width that changes as it ticks makes the whole rail shuffle. `saysWeight` trims for the
+ * pack table because those are static rows; this does not, because these are not.
+ *
+ * ## Scrap and fuel have no unit, and it is not an omission
+ *
+ * Asked directly on 2026-09-14: should scrap be kilograms and fuel litres? **No, because
+ * neither has a conversion the game derives, and inventing one would be the first number in
+ * this file that nothing supports.**
+ *
+ * Food and water had strong ones: the consumption rates were *already* a realistic day, so
+ * naming the unit only said out loud what the simulation was doing. Scrap has two candidate
+ * derivations and they disagree — a scrap spear is 20 scrap and weighs 2 kg, which is 100 g a
+ * point, while a plate vest is 45 scrap plus two parts and weighs 9 kg, which is 167. Fuel has
+ * none at all: nothing in the game consumes it per hour and no item is made of it, so a litre
+ * would be a number picked to look like one.
+ *
+ * They are also a different *kind* of thing. Food and water are drawn down by a body at a rate,
+ * so a unit tells you how long you have. Scrap and fuel are only ever spent against prices
+ * quoted in the same points, so a unit would tell you nothing the price does not.
  */
 export const UNITS = {
   food: { stock: { per: GRAMS_PER_FOOD / 1000, unit: 'kg', dp: 1 },
-          rate: { per: GRAMS_PER_FOOD, unit: 'g', dp: 0 } },
+          rate: { per: GRAMS_PER_FOOD / 1000, unit: 'kg', dp: 2 } },
   water: { stock: { per: LITRES_PER_WATER, unit: 'L', dp: 1 },
            rate: { per: LITRES_PER_WATER, unit: 'L', dp: 2 } },
   scrap: { stock: { per: 1, unit: '', dp: 1 }, rate: { per: 1, unit: '', dp: 1 } },
@@ -102,7 +119,7 @@ export function says(points, kind, role = 'stock') {
 }
 
 /**
- * A rate, signed, in the store's own rate unit: `+225 g/h`, `-0.15 L/h`.
+ * A rate, signed, in the store's own unit: `+0.23 kg/h`, `-0.15 L/h`.
  *
  * Zero comes back as null rather than as "0 g/h", so the caller can print the dash the stores
  * table already prints — a mark reports something acting on a number, never a non-effect.

@@ -56,19 +56,46 @@ test('a store reads in its own unit, and the two that have none read as numbers'
   assert.equal(says(12, 'nonsense'), '12', 'an unknown store is a bare number, not a crash');
 });
 
-test('a rate is in a unit that cannot round a real shortfall away to nothing', () => {
+test('a store keeps one unit, and the smallest real rate still shows in it', () => {
   /*
-   * The reason food's rate is grams and its stock is kilograms. At two decimals in kilograms
-   * a net of thirty grams an hour — 0.7 kg a day, half a person — prints as "0.00 kg/h", and
-   * a figure saying nothing is happening while the larder empties is the one thing the stores
-   * table must not print.
+   * One unit per store, stocks and rates alike. An earlier cut had food's rate in grams on the
+   * claim that kilograms would round a real shortfall away — that was simply wrong arithmetic,
+   * and this is the test that would have caught it.
+   *
+   * The smallest quantum either store moves in is a tenth of a point: the garden's per-level
+   * and the survivor's appetite are both tenths. That is 12.5 g, which is 0.01 kg, and still
+   * visible at two decimals. Anything finer than a tenth does not exist in the game.
    */
-  assert.equal(saysRate(-0.5, 'food'), '-63 g/h', 'one survivor eating');
-  assert.equal(saysRate(1.8, 'food'), '+225 g/h', 'a garden at level three');
-  assert.equal(saysRate(0.24, 'food'), '+30 g/h', 'and the shortfall that kilograms would lose');
+  assert.equal(saysRate(-0.5, 'food'), '-0.06 kg/h', 'one survivor eating');
+  assert.equal(saysRate(1.8, 'food'), '+0.23 kg/h', 'a garden at level three');
+  assert.equal(saysRate(0.1, 'food'), '+0.01 kg/h', 'and the smallest step the game can take');
 
   assert.equal(saysRate(-0.75, 'water'), '-0.15 L/h');
   assert.equal(saysRate(0, 'food'), null, 'nothing happening is a dash, not a zero');
+
+  // The unit a store is written in never changes between a stock and a rate.
+  for (const [kind, spec] of Object.entries(UNITS)) {
+    assert.equal(spec.rate.unit, spec.stock.unit, `${kind} switches unit between the two`);
+  }
+});
+
+test('scrap and fuel have no unit, and that is the answer rather than an omission', () => {
+  /*
+   * Asked directly on 2026-09-14. Neither has a conversion the game derives: scrap has two
+   * candidates that disagree — a spear is 20 scrap and 2 kg, a plate vest 45 scrap plus two
+   * parts and 9 kg — and fuel has none at all, because nothing consumes it per hour and no
+   * item is made of it. They are also a different kind of thing: food and water are drawn down
+   * by a body at a rate, so a unit says how long you have; scrap and fuel are only ever spent
+   * against prices quoted in the same points.
+   *
+   * Pinned so that adding one is a deliberate act with a derivation behind it, rather than
+   * something that happens because the rail looked uneven.
+   */
+  for (const kind of ['scrap', 'fuel']) {
+    assert.equal(UNITS[kind].stock.unit, '', `${kind} gained a unit nothing derives`);
+    assert.equal(UNITS[kind].stock.per, 1);
+    assert.equal(says(350, kind), '350');
+  }
 });
 
 test('a range says its unit once, at the end', () => {

@@ -4685,7 +4685,7 @@ const STORE_DECIMALS = 1;
  * and `UNITS` say the same thing, so the two cannot drift without a red test.
  */
 export const STORE_UNITS = {
-  food: { stock: { per: 0.125, unit: 'kg', dp: 1 }, rate: { per: 125, unit: 'g', dp: 0 } },
+  food: { stock: { per: 0.125, unit: 'kg', dp: 1 }, rate: { per: 0.125, unit: 'kg', dp: 2 } },
   water: { stock: { per: 0.2, unit: 'L', dp: 1 }, rate: { per: 0.2, unit: 'L', dp: 2 } },
 };
 
