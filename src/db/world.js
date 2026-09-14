@@ -94,7 +94,7 @@ export async function loadWorld(client, settlementId) {
    * do the same job by accident; `born_at` says why.
    */
   const { rows: characters } = await client.query(
-    `select id, name, health, hunger, radiation, stamina, sleep_until, born_at,
+    `select id, name, health, hunger, thirst, radiation, stamina, sleep_until, born_at,
             skill_scavenging, skill_medicine
        from characters
       where settlement_id = $1 and died_at is null
@@ -175,6 +175,8 @@ export async function loadWorld(client, settlementId) {
       alive: true,
       health: person.health,
       hunger: person.hunger,
+      /* Phase 19's deadline gauge. See migration 028 for why it is not derived from hunger. */
+      thirst: person.thirst,
       radiation: person.radiation,
       /*
        * Read at last, on 2026-08-31, by Phase 10.
@@ -610,7 +612,8 @@ export async function saveWorld(client, state) {
               died_at = $6, cause_of_death = $7,
               died_at_region_id = coalesce(
                 (select id from regions where slug = $8), died_at_region_id
-              )
+              ),
+              thirst = $9
         where id = $1`,
       [
         survivor.id,
@@ -624,6 +627,9 @@ export async function saveWorld(client, state) {
         survivor.diedAt === null ? null : new Date(survivor.diedAt),
         survivor.causeOfDeath ?? null,
         survivor.diedAtRegion ?? null,
+        /* Clamped on the way out for the same reason stamina is: the column carries a check
+           constraint, and a rounding error at either end would fail the write. */
+        Math.max(0, Math.min(100, Number(survivor.thirst) || 0)),
       ],
     );
 

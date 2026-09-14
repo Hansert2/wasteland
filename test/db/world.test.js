@@ -289,7 +289,7 @@ test('the rate the camp page shows is the rate the stores actually move at', asy
   });
 });
 
-test('a starved survivor is retired, and the camp keeps producing without them', async () => {
+test('a survivor who ran out is retired, and the camp keeps producing without them', async () => {
   await withRollback(async (client) => {
     const { settlementId, characterId } = await seed(client, {
       structures: BARREN,
@@ -303,7 +303,12 @@ test('a starved survivor is retired, and the camp keeps producing without them',
       'select died_at, cause_of_death from characters where id = $1',
       [characterId],
     );
-    assert.equal(rows[0].cause_of_death, 'starvation');
+    /*
+     * Thirst since Phase 19, and it is the same camp and the same clock: a barren camp with
+     * nothing in it has always killed in 54 hours, which is what a body without water does.
+     * The gauge it is written on changed; nothing about this fixture did.
+     */
+    assert.equal(rows[0].cause_of_death, 'thirst');
     assert.ok(rows[0].died_at, 'died_at persisted');
 
     // The partial unique index stops matching a dead character, so the camp loads
@@ -360,13 +365,19 @@ test('an expedition in flight is written back as lost, satisfying the schema', a
 
 test('an auto-consumed ration is decremented in the database', async () => {
   await withRollback(async (client) => {
+    /*
+     * Water in the tank since Phase 19, and food gone. A ration answers hunger, and in a camp
+     * with nothing it is thirst doing the killing — nothing in this game is a drink, which is
+     * the mechanic rather than an oversight. The unit test carries the argument; this is the
+     * half of it that has to survive a real database.
+     */
     const { settlementId, inventoryRowId } = await seed(client, {
       structures: BARREN,
-      amounts: { food: 0, water: 0, scrap: 0 },
+      amounts: { food: 0, water: 100000, scrap: 0 },
       rations: 1,
     });
 
-    const { events } = await advanceSettlement(client, settlementId, T0 + hours(60));
+    const { events } = await advanceSettlement(client, settlementId, T0 + days(25));
     assert.equal(events.filter((e) => e.type === 'auto_consumed').length, 1);
 
     const { rows } = await client.query('select qty from inventory_items where id = $1', [

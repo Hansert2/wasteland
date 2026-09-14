@@ -5023,7 +5023,7 @@ has to stay out of this phase.
 15 and 16** — see its own section at the end of this file for the argument. The order is 15, 20,
 16, 17, 18, with 19 still behind 18.
 
-### Phase 19 — thirst, proposed 2026-09-02 and deliberately deferred
+### Phase 19 — thirst ✅ *(deferred 2026-09-02, built 2026-09-14 — written up at the end)*
 
 *Against: a camp with no water reports the shortage as hunger.*
 
@@ -6979,6 +6979,92 @@ not.
 *and been played*, and the units make its premise conspicuous rather than changing it:
 `fedFraction` is `min(food drawn, water drawn)`, so a camp out of water still reports the
 shortage as hunger — and that reads as a bug the moment the page says litres.
+
+## Phase 19 — thirst, built 2026-09-14 ✅
+
+**The user lifted their own deferral once Phase 18 was deployed.** The condition was that the
+units had to be in front of them first, and the design said why: once the page says litres,
+either the single gauge reads as a lie or it does not.
+
+### The finding the phase rests on, confirmed by measurement
+
+`tools/thirst-clock.mjs`, run before a constant was touched: **a camp with nothing in it killed
+in 54 hours.** A body without water dies in about three days. A body without food takes about
+three weeks. The tuned clock was always water's, and `fedFraction` said the same thing in code
+— it was `min(food drawn, water drawn)`, so either store running dry drove one gauge at one
+rate. **The split is not adding a system; it is admitting which system was already there.**
+
+### One number, and everything else follows from it
+
+    THIRST_RISE_PER_HOUR   4.2     what hungerRisePerHour has always been
+    FOOD_IS_SLOWER_BY      10      three days against three weeks
+
+Thirst inherits every constant the single gauge was tuned with. Hunger is the same constants
+divided by ten — rise, fall, damage and the regen ceiling alike. That is the whole of the
+arithmetic, and it is why the phase moves no balance it did not mean to: the gauge behaves
+exactly as it always did and only the clock it runs on changes.
+
+**The derivation the design put above everything else in the phase holds for free.** It warned
+that if thirst keeps a damage rate of 3/h and starvation adds its own on top, the combined clock
+falls under 36 hours and the game starts punishing real life. With the tenfold slowing, hunger
+is at 23 of a threshold of 70 when thirst reaches death at 54 hours — **nothing of starvation is
+in the empty-camp clock at all.** Measured after: 54 hours, of thirst, inside the guard.
+
+    12h  health 100   hunger  5   thirst  50
+    24h  health  88   hunger 10   thirst 100
+    48h  health  16   hunger 20   thirst 100
+
+And the other half, which is what two gauges buy that one renamed would not: **a camp with
+water and no food takes about three weeks**, and the survivor works badly for all of them
+through the stamina chain that already existed. Starvation still kills a camp that has been
+truly abandoned. It has stopped being what kills a camp over a long weekend.
+
+### `regenHungerCeiling` was the trap
+
+It is a *position* on a nought-to-a-hundred gauge, not a rate, so the obvious reading is that it
+should not move. It had to. Its job is that a long sleep ends past it, so a survivor cannot
+sleep a hard trip off and mend from it in the same twelve hours — and on the slowed clock a
+twelve-hour sleep charges five points where it used to charge fifty. Left at 25 it would never
+be reached, and a mechanic would have gone quietly: **a balance change smuggled in by a
+re-scale**, which is exactly what this phase promised not to do.
+
+### Nothing in a pack answers thirst, and the absence is the mechanic
+
+The emergency ration saved a survivor from the single gauge because that gauge was everything.
+Now it answers hunger, and in a camp with nothing it is thirst doing the killing. **No item in
+this game is a drink**, so a survivor holding a tin while the tank is dry dies holding it.
+
+That is deliberate rather than an omission: a deadline you can buy your way out of with whatever
+happens to be in a pack is not a deadline, and this is the gauge the whole phase exists to make
+real. Three tests carry the argument — the ration still rescues in a camp with water and no
+food, the same camp without it still kills, and the same tin in an empty camp saves nobody.
+
+### The page, which the design called the real cost
+
+**A survivor who is drinking shows no thirst gauge at all.** A roster of four already carries
+four gauges each, and a fifth per person is twenty numbers on a view whose last verdict was
+*"too many sentences and commas"*. The house rule answered it without needing a new one: a mark
+reports something acting on a number, and says nothing when nothing is happening.
+
+So the fifth gauge appears the hour the tank runs dry, which is also the hour it starts to
+matter. It sits above Radiation because it is the faster clock of the two by an order of
+magnitude. The page contract was widened from "four gauges, and only these four" to "five, and
+the fifth only when it has something to say" — and the union check at the end of that test now
+*requires* a fixture to produce one, which the sleeping camp does, because nobody drinks in
+their sleep.
+
+The two panels are written to be read against each other, and the last row of each is the phase
+in two lines: **starves at 70+, and takes about three weeks** against **kills at 70+, and takes
+about two days.**
+
+### What the migration does not do
+
+`028` adds `thirst` at zero and **does not rescale `hunger`.** A survivor sitting at 80 hunger
+was, under the old reading, hours from death; under the new one they are a fortnight from it and
+working badly, which is a truer description of the same camp than any number a migration could
+compute. Every living survivor wakes up fully watered on deploy, which is a small bounded gift
+— a camp with an empty tank is back at 100 within a day — and the alternative is a deploy that
+kills somebody on a reading they had no chance to act on.
 
 ## Not planned
 

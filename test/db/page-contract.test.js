@@ -455,7 +455,22 @@ test('every gauge says what its number counts, in a place the note script can fi
     const slots = [];
     for (const card of cards) {
       const mine = [...card.matchAll(/class="gauge noted g-(\w+)"/g)].map((m) => m[1]);
-      assert.ok(mine.length <= 4, `${name}: ${mine.length} gauges on one card, and there are only four`);
+      /*
+       * Five since Phase 19, and the fifth is conditional in a way the other four are not.
+       *
+       * Health, hunger, radiation and stamina are a person's permanent readings. Thirst is
+       * zero for anybody who is drinking, and a gauge at zero with nothing acting on it would
+       * be the page reporting a non-effect once per survivor — so it is rendered only when it
+       * has something to say, which is the rule the rest of the block already follows and the
+       * only reason a fifth was affordable at all.
+       */
+      assert.ok(mine.length <= 5, `${name}: ${mine.length} gauges on one card, and there are only five`);
+      if (mine.includes('thirst')) {
+        assert.ok(
+          /class="gauge noted g-thirst"/.test(card),
+          `${name}: a thirst gauge with no slot`,
+        );
+      }
       assert.equal(
         new Set(mine).size,
         mine.length,
@@ -463,7 +478,7 @@ test('every gauge says what its number counts, in a place the note script can fi
       );
       for (const slot of mine) {
         assert.ok(
-          ['health', 'hunger', 'radiation', 'stamina'].includes(slot),
+          ['health', 'hunger', 'thirst', 'radiation', 'stamina'].includes(slot),
           `${name}: a "${slot}" gauge, which has no column to stand in`,
         );
       }
@@ -557,9 +572,15 @@ test('every gauge says what its number counts, in a place the note script can fi
     }
   }
 
+  /*
+   * Thirst is in this list since Phase 19, which means a fixture has to produce one — and the
+   * sleeping camp does, because nobody drinks in their sleep. That is the check working as
+   * intended rather than a coincidence: a gauge no saved state ever renders is a gauge nothing
+   * above was asserted about, which is this file's oldest rule.
+   */
   assert.deepEqual(
     [...new Set(seenSlots)].sort(),
-    ['health', 'hunger', 'radiation', 'stamina'],
+    ['health', 'hunger', 'radiation', 'stamina', 'thirst'],
     'some gauge is never rendered by any fixture, so nothing above was checked on it',
   );
 });

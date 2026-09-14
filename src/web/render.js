@@ -7927,6 +7927,26 @@ function renderSurvivor(survivor, strain, vitals, inventory, panelId) {
            survivor.drivers?.rates?.stamina)}
          ${gauge('Hunger', survivor.hunger, 100, said.hunger, '', survivor.drivers?.hunger,
            survivor.drivers?.rates?.hunger)}
+         ${/*
+            * Thirst is the only gauge on this page that is not always here — Phase 19.
+            *
+            * A roster of four already carries four gauges each, and a fifth per person is
+            * twenty numbers on a view whose last verdict was "too many sentences and commas".
+            * The house rule answers it: a mark reports something acting on a number, and says
+            * nothing when nothing is happening. A survivor who is drinking has a thirst of
+            * zero, and an empty gauge under it would be the page reporting a non-effect four
+            * times over.
+            *
+            * It appears the hour the tank runs dry, which is also the hour it starts to matter
+            * — and it is above Radiation rather than below, because it is the faster clock of
+            * the two by an order of magnitude.
+            */ ''}
+         ${
+           (survivor.thirst ?? 0) > 0
+             ? gauge('Thirst', survivor.thirst, 100, said.thirst ?? '', '',
+                 survivor.drivers?.thirst, survivor.drivers?.rates?.thirst)
+             : ''
+         }
          ${gauge(
            'Radiation',
            survivor.radiation,
@@ -8013,7 +8033,7 @@ function renderSurvivor(survivor, strain, vitals, inventory, panelId) {
  * and a page that throws rather than render one is a bad trade.
  */
 function gaugeNotes(strain, vitals) {
-  if (!vitals) return { health: '', hunger: '', radiation: '', stamina: '' };
+  if (!vitals) return { health: '', hunger: '', thirst: '', radiation: '', stamina: '' };
 
   /*
    * The dose at which this survivor stops gaining health and starts losing it.
@@ -8066,6 +8086,22 @@ function gaugeNotes(strain, vitals) {
        */
       ['recovering', `+${rate(vitals.staminaRecoveryHungerPerPoint)} a point`],
       ['starves at', `${rate(vitals.starvationThreshold)}+`],
+      ['and takes', 'about three weeks'],
+    ]),
+    /*
+     * Thirst, which is the same panel on a clock ten times faster — Phase 19.
+     *
+     * The last row of each is what the pair is for, and they are the only two rows on this
+     * page that exist to be read against each other: three weeks against two days is the
+     * whole reason these are two gauges rather than one called "privation".
+     */
+    thirst: stats('0 watered – 100 dying of it', [
+      ['drinking', `-${rate(vitals.thirstFallPerHour)}/h`],
+      ['water drawn', saysStoreRate(vitals.eats.water, 'water')],
+      ['nothing to drink', `+${rate(vitals.thirstRisePerHour)}/h`],
+      ['nobody drinks', 'in their sleep'],
+      ['kills at', `${rate(vitals.thirstThreshold)}+`],
+      ['and takes', 'about two days'],
     ]),
     /*
      * What a survivor's day is worth, which is the one gauge that says what they may do

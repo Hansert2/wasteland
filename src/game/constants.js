@@ -6,10 +6,41 @@
 const WORK_PER_HOUR = 3.8;
 
 /**
+ * How fast thirst fills with nothing to drink — Phase 19, and **this is the number the game
+ * was always tuned on.**
+ *
+ * Until the split it was called `hungerRisePerHour`, and the phase's central finding is that
+ * it was never a hunger rate: on empty stores a survivor died in 54 hours, and a person without
+ * water dies in about three days while a person without food dies in about three weeks. **The
+ * tuned clock is water's.** `fedFraction` said the same thing in code — it was
+ * `min(food drawn, water drawn)`, so either store running dry drove the same gauge at the same
+ * rate. The split is not adding a system; it is admitting which system was already there.
+ *
+ * So thirst inherits the deadline unchanged, every constant of it, and the 36-to-72-hour guard
+ * survives by construction rather than by re-derivation.
+ */
+const THIRST_RISE_PER_HOUR = 4.2;
+
+/**
+ * And food is the same clock, slowed by ten.
+ *
+ * One number for the whole of hunger's side of the phase, and it is derived rather than picked:
+ * three days against three weeks is a factor of seven, and ten lands the starvation clock at
+ * 22.5 days — three weeks, the figure the design names. Every hunger constant below is this
+ * one divided through, which is what keeps the gauge behaving exactly as it always did and
+ * only the clock it runs on changing.
+ *
+ * The consequence is the point of the phase: **starvation still kills a camp that has been
+ * truly abandoned, and stops being what kills a camp over a long weekend.** What hunger does in
+ * the meantime is the stamina chain it already drove — `stores -> hunger -> stamina -> work`.
+ */
+const FOOD_IS_SLOWER_BY = 10;
+
+/**
  * How fast hunger fills with nothing to eat, named before `CONFIG` because the price of
  * recovery is derived from it. See `staminaRecoveryHungerPerPoint`.
  */
-const HUNGER_RISE_PER_HOUR = 4.2;
+const HUNGER_RISE_PER_HOUR = THIRST_RISE_PER_HOUR / FOOD_IS_SLOWER_BY;
 
 /**
  * Tuning constants for the simulation tick.
@@ -40,10 +71,22 @@ export const CONFIG = {
   foodPerHour: 0.5,
   waterPerHour: 0.75,
 
-  /** Hunger is 0 (fed) to 100 (starving). Unfed, it fills in ~24h. */
+  /** Hunger is 0 (fed) to 100 (starving). Unfed, it fills in about ten days. */
   hungerRisePerHour: HUNGER_RISE_PER_HOUR,
-  hungerFallPerHour: 12,
+  hungerFallPerHour: 12 / FOOD_IS_SLOWER_BY,
   starvationThreshold: 70,
+
+  /**
+   * Thirst is 0 (watered) to 100 (dying of it), and it is the deadline.
+   *
+   * Every one of these is what the hunger constant beside it used to be, because the game's
+   * one gauge was always this one under another name. A threshold is a position on a
+   * nought-to-a-hundred scale rather than a rate, so it is the same 70 on both: what differs
+   * between the two is only how long it takes to get there.
+   */
+  thirstRisePerHour: THIRST_RISE_PER_HOUR,
+  thirstFallPerHour: 12,
+  thirstThreshold: 70,
 
   /** Radiation is 0 to 100. It decays on its own; meds decay it faster. */
   radDecayPerHour: 0.8,
@@ -74,8 +117,17 @@ export const CONFIG = {
    */
   radDamageExponent: 4,
 
-  /** Health is 0 to 100. Damage rates apply at the top of each band. */
-  starvationDamagePerHour: 3,
+  /**
+   * Health is 0 to 100. Damage rates apply at the top of each band.
+   *
+   * The two stack in a camp with nothing in it, because both gauges are running off the same
+   * empty shelf — and that is the derivation Phase 19's design put above everything else in
+   * the phase. It holds here for free rather than by tuning: hunger climbs ten times slower, so
+   * it is nowhere near its threshold when thirst reaches death at 54 hours, and the combined
+   * clock is the one that was measured. `tools/thirst-clock.mjs` is the instrument.
+   */
+  starvationDamagePerHour: 3 / FOOD_IS_SLOWER_BY,
+  thirstDamagePerHour: 3,
   radDamagePerHour: 4,
 
   /** Regeneration, only while fed and not badly irradiated. */
@@ -86,7 +138,14 @@ export const CONFIG = {
    * which is now the number that scaling is written against rather than a gate.
    */
   regenPerHour: 2,
-  regenHungerCeiling: 25,
+  /*
+   * Divided through with the rest of hunger, and it matters: the ceiling's job is that a long
+   * sleep ends past it, so a survivor cannot sleep a hard trip off and mend from it in the same
+   * twelve hours. On the slowed clock a twelve-hour sleep charges five points where it used to
+   * charge fifty, so a ceiling left at 25 would never be reached and that mechanic would have
+   * quietly gone — a balance change smuggled in by a re-scale.
+   */
+  regenHungerCeiling: 25 / FOOD_IS_SLOWER_BY,
   /*
    * Retired as a gate on 2026-08-27, kept as the shape of one.
    *

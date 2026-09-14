@@ -71,11 +71,29 @@ function makeState(overrides = {}) {
 }
 
 /** A camp whose stores are empty and whose production has stopped. */
+/**
+ * A camp with nothing in it, which since Phase 19 kills by thirst rather than by hunger.
+ *
+ * The name is kept because the *fixture* is unchanged and so is the clock it keeps — 54 hours,
+ * inside the guard, exactly as it was when one gauge did both jobs. What changed is which gauge
+ * is doing the killing, and that is the whole of the phase: the tuned number was always water's.
+ */
 function starvingState(overrides = {}) {
   return makeState({
     resources: {
       food: { amount: 0, ratePerHour: 0, cap: 500 },
       water: { amount: 0, ratePerHour: 0, cap: 500 },
+    },
+    ...overrides,
+  });
+}
+
+/** Water enough, and no food at all: the camp that hunger is actually about. */
+function unfedState(overrides = {}) {
+  return makeState({
+    resources: {
+      food: { amount: 0, ratePerHour: 0, cap: 500 },
+      water: { amount: 5000, ratePerHour: 0, cap: 5000 },
     },
     ...overrides,
   });
@@ -123,12 +141,36 @@ test('a supplied survivor is fine after a month away', () => {
   assert.deepEqual(mine, [], 'a well-run camp is a quiet log');
 });
 
-test('an unsupplied survivor starves to death', () => {
+test('an unsupplied survivor dies of thirst, which is what the clock was always counting', () => {
+  /*
+   * Phase 19. This said `starvation` for as long as there was one gauge, and the gauge was
+   * tuned to kill in 54 hours — which is what a body without water does, not what a body
+   * without food does. The stone says the right thing now.
+   */
   const { state, events } = applyTick(starvingState(), T0 + days(7));
 
   assert.equal(state.survivor.alive, false);
-  assert.equal(state.survivor.causeOfDeath, 'starvation');
+  assert.equal(state.survivor.causeOfDeath, 'thirst');
   assert.equal(events.filter((e) => e.type === 'survivor_died').length, 1);
+});
+
+test('a camp with water and no food takes weeks, and the survivor works badly meanwhile', () => {
+  /*
+   * The other half of the split, and the reason it is worth having two gauges rather than one
+   * renamed: food is now capability rather than a deadline. A fortnight in, they are alive and
+   * hungry; three weeks in, they are not.
+   */
+  const fortnight = applyTick(unfedState(), T0 + days(14));
+  assert.equal(fortnight.state.survivor.alive, true, 'a fortnight without food is survivable');
+  assert.ok(fortnight.state.survivor.hunger > 70, 'and by then they are starving');
+  assert.equal(fortnight.state.survivor.thirst, 0, 'while perfectly watered');
+
+  const month = applyTick(unfedState(), T0 + days(40));
+  assert.equal(month.state.survivor.alive, false, 'and it does still kill');
+  assert.equal(month.state.survivor.causeOfDeath, 'starvation');
+
+  const died = (month.state.survivor.diedAt - T0) / hours(24);
+  assert.ok(died > 14 && died < 30, `starvation should take about three weeks, took ${died.toFixed(0)}d`);
 });
 
 test('tuning guard: starvation takes one to three days, so a weekend away is survivable', () => {
@@ -160,8 +202,17 @@ test('the death event reports days survived from birth, not from last login', ()
 });
 
 test('an emergency ration is eaten automatically instead of starving beside it', () => {
+  /*
+   * Phase 19 moved this fixture from an empty camp to a camp with water in it, and that is not
+   * a weakening of the test — it is the test finally being about what it says. A ration answers
+   * hunger. In an empty camp it is thirst doing the killing, and no item in this game is a
+   * drink, so a survivor holding a tin while the tank is dry now dies holding it.
+   *
+   * **That absence is the mechanic**, not an oversight: a deadline you can buy your way out of
+   * with whatever happens to be in a pack is not a deadline. See `rescue`.
+   */
   const inventory = [{ id: 'tinned_stew', kind: 'ration', potency: 80, qty: 1 }];
-  const { state, events } = applyTick(starvingState({ survivor: { inventory } }), T0 + hours(60));
+  const { state, events } = applyTick(unfedState({ survivor: { inventory } }), T0 + days(25));
 
   assert.equal(state.survivor.alive, true, 'the survivor is not an idiot');
   assert.equal(state.survivor.inventory[0].qty, 0, 'the ration was consumed');
@@ -169,9 +220,18 @@ test('an emergency ration is eaten automatically instead of starving beside it',
 });
 
 test('without the ration, the same camp kills the same survivor', () => {
-  const { state } = applyTick(starvingState(), T0 + hours(60));
+  const { state } = applyTick(unfedState(), T0 + days(25));
 
   assert.equal(state.survivor.alive, false, 'control case: the rescue is what saved them');
+});
+
+test('nothing in a pack answers thirst, and that is deliberate', () => {
+  // The control for the two above: the same tin, in a camp with nothing, saves nobody.
+  const inventory = [{ id: 'tinned_stew', kind: 'ration', potency: 80, qty: 1 }];
+  const { state } = applyTick(starvingState({ survivor: { inventory } }), T0 + hours(60));
+
+  assert.equal(state.survivor.alive, false, 'a tin is not a drink');
+  assert.equal(state.survivor.causeOfDeath, 'thirst');
 });
 
 test('anti-rad meds are taken automatically when radiation turns lethal', () => {

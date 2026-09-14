@@ -1320,12 +1320,29 @@ function simulateSurvivor(state, survivor, hours, from, at, events, config) {
    * do is put their hunger up on its own — see the hunger arithmetic below, where a sleeper
    * skips both the fed and the unfed term and pays only for what they recovered.
    */
-  const fedFraction = asleep
+  /*
+   * Phase 19 splits this in two, and the `min` that used to be here is the whole reason it had
+   * to be: `fedFraction` was `min(food drawn, water drawn)`, so a camp out of water reported the
+   * shortage as *hunger*. One gauge, driven by either store, at the rate a body runs out of
+   * water at. Two draws, two gauges, and the arithmetic each one feeds is below.
+   *
+   * Both stores are still drawn every hour whatever the other is doing — that was already true,
+   * because `draw` takes before the `min` compares.
+   */
+  const fed = asleep ? 0 : draw(state.settlement.resources.food, config.foodPerHour * appetite * hours);
+  const watered = asleep
     ? 0
-    : Math.min(
-        draw(state.settlement.resources.food, config.foodPerHour * appetite * hours),
-        draw(state.settlement.resources.water, config.waterPerHour * appetite * hours),
-      );
+    : draw(state.settlement.resources.water, config.waterPerHour * appetite * hours);
+
+  /*
+   * And what stamina recovery is scaled by, which is deliberately still the *lesser* of the two.
+   *
+   * Recovery is the one place the old `min` was answering a different question from the gauges:
+   * "how well supplied is this person", to which a full larder and an empty tank is not a good
+   * answer. Keeping it here is what makes the split invisible to every camp that is coping,
+   * which is the property a re-derivation of a live game has to have.
+   */
+  const fedFraction = Math.min(fed, watered);
 
   /*
    * A dose decays in the camp and not on the road.
@@ -1426,9 +1443,32 @@ function simulateSurvivor(state, survivor, hours, from, at, events, config) {
            * choosing the duration stays a decision rather than a formality.
            */
           Math.max(config.hungerRisePerHour * hours, charged)
-        : (1 - fedFraction) * config.hungerRisePerHour * hours -
-          fedFraction * config.hungerFallPerHour * hours +
+        : (1 - fed) * config.hungerRisePerHour * hours -
+          fed * config.hungerFallPerHour * hours +
           charged),
+    0,
+    100,
+  );
+
+  /*
+   * Thirst, which is the deadline — Phase 19.
+   *
+   * The same shape as hunger with one term missing: recovery is charged to hunger and to
+   * nothing else, because the chain the user's rule of 2026-08-31 draws is
+   * `stores -> hunger -> stamina -> work` and thirst has one job rather than two. Splitting the
+   * charge across both gauges would make a rested survivor thirsty, which is true of a body and
+   * would give this gauge a second job it does not need.
+   *
+   * A sleeper rises at the plain rate for the reason they do on hunger: nobody drinks in their
+   * sleep. That is not a softening — it is exactly what the single gauge already did, now
+   * showing on the gauge it was always describing.
+   */
+  survivor.thirst = clamp(
+    (Number(survivor.thirst) || 0) +
+      (asleep
+        ? config.thirstRisePerHour * hours
+        : (1 - watered) * config.thirstRisePerHour * hours -
+          watered * config.thirstFallPerHour * hours),
     0,
     100,
   );
@@ -1501,6 +1541,24 @@ function healthDelta(survivor, hours, config) {
     delta -= config.starvationDamagePerHour * severity * hours;
   }
 
+  /*
+   * And thirst, which stacks with it — Phase 19.
+   *
+   * Stacking rather than taking the worse of the two, because they are two different things
+   * happening to one body and a camp with nothing has both. The design put one derivation above
+   * everything else in the phase for exactly this: if both kept a damage rate of 3/h the
+   * combined clock would fall to 33 hours and the game would start punishing a weekend away.
+   *
+   * It holds here without a compensating constant, which is the whole argument for the tenfold
+   * slowing rather than for a pair of tuned rates: hunger climbs so much more slowly that it is
+   * at 23 of a threshold of 70 when thirst reaches death at 54 hours, so nothing of starvation
+   * is in the empty-camp clock at all. `tools/thirst-clock.mjs` measures both ends of that.
+   */
+  const thirst = Number(survivor.thirst) || 0;
+  if (thirst >= config.thirstThreshold) {
+    delta -= config.thirstDamagePerHour * band(thirst, config.thirstThreshold) * hours;
+  }
+
   delta -= radDamagePerHourAt(survivor, config) * hours;
 
   /*
@@ -1519,7 +1577,12 @@ function healthDelta(survivor, hours, config) {
    * Hunger keeps its gate, because starvation is a different kind of thing: you are fed or
    * you are not, and there is no partial credit for a half-empty stomach.
    */
-  if (survivor.hunger < config.regenHungerCeiling) {
+  /*
+   * Phase 19: and not while dying of thirst either. The gate was hunger's alone when hunger was
+   * the only gauge; leaving it there would have let somebody mend their way through a drought,
+   * because on the slowed clock their hunger stays under the ceiling for days.
+   */
+  if (survivor.hunger < config.regenHungerCeiling && thirst < config.thirstThreshold) {
     const smothered = 1 - clamp(effectiveRads(survivor, config), 0, 100) / 100;
     delta += config.regenPerHour * smothered * hours;
   }
@@ -1549,6 +1612,19 @@ function rescue(survivor, at, events, config) {
       : 0;
   const irradiated = radDamagePerHourAt(survivor, config);
 
+  /*
+   * Thirst is deliberately not in this comparison, and the absence is the mechanic.
+   *
+   * Nothing in the game is a drink. A ration is food and an antirad is chelation, and there is
+   * no third item somebody could be holding while dying of thirst — so the valve that exists
+   * for the two things a pack can answer stays about those two, and the deadline stays a
+   * deadline. A gauge you can buy your way out of with what you happen to be carrying is not
+   * one, and this is the gauge the whole phase exists to make real.
+   *
+   * It is also why the split costs the camp nothing it was relying on: the single gauge was
+   * always running at water's rate, so a ration was never what saved anybody from *that* — it
+   * saved them from the gauge, which is now two gauges and one of them is still food's.
+   */
   const needed = starving <= 0 && irradiated <= 0 ? null : starving >= irradiated ? 'ration' : 'antirad';
   if (!needed) return false;
 
@@ -1644,11 +1720,21 @@ function kill(state, survivor, at, cause, events) {
  * The bar is one health an hour: real damage rather than a rounding error, and about what
  * seventy rads costs. Below that the dose was weather, not the killer.
  */
+/**
+ * What to write on the headstone.
+ *
+ * Thirst is named before starvation when both are running, and that is not alphabetical: on the
+ * clocks these two gauges keep, anybody who is starving *and* parched got there by way of the
+ * second, and "starvation" on a stone for somebody who died in two days would be the graveyard
+ * saying something false about how long they lasted.
+ */
 function causeOf(survivor, config) {
   const irradiated = radDamagePerHourAt(survivor, config) >= 1;
   const starving = survivor.hunger >= config.starvationThreshold;
+  const parched = (Number(survivor.thirst) || 0) >= config.thirstThreshold;
 
-  if (irradiated && !starving) return 'radiation';
+  if (irradiated && !starving && !parched) return 'radiation';
+  if (parched) return irradiated ? 'thirst_and_radiation' : 'thirst';
   if (irradiated) return 'starvation_and_radiation';
   return 'starvation';
 }

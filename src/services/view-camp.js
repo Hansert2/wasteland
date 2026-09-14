@@ -758,6 +758,7 @@ function strainOf(survivor, decayPerHour) {
 function driversFor(person, {
   recovery,
   fed,
+  watered,
   radScrubbing,
   radDecayPerHour,
   strain,
@@ -966,6 +967,42 @@ function driversFor(person, {
    * until something the client cannot see changes — a threshold crossed, the stores running
    * out — and the next swap replaces it with what the tick actually did.
    */
+  /*
+   * Thirst, and it says nothing at all when nobody is thirsty — Phase 19.
+   *
+   * The design's one hard constraint on this phase was the page rather than the arithmetic: a
+   * roster of four already carries health, hunger, radiation and stamina, and a fifth gauge per
+   * person is twenty numbers on a view whose last verdict was "too many sentences and commas".
+   * The house rule is the answer and it was already written: **a mark reports something acting
+   * on a number, and says nothing when nothing is happening.** A survivor who is drinking
+   * normally has a thirst of zero, no marks, and — see `renderSurvivors` — no gauge either.
+   */
+  const thirst = [];
+  if ((person.thirst ?? 0) > 0 && !asleep) {
+    thirst.push(
+      watered
+        ? {
+            sign: '▼',
+            tag: `drinking −${n1(config.thirstFallPerHour)}/h`,
+            note: `drinking ${perHour(config.thirstFallPerHour, '−')}`,
+          }
+        : {
+            sign: '○',
+            tag: 'the tank is dry',
+            note: `thirst ${perHour(config.thirstRisePerHour, '+')}, kills at ${n1(
+              config.thirstThreshold,
+            )}`,
+          },
+    );
+  }
+  if (asleep && (person.thirst ?? 0) < 100) {
+    thirst.push({
+      sign: '▲',
+      tag: `asleep +${n1(config.thirstRisePerHour)}/h`,
+      note: `asleep ${perHour(config.thirstRisePerHour, '+')} — nobody drinks in their sleep`,
+    });
+  }
+
   const rates = {
     health:
       (person.health < 100 && person.hunger < config.regenHungerCeiling &&
@@ -973,11 +1010,12 @@ function driversFor(person, {
         ? Number(strain.healingPerHour)
         : 0) - (strain?.state === 'burning' ? Number(strain.damagePerHour) : 0),
     hunger: asleep || !fed ? config.hungerRisePerHour : -config.hungerFallPerHour,
+    thirst: asleep || !watered ? config.thirstRisePerHour : -config.thirstFallPerHour,
     radiation: person.radiation > 0 ? -radDecayPerHour : 0,
     stamina: working ? -config.staminaPerHourWorked : resting ? recoveredPerHour : 0,
   };
 
-  return { health, hunger, radiation, stamina, rates };
+  return { health, hunger, thirst, radiation, stamina, rates };
 }
 
 /**
@@ -1002,6 +1040,11 @@ function vitalsOf(radDecayPerHour) {
     hungerFallPerHour: CONFIG.hungerFallPerHour,
     starvationThreshold: CONFIG.starvationThreshold,
     starvationDamagePerHour: CONFIG.starvationDamagePerHour,
+    /* Phase 19's four, so the panel can say what the faster clock is made of. */
+    thirstRisePerHour: CONFIG.thirstRisePerHour,
+    thirstFallPerHour: CONFIG.thirstFallPerHour,
+    thirstThreshold: CONFIG.thirstThreshold,
+    thirstDamagePerHour: CONFIG.thirstDamagePerHour,
     // Phase 10's three, passed rather than described for the reason above: a sentence in
     // `render.js` saying "work costs 3.8 an hour" is a second copy of a number a balance
     // pass edits in one place — and this one is derived from the map, so it moves.
@@ -2909,6 +2952,8 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
         name: person.name,
         health: person.health,
         hunger: person.hunger,
+        /* Phase 19's deadline. Zero for anybody drinking, and the page draws nothing at zero. */
+        thirst: Number(person.thirst) || 0,
         radiation: person.radiation,
         skills: skillsOf(person, CONFIG.radThreshold),
         // Phase 10's gauge, and the reason the column stopped being dead schema.
@@ -2953,9 +2998,13 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
         // own numbers, and splitting them would let the two drift.
         drivers: driversFor(person, {
           recovery: recoveryOf(state, person, now, CONFIG),
-          fed:
-            Number(state.settlement.resources.food?.amount ?? 0) > 0 &&
-            Number(state.settlement.resources.water?.amount ?? 0) > 0,
+          /*
+           * Phase 19 splits this the way the tick splits it. `fed` was "there is food *and*
+           * water", which is exactly the conflation the phase is about: a camp with a full
+           * larder and an empty tank told the player its survivor could not be fed.
+           */
+          fed: Number(state.settlement.resources.food?.amount ?? 0) > 0,
+          watered: Number(state.settlement.resources.water?.amount ?? 0) > 0,
           radScrubbing: fitted.has('filtration'),
           radDecayPerHour,
           strain: strainOf(person, radDecayPerHour),
