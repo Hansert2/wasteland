@@ -3709,7 +3709,17 @@ ${PANE_CSS}
   .gauge-top .tag { letter-spacing: .14em; color: var(--dim); }
   .gauge-top .val { font-family: var(--numer); font-size: 16px; line-height: 1;
                     color: var(--value); font-variant-numeric: tabular-nums; }
-  .gauge .track { margin-top: 7px; }
+  .gauge .track { margin-top: 7px; position: relative; }
+  /*
+   * The line a cost gauge crosses, in the accent that only ever means a warning.
+   *
+   * Taller than the track it sits on, the same way the pay bars' marker is, so it reads as a
+   * mark *on* the bar rather than as a piece of the fill. Two pixels wide rather than one:
+   * against a two-pixel track a hairline disappears at anything but full zoom, and this is a
+   * thing a player looks for rather than at.
+   */
+  .gauge .track u { position: absolute; top: -2px; width: 2px; height: 6px;
+                    background: var(--oxide); }
   /*
    * The bar warms as it goes wrong.
    *
@@ -7740,7 +7750,28 @@ function renderSurvivor(survivor, strain, vitals, inventory, panelId) {
    * high. Everything else about a gauge is the same in both directions, so this is the only
    * thing the bar needs to be told in order to colour itself.
    */
-  const RISING = new Set(['hunger', 'radiation']);
+  const RISING = new Set(['hunger', 'thirst', 'radiation']);
+
+  /*
+   * And where each of those three starts costing health, as a share of the track.
+   *
+   * **This is the thing that tells the two families of gauge apart at a glance**, and it is a
+   * fact about the mechanic rather than a decoration: health and stamina are quantities you
+   * *have*, where full is good and there is no line anywhere on them. Hunger, thirst and the
+   * dose are quantities that accumulate *against* you, and every one of them has a point where
+   * it stops being a reading and starts taking health.
+   *
+   * Until now the only thing separating the two was the heat of the fill, which on a two-pixel
+   * bar is a subtlety — five identical bars where a full one means "excellent" on two of them
+   * and "dying" on three. A mark on the track says which kind of gauge this is before the
+   * label has been read, and it says something the page never said at all: *how far away that
+   * is*.
+   *
+   * Radiation is absent because its bar is already scaled to its own tipping point rather than
+   * to a hundred — `gauge` is handed `strain.threshold` as its `of` — so on that one the end of
+   * the track *is* the line. Giving it a second mark would be saying the same thing twice.
+   */
+  const BITES_AT = { hunger: vitals?.starvationThreshold, thirst: vitals?.thirstThreshold };
 
   const gauge = (label, value, of, note, tail = '', acting = [], rate = 0) => {
     const key = label.toLowerCase();
@@ -7780,6 +7811,10 @@ function renderSurvivor(survivor, strain, vitals, inventory, panelId) {
           ? `<i class="${
               rate > 0 ? 'drift-up' : rate < 0 ? 'drift-down' : ''
             }" style="width:${bar(value, of)}%; --heat:${heat.toFixed(3)}"></i>`
+          : ''
+      }${
+        BITES_AT[key] > 0
+          ? `<u style="left:${bar(BITES_AT[key], of)}%" aria-hidden="true"></u>`
           : ''
       }</div>${marks(acting)}${tail}${note}
     </div>`;

@@ -214,6 +214,33 @@ export async function buildStates(client, now = Date.now()) {
     );
   }
 
+  /*
+   * 5c. A camp whose tank has run dry, which is the only state the thirst gauge exists for.
+   *
+   * The sleeping camp produces one too — nobody drinks in their sleep — but only when the
+   * wall clock happens to leave somebody under at the instant the fixture renders, and these
+   * are built against `Date.now()`. A gauge that is in the saved states on some runs and not
+   * others is a gauge nothing can be designed against, and the page contract *requires* one.
+   *
+   * Thirty hours of nothing to drink: past the threshold, so the mark on the track is behind
+   * the fill rather than ahead of it, which is the reading the mark is for.
+   */
+  {
+    const id = await camp(client, now);
+    await raiseSuccessor(client, id, { name: 'Sol', now });
+    await client.query(
+      `update resources set amount = 0 where settlement_id = $1 and kind = 'water'`,
+      [id],
+    );
+    await client.query(
+      `update camp_structures set level = 0 where settlement_id = $1 and kind = 'water_purifier'`,
+      [id],
+    );
+    states['parched'] = campPage(await viewCamp(client, id, now + 30 * HOUR), {
+      pane: 'survivor',
+    });
+  }
+
   // 6. Two events at once, so the sky carries its stacking line.
   {
     const id = await camp(client, now);

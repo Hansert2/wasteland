@@ -7057,6 +7057,37 @@ The two panels are written to be read against each other, and the last row of ea
 in two lines: **starves at 70+, and takes about three weeks** against **kills at 70+, and takes
 about two days.**
 
+### Telling the two families of gauge apart, asked 2026-09-14 after the deploy
+
+**And a bug the question found.** `RISING` is the set that decides which way a gauge's bar
+warms — health and stamina heat as they empty, hunger and the dose as they fill. Thirst was not
+in it, so **the gauge that kills read as coolest at a hundred**: the closer to death, the
+healthier it looked. Shipped that way, and nothing would have caught it but somebody looking.
+
+The question behind it was the better one: should hunger and thirst be drawn differently from
+health and stamina at all? **Yes, and the honest difference is a fact about the mechanic rather
+than a decoration.** Health and stamina are quantities you *have* — full is good, and there is
+no line anywhere on them. Hunger, thirst and the dose accumulate *against* you, and every one
+of them has a point where it stops being a reading and starts taking health.
+
+So the cost gauges carry that point on the track, as a two-pixel oxide mark: **a line the fill
+crosses.** Before this the only thing separating the two families was the heat of the fill,
+which on a two-pixel bar is a subtlety — five identical bars where a full one means "excellent"
+on two of them and "dying" on three. The mark says which kind of gauge it is before the label
+has been read, and it says something the page never said at all: *how far away that is.*
+
+Radiation is deliberately without one. Its bar is already scaled to its own tipping point rather
+than to a hundred — `gauge` is handed `strain.threshold` as its `of` — so on that gauge the end
+of the track already *is* the line, and a second mark would say the same thing twice. Bringing
+it onto the same 0-100 scale with a mark that moves with medicine is the obvious next step and
+is **not** taken here, because it changes how an existing gauge reads for every camp and is
+worth its own look.
+
+**`parched` is a saved state now.** The sleeping camp produces a thirst gauge too, but only when
+the wall clock happens to leave somebody under at the instant the fixture renders — and these
+are built against `Date.now()`. A gauge that is in the saved states on some runs and not others
+is a gauge nothing can be designed against, and the page contract *requires* one.
+
 ### What the migration does not do
 
 `028` adds `thirst` at zero and **does not rescale `hunger`.** A survivor sitting at 80 hunger
