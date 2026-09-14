@@ -1496,11 +1496,29 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
   const materials = [
     ...new Set(recipes.flatMap((one) => (one.inputs ?? []).map((input) => input.slug))),
   ].map((slug) => {
+    /*
+     * Who is holding it, and whether the bench can reach them.
+     *
+     * The bench spends out of every pack in the camp and the box — 2026-09-14 — so what the
+     * counter should say it *holds* is exactly that set. A pack twenty hours down the road is
+     * not reachable and never was: counting it here would put the readout and the refusal back
+     * into the disagreement this change closed, with the arithmetic simply moved.
+     *
+     * The away holders are still listed, because "the parts are with Wren, who is out" is the
+     * most useful sentence this counter can say to somebody wondering where they went.
+     */
     const holders = inventoryRows
       .filter((row) => row.slug === slug)
-      .map((row) => ({ name: nameOf(row.character_id), qty: Number(row.qty) }))
-      .sort((a, b) => b.qty - a.qty);
+      .map((row) => ({
+        name: nameOf(row.character_id),
+        qty: Number(row.qty),
+        away: busyBy.get(Number(row.character_id))?.kind === 'away',
+      }))
+      .sort((a, b) => Number(a.away) - Number(b.away) || b.qty - a.qty);
     const box = Number(boxRows.find((row) => row.slug === slug)?.qty ?? 0);
+    const outThere = holders
+      .filter((one) => one.away)
+      .reduce((sum, one) => sum + one.qty, 0);
 
     const roads = regionRows
       .map((region) => {
@@ -1537,9 +1555,10 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
        * the app spells a material off its slug, and this is a readout in a label strip.
        */
       name: slug.replaceAll('_', ' '),
-      held: holders.reduce((sum, one) => sum + one.qty, 0) + box,
+      held: holders.filter((one) => !one.away).reduce((sum, one) => sum + one.qty, 0) + box,
       holders,
       box,
+      outThere,
       roads,
       wantedBy: recipes
         .filter((one) => (one.inputs ?? []).some((input) => input.slug === slug))

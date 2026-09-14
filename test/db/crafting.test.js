@@ -6,6 +6,7 @@ import { loadWorld } from '../../src/db/world.js';
 import { advanceSettlement } from '../../src/services/advance-settlement.js';
 import { startBuild } from '../../src/services/start-build.js';
 import { startCraft } from '../../src/services/start-craft.js';
+import { dispatchExpedition } from '../../src/services/dispatch-expedition.js';
 import { viewCamp } from '../../src/services/view-camp.js';
 import { campPage } from '../../src/web/render.js';
 import { foundSettlement, raiseSuccessor } from '../../src/services/settlement-lifecycle.js';
@@ -535,6 +536,108 @@ test('what a recipe makes is said in the words the pack already uses', async () 
     assert.equal(recipe.worth, inPack.worth, 'and says it exactly as the pack does');
     assert.match(recipe.worth, /%/, 'gear reads as a percentage');
     assert.ok(recipe.weighs, 'and what it weighs, which decides where it lands');
+  });
+});
+
+test('the bench spends out of every pack in the camp, not just the crafter’s', async () => {
+  /*
+   * The user's call on 2026-09-14, and it closes a disagreement rather than adding a feature.
+   * `viewCamp` has counted materials across every pack and the box since Phase 13 — the
+   * counter even names who is holding what — while the bench could see one pack and the box.
+   * So a camp could be told it held three parts, by a readout listing the three people holding
+   * them, and then be refused by a service that could reach one of them.
+   */
+  await withRollback(async (client) => {
+    const { settlementId, recipeSlug, materialSlug } = await setup(client, { workshop: 4 });
+    // The probe material is made inside `setup`, so the recipe is pointed at it afterwards.
+    await client.query('update recipes set inputs = $2::jsonb where slug = $1', [
+      recipeSlug,
+      JSON.stringify([{ slug: materialSlug, qty: 3 }]),
+    ]);
+
+    const { rows: crafter } = await client.query(
+      `select id from characters where settlement_id = $1 and died_at is null`,
+      [settlementId],
+    );
+    const { rows: other } = await client.query(
+      `insert into characters (settlement_id, name, born_at) values ($1, 'Marek', now())
+       returning id`,
+      [settlementId],
+    );
+
+    // One each and one on the shelf: no single holding is enough, and the camp has plenty.
+    await client.query(
+      `insert into inventory_items (character_id, item_id, qty)
+       select $1, id, 1 from items where slug = $2`,
+      [crafter[0].id, materialSlug],
+    );
+    await client.query(
+      `insert into inventory_items (character_id, item_id, qty)
+       select $1, id, 1 from items where slug = $2`,
+      [other[0].id, materialSlug],
+    );
+    await client.query(
+      `insert into store_items (settlement_id, item_id, qty)
+       select $1, id, 1 from items where slug = $2`,
+      [settlementId, materialSlug],
+    );
+
+    const view = await viewCamp(client, settlementId);
+    const counter = view.materials.find((one) => one.slug === materialSlug);
+    assert.equal(counter.held, 3, 'the counter says the camp holds three');
+
+    await startCraft(client, settlementId, recipeSlug, Date.now());
+
+    // And all three places were emptied, the packs before the box.
+    const { rows: left } = await client.query(
+      `select coalesce((select sum(ii.qty) from inventory_items ii join items i on i.id = ii.item_id
+                         join characters c on c.id = ii.character_id
+                        where c.settlement_id = $1 and i.slug = $2), 0) as carried,
+              coalesce((select sum(si.qty) from store_items si join items i on i.id = si.item_id
+                        where si.settlement_id = $1 and i.slug = $2), 0) as stored`,
+      [settlementId, materialSlug],
+    );
+    assert.equal(Number(left[0].carried), 0, 'both packs were spent');
+    assert.equal(Number(left[0].stored), 0, 'and the box behind them');
+  });
+});
+
+test('a pack twenty hours down the road is not one the bench can reach', async () => {
+  /*
+   * The one holding it cannot reach, and the same line `moveItem` draws: away is away. The
+   * counter must agree — counting what is out there would put the readout and the refusal back
+   * into the disagreement above with the arithmetic simply moved.
+   */
+  await withRollback(async (client) => {
+    const { settlementId, recipeSlug, materialSlug } = await setup(client, { workshop: 4 });
+    await client.query('update recipes set inputs = $2::jsonb where slug = $1', [
+      recipeSlug,
+      JSON.stringify([{ slug: materialSlug, qty: 2 }]),
+    ]);
+
+    const { rows: walker } = await client.query(
+      `insert into characters (settlement_id, name, born_at) values ($1, 'Marek', now())
+       returning id`,
+      [settlementId],
+    );
+    await client.query(
+      `insert into inventory_items (character_id, item_id, qty)
+       select $1, id, 2 from items where slug = $2`,
+      [walker[0].id, materialSlug],
+    );
+    await dispatchExpedition(client, settlementId, 'the_fence_line', Date.now(), walker[0].id);
+
+    const view = await viewCamp(client, settlementId);
+    const counter = view.materials.find((one) => one.slug === materialSlug);
+    assert.equal(counter.held, 0, 'the counter does not count what is on the road');
+    assert.equal(counter.outThere, 2, 'but it still knows where they went');
+    assert.equal(counter.holders[0].away, true, 'and says so on the holder');
+
+    await assert.rejects(
+      () => startCraft(client, settlementId, recipeSlug, Date.now()),
+      /Not enough/,
+      'and the bench refuses for the same reason the counter reads zero',
+    );
   });
 });
 

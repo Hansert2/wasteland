@@ -9389,10 +9389,19 @@ function materialCount(m) {
     </span>`;
 }
 
-/** Where they are, because a pile split across two packs is not a pile the bench can spend. */
+/**
+ * Where they are — and since 2026-09-14 that is a list of places the bench can reach, not a
+ * warning that the pile is split.
+ *
+ * It used to read "a pile split across two packs is not a pile the bench can spend", which was
+ * true and is not any more: the workshop spends out of every pack in the camp and the box. The
+ * one holding it cannot reach is somebody out on the road, and that is said rather than
+ * silently counted.
+ */
 function saysWhere(m) {
   const said = m.holders.map(
-    (one) => `${one.qty} in ${one.name ? `${escape(one.name)}&rsquo;s pack` : 'a pack'}`,
+    (one) =>
+      `${one.qty} with ${one.name ? escape(one.name) : 'somebody'}${one.away ? ', out there' : ''}`,
   );
   if (m.box > 0) said.push(`${m.box} in the box`);
   return said.join(', ');

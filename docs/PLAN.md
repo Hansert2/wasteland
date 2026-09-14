@@ -6121,6 +6121,47 @@ happened.
 so a hunt that resolved before a wording change keeps the words it was written with. That block
 is a record of an evening, not a render of one.
 
+## The bench stopped caring whose pocket it was in — 2026-09-14
+
+*Reported in one line: "the workshop should disregard in which inventory the resources are."*
+
+**This closed a disagreement rather than adding a feature, and the disagreement is the reason
+it matters.** `viewCamp` has counted materials across every pack *and* the box since Phase 13 —
+the counter even names who is holding what, and a db test pins the sentence "packs and the box
+together". `consumeInputs` could see the crafter's pack and the box. So a camp could be told it
+held three scavenged parts, **by a readout listing the three people holding them**, and then be
+refused by a service that could reach one of them.
+
+Two readers of one fact, disagreeing, which is this project's oldest failure shape. The counter
+was right — the camp does hold them — so the bench was what had to move.
+
+### What it reaches
+
+Every pack in the camp, and the box. **A survivor who is away keeps theirs**: the pack is twenty
+hours down the road and so are they, which is the same line `moveItem` draws and the same one
+Phase 13 settled. Nothing else disqualifies a holder — somebody at the fence is standing in the
+camp, and what the bench takes off them is a material rather than the weapon `standFor` reads.
+
+### The order is inherited, not invented
+
+**Packs first, the box last**, which is the reasoning the crafter's pack already carried,
+generalised: a survivor's own materials are the ones that die with them, so spending those
+first is the ordering that loses least, and it keeps the box a reserve rather than the first
+thing raided. Among the packs the crafter's goes first — they are standing at the bench — and
+the rest follow in roster order, so two identical camps spend identically.
+
+### And the counter had to move too
+
+Or the same disagreement would have come back with the arithmetic moved: the page was counting
+what an away survivor is carrying, which the bench cannot reach. `held` is now exactly what the
+bench can spend, the away holdings are reported separately as `outThere`, and the holder list
+says *"2 with Wren, out there"* — because that is the most useful sentence this counter can say
+to somebody wondering where the parts went.
+
+`saysWhere`'s own comment had to go with it. It read *"a pile split across two packs is not a
+pile the bench can spend"*, which was true when it was written and is the thing this change
+made false.
+
 ## Not planned
 
 - **Alts.** `settlements_player_idx` is unique on `player_id`. Drop it if this ever

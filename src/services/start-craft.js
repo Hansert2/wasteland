@@ -158,17 +158,33 @@ async function payCosts(client, settlementId, recipe) {
 }
 
 /**
- * Spend materials out of the crafter's pack, and out of the camp box behind it.
+ * Spend a recipe's materials out of the camp, wherever in it they happen to be.
  *
- * **The box is reachable from the bench** — the user's call on 2026-09-02, and the point of
- * the phase. Finds land on whoever walked, so the parts for one vest end up spread across
- * three people; if the bench could only see one pack, the fix for that would be shuttling
- * everything to the crafter before every order, which is busywork replacing an
- * impossibility.
+ * **The bench does not care whose pocket a coil of wire is in** — the user's call on
+ * 2026-09-14, and it closes a disagreement the page had been losing. `viewCamp` has counted
+ * materials across every pack *and* the box since Phase 13, and the counter even names who is
+ * holding what: "packs and the box together". The bench could see one pack and the box. So a
+ * camp could be told it held three scavenged parts, by a readout that listed the three people
+ * holding them, and then be refused by a service that could only reach one of them.
  *
- * **The pack is spent first.** Not arbitrary: a survivor's own materials are the ones that
- * die with them, so spending those first is the ordering that loses least. It also keeps the
- * box as what it is — a reserve — rather than the first thing raided.
+ * That is this project's oldest fault in a new place: two readers of one fact, disagreeing.
+ * The counter was right — the camp does hold them — so the bench was what had to move.
+ *
+ * ### What it can reach, and the one thing it cannot
+ *
+ * Every pack **in the camp**, and the box. A survivor who is away keeps theirs: the pack is
+ * twenty hours down the road and so are they, which is the same line `moveItem` draws and the
+ * same one Phase 13 settled. Nothing else disqualifies a holder — somebody at the fence is
+ * standing in the camp, and what the bench takes off them is a material rather than the weapon
+ * `standFor` is reading.
+ *
+ * ### The order, which is inherited rather than invented
+ *
+ * **Packs first, the box last**, for the reason the crafter's pack went first before this: a
+ * survivor's own materials are the ones that die with them, so spending those first is the
+ * ordering that loses least, and it keeps the box as a reserve rather than the first thing
+ * raided. Among the packs the crafter's goes first — they are standing at the bench — and the
+ * rest follow in roster order so that two identical camps spend identically.
  *
  * The recipe's argument survives all of this. *The interesting half of a recipe is the thing
  * you had to go and find* is about where a material came from, not which pocket it sat in.
@@ -177,63 +193,101 @@ async function consumeInputs(client, settlementId, characterId, recipe) {
   const inputs = recipe.inputs ?? [];
   if (inputs.length === 0) return;
 
-  const { rows } = await client.query(
-    `select i.slug, i.name,
-            coalesce(ii.qty, 0) as carried,
-            coalesce(si.qty, 0) as stored,
-            coalesce(ii.qty, 0) + coalesce(si.qty, 0) as qty
-       from items i
-       left join inventory_items ii on ii.item_id = i.id and ii.character_id = $1
-       left join store_items si on si.item_id = i.id and si.settlement_id = $2
-      where coalesce(ii.qty, 0) + coalesce(si.qty, 0) > 0`,
-    [characterId, settlementId],
+  /*
+   * Whose pack is in the camp, crafter first and then roster order. `not exists` against an
+   * active expedition rather than a join: a survivor with two trips in their history would
+   * otherwise appear twice and be charged twice.
+   */
+  const { rows: holders } = await client.query(
+    `select c.id from characters c
+      where c.settlement_id = $1 and c.died_at is null
+        and not exists (
+          select 1 from expeditions e where e.character_id = c.id and e.status = 'active'
+        )
+      order by (c.id = $2) desc, c.born_at, c.id`,
+    [settlementId, characterId],
   );
-  const pack = new Map(rows.map((row) => [row.slug, row]));
+  const reachable = holders.map((row) => Number(row.id));
 
+  const { rows: carried } = await client.query(
+    `select ii.character_id, i.slug, i.name, ii.qty
+       from inventory_items ii join items i on i.id = ii.item_id
+      where ii.character_id = any($1) and ii.qty > 0`,
+    [reachable],
+  );
+  const { rows: boxed } = await client.query(
+    `select i.slug, i.name, si.qty
+       from store_items si join items i on i.id = si.item_id
+      where si.settlement_id = $1 and si.qty > 0`,
+    [settlementId],
+  );
+
+  /** Every place a slug is held, in the order the bench would empty them. */
+  const sources = new Map();
+  const nameOf = new Map();
+  const put = (slug, name, where, qty) => {
+    nameOf.set(slug, name);
+    if (!sources.has(slug)) sources.set(slug, []);
+    sources.get(slug).push({ where, qty: Number(qty) });
+  };
+  for (const id of reachable) {
+    for (const row of carried.filter((one) => Number(one.character_id) === id)) {
+      put(row.slug, row.name, id, row.qty);
+    }
+  }
+  for (const row of boxed) put(row.slug, row.name, 'box', row.qty);
+
+  // Every input, before anything is spent: a refusal is not a partial craft.
   for (const { slug, qty } of inputs) {
-    const carried = pack.get(slug);
-    if (!carried || carried.qty < qty) {
-      const name = carried?.name ?? slug.replaceAll('_', ' ');
+    const held = (sources.get(slug) ?? []).reduce((sum, one) => sum + one.qty, 0);
+    if (held < qty) {
+      const name = nameOf.get(slug) ?? slug.replaceAll('_', ' ');
       throw new InputError(`Not enough ${name} — that needs ${qty}.`);
     }
   }
 
   for (const { slug, qty } of inputs) {
-    const held = pack.get(slug);
-    const fromPack = Math.min(qty, Number(held.carried));
-    const fromBox = qty - fromPack;
+    let left = qty;
 
-    if (fromPack > 0) {
-      const { rowCount } = await client.query(
-        `update inventory_items ii set qty = ii.qty - $3
-           from items i
-          where i.id = ii.item_id and ii.character_id = $1 and i.slug = $2 and ii.qty >= $3`,
-        [characterId, slug, fromPack],
-      );
+    for (const source of sources.get(slug) ?? []) {
+      if (left <= 0) break;
+      const take = Math.min(left, source.qty);
+
+      const { rowCount } =
+        source.where === 'box'
+          ? await client.query(
+              `update store_items si set qty = si.qty - $3
+                 from items i
+                where i.id = si.item_id and si.settlement_id = $1 and i.slug = $2
+                  and si.qty >= $3`,
+              [settlementId, slug, take],
+            )
+          : await client.query(
+              `update inventory_items ii set qty = ii.qty - $3
+                 from items i
+                where i.id = ii.item_id and ii.character_id = $1 and i.slug = $2
+                  and ii.qty >= $3`,
+              [source.where, slug, take],
+            );
+
       if (rowCount === 0) {
-        throw new InputError(`Not enough ${slug.replaceAll('_', ' ')} — that needs ${qty}.`);
+        throw new InputError(`Not enough ${nameOf.get(slug) ?? slug.replaceAll('_', ' ')} — that needs ${qty}.`);
       }
+      left -= take;
     }
 
-    if (fromBox > 0) {
-      const { rowCount } = await client.query(
-        `update store_items si set qty = si.qty - $3
-           from items i
-          where i.id = si.item_id and si.settlement_id = $1 and i.slug = $2 and si.qty >= $3`,
-        [settlementId, slug, fromBox],
-      );
-      if (rowCount === 0) {
-        throw new InputError(`Not enough ${slug.replaceAll('_', ' ')} — that needs ${qty}.`);
-      }
+    if (left > 0) {
+      throw new InputError(`Not enough ${nameOf.get(slug) ?? slug.replaceAll('_', ' ')} — that needs ${qty}.`);
     }
-
-    // Empty rows go, on both sides, so a pack and a box read the same way after a craft as
-    // they do after anything else that spends from them.
-    await client.query('delete from inventory_items where character_id = $1 and qty <= 0', [
-      characterId,
-    ]);
-    await client.query('delete from store_items where settlement_id = $1 and qty <= 0', [
-      settlementId,
-    ]);
   }
+
+  // Empty rows go, on both sides, so a pack and a box read the same way after a craft as they
+  // do after anything else that spends from them.
+  await client.query(
+    'delete from inventory_items where character_id = any($1) and qty <= 0',
+    [reachable],
+  );
+  await client.query('delete from store_items where settlement_id = $1 and qty <= 0', [
+    settlementId,
+  ]);
 }
