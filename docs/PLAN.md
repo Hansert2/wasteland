@@ -4898,7 +4898,7 @@ record, keyed to a place and a time, and the recovery trip reads that. The casca
 true, and "most of it is lost" becomes a number in that record rather than an accident of
 deletion.
 
-### Phase 17 — faction relations
+### Phase 17 — faction relations ✅ *(built 2026-09-14; written up at the end)*
 
 *Against: two factions is a rivalry with a slider, not a world.*
 
@@ -6405,7 +6405,7 @@ database actually holds, rounding costs eight points at zero hours and pays five
 days. 0.7 is the nominal; 62% is the number to quote at the balance of a camp, and it is the
 one figure this phase adds.
 
-## Phase 17 — faction relations, designed 2026-09-14 (17a, 17b and 17c built the same day)
+## Phase 17 — faction relations, designed and built 2026-09-14 ✅
 
 *Against: two factions is a rivalry with a slider, not a world.*
 
@@ -6725,9 +6725,109 @@ The existing trade tests now run at **era 8 of the real world, a season every cr
 in**, found by walking `relationsAt` rather than by hoping. Without that they would quote a
 different number in March than in April — not a flaky test so much as a test of nothing.
 
-### Still to build: 17d, and the encounters
+### 17d — taking a side, built 2026-09-14
 
-Taking a side, and the moment content that makes a contested road feel like one.
+**Before this, trade was the only verb in the game that could change a crew's mind.** The
+`standing` axis has been on the moments since they were written, and every moment on it only
+ever *read* standing — `parley` asks what they think of the camp and nothing anywhere answered
+back. That is the gap 17d closes, and it is also the fourth effect the 17c list left open:
+the encounter content that makes a contested road feel like one.
+
+`the_standoff` is a moment that exists **only while two crews are actually falling out over the
+road you are on** — and that gating is the payoff for putting relations in the world rather
+than on the camp in 17b. `momentsFor` is a pure function of a region and a seed and knows
+nothing whatever about the settlement, so a camp-shaped fact could never have gated a moment.
+A world-shaped one can.
+
+### It replaces the standing moment; it never adds one
+
+The first draft put it in `eligible`, which is a trap: `pickDistinctAxes` draws from that list,
+so a candidate appearing or disappearing **re-rolls every moment on the trip and every hour
+they sit at.** Since eligibility here depends on the season, that would have made the same seed
+on the same road offer a different four moments in March than in April — and worse, a trip
+whose season turned mid-walk would have changed under the player between two page loads.
+
+Swapped *after* the axes are picked and the hours are placed — the same trick the night table
+plays — the count, the axes, the windows and the faction draw are all untouched. What changes
+is which standing moment you meet on ground two crews are falling out over. The quarrel is read
+at the hour the trip **left**, so a season turning mid-walk cannot move it.
+
+### Three options and not four
+
+The overhaul also asks for *"remain neutral at a material cost"*, and there is nowhere honest
+to put it. The default must be a no-op — what the trip would have done with nobody on the page
+— so neutrality is free by construction, and a fourth option that cost standing with both and
+bought nothing would be a button nobody presses. **The material cost of staying out is the
+twenty points not taken.**
+
+The hour is what siding costs in the world rather than in the ledger. Standing in somebody
+else's quarrel is not a thing done in passing.
+
+### Twenty, and the ratio is the design
+
+`SIDING_SWING` against `TRADE_STANDING_GAIN` of six: **one press is worth three and a bit
+caravans in each direction at the same time.** Symmetric, so siding nets the camp nothing
+overall and is purely a choice about *who* — there is no side of this that is simply better,
+only a side that suits the camp you are running.
+
+Priced against a measured figure rather than picked. `caravan-reach` puts the mean wait for a
+particular crew at 8.2 days, so undoing a side taken is 3.3 caravans, **about 27 days of
+waiting**. Consequential and recoverable, which is the pair of words the design asked for; a
+much larger swing would make one unlucky press something a camp never gets out of.
+
+### How often the question is asked — `tools/taking-sides.mjs`
+
+It needs three things at once: a trip to ground somebody holds, a season those crews are
+falling out in, and a seed that rolls a standing-axis moment. The product of three likely
+things is where intuition reliably fails, so it was measured.
+
+    the service road      12.5% of trips        coastal wreckage    never
+    ruined city           14.7%                 the deep zone       never
+    irradiated farmland   19.1%                 the fence line      never
+    sixteen wells         31.4%
+    the millrace          33.0%
+    underground bunkers   35.0%
+    the waterworks        35.3%
+    harrow end            37.5%
+
+**19.9% across the map**, and the gradient is right: the roads worth walking are the roads
+worth fighting over. Read against the twenty-two moments now in the table, that is about what
+*any* moment comes up at — the standoff is an ordinary-frequency moment and what is rare is the
+quarrel, which is what the substitution produces by construction.
+
+**Not reduced, and the exposure is recorded rather than hidden.** A camp working the far roads
+and answering every standoff could reach +100 with one crew in a handful of days, and −100 with
+the other two. That is a *stance*, which is what 17a said three crews were for, and it costs
+worse prices and more raids from two crews out of three. The lever if play disagrees is to gate
+the standoff on `hostile` alone rather than on hostile-or-tense, which roughly halves the
+seasons it can appear in. **Named, not built.**
+
+### Where the standing is written, and the trap it walks around
+
+`saveWorld` does not persist `faction_standing` — the same shape that ate Phase 12's wake for
+four phases. So `resolveExpedition` records the side on the trip, the tick emits a
+`took_a_side` event, and **`advance-settlement` does the write**, exactly as it settles the
+raid's wake and the packs of the dead. Nobody who did not come home is remembered as having
+taken a side: the crews saw somebody stand there and then never saw them again, which settles
+nothing.
+
+### Two things the page had to be made to say
+
+**The option carries two chips, not one.** Without them the only visible cost of pressing it
+would be the hour, and the thing that actually happens would be a surprise read in the log
+hours later. Two rather than one because the whole point of the choice is that it is two things
+at once — a single "+20 standing" would be the half of it that flatters.
+
+**The crews are named in the text, by substitution.** Three crews make three pairs and two
+orderings each, which is six hand-written versions of one scene to keep in step. `{holder's}`
+is its own token rather than `{holder}` with an apostrophe-s after it, because every crew in
+this game is a plural ending in one: the night label read *"Walk in on The Junction Crews's
+side"* on the first page it was ever rendered to.
+
+### Still to build
+
+Nothing in Phase 17. The next phases are 18 (grams and litres) and then 19, which the user
+deferred until 18 has shipped **and been played**.
 
 ## Not planned
 

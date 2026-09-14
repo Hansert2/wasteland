@@ -16,7 +16,18 @@
  */
 import { makeRandom, mix } from './random.js';
 import { FACTIONS } from './factions.js';
+import { HOLDINGS, SIDING_SWING, quarrelOver } from './relations.js';
+import { WORLD_SEED } from './world-events.js';
 import { isLit, DEFAULT_SOLAR_NOON } from './daylight.js';
+
+/**
+ * Every place somebody holds, which is where a quarrel between crews can be walked into.
+ *
+ * Derived from `HOLDINGS` rather than retyped, so a road changing hands is one edit. The three
+ * unheld places — the fence line, the coast and the Deep Zone — are absent by construction,
+ * which is the Deep Zone staying nobody's business in one more place.
+ */
+const HELD_REGIONS = Object.values(HOLDINGS).flat();
 
 const FACTION_SLUGS = Object.keys(FACTIONS).sort();
 
@@ -662,6 +673,60 @@ export const MOMENTS = {
     ],
   },
 
+  /*
+   * Phase 17d, and the first thing on the road that has ever moved standing.
+   *
+   * `axis: 'standing'` has named this axis since the moments were written, and until now every
+   * moment on it only ever *read* standing — `parley` asks what they think of the camp and
+   * nothing anywhere answers back. Trade was the only verb in the game that could change a
+   * crew's mind. This is the other one, and it is the "rare and consequential" choice the
+   * overhaul asks for: one press is worth three and a bit caravans in each direction at once.
+   *
+   * **It exists only when two crews are actually falling out**, which is the payoff for
+   * putting relations in the world rather than on the camp in 17b: `momentsFor` is a pure
+   * function of a region and a seed and knows nothing whatever about the settlement, so a
+   * camp-shaped fact could never have gated a moment. A world-shaped one can.
+   *
+   * Three options and not four. The overhaul also asks for "remain neutral at a material
+   * cost", and there is nowhere honest to put it: the default must be a no-op — what the trip
+   * would have done with nobody on the page — so neutrality is free by construction, and a
+   * fourth option that cost standing with both and bought nothing would be a button nobody
+   * presses. The material cost of staying out is the twenty points not taken.
+   *
+   * The hour is what siding costs in the world rather than in the ledger. Standing in
+   * somebody else's quarrel is not a thing done in passing.
+   */
+  the_standoff: {
+    axis: 'standing',
+    /* Only on ground somebody holds, and only while they are falling out over it. */
+    needsQuarrel: true,
+    regions: HELD_REGIONS,
+    title: 'Two crews, one road',
+    scene:
+      'Two vehicles nose to nose across the track and eleven people standing between them, and it has plainly been going on a while — somebody has made tea. Nothing is pointed at anything yet, and everyone is standing where they would want to be standing if that changed.',
+    prose:
+      '{holder} hold this road and {other} have come down it. Both of them have seen the survivor now, and both are waiting to see which way they walk.',
+    options: [
+      { key: 'wide', verb: 'default', label: 'Go wide of it', detail: 'they walk on, unseen' },
+      {
+        key: 'holder',
+        verb: 'side',
+        label: 'Stand with {holder}',
+        detail: 'whose road it is — an hour, and {other} will hear about it',
+        hours: 1,
+        sides: 'holder',
+      },
+      {
+        key: 'other',
+        verb: 'side',
+        label: 'Stand with {other}',
+        detail: 'who came a long way for it — an hour, and {holder} will hear about it',
+        hours: 1,
+        sides: 'other',
+      },
+    ],
+  },
+
 };
 
 /**
@@ -987,6 +1052,25 @@ export const NIGHT = {
       help: { label: 'Get them upright, lit', detail: 'an hour, a ration, a story, and a light everyone can see' },
     },
   },
+
+  /*
+   * The standoff after dark, and the dark does the same thing to it that it does to `the_fire`:
+   * it takes away the option of not being noticed at all and leaves only the question of which
+   * way you walk. Both crews already know somebody is on this road. What they do not know is
+   * whose side that somebody comes out on.
+   */
+  the_standoff: {
+    title: 'Two sets of headlights',
+    scene:
+      'Two vehicles nose to nose with their lights on full, and the ground between them lit like a stage. Everyone standing in it has been there long enough to have stopped squinting, and long enough for the cold to have got into them.',
+    prose:
+      '{holder} hold this road and {other} have come down it. The survivor’s own light has been visible from the rise for ten minutes, so both of them know somebody is out here; what neither knows yet is which way that somebody walks.',
+    options: {
+      wide: { label: 'Douse the light and go round', detail: 'the long way, and no face to put to it' },
+      holder: { label: 'Walk in on {holder’s} side', detail: 'whose road it is — an hour, and {other} get a good look' },
+      other: { label: 'Walk in on {other’s} side', detail: 'who came a long way for it — an hour, and {holder} get a good look' },
+    },
+  },
 };
 
 /**
@@ -1131,6 +1215,45 @@ function wordsFor(key, at, region) {
   };
 }
 
+/**
+ * The crews' names written into a moment that is about the two of them.
+ *
+ * Text only — title, scene, turn, and an option's `label` and `detail` — which is the same
+ * constraint `NIGHT` is held to and for the same reason: an option's key, verb, hours and
+ * factors have to survive, or a rewritten label quietly ships an option that costs nothing.
+ * There is nowhere here to put a number.
+ */
+function fillPair(words, quarrel) {
+  const holder = FACTIONS[quarrel.holder]?.name ?? quarrel.holder;
+  const other = FACTIONS[quarrel.other]?.name ?? quarrel.other;
+  /*
+   * `{holder's}` is its own token rather than `{holder}` with an apostrophe-s written after
+   * it, because every crew in the game is a plural whose name ends in one: the night label
+   * read "Walk in on The Junction Crews's side" on the first page it was ever rendered to.
+   * A name that did not end in s would take the full ending, which is why this is a rule
+   * rather than a hard-coded apostrophe.
+   */
+  const possessive = (name) => (name.endsWith('s') ? `${name}’` : `${name}’s`);
+  const fill = (text) =>
+    String(text ?? '')
+      .replaceAll('{holder’s}', possessive(holder))
+      .replaceAll('{other’s}', possessive(other))
+      .replaceAll('{holder}', holder)
+      .replaceAll('{other}', other);
+
+  return {
+    ...words,
+    title: fill(words.title),
+    scene: fill(words.scene),
+    prose: fill(words.prose),
+    options: words.options.map((option) => ({
+      ...option,
+      label: fill(option.label),
+      detail: fill(option.detail),
+    })),
+  };
+}
+
 export function momentsFor(region, seed) {
   const travelHours = Number(region?.travelHours) || 0;
   /*
@@ -1153,12 +1276,36 @@ export function momentsFor(region, seed) {
 
   const random = makeRandom(mix(seed, MOMENTS_SALT));
 
+  /*
+   * Where the trip started, or null for a caller that has not said.
+   *
+   * Read before eligibility rather than after it, which it was not until 17d: the standoff is
+   * only on the table while two crews are falling out, so the departure has to be known before
+   * the list of candidates is built.
+   *
+   * Null means daylight everywhere below *and* no quarrel anywhere — which is how a bare
+   * region behaves, how every trip taken before Phase 14 replays, and how `moment-balance` and
+   * every other pure caller keeps working without being handed a clock.
+   */
+  const departedAt = Number.isFinite(region?.departedAt) ? Number(region.departedAt) : null;
+
+  /*
+   * Whose quarrel this road is in, read once at the *departure* and carried.
+   *
+   * Not at the hour it is being looked at, and that is not tidiness. Eligibility feeds
+   * `pickDistinctAxes`, so a season turning mid-walk would re-roll the trip's entire moment
+   * list between two page loads. A 26-hour trip against a 28-day season makes that about one
+   * trip in twenty-five: often enough to be reported, rare enough never to reproduce.
+   */
+  const quarrel = departedAt === null ? null : quarrelOver(WORLD_SEED, region.slug, departedAt);
+
   const like = PLAYS_LIKE[region.slug];
   const eligible = Object.keys(MOMENTS)
     .filter(
       (key) =>
-        MOMENTS[key].regions.includes(region.slug) ||
-        (like !== undefined && MOMENTS[key].regions.includes(like)),
+        !MOMENTS[key].needsQuarrel &&
+        (MOMENTS[key].regions.includes(region.slug) ||
+          (like !== undefined && MOMENTS[key].regions.includes(like))),
     )
     .sort();
 
@@ -1170,17 +1317,24 @@ export function momentsFor(region, seed) {
   const band = (travelHours * 0.8) / count;
   const room = Math.max(0, band - window);
 
-  /*
-   * Where the trip started, or null for a caller that has not said.
-   *
-   * Read once outside the loop so that every moment on one trip is placed against the same
-   * departure — and so that the whole question is answered in one place rather than per
-   * moment. Null means daylight everywhere below, which is how a bare region behaves and
-   * therefore how every trip taken before Phase 14 replays.
-   */
-  const departedAt = Number.isFinite(region?.departedAt) ? Number(region.departedAt) : null;
+  return chosen.map((rolled, index) => {
+    /*
+     * The standoff replaces the standing moment; it never adds one — and that is the same
+     * trick the night table plays, for a stronger version of the same reason.
+     *
+     * Putting it in `eligible` was the first draft and it is a trap: `pickDistinctAxes` draws
+     * from that list, so a candidate appearing or disappearing re-rolls **every** moment on
+     * the trip and every hour they sit at. Since eligibility here depends on the season, that
+     * would have made the same seed on the same road offer a different four moments in March
+     * than in April — and, worse, a trip whose season turned mid-walk would have changed under
+     * the player between two page loads.
+     *
+     * Swapped after the axes are picked and the hours are placed, the count, the axes, the
+     * windows and the faction draw are all untouched. What changes is which standing moment
+     * you meet on ground two crews are falling out over, which is exactly what it should be.
+     */
+    const key = quarrel !== null && MOMENTS[rolled].axis === 'standing' ? 'the_standoff' : rolled;
 
-  return chosen.map((key, index) => {
     const centre = from + band * (index + 0.5);
     const atHour = centre + (random() - 0.5) * room;
 
@@ -1205,22 +1359,34 @@ export function momentsFor(region, seed) {
         ? FACTION_SLUGS[Math.floor(random() * FACTION_SLUGS.length)]
         : null;
 
+    /*
+     * And the two crews named, for the one moment that is about a pair rather than a crew.
+     *
+     * Substitution rather than a second copy of the text per pairing: three crews make three
+     * pairs and two orderings each, which is six hand-written versions of one scene to keep in
+     * step. The tokens are filled on the way out so everything downstream — the page, the log
+     * line, the saved answer — sees a finished string and needs to know nothing about this.
+     */
+    const named = MOMENTS[key].needsQuarrel && quarrel ? fillPair(words, quarrel) : words;
+
     return {
       index,
       key,
       axis: MOMENTS[key].axis,
       faction,
+      /* The pair this one is about, for the resolution that has to know who was helped. */
+      quarrel: MOMENTS[key].needsQuarrel ? quarrel : null,
       // The short name, which is how the moment is referred to anywhere it is not being
       // read in full: the answered line on the camp page, and the log line its outcome
       // eventually produces. The prose is the situation; the title is what to call it
       // afterwards, and without one an outcome comes home attached to nothing.
-      title: words.title,
-      scene: words.scene,
-      prose: words.prose,
+      title: named.title,
+      scene: named.scene,
+      prose: named.prose,
       // Turning back is assembled in here rather than written into every moment: the
       // content declares what is particular to it, and the trip adds what is always
       // true. It is last because it is the way out, not one of the things on offer.
-      options: [...words.options, TURN_BACK],
+      options: [...named.options, TURN_BACK],
       atHour,
       // Half-open, and clamped: a window running past the return is hours in which the
       // trip is already over.
@@ -1314,6 +1480,20 @@ export function optionEffects(option, { walkHome = null } = {}) {
   }
 
   if (option.parley) add('plain', 'Standing decides it');
+
+  /*
+   * Phase 17d, and the biggest number any option on this page carries: taking a side moves
+   * standing twenty points in each direction at once, which is three and a bit caravans each
+   * way. Without a chip the only visible cost of pressing it would be the hour, and the thing
+   * that actually happens would be a surprise read in the log some hours later.
+   *
+   * Two chips rather than one, because the whole point of the choice is that it is two things
+   * at the same time. A single "+20 standing" would be the half of it that flatters.
+   */
+  if (option.sides) {
+    add('gain', `+${SIDING_SWING} with them`);
+    add('cost', `−${SIDING_SWING} with the other crew`);
+  }
 
   // The price out of the pack, which this module cannot name: a moment is drawn from a
   // region and a seed, and what a Rad Scrubber is called lives in a table. So the chip

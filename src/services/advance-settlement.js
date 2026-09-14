@@ -274,5 +274,34 @@ export async function advanceSettlement(client, settlementId, now) {
     ]);
   }
 
+  /*
+   * And whoever stood in a quarrel out on the road is remembered for it — Phase 17d.
+   *
+   * The first thing in the game besides a trade that moves `faction_standing`, and it is
+   * settled here rather than in the tick for the reason the wake above already gives:
+   * `saveWorld` does not write that table, so a change made on the loaded state would be read
+   * straight back under on the next page load.
+   *
+   * Clamped in SQL rather than in JavaScript, the same way `shiftStanding` does it, so two
+   * trips resolving in one tick compose correctly against whatever the row actually holds.
+   * `$3::numeric` is there for the reason 17a found: Postgres infers a parameter's type from
+   * where it sits, and a swing that is ever fractional would read as an integer here.
+   */
+  for (const side of events.filter((event) => event.type === 'took_a_side')) {
+    for (const [faction, delta] of [
+      [side.helped, side.swing],
+      [side.crossed, -side.swing],
+    ]) {
+      await client.query(
+        `insert into faction_standing (settlement_id, faction, standing)
+         values ($1, $2, greatest(-100, least(100, $3::numeric)))
+         on conflict (settlement_id, faction)
+           do update set standing =
+             greatest(-100, least(100, faction_standing.standing + $3::numeric))`,
+        [settlementId, faction, delta],
+      );
+    }
+  }
+
   return { state: advanced, events };
 }

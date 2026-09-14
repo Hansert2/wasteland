@@ -31,7 +31,7 @@ import { quarryFor, startOf } from '../src/game/hunting.js';
 import { viewCamp } from '../src/services/view-camp.js';
 import { viewGraveyard } from '../src/services/view-graveyard.js';
 import { campPage, graveyardPage } from '../src/web/render.js';
-import { momentsFor } from '../src/game/moments.js';
+import { momentsFor, withClock } from '../src/game/moments.js';
 import { caravanVisit } from '../src/game/factions.js';
 
 const HOUR = 3600_000;
@@ -178,6 +178,40 @@ export async function buildStates(client, now = Date.now()) {
       [id],
     );
     states['contact-warned'] = campPage(await viewCamp(client, id, now + (early.at + 0.1) * HOUR));
+  }
+
+  /*
+   * 5b. Phase 17d's standoff, which is the widest moment ever written and the reason it needs
+   * a state of its own: its option labels carry two crews' full names, so "Stand with The
+   * Green River Provisioners" is the longest string the moment block has ever had to set.
+   *
+   * Set in the same contested season the Trade and errand states use, on the Junction Crews'
+   * ground, and the seed is walked to one that actually offers it rather than hoped at.
+   */
+  {
+    const contested = Date.UTC(2026, 2, 12);
+    const id = await camp(client, contested);
+    await raiseSuccessor(client, id, { name: 'Sol', now: contested });
+
+    const road = { slug: 'underground_bunkers', travelHours: 9 };
+    let found = null;
+    for (let seed = 1; seed < 600 && found === null; seed += 1) {
+      const moments = momentsFor(withClock(road, contested, 0, 12), seed);
+      const standoff = moments.find((one) => one.key === 'the_standoff');
+      if (standoff) found = { seed, at: standoff.atHour };
+    }
+    if (found === null) throw new Error('no seed offers the standoff, which is itself the bug');
+
+    const { expeditionId } = await dispatchExpedition(
+      client,
+      id,
+      'underground_bunkers',
+      contested,
+    );
+    await client.query('update expeditions set seed = $2 where id = $1', [expeditionId, found.seed]);
+    states['standoff'] = campPage(
+      await viewCamp(client, id, contested + (found.at + 0.1) * HOUR),
+    );
   }
 
   // 6. Two events at once, so the sky carries its stacking line.

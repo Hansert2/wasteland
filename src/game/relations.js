@@ -444,3 +444,50 @@ export function roadPolitics(seed, slug, at) {
   if (!holder) return 1;
   return roadFactor(warmthAround(relationsAt(seed, at), holder));
 }
+
+/**
+ * The crews falling out over a particular road, or null — Phase 17d.
+ *
+ * A quarrel is hostile or tense and nothing milder: "not speaking" is the point at which two
+ * crews stop sharing a road, and below that there is nothing for a passing survivor to be in
+ * the middle of.
+ *
+ * **The holder is always the first of the pair**, which is what makes the moment on that road
+ * legible: you are on somebody's ground, and the other crew is the one who came for them.
+ * A road nobody holds has no quarrel by construction, which is the Deep Zone staying nobody's
+ * business in one more place.
+ *
+ * Read at the instant a trip *left*, never at the instant it is being looked at. A season
+ * turning mid-walk would otherwise re-roll a trip's whole moment list between two page loads,
+ * because eligibility feeds `pickDistinctAxes` — 26 hours against a 28-day season makes that
+ * about one trip in twenty-five, which is exactly often enough to be a bug somebody reports
+ * and nobody can reproduce.
+ */
+export function quarrelOver(seed, slug, at) {
+  const holder = holderOf(slug);
+  if (!holder) return null;
+
+  const rows = relationsAt(seed, at);
+  for (const row of rows) {
+    if (row.a !== holder && row.b !== holder) continue;
+    if (row.state !== 'hostile' && row.state !== 'tense') continue;
+    return { holder, other: row.a === holder ? row.b : row.a, state: row.state };
+  }
+  return null;
+}
+
+/**
+ * What standing in somebody's quarrel is worth, to both crews at once — Phase 17d.
+ *
+ * Twenty, against `TRADE_STANDING_GAIN` of six, and the ratio is the design rather than the
+ * number: **one press is worth three and a bit caravans in each direction at the same time.**
+ * The overhaul asks for diplomatic choices that are rare and consequential and for ordinary
+ * trading not to swing the world, and a figure smaller than this would make taking a side
+ * another day's trading, while a much larger one would make a single unlucky moment
+ * unrecoverable — and `caravan-reach` says buying your way back costs 8.2 days per chance.
+ *
+ * Symmetric, so siding nets the camp nothing overall and is purely a choice about *who*. That
+ * is what stops it being a resource to farm: there is no side of this that is simply better,
+ * only a side that suits the camp you are running.
+ */
+export const SIDING_SWING = 20;

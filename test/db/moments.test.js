@@ -5,7 +5,16 @@ import { pool } from '../../src/db/pool.js';
 import { advanceSettlement } from '../../src/services/advance-settlement.js';
 import { dispatchExpedition } from '../../src/services/dispatch-expedition.js';
 import { foundSettlement, raiseSuccessor } from '../../src/services/settlement-lifecycle.js';
-import { MOMENTS, NIGHT, momentCount, momentsFor, walkHomeHours } from '../../src/game/moments.js';
+import {
+  MOMENTS,
+  NIGHT,
+  momentCount,
+  momentsFor,
+  walkHomeHours,
+  withClock,
+} from '../../src/game/moments.js';
+import { SIDING_SWING, quarrelOver } from '../../src/game/relations.js';
+import { WORLD_SEED } from '../../src/game/world-events.js';
 import { viewCamp } from '../../src/services/view-camp.js';
 import { campPage } from '../../src/web/render.js';
 import { answerMoment } from '../../src/services/answer-moment.js';
@@ -1179,5 +1188,75 @@ test('walking on past somebody is not a reroll — the next occasion is the same
 
     // And the ration was never spent, because walking on is the option that costs nothing.
     assert.equal((await pack(client, settlementId)).get('preserved_meal') ?? 0, 1);
+  });
+});
+
+test('standing in a crew’s quarrel is the first thing on the road to change their mind', async () => {
+  /*
+   * Phase 17d, and the claim worth a database test rather than a pure one: `applyTick` records
+   * the side taken on the state, and `saveWorld` does not write `faction_standing` — the exact
+   * shape that ate Phase 12's wake for four phases. Only the settlement applying the event can
+   * make this stick, and only a query can prove it did.
+   *
+   * The Junction Crews' ground, in a season they are falling out with the Provisioners, and
+   * the seed is walked to one that actually offers the standoff rather than hoped at.
+   */
+  await withRollback(async (client) => {
+    const departed = Date.UTC(2026, 2, 12);
+    assert.ok(quarrelOver(WORLD_SEED, 'underground_bunkers', departed), 'the season has moved');
+
+    const { settlementId } = await setup(client);
+    await client.query('update settlements set last_tick_at = $2 where id = $1', [
+      settlementId,
+      new Date(departed - hours(1)),
+    ]);
+
+    const road = { slug: 'underground_bunkers', travelHours: 9 };
+    let chosen = null;
+    for (let seed = 1; seed < 600 && chosen === null; seed += 1) {
+      const standoff = momentsFor(withClock(road, departed, 0, 12), seed).find(
+        (one) => one.key === 'the_standoff',
+      );
+      if (standoff) chosen = { seed, moment: standoff };
+    }
+    assert.ok(chosen, 'no seed offers the standoff, which is itself the bug');
+
+    const expeditionId = await dispatchExpedition(
+      client,
+      settlementId,
+      'underground_bunkers',
+      departed,
+    );
+    await client.query('update expeditions set seed = $2 where id = $1', [
+      expeditionId.expeditionId,
+      chosen.seed,
+    ]);
+
+    const inside = departed + chosen.moment.atHour * hours(1) + hours(0.1);
+    const view = await viewCamp(client, settlementId, inside);
+    const offered = view.expedition.moment;
+    assert.match(offered.title, /headlights|one road/, 'the page is showing a different moment');
+
+    const side = offered.options.find((option) => option.key === 'holder');
+    assert.ok(side, 'the standoff came up with no side to take');
+    await answerMoment(client, settlementId, { index: offered.index, option: side.key }, inside);
+
+    // Home, and the crews have made up their minds about it.
+    const { events } = await advanceSettlement(client, settlementId, departed + hours(20));
+    const took = events.filter((event) => event.type === 'took_a_side');
+    assert.equal(took.length, 1, 'the trip came home without the side it took');
+
+    const { rows } = await client.query(
+      'select faction, standing from faction_standing where settlement_id = $1',
+      [settlementId],
+    );
+    const standings = Object.fromEntries(rows.map((row) => [row.faction, Number(row.standing)]));
+    assert.equal(standings[took[0].helped], SIDING_SWING, 'the crew helped never heard about it');
+    assert.equal(standings[took[0].crossed], -SIDING_SWING, 'nor did the one crossed');
+
+    // And the log says both halves, because a report of only the gain is half a decision.
+    const page = campPage(await viewCamp(client, settlementId, departed + hours(20)));
+    assert.ok(page.includes(took[0].helpedName), 'the log never named who was helped');
+    assert.ok(page.includes(took[0].crossedName), 'nor who was crossed');
   });
 });

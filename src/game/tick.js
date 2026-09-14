@@ -22,6 +22,7 @@ import { chance, makeRandom } from './random.js';
 import { WORLD_SEED, activeAt, nextBoundaryAfter, productionFactors } from './world-events.js';
 import {
   RELATIONS,
+  SIDING_SWING,
   changesBetween,
   relationsAt,
   roadPolitics,
@@ -1211,6 +1212,27 @@ function returnExpedition(state, expedition, at, events, flight) {
    */
   if (outcome.brings) {
     events.push({ at, type: 'walked_in_with_them', expeditionId: expedition.id });
+  }
+
+  /*
+   * And what the crews made of somebody standing in their quarrel — Phase 17d.
+   *
+   * An event rather than a write, for the reason `expeditions.js` gives at the other end:
+   * `saveWorld` does not persist `faction_standing`, so a change made on the loaded state
+   * would be read back under on the next page load. `advance-settlement` settles it, exactly
+   * as it settles the raid's wake and the packs of the dead.
+   */
+  if (outcome.sided) {
+    events.push({
+      at,
+      type: 'took_a_side',
+      expeditionId: expedition.id,
+      helped: outcome.sided.helped,
+      crossed: outcome.sided.crossed,
+      helpedName: FACTIONS[outcome.sided.helped]?.name ?? outcome.sided.helped,
+      crossedName: FACTIONS[outcome.sided.crossed]?.name ?? outcome.sided.crossed,
+      swing: SIDING_SWING,
+    });
   }
 
   events.push({

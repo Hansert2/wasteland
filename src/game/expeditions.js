@@ -51,7 +51,7 @@ export function resolveExpedition({
   const { damage, cause } = rollHazard(random, region, equipment, log, politics);
 
   const trip = applyChoices(
-    { loot, finds, radiation, damage, cause, healed: 0, heals: [], brings: false, log },
+    { loot, finds, radiation, damage, cause, healed: 0, heals: [], brings: false, sided: null, log },
     { region, survivor, seed, choices, standings },
   );
 
@@ -83,6 +83,9 @@ export function resolveExpedition({
     // Whether anybody is walking in behind them. False on a trip nobody came home from:
     // somebody who followed a survivor that died out there did not arrive anywhere.
     brings: Boolean(trip.brings) && !died,
+    /* Nobody who did not come home is remembered as having taken a side: the crews saw
+       somebody stand there and then never saw them again, which settles nothing. */
+    sided: died ? null : (trip.sided ?? null),
     died,
     cause: died ? trip.cause : null,
     log: trip.log,
@@ -203,6 +206,21 @@ function attend(trip, moments, answered, { region, survivor, seed, standings }) 
     }
     if (option.parley) {
       parley(trip, timeline, at, random, standingOf(standings ?? {}, moment.faction));
+    }
+    /*
+     * Phase 17d: the first thing on the road that changes a crew's mind about the camp.
+     *
+     * Recorded on the trip rather than applied here, and that is not laziness — this function
+     * is a pure roll over a region and a seed, and standing lives in a table it has never
+     * heard of. It is also the trap Phase 16 already walked into once: `saveWorld` does not
+     * write `faction_standing`, so a tick that mutated the loaded state would have its change
+     * read back under on the next page load. The settlement applies it from the event.
+     */
+    if (option.sides && moment.quarrel) {
+      const helped = option.sides === 'holder' ? moment.quarrel.holder : moment.quarrel.other;
+      const crossed = option.sides === 'holder' ? moment.quarrel.other : moment.quarrel.holder;
+      trip.sided = { helped, crossed };
+      trip.log.push('They stood where everyone could see them standing.');
     }
     if (option.hazard) confront(trip, random, equipment, option.hazard.danger);
 

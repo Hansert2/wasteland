@@ -17,6 +17,9 @@ import {
   withClock,
   worstCase,
 } from '../../src/game/moments.js';
+import { quarrelOver } from '../../src/game/relations.js';
+import { WORLD_SEED } from '../../src/game/world-events.js';
+import { FACTIONS } from '../../src/game/factions.js';
 
 /** The regions as seeded, so the tests fail if the content and the world drift apart. */
 const REGIONS = {
@@ -549,11 +552,18 @@ test('leaving after dark changes the words and nothing else', () => {
    * A four-hour walk, so that the whole of it falls on one side of the light and the test
    * is about the swap rather than about a trip that crosses dusk. The long-trip case is the
    * test below.
+   *
+   * **Coastal Wreckage, because nobody holds it.** The two departures are six months apart,
+   * which since 17d is two different seasons of the crews' politics — and on held ground the
+   * standing moment becomes the standoff while its holder is falling out with somebody. That
+   * is a fact about the season rather than about the light, and a region no crew has a claim
+   * on is how this test keeps asking only about the light. The swap itself is tested in
+   * "a quarrel on the road replaces the standing moment and nothing else".
    */
   let differed = 0;
   for (let seed = 1; seed < 120; seed += 1) {
-    const day = momentsFor(leavingAt('ruined_city', 4, MIDSUMMER_DAWN + 6 * 3_600_000), seed);
-    const night = momentsFor(leavingAt('ruined_city', 4, MIDWINTER_DUSK + 3_600_000), seed);
+    const day = momentsFor(leavingAt('coastal_wreckage', 4, MIDSUMMER_DAWN + 6 * 3_600_000), seed);
+    const night = momentsFor(leavingAt('coastal_wreckage', 4, MIDWINTER_DUSK + 3_600_000), seed);
 
     assert.deepStrictEqual(skeleton(night), skeleton(day), `seed ${seed}`);
 
@@ -659,4 +669,75 @@ test('every moment has a dark half, because the one that did not went unnoticed 
    */
   const missing = Object.keys(MOMENTS).filter((key) => !NIGHT[key]);
   assert.deepStrictEqual(missing, [], `written for the day only: ${missing.join(', ')}`);
+});
+
+test('a quarrel on the road replaces the standing moment and nothing else', () => {
+  /*
+   * The shape 17d was rebuilt into, after the first draft put the standoff in `eligible` and
+   * re-rolled every moment on the trip. The count, the axes, the hours and the faction draw
+   * all have to survive a season turning; only *which* standing moment you meet may change.
+   *
+   * Underground Bunkers is the Junction Crews' ground. March 2026 has them falling out with
+   * the Provisioners; August does not.
+   */
+  const QUARREL = Date.UTC(2026, 2, 12);
+  const CALM = Date.UTC(2026, 7, 20);
+  assert.ok(quarrelOver(WORLD_SEED, 'underground_bunkers', QUARREL), 'the season has moved');
+  assert.equal(quarrelOver(WORLD_SEED, 'underground_bunkers', CALM), null, 'so has the calm one');
+
+  let swapped = 0;
+  for (let seed = 1; seed < 120; seed += 1) {
+    const hot = momentsFor(leavingAt('underground_bunkers', 9, QUARREL), seed);
+    const cool = momentsFor(leavingAt('underground_bunkers', 9, CALM), seed);
+
+    assert.equal(hot.length, cool.length, `seed ${seed}: the count moved`);
+    for (let i = 0; i < hot.length; i += 1) {
+      assert.equal(hot[i].axis, cool[i].axis, `seed ${seed}: an axis moved`);
+      assert.equal(hot[i].atHour, cool[i].atHour, `seed ${seed}: an hour moved`);
+      assert.equal(hot[i].faction, cool[i].faction, `seed ${seed}: the faction draw moved`);
+
+      if (hot[i].axis !== 'standing') {
+        assert.equal(hot[i].key, cool[i].key, `seed ${seed}: a moment changed off its axis`);
+      } else {
+        assert.equal(hot[i].key, 'the_standoff');
+        assert.notEqual(cool[i].key, 'the_standoff', 'a calm road offered a quarrel');
+        swapped += 1;
+      }
+    }
+  }
+  assert.ok(swapped > 0, 'no standing moment ever came up, so nothing was tested');
+});
+
+test('the standoff names both crews, and never on ground nobody holds', () => {
+  const QUARREL = Date.UTC(2026, 2, 12);
+
+  // The Deep Zone belongs to nobody by the oldest rule in LORE.md, so it can never offer this.
+  for (let seed = 1; seed < 200; seed += 1) {
+    const moments = momentsFor(leavingAt('the_deep_zone', 18, QUARREL), seed);
+    assert.ok(!moments.some((one) => one.key === 'the_standoff'), `seed ${seed}: the Deep Zone`);
+  }
+
+  const found = [];
+  for (let seed = 1; seed < 120 && found.length === 0; seed += 1) {
+    found.push(
+      ...momentsFor(leavingAt('underground_bunkers', 9, QUARREL), seed).filter(
+        (one) => one.key === 'the_standoff',
+      ),
+    );
+  }
+  assert.ok(found.length > 0, 'the standoff never came up');
+
+  const one = found[0];
+  const names = Object.values(FACTIONS).map((spec) => spec.name);
+  const both = names.filter((name) => one.prose.includes(name));
+  assert.equal(both.length, 2, 'the turn should name the two crews it is about');
+  assert.ok(!one.prose.includes('{'), 'a token was left unfilled');
+
+  // Both sides are offered, and each names a crew. A choice between two blanks is not one.
+  const sided = one.options.filter((option) => option.sides);
+  assert.equal(sided.length, 2);
+  for (const option of sided) {
+    assert.ok(!option.label.includes('{') && !option.detail.includes('{'));
+    assert.ok(names.some((name) => option.label.includes(name)), `${option.label} names nobody`);
+  }
 });

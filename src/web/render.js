@@ -6933,6 +6933,13 @@ function describe(event) {
      * Two sentences — what they are now, and what happened — because the cause on its own does
      * not say which way it went, and the state on its own is the slider.
      */
+    /*
+     * Phase 17d. Both halves in one line, because the whole point of the choice is that it is
+     * two things at once — a friend made and a friend lost — and a log that reported only the
+     * gain would be reporting half a decision.
+     */
+    case 'took_a_side':
+      return `${event.helpedName} will remember the camp standing with them, and ${event.crossedName} will remember it too.`;
     case 'crews_changed':
       return `${event.a} and ${event.b} ${event.says}. ${event.cause}`;
     case 'caravan_arrived':
