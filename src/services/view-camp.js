@@ -52,7 +52,15 @@ import {
   travelHoursFor,
 } from '../game/road.js';
 import { WORLD_SEED, loadWorldEvents } from '../db/world-events.js';
-import { RELATIONS, relationsAt, warmthOf } from '../game/relations.js';
+import {
+  RELATIONS,
+  holderOf,
+  priceFactor,
+  relationsAt,
+  roadPolitics,
+  warmthAround,
+  warmthOf,
+} from '../game/relations.js';
 import { FACTIONS, caravanVisit, postKeeper, priceAt, standingOf } from '../game/factions.js';
 import {
   BOLTS_AT,
@@ -429,6 +437,8 @@ function reportOn(row, state, now) {
      * and the return delivering another.
      */
     weather: travelFactors(overTheTrip, departedAt, returnsAt, clockOffset, solarNoon),
+    /* And the same road, through the same one function, for the same reason. */
+    politics: roadPolitics(WORLD_SEED, region?.slug, departedAt),
     choices,
     standings: state.settlement.standings,
   });
@@ -1685,6 +1695,17 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
   );
   for (const row of standingRows) standings[row.faction] = Number(row.standing);
 
+  /*
+   * The world's politics, worked out once for the whole page.
+   *
+   * Three things downstream want them — the caravan's prices, the post's prices and the
+   * Standing block — and `relationsAt` is cheap but not free. Computing it once also removes
+   * the only way the three could ever disagree, which on a page that quotes prices is the
+   * failure that matters: a shopfront and a counter that priced the same offer differently.
+   */
+  const worldRelations = relationsAt(WORLD_SEED, now);
+  const politicsFor = (slug) => priceFactor(warmthAround(worldRelations, slug));
+
   const caravanRow = settlements[0];
   const visit = caravanVisit(Number(caravanRow.caravan_seed), caravanRow.caravan_count);
   const arrival = caravanRow.next_caravan_at?.getTime() ?? null;
@@ -1712,9 +1733,11 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
       arrivesAt: visiting ? null : new Date(arrival),
       departsAt: visiting ? new Date(departsAt) : null,
       standing,
+      /* The other half of every price on this shopfront, so the block can say so. */
+      politics: politicsFor(visit.faction),
       offers: visiting
         ? spec.offers.map((offer, index) => {
-            const costs = priceAt(offer, standing);
+            const costs = priceAt(offer, standing, politicsFor(visit.faction));
             return {
               index,
               what: offer.item ? names.get(offer.item) ?? offer.item : titleOf(offer.resource),
@@ -2058,6 +2081,16 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
          * computed off the same walk, so the control cannot promise a shorter errand than the
          * service books.
          */
+        /*
+         * Phase 17c: whose ground this is, and whether they are fighting over it.
+         *
+         * On the region rather than in a list of its own, for the same reason `lost` is: the
+         * decision is made on the row that sends the trip. The factor is the one
+         * `resolveExpedition` will actually apply, through the same `roadPolitics`, so the
+         * table cannot warn about a road the trip does not walk.
+         */
+        holder: FACTIONS[holderOf(region.slug)]?.name ?? null,
+        roadPolitics: roadPolitics(WORLD_SEED, region.slug, now),
         lost: lostBySlug.get(region.slug) ?? [],
         searchHours: searchHours(
           travelHoursFor(region.slug, Number(region.travel_hours), shortened),
@@ -2090,7 +2123,7 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
       name: spec.name,
       standing,
       offers: spec.offers.map((offer, index) => {
-        const costs = priceAt(offer, standing);
+        const costs = priceAt(offer, standing, politicsFor(keeper));
         return {
           index,
           what: offer.item ? names.get(offer.item) ?? offer.item : titleOf(offer.resource),
@@ -2459,7 +2492,7 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
      * these three rows could go: they are not about the camp, so nothing on Camp is about
      * them, and they are not a road, a person or a store.
      */
-    relations: relationsAt(WORLD_SEED, now).map(({ a, b, state }) => ({
+    relations: worldRelations.map(({ a, b, state }) => ({
       a: FACTIONS[a]?.name ?? a,
       b: FACTIONS[b]?.name ?? b,
       state,

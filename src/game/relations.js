@@ -316,3 +316,131 @@ export function changesBetween(seed, from, to) {
 
   return changes;
 }
+
+/**
+ * ## What the politics actually do — Phase 17c
+ *
+ * Everything below is a multiplier on a number that already exists, and every one of them is
+ * built the same way: **one quantity, three swings.** The quantity is how warm a crew's world
+ * is; the swings say how much that is worth to a price, to a raid clock and to a road.
+ *
+ * The swings are all smaller than what standing already does, and that ordering is the
+ * design rather than caution. Standing spans x1.4 to x0.6 on a price because standing is the
+ * thing the player *chose*; relations are weather, and weather that out-weighed a decision
+ * would make the decision feel unearned. A player should be able to notice the world and
+ * still believe their own trading mattered more.
+ */
+
+/**
+ * How warm a crew's world is: the mean of its relations with everybody else, in [-2, +2].
+ *
+ * Takes the already-computed rows rather than a seed and an instant, so a page that has
+ * worked out the world's politics once does not work them out again per offer — and so this
+ * is testable without a clock.
+ */
+export function warmthAround(relations, slug) {
+  const mine = (relations ?? []).filter((row) => row.a === slug || row.b === slug);
+  if (mine.length === 0) return 0;
+  return mine.reduce((sum, row) => sum + warmthOf(row.state), 0) / mine.length;
+}
+
+/** A tenth either way on what a crew charges. */
+export const PRICE_SWING = 0.05;
+
+/**
+ * What a crew's politics do to its prices: crews at war undercut each other for your custom,
+ * crews working together have no reason to.
+ *
+ * **Competition, not goodwill**, and the direction catches people out until it is said that
+ * way round: two crews getting along is bad news at the gate. It is also the only one of the
+ * three effects the player can do arithmetic on, which is why it is the one the caravan block
+ * prints in full.
+ */
+export function priceFactor(warmth) {
+  return 1 + PRICE_SWING * warmth;
+}
+
+/** Fifteen percent either way on the gap between one crew's raids. */
+export const TEMPO_SWING = 0.075;
+
+/**
+ * What a crew's politics do to how often it comes for you.
+ *
+ * A crew fighting its neighbours has less to spend on a camp with a garden; a crew at peace
+ * with everybody has nothing better to do. **World peace is bad for you**, which is the most
+ * useful sentence this mechanic can say: it stops "warm everywhere" from being a strictly
+ * better world and makes the Standing block a thing to read rather than a scoreboard.
+ *
+ * A multiplier on the *gap*, so above one is calmer — the same convention `raidTempo` uses.
+ */
+export function tempoFactor(warmth) {
+  return 1 - TEMPO_SWING * warmth;
+}
+
+/** Fifteen percent either way on the odds of trouble on somebody's ground. */
+export const ROAD_SWING = 0.075;
+
+/**
+ * What a crew's politics do to the roads it holds.
+ *
+ * Applied to the *odds* of a hazard and never to the damage or to the region's danger rating,
+ * which is a deliberate narrowing: `danger` also picks which hazard you met, so nudging it
+ * would turn a bad fall into a scavenger ambush and back again as the seasons turned, and a
+ * region's character is content rather than weather. Contested ground means you run into
+ * trouble more often. It does not mean the floor collapses harder.
+ */
+export function roadFactor(warmth) {
+  return 1 - ROAD_SWING * warmth;
+}
+
+/**
+ * Who holds which road.
+ *
+ * The territorial half of the Wellkeepers, promised in 17a and owed here: they are the crew
+ * whose ground you walk rather than the crew who walks to you, and this is the only place
+ * that is true of anybody.
+ *
+ * **Three places are held by nobody, and that is the point of the list.** The fence line is
+ * yours. The Deep Zone belongs to no one by the oldest rule in `LORE.md` — nobody agrees what
+ * is down there, and a crew with a claim on it would be an answer. Coastal Wreckage keeps
+ * "whatever lives in them now", which is not a faction. A map carved up three ways would say
+ * somebody is in charge, and the lore's position is that nobody is.
+ *
+ * Read off the lore rather than invented: the Crews hold a junction, so they hold the road,
+ * the rooms machines lived in, and the far end that is the reason there is a road. The
+ * Provisioners hold what is grown and what was kept in houses. The Wellkeepers hold the wheel,
+ * the shafts and the pumps.
+ */
+export const HOLDINGS = {
+  junction_crews: ['the_service_road', 'underground_bunkers', 'harrow_end'],
+  green_river: ['irradiated_farmland', 'ruined_city'],
+  wellkeepers: ['the_millrace', 'sixteen_wells', 'the_waterworks'],
+};
+
+/** Whose ground a place is, or null for the three that are nobody's. */
+export function holderOf(slug) {
+  for (const [faction, places] of Object.entries(HOLDINGS)) {
+    if (places.includes(slug)) return faction;
+  }
+  return null;
+}
+
+/**
+ * What the politics are doing to one road at one instant — **one function, because two
+ * callers have to agree exactly.**
+ *
+ * `tick.js` resolves the trip that came home and `view-camp.js` resolves the same trip to
+ * report on it while it is still out, and the sky is already composed through a single
+ * `travelFactors` for precisely this reason: two call sites that build the same number
+ * separately are two call sites that will one day build it differently, and the symptom is a
+ * page promising one trip and the log delivering another.
+ *
+ * Read at the hour the trip **left**, not at the hour it comes back. A survivor walks the road
+ * that was there when they set out, and a season turning under them mid-walk would move a
+ * number the page had already printed.
+ */
+export function roadPolitics(seed, slug, at) {
+  const holder = holderOf(slug);
+  if (!holder) return 1;
+  return roadFactor(warmthAround(relationsAt(seed, at), holder));
+}

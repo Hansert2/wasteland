@@ -6405,7 +6405,7 @@ database actually holds, rounding costs eight points at zero hours and pays five
 days. 0.7 is the nominal; 62% is the number to quote at the balance of a camp, and it is the
 one figure this phase adds.
 
-## Phase 17 — faction relations, designed 2026-09-14 (17a and 17b built the same day)
+## Phase 17 — faction relations, designed 2026-09-14 (17a, 17b and 17c built the same day)
 
 *Against: two factions is a rivalry with a slider, not a world.*
 
@@ -6630,9 +6630,104 @@ nothing has ever been written from this file and there is nothing yet to contrad
 is `008`'s exact pattern — a slot table for which `changesBetween` is the generator — and it is
 named rather than built.
 
-### Still to build: 17c and 17d
+### 17c — what the politics do, built 2026-09-14
 
-The effects, and the choice that takes a side.
+Three effects, and every one of them is **a multiplier on a number that already exists**, built
+from one quantity: `warmthAround`, the mean of a crew's relations with everybody else, in
+[-2, +2].
+
+**Prices.** Crews at war undercut each other for your custom; crews working together have no
+reason to. *Competition, not goodwill* — the direction catches people out until it is said that
+way round, and **two crews getting along is bad news at the gate.** It is also the only one of
+the three a player can do arithmetic on, so it is the one the caravan block prints in full.
+
+**Raid tempo.** A crew fighting its neighbours has less to spend on a camp with a garden.
+**World peace is bad for you**, which is the most useful sentence this mechanic says: it stops
+"warm everywhere" from being a strictly better world and makes the Standing block a thing to
+read rather than a scoreboard.
+
+**The road.** Applied to the *odds* of a hazard and never to `danger` itself, which is a
+deliberate narrowing: `danger` also picks **which** hazard you met, so nudging it would turn a
+bad fall into a scavenger ambush and back again as the seasons turned, and a region's character
+is content rather than weather. Contested ground means running into trouble more often. It does
+not mean the floor collapses harder.
+
+**The fourth effect — encounters — is not built.** The `standing` axis in `momentsFor` is the
+right hook and the work is new moment *content* rather than a multiplier, which is a different
+kind of job from these three and wants its own pass.
+
+### Whose ground is whose, and three places that are nobody's
+
+The territorial half of the Wellkeepers, promised in 17a and owed here. Read off the lore
+rather than invented: the Crews hold a junction, so they hold the road, the rooms machines
+lived in, and the far end that is the reason there is a road. The Provisioners hold what is
+grown and what was kept in houses. The Wellkeepers hold the wheel, the shafts and the pumps.
+
+    The Junction Crews             the service road, underground bunkers, harrow end
+    The Green River Provisioners   irradiated farmland, ruined city
+    The Wellkeepers                the millrace, sixteen wells, the waterworks
+
+**Eight of eleven.** The fence line is yours; Coastal Wreckage keeps *"whatever lives in them
+now"*, which is not a faction; and the Deep Zone belongs to no one by the oldest rule in
+`LORE.md` — nobody agrees what is down there, and a crew with a claim on it would be an answer.
+A map carved up three ways would say somebody is in charge, and the lore's position is that
+nobody is. There is a unit test pinning the Deep Zone at exactly 1 in every season of two
+hundred worlds.
+
+### Measured before it was believed
+
+`tools/politics-effects.mjs`. The question worth asking was never "what is the swing" — that is
+two constants — but **how often a crew is at a swing at all**, because neutral is half the
+world by design and a crew with one warm neighbour and one cold one averages to exactly
+nothing. A mechanic that is small *and* mostly zero is a decoration with an implementation.
+
+    dead level (no effect)        31.5%
+    their world is cold           34.6%
+    their world is warm           33.9%
+    at the rail (|warmth| >= 1.5)  7.1%
+
+**On two seasons in three**, and what it is worth where a player reads it:
+
+    warmth   the 50-scrap offer   gap between their raids   trouble at danger 5
+        -2             45 scrap                    x1.150                 51.7%
+         0             50 scrap                    x1.000                 45.0%
+        +2             56 scrap                    x0.850                 38.2%
+
+And the compounded figure, which is the one that says what kind of mechanic this is: a camp
+buying the dearest offer twice a season for a year spends **1299 scrap against 1300** in a
+politics-free world. **Near zero is the right answer** — the swing is a reason to buy *this*
+season rather than a tax, and a mechanic that moved the yearly total would be a tax.
+
+### Nothing may move without the page saying so
+
+Every effect got a surface, on the rule this project keeps: a number that moves for a reason
+the page does not give is the hidden slider the whole phase exists not to be.
+
+- The caravan block's Standing line gains a clause — *"and they are undercutting, with the
+  crews they trade against fighting"* — and is **silent when the factor is one**, because a
+  mark reports something acting on a number, never a non-effect.
+- The place band says whose ground it is, under the description. **That position was
+  measured:** beside the figures it wrapped and took the cell to 148px inside a band pinned to
+  148, one pixel of overflow here and more where the condensed face resolves differently. The
+  main column had 62px spare, and it belongs there on the argument too — the numbers column is
+  for numbers.
+- The dispatch table marks the row beside the **name**, which was also measured: a 4px oxide
+  square at the end of the danger cell read as a sixth pip, so Harrow End at danger five looked
+  like danger six.
+
+### One price, two callers, and a test pinned to a calm season
+
+`view-camp` quotes and `trade.js` charges, and both compose `priceFactor(warmthAround(...))` on
+the same instant — a quote the counter will not honour is the one bug a shop must not have, and
+there is a test that compares the two rather than checking each against a number.
+
+The existing trade tests now run at **era 8 of the real world, a season every crew is neutral
+in**, found by walking `relationsAt` rather than by hoping. Without that they would quote a
+different number in March than in April — not a flaky test so much as a test of nothing.
+
+### Still to build: 17d, and the encounters
+
+Taking a side, and the moment content that makes a contested road feel like one.
 
 ## Not planned
 

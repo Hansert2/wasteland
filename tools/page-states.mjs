@@ -614,26 +614,38 @@ export async function buildStates(client, now = Date.now()) {
    * third, which is the sentence the block exists to say.
    */
   {
-    const id = await camp(client, now);
-    await raiseSuccessor(client, id, { name: 'Sol', now });
+    /*
+     * In the same season the Trade state uses, and for the same reason: the road band and the
+     * dispatch table both grew a mark in 17c that only appears when the crew holding a place
+     * is fighting over it, and a state saved in a calm season would have neither.
+     */
+    const contested = Date.UTC(2026, 2, 12);
+    const id = await camp(client, contested);
+    await raiseSuccessor(client, id, { name: 'Sol', now: contested });
     const { rows: gone } = await client.query(
       `insert into characters (settlement_id, name, born_at, died_at, cause_of_death, health,
                                died_at_region_id)
        select $1, 'Wren', $2, $3, 'a bad dose', 0, r.id from regions r where r.slug = $4
        returning id`,
-      [id, new Date(now - 200 * HOUR), new Date(now - 72 * HOUR), 'the_deep_zone'],
+      [id, new Date(contested - 200 * HOUR), new Date(contested - 72 * HOUR), 'underground_bunkers'],
     );
     await client.query(
       `insert into inventory_items (character_id, item_id, qty)
        select $1, i.id, 2 from items i where i.slug in ('scavenged_parts', 'tinned_stew')`,
       [gone[0].id],
     );
-    states['errand'] = campPage(await viewCamp(client, id, now), {
+    states['errand'] = campPage(await viewCamp(client, id, contested), {
       // 'survivor', not 'road': `PANES` puts the dispatch table on the Survivors view, and
       // the Road view is the links block. Named wrong, the state saves a page whose band is
       // display:none — present in the markup, and never once looked at.
       pane: 'survivor',
-      place: 'the_deep_zone',
+      /*
+       * Underground Bunkers rather than the Deep Zone, and that is what the state is for now:
+       * the Deep Zone is held by nobody, so a band opened on it shows neither of 17c's marks.
+       * The Bunkers are the Junction Crews' ground, contested this season, so one state covers
+       * the errand strip, the band's ground line and the table's contested mark at once.
+       */
+      place: 'underground_bunkers',
     });
 
     /*
@@ -643,7 +655,7 @@ export async function buildStates(client, now = Date.now()) {
     await client.query(
       `update characters set died_at = $2, cause_of_death = 'radiation', health = 0
         where settlement_id = $1 and died_at is null`,
-      [id, new Date(now + 40 * HOUR)],
+      [id, new Date(contested + 40 * HOUR)],
     );
     states['graveyard'] = graveyardPage(await viewGraveyard(client, id));
   }

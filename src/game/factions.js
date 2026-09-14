@@ -154,9 +154,17 @@ export function priceMultiplier(standing) {
   return 1 - clamp(standing, -100, 100) / 250;
 }
 
-/** An offer's costs at a given standing. Rounded up: the caravan does not do change. */
-export function priceAt(offer, standing) {
-  const factor = priceMultiplier(standing);
+/**
+ * An offer's costs at a given standing. Rounded up: the caravan does not do change.
+ *
+ * `politics` is Phase 17c's factor and arrives as a number rather than as a relation, which
+ * keeps the dependency pointing one way: `relations.js` reads `FACTIONS` to know who the pairs
+ * are, so this file must not read `relations.js` back. The caller composes the two, and both
+ * the page and `trade.js` compose them identically because a quote the service will not honour
+ * is the one bug a shop must not have.
+ */
+export function priceAt(offer, standing, politics = 1) {
+  const factor = priceMultiplier(standing) * (Number(politics) || 1);
   const costs = {};
   for (const [kind, amount] of Object.entries(offer.costs ?? {})) {
     costs[kind] = Math.ceil(amount * factor);
@@ -227,10 +235,13 @@ export function raidFaction(seed, index) {
 
 /** Multiplier on the mean gap between that faction's visits-in-anger. Friendly
  * stretches it to double; hostile compresses it to about two thirds. */
-export function raidTempo(standing) {
+export function raidTempo(standing, politics = 1) {
   const s = clamp(standing, -100, 100);
-  if (s >= 0) return 1 + s / 100;
-  return 1 / (1 - s / 200);
+  const own = s >= 0 ? 1 + s / 100 : 1 / (1 - s / 200);
+  /* Phase 17c: and what else that crew has on. Multiplied rather than added, so a friendly
+     crew at war with its neighbours is calmer still rather than capped by whichever of the
+     two happens to be larger. See `tempoFactor`. */
+  return own * (Number(politics) || 1);
 }
 
 /** Adjustments folded into resolveRaid, alongside the watchtower's. */

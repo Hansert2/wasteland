@@ -17,8 +17,18 @@ import { stateAt, timelineOf } from './timeline.js';
  *        did to this trip — the sky and the sun, composed by `travelFactors`
  * @param {{index: number, option: string}[]} [args.choices] answers to the trip's moments
  * @param {Record<string, number>} [args.standings] standing per faction, for a parley
+ * @param {number} [args.politics] what the crews' own quarrels are doing to this road —
+ *        `roadPolitics`, 1 when nobody holds the place or nobody is fighting over it
  */
-export function resolveExpedition({ region, survivor, seed, weather, choices, standings }) {
+export function resolveExpedition({
+  region,
+  survivor,
+  seed,
+  weather,
+  choices,
+  standings,
+  politics = 1,
+}) {
   const random = makeRandom(seed);
   const log = [];
 
@@ -38,7 +48,7 @@ export function resolveExpedition({ region, survivor, seed, weather, choices, st
   const loot = rollLoot(random, region, survivor, sky, log);
   const finds = rollFinds(random, region, sky, log);
   const radiation = rollRadiation(random, region, sky, log);
-  const { damage, cause } = rollHazard(random, region, equipment, log);
+  const { damage, cause } = rollHazard(random, region, equipment, log, politics);
 
   const trip = applyChoices(
     { loot, finds, radiation, damage, cause, healed: 0, heals: [], brings: false, log },
@@ -565,12 +575,20 @@ function rollRadiation(random, region, sky, log) {
   return dose;
 }
 
-function rollHazard(random, region, equipment, log) {
+function rollHazard(random, region, equipment, log, politics = 1) {
   const danger = Number(region.danger ?? 1);
 
-  // A weapon lowers the odds of trouble rather than winning the fight afterwards:
-  // something that keeps its distance is something you never had to fight.
-  if (!chance(random, danger * 0.09 * equipment.hazardMultiplier)) {
+  /*
+   * A weapon lowers the odds of trouble rather than winning the fight afterwards:
+   * something that keeps its distance is something you never had to fight.
+   *
+   * Phase 17c puts the crews' quarrels in the same position and nowhere else. Contested
+   * ground means running into trouble more often; it does not mean the floor collapses
+   * harder, and it emphatically does not move `danger` — that number also picks *which*
+   * hazard you met, so nudging it would turn a bad fall into a scavenger ambush and back
+   * again as the seasons turned, and a region's character is content rather than weather.
+   */
+  if (!chance(random, danger * 0.09 * equipment.hazardMultiplier * politics)) {
     return { damage: 0, cause: null };
   }
 

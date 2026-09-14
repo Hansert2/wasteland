@@ -20,7 +20,14 @@ import {
 } from './raids.js';
 import { chance, makeRandom } from './random.js';
 import { WORLD_SEED, activeAt, nextBoundaryAfter, productionFactors } from './world-events.js';
-import { RELATIONS, changesBetween } from './relations.js';
+import {
+  RELATIONS,
+  changesBetween,
+  relationsAt,
+  roadPolitics,
+  tempoFactor,
+  warmthAround,
+} from './relations.js';
 import { travelFactors } from './daylight.js';
 import {
   campDefence,
@@ -91,7 +98,10 @@ export function applyTick(state, now, config = CONFIG) {
       visibleWealth(next.settlement),
       next.settlement.raidSeed ?? 0,
       next.settlement.raidCount ?? 0,
-      raidTempo(standingWithRaiders(next.settlement, next.settlement.raidCount ?? 0)),
+      raidTempo(
+        standingWithRaiders(next.settlement, next.settlement.raidCount ?? 0),
+        politicsOfRaiders(next.settlement, next.settlement.raidCount ?? 0, next.lastTickAt),
+      ),
     );
   }
 
@@ -237,6 +247,9 @@ function flightOf(state, expedition) {
     ),
     choices: expedition.choices,
     standings: state.settlement.standings,
+    /* The road as it was when they left it — see `roadPolitics` for why both callers go
+       through one function and why the hour is the departure rather than the return. */
+    politics: roadPolitics(WORLD_SEED, expedition.region?.slug, expedition.departedAt),
   });
 
   /*
@@ -512,6 +525,19 @@ function standingWithRaiders(settlement, index) {
 }
 
 /**
+ * And what else that crew has on, at the instant the raid is being booked — Phase 17c.
+ *
+ * Read at booking rather than at arrival, which is the same rule the schedule already follows
+ * for standing and for wealth: a clock that drifted with the world between being set and going
+ * off would make the outcome depend on how the interval was divided. The season the raid was
+ * booked in is the season that priced it.
+ */
+function politicsOfRaiders(settlement, index, at) {
+  const slug = raidFaction(settlement.raidSeed ?? 0, index);
+  return tempoFactor(warmthAround(relationsAt(WORLD_SEED, at), slug));
+}
+
+/**
  * Finish fitting a structure upgrade.
  *
  * Fitting is building work, so it follows the build rule: starting needed living
@@ -673,7 +699,10 @@ function openRaid(state, at, events) {
     settlement.raidCount,
     // The *next* raid's crew sets the pace: a camp in good odour with one side still
     // hears from the other on the other side's schedule.
-    raidTempo(standingWithRaiders(settlement, settlement.raidCount)),
+    raidTempo(
+      standingWithRaiders(settlement, settlement.raidCount),
+      politicsOfRaiders(settlement, settlement.raidCount, at),
+    ),
   );
 
   // A stream of its own, so that skipping this roll at resolution does not shift every

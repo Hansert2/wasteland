@@ -9,6 +9,8 @@ import {
 import { grantItems, storeItems } from '../db/world.js';
 import { InputError } from '../errors.js';
 import { TRADE_POST_LINKS } from '../game/road.js';
+import { priceFactor, relationsAt, warmthAround } from '../game/relations.js';
+import { WORLD_SEED } from '../game/world-events.js';
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -89,7 +91,14 @@ export async function tradeWithCaravan(client, settlementId, { faction, offer },
     [settlementId, faction],
   );
   const standing = Number(standings[0]?.standing ?? 0);
-  const costs = priceAt(goods, standing);
+  /*
+   * Phase 17c's factor, composed here exactly as `view-camp` composes it for the shopfront.
+   * Both go through `priceFactor(warmthAround(...))` on the same instant, so the counter
+   * cannot charge a price the window did not show — the same rule the recovery errand follows
+   * and the one thing a shop must never get wrong.
+   */
+  const politics = priceFactor(warmthAround(relationsAt(WORLD_SEED, now), faction));
+  const costs = priceAt(goods, standing, politics);
 
   await payCosts(client, settlementId, costs);
   await grant(client, settlementId, character.id, goods);

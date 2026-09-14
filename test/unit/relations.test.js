@@ -6,8 +6,15 @@ import {
   PAIRS,
   RELATIONS,
   STATES,
+  HOLDINGS,
   changesBetween,
   eraAt,
+  holderOf,
+  priceFactor,
+  roadFactor,
+  roadPolitics,
+  tempoFactor,
+  warmthAround,
   pairKey,
   relationAt,
   relationsAt,
@@ -15,7 +22,7 @@ import {
   temperatureOf,
   warmthOf,
 } from '../../src/game/relations.js';
-import { FACTIONS } from '../../src/game/factions.js';
+import { FACTIONS, priceMultiplier } from '../../src/game/factions.js';
 import { WORLD_EPOCH } from '../../src/game/world-events.js';
 
 const HOUR = 3600_000;
@@ -161,4 +168,81 @@ test('warmth is a number a multiplier can be built out of, and neutral is nothin
   assert.equal(warmthOf('hostile'), -2);
   assert.equal(warmthOf('working'), 2);
   assert.ok(warmthOf('trading') > warmthOf('tense'));
+});
+
+test('a crew with one warm neighbour and one cold one is at no swing at all', () => {
+  // The quantity every 17c effect is built on. It has to be able to cancel, or a mechanic
+  // that reads "how much of the world is against them" would read "how extreme is anything".
+  const relations = [
+    { a: 'junction_crews', b: 'green_river', state: 'working' },
+    { a: 'junction_crews', b: 'wellkeepers', state: 'hostile' },
+    { a: 'green_river', b: 'wellkeepers', state: 'neutral' },
+  ];
+  assert.equal(warmthAround(relations, 'junction_crews'), 0, '+2 and -2 should cancel');
+  assert.equal(warmthAround(relations, 'green_river'), 1);
+  assert.equal(warmthAround(relations, 'wellkeepers'), -1);
+  assert.equal(warmthAround(relations, 'nobody'), 0, 'a crew with no pairs is at no swing');
+  assert.equal(warmthAround([], 'junction_crews'), 0);
+});
+
+test('every swing is neutral at zero, and each points the way its comment says', () => {
+  for (const factor of [priceFactor, tempoFactor, roadFactor]) {
+    assert.equal(factor(0), 1, `${factor.name} is not neutral at neutral`);
+  }
+
+  // Warm world, no competition, dearer goods.
+  assert.ok(priceFactor(2) > 1 && priceFactor(-2) < 1);
+  // Warm world, nothing else to do, they come for you sooner — a multiplier on the *gap*.
+  assert.ok(tempoFactor(2) < 1 && tempoFactor(-2) > 1);
+  // Warm world, quiet roads.
+  assert.ok(roadFactor(2) < 1 && roadFactor(-2) > 1);
+});
+
+test('the politics never out-weigh what the camp itself did', () => {
+  /*
+   * The ordering that makes this weather rather than a second standing. Standing spans x1.4
+   * to x0.6 on a price because standing is what the player chose; a world that could overrule
+   * that would make the choice feel unearned. Asserted rather than left in a comment, because
+   * it is a relationship between two constants in two files.
+   */
+  const byStanding = priceMultiplier(-100) - priceMultiplier(100);
+  const byPolitics = priceFactor(2) - priceFactor(-2);
+  assert.ok(byPolitics < byStanding / 2, 'the world is shouting over the player');
+});
+
+test('three places are held by nobody, and no place is held twice', () => {
+  const places = Object.values(HOLDINGS).flat();
+  assert.equal(new Set(places).size, places.length, 'two crews claim the same road');
+
+  for (const slug of places) assert.ok(holderOf(slug), `${slug} lost its holder`);
+  for (const slug of ['the_fence_line', 'coastal_wreckage', 'the_deep_zone']) {
+    assert.equal(holderOf(slug), null, `${slug} should belong to nobody`);
+  }
+
+  // Every holder is a real crew, or the road warns about somebody who does not exist.
+  for (const slug of Object.keys(HOLDINGS)) assert.ok(FACTIONS[slug], `${slug} is not a crew`);
+});
+
+test('a road nobody holds is never touched by anybody’s politics', () => {
+  /*
+   * The Deep Zone is the case this protects, and it is the oldest rule in `LORE.md`: nobody
+   * agrees what is down there, and a crew with a claim on it would be an answer. It must
+   * therefore read exactly 1 in every season of every world, not merely usually.
+   */
+  for (let world = 1; world <= 200; world += 1) {
+    for (const era of [0, 3, 17, 60]) {
+      const at = WORLD_EPOCH + era * ERA_HOURS * HOUR + HOUR;
+      assert.equal(roadPolitics(world * 31, 'the_deep_zone', at), 1);
+    }
+  }
+});
+
+test('a held road moves with its holder and with nobody else', () => {
+  const at = WORLD_EPOCH + 9 * ERA_HOURS * HOUR + HOUR;
+  for (const [faction, places] of Object.entries(HOLDINGS)) {
+    const wanted = roadFactor(warmthAround(relationsAt(20260101, at), faction));
+    for (const slug of places) {
+      assert.equal(roadPolitics(20260101, slug, at), wanted, `${slug} is priced off the wrong crew`);
+    }
+  }
 });

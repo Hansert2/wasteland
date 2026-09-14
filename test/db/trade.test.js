@@ -10,9 +10,25 @@ import { FACTIONS, caravanVisit } from '../../src/game/factions.js';
 import { viewCamp } from '../../src/services/view-camp.js';
 import { campPage } from '../../src/web/render.js';
 import { InputError } from '../../src/errors.js';
+import { relationsAt, warmthAround } from '../../src/game/relations.js';
+import { WORLD_SEED } from '../../src/game/world-events.js';
 
 const hours = (h) => h * 60 * 60 * 1000;
 const uniq = () => Math.random().toString(36).slice(2, 10);
+
+/**
+ * A season in which every crew's world is exactly balanced, so a price is standing and nothing
+ * else.
+ *
+ * Phase 17c made a price a product of two things — what they think of the camp and what they
+ * think of each other — and the second is *global*. A test that traded at `Date.now()` would
+ * quote a different number in March than in April, which is not a flaky test so much as a test
+ * of nothing. Pinned to a week the crews are all neutral in, the historic figures below are
+ * still exactly what standing alone produces, and the politics get a test of their own.
+ *
+ * Era 8 of the real world seed, a day in. Found by walking `relationsAt`, not by hoping.
+ */
+const CALM = Date.UTC(2026, 0, 1) + hours(8 * 28 * 24 + 24);
 
 async function withRollback(fn) {
   const client = await pool.connect();
@@ -32,7 +48,7 @@ async function withRollback(fn) {
  * hoping, walk the seed's own visit sequence until the wanted crew turns up and set
  * the count there. The tick would have arrived at the same place honestly.
  */
-async function setup(client, { faction = 'junction_crews', stock = 200 } = {}) {
+async function setup(client, { faction = 'junction_crews', stock = 200, at = CALM } = {}) {
   const { settlementId } = await foundSettlement(client, {
     email: `${uniq()}@example.test`,
     password: 'correct horse battery staple',
@@ -49,7 +65,11 @@ async function setup(client, { faction = 'junction_crews', stock = 200 } = {}) {
   let count = 0;
   while (caravanVisit(seed, count).faction !== faction) count += 1;
 
-  const now = Date.now();
+  const now = at;
+  await client.query('update settlements set last_tick_at = $2 where id = $1', [
+    settlementId,
+    new Date(now - hours(2)),
+  ]);
   await client.query(
     `update settlements
         set caravan_seed = $2, caravan_count = $3, next_caravan_at = $4
@@ -324,5 +344,39 @@ test('an offer the stores cannot cover says so at the gate, not after the click'
     const rich = await viewCamp(client, settlementId, now);
     assert.equal(rich.caravan.offers[0].shortBy, null);
     assert.ok(campPage(rich).includes(`name="offer" value="${first.index}"`));
+  });
+});
+
+test('a crew at war with everybody undercuts, and the counter charges what the window said', async () => {
+  await withRollback(async (client) => {
+    /*
+     * Era 24 of the real world, when the Provisioners are hostile with both of the others —
+     * the most lopsided season in the world's first thirty years, found by walking
+     * `relationsAt` rather than by hoping. Their price factor there is exactly 0.9.
+     */
+    const WAR = Date.UTC(2026, 0, 1) + hours(24 * 28 * 24 + 24);
+    const warmth = warmthAround(relationsAt(WORLD_SEED, WAR), 'green_river');
+    assert.equal(warmth, -2, 'the season this test is pinned to has moved');
+
+    const { settlementId, now } = await setup(client, { faction: 'green_river', at: WAR });
+
+    /*
+     * The shopfront and the counter, compared rather than each checked against a number.
+     * A price the page shows and the service will not honour is the one failure a shop must
+     * not have, and it is invisible to any test that only asks whether a trade went through.
+     */
+    const view = await viewCamp(client, settlementId, now);
+    const quoted = view.caravan.offers[0].costs;
+
+    const result = await tradeWithCaravan(client, settlementId, { faction: 'green_river', offer: 0 }, now);
+    assert.deepEqual(result.paid, quoted, 'the counter charged a price the window never showed');
+
+    // And it is genuinely cheaper than the same offer in a calm season, which is the mechanic.
+    const calm = await setup(client, { faction: 'green_river', at: CALM });
+    const calmView = await viewCamp(client, calm.settlementId, calm.now);
+    assert.ok(
+      Number(Object.values(quoted)[0]) < Number(Object.values(calmView.caravan.offers[0].costs)[0]),
+      'a crew fighting on two fronts should be competing for the camp, not pricing like it is not',
+    );
   });
 });

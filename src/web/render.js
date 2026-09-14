@@ -2801,6 +2801,30 @@ ${PANE_CSS}
   .between .name i { font-style: normal; color: var(--faint); }
   .between.cold .cost { color: var(--oxide); }
 
+  /*
+   * Whose ground a road is, and the mark on the table when they are fighting over it.
+   *
+   * The band says it in words because there is room; the table says it with the accent the
+   * dose column already uses, because the destination column is 189px and a fourth word per
+   * row was what cost the pay figures the last time this table was widened. A contested road
+   * changes the odds of trouble, so the reader needs it *before* pressing Send — and the Send
+   * button is in the row, not only on the band.
+   */
+  .ground { display: block; margin-top: 6px; font-family: var(--numer); font-size: 12px;
+            color: var(--faint); }
+  .ground.hot { color: var(--oxide); }
+  /*
+   * The mark sits beside the *name*, not beside the danger pips, and that was measured rather
+   * than decided: a 4px oxide square at the end of the danger cell read as a sixth pip, so
+   * Harrow End at danger five looked like danger six. Against a name it cannot be mistaken
+   * for a reading of anything.
+   *
+   * It marks the row rather than the place: the region's own danger is content and has not
+   * changed. What has changed is who is on that road this season.
+   */
+  .roads .dest .contested { display: inline-block; width: 5px; height: 5px; margin-left: 8px;
+                            vertical-align: middle; background: var(--oxide); }
+
   .errands { border-top: 1px solid var(--rule-in); }
   .errand { display: flex; align-items: center; gap: 16px; padding: 9px 20px;
             background: var(--strip); }
@@ -8531,6 +8555,33 @@ function huntForTheLost(view, region) {
  * no part of the band with nothing written on it, so there is nothing for a gradient to
  * open into and it would only be thinning behind text.
  */
+/**
+ * Whose ground a place is, and whether they are fighting over it — Phase 17c.
+ *
+ * The hazard roll is multiplied by this, so without a line here the crews' politics would be
+ * a number moving under the player with nothing on the page to attribute it to. Three places
+ * are held by nobody and say nothing at all, which is the same rule the dose follows: a mark
+ * reports something acting on a number, never a non-effect.
+ *
+ * The accent is spent only on the dangerous direction. A road that is *quieter* than usual is
+ * good news, and good news is not a warning.
+ *
+ * It goes in the band's *main* column, under the description, and that was measured: in the
+ * figures column beside the pips it wrapped to its own line and took the cell to 148px inside
+ * a band pinned to 148, a single pixel of overflow on this machine and more on one where the
+ * condensed face resolves differently. The main column had 62px spare. It also belongs there
+ * on the argument: the description says what the place is, and whose ground it is is the same
+ * kind of fact. The numbers column is for numbers.
+ */
+function groundNote(region) {
+  if (!region.holder) return '';
+  const factor = Number(region.roadPolitics) || 1;
+  if (factor === 1) return `<span class="ground">${escape(region.holder)}’ ground</span>`;
+  return factor > 1
+    ? `<span class="ground hot">${escape(region.holder)} are fighting over it</span>`
+    : `<span class="ground">${escape(region.holder)} hold it, and quietly</span>`;
+}
+
 function placeBand(view, region, ceil) {
   const bars = PAY_KINDS.map((kind) => {
     const range = (region.loot ?? {})[kind];
@@ -8554,6 +8605,7 @@ function placeBand(view, region, ceil) {
       <div class="band-main">
         <span class="band-nm">${escape(region.name)}</span>
         <p class="band-note">${escape(region.description ?? '')}</p>
+        ${groundNote(region)}
       </div>
       <div class="band-figs">
         <span class="band-fig">${dangerPips(region.danger)}<span>${escape(
@@ -8630,7 +8682,13 @@ function renderExpeditions(view, place = null) {
           data-contact="${region.locked ? -1 : Number(region.moments)}"${keys}>
         <td class="dest"><a href="?place=${escape(region.slug)}" data-place="${escape(
           region.slug,
-        )}">${escape(region.name)}</a></td>
+        )}">${escape(region.name)}</a>${
+          (Number(region.roadPolitics) || 1) > 1
+            ? `<i class="contested" title="${escape(
+                region.holder ?? 'Somebody',
+              )} are fighting over this road"></i>`
+            : ''
+        }</td>
         <td class="num">${outBar(region.travel_hours, longest)}</td>
         <td class="num">${dangerPips(region.danger)}</td>
         <td class="num${dose ? ' hot' : ''}">${dose ? `+${dose}` : '&mdash;'}</td>
@@ -9888,6 +9946,23 @@ function renderCaravan(caravan, someoneAlive) {
         ? 'the rates are friendly'
         : 'strangers pay list price';
 
+  /*
+   * And the half of the price that is nothing to do with this camp — Phase 17c.
+   *
+   * Printed rather than left to be inferred, because a price that moved for a reason the page
+   * does not give is the hidden slider the whole phase exists not to be. It is also the only
+   * one of the three effects a player can do arithmetic on, so it is the one worth spelling
+   * out: a tenth either way, and which way, and why.
+   *
+   * Silent when it is one. A mark reports something acting on a number, never a non-effect.
+   */
+  const politics =
+    !caravan.politics || caravan.politics === 1
+      ? ''
+      : caravan.politics < 1
+        ? ' &mdash; and they are undercutting, with the crews they trade against fighting'
+        : ' &mdash; and nobody is undercutting them this season';
+
   return `<div class="as-line">${quiet(
     'Caravan',
     `<strong>${escape(caravan.name)}</strong> are at the gate.${onward('/camp/trade', 'Trade')}`,
@@ -9903,7 +9978,7 @@ function renderCaravan(caravan, someoneAlive) {
         </div>
         <table>${rows}</table>
         <div class="block-foot"><span class="tag">Standing</span>
-          <span class="val">${describeStanding(caravan.standing)} &mdash; ${rates}</span></div>
+          <span class="val">${describeStanding(caravan.standing)} &mdash; ${rates}${politics}</span></div>
       </div>
     </div>`;
 }
