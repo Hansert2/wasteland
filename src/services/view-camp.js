@@ -146,7 +146,7 @@ const DAY_MS = 24 * HOUR_MS;
  * be stated before one is chosen, so the strip answers the question it can — what going
  * out now is worth — and leaves the rest to the trip.
  */
-function hourStrip(state, now, fitted, clock = 0, noon = DEFAULT_SOLAR_NOON, net = {}) {
+function hourStrip(state, now, fitted, clock = 0, noon = DEFAULT_SOLAR_NOON, net = {}, draw = {}) {
   const active = activeAt(state.worldEvents, now);
   const time = worldTimeAt(now, clock, noon);
   const lit = isLit(now, clock, noon);
@@ -177,18 +177,43 @@ function hourStrip(state, now, fitted, clock = 0, noon = DEFAULT_SOLAR_NOON, net
    * Null when a store is not falling. A camp whose purifier out-produces its mouths has no
    * deadline, and a mark reports something acting on a number, never a non-effect.
    */
-  const runsOut = (kind) => {
-    const rate = Number(net[kind]);
-    if (!Number.isFinite(rate) || rate >= 0) return null;
+  /*
+   * **Always a figure, and only sometimes a warning** — corrected the same day it shipped.
+   *
+   * The first cut showed nothing unless the store was falling, on the house rule that a mark
+   * reports something acting on a number and never a non-effect. That was the rule applied one
+   * step too far: every camp on the dev box runs a garden and a purifier against one mouth, so
+   * every store was net-positive and the strip said nothing at all. **A runway is not a
+   * non-effect.** Nine days of food is a fact a player plans against.
+   *
+   * So there are two readings and the strip carries whichever is true:
+   *
+   * - **Falling.** The store is net-negative and this is when it hits zero. Carries the accent,
+   *   because that is a warning and the accent is for warnings.
+   * - **Deep.** The store is holding or climbing, and the figure is how long the stock alone
+   *   would last the mouths drinking from it — *how deep the larder is*, which is what a person
+   *   means by "we have nine days of food". No accent: it is a quantity, not a warning.
+   *
+   * Both are the same arithmetic over a different denominator, which is what lets one cell hold
+   * either without the player having to be told which they are looking at.
+   *
+   * Null only when nobody is drawing at all, which is a camp with nobody in it.
+   */
+  const runway = (kind) => {
     const amount = Number(state.settlement.resources[kind]?.amount) || 0;
-    return new Date(now + (amount / -rate) * HOUR_MS);
+    const rate = Number(net[kind]) || 0;
+    const mouths = Number(draw[kind]) || 0;
+
+    if (rate < 0) return { at: new Date(now + (amount / -rate) * HOUR_MS), falling: true };
+    if (mouths <= 0) return null;
+    return { at: new Date(now + (amount / mouths) * HOUR_MS), falling: false };
   };
 
   return {
     band: time.band,
     /* Both, so the strip can say which of the two is the near one. */
-    dryAt: runsOut('water'),
-    emptyAt: runsOut('food'),
+    water: runway('water'),
+    food: runway('food'),
     // Carried to the page so the ticking clock in the browser shows this camp's hour.
     offset: clock,
     // Free at every tier: which way the hour is pushing. Numbers cost fuel; the direction
@@ -2621,7 +2646,7 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
      * cost they cannot plan around. What fuel buys is precision: the clock sells the hour
      * and the exact turn of the light, the glass sells the temperature and the numbers.
      */
-    hour: hourStrip(state, now, fitted, clock, noon, netRates),
+    hour: hourStrip(state, now, fitted, clock, noon, netRates, eats),
     /**
      * Where the camp stands — offered once, to a camp that was never actually placed, and
      * `null` for everybody else.

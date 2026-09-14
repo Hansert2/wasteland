@@ -7094,15 +7094,31 @@ Seventeen alternatives were drawn at true size in the game's own palette — the
 *Two Clocks, Seventeen Ways* — and the user picked two of them, which turn out to be halves of
 one idea.
 
-**16: the camp's deadline goes on the hour strip.** `dry in 1d 05h · fed for 9d`, beside the
+**16: the camp's runway goes on the hour strip.** `water 2d 05h · food 3d 07h`, beside the
 clock and the sky. Everybody drinks from one tank, so a per-person reading of a shared shelf is
 the same number copied once per survivor, on the one view a player opens least — while the
 strip is sticky across *every* view and is already the page's answer to "how long until".
 
 Read off the **net** rate, the one the stores rail beside it prints, because a strip saying nine
-days over a rail draining at a rate that empties in four is the page contradicting itself. It is
-silent for a store that is not falling: a camp whose purifier out-produces its mouths has no
-deadline, and a mark reports something acting on a number, never a non-effect.
+days over a rail draining at a rate that empties in four is the page contradicting itself.
+
+**The first cut showed nothing unless a store was falling, and that was wrong within the hour.**
+The house rule says a mark reports something acting on a number and never a non-effect, and I
+applied it one step too far: every camp on the dev box runs a garden and a purifier against one
+mouth, so every store was net-positive and the strip said nothing at all. The user's report was
+"I don't see it on the local server", and they were right to. **A runway is not a non-effect.**
+Nine days of food is a fact a player plans against.
+
+So the cell carries whichever of two readings is true, and the *label* says which — because the
+figure alone cannot, and a bare duration under one heading would make two different claims look
+like one:
+
+    water 2d 05h   the stock alone against the mouths drinking it — how deep the larder is
+    dry in 4h      the store is net-negative, and this is when it reaches zero
+
+Only the falling reading takes the accent, which keeps the accent meaning what it means. Both
+are the same arithmetic over a different denominator, which is what lets one cell hold either
+without the player being told which they are looking at.
 
 **01: a survivor's gauge prints when, not how much.** Once the camp's figure is on the strip,
 what is left for a person's gauge is the one thing a level cannot give — how long, *for this

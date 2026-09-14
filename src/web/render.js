@@ -4292,6 +4292,22 @@ function hourBar(hour, place) {
   const from = (name, body) =>
     `<span class="from"><span class="tag">${escape(name)}</span>${body}</span>`;
 
+  /*
+   * How long the camp has of one store, in the two readings `hourStrip` can hand over.
+   *
+   * The label carries which of the two it is, because the figure alone cannot: "dry in 4h" and
+   * "water 3d" are different claims and a bare duration under one heading would make them look
+   * like the same one. The accent goes on the falling reading only — that is a warning, and on
+   * this page the accent is a clock, a price you cannot pay, or a warning.
+   */
+  const runway = (name, of) => {
+    if (!of) return '';
+    return from(
+      of.falling ? (name === 'Water' ? 'Dry in' : 'Empty in') : name,
+      `<span class="val${of.falling ? ' hot' : ''}">${countdown(of.at, 'now')}</span>`,
+    );
+  };
+
   const sunValue = hour.sun
     ? `${factor({ what: 'dose', factor: round2(hour.sun.radiation) })}
        ${factor({ what: 'finds', factor: round2(hour.sun.finds) })}`
@@ -4401,8 +4417,7 @@ function hourBar(hour, place) {
         * non-effect. Water carries the accent and food does not, because on these two clocks
         * water is always the near one and the accent is for what is close.
         */ ''}
-      ${hour.dryAt ? from('Dry in', `<span class="val hot">${countdown(hour.dryAt, 'now')}</span>`) : ''}
-      ${hour.emptyAt ? from('Fed for', `<span class="val">${countdown(hour.emptyAt, 'no time')}</span>`) : ''}
+      ${runway('Water', hour.water)}${runway('Food', hour.food)}
       <span class="costs" tabindex="0" role="button" aria-label="What going out now costs">
         <span class="band">${escape(hour.band)}</span>
         <span class="costs-panel">
