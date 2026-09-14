@@ -1237,6 +1237,14 @@ ${SURVIVOR_TAB_CSS}
   }
 
   /* What the fence is worth and the way to change it, on one line. */
+  /* What the camp could do about a raid it has been warned about: two figures, on the block
+     that does the warning. Rows rather than a sentence -- a number belongs in a row. */
+  .levers { display: flex; flex-wrap: wrap; gap: 8px 26px; margin-top: 12px;
+            padding-top: 11px; border-top: 1px solid var(--rule-in); }
+  .lever { display: flex; align-items: baseline; gap: 10px; }
+  .lever .said { font-family: var(--numer); font-size: 12.5px; color: var(--quiet);
+                 font-variant-numeric: tabular-nums; }
+
   .standers-foot { display: flex; align-items: center; justify-content: space-between;
                    gap: 18px; flex-wrap: wrap; margin-top: 15px; }
   .standers-foot .keeps { font-family: var(--numer); font-size: 12px; color: var(--dim);
@@ -5681,7 +5689,10 @@ export function campPage(view, { error, pane = 'camp', place = null } = {}) {
     shell(view, pane, {
       error,
       inner: `
-    ${section('raid', view.underRaid ? renderRaid(view) : renderRaidWarning(view.raidExpectedAt))}
+    ${section(
+      'raid',
+      view.underRaid ? renderRaid(view) : renderRaidWarning(view.raidExpectedAt, view.raidReady),
+    )}
     ${section('hunt-line', renderHuntLine(view))}
     ${section('hunt', renderHuntBoard(view))}
     ${section('sky', renderWeather(view.weather))}
@@ -6722,7 +6733,49 @@ function huntVerb(view, label) {
   return `<form method="post" action="/hunt" class="huntstart">${whoMenu(view, label, 'hunt')}</form>`;
 }
 
-function renderRaidWarning(expectedAt) {
+/**
+ * What the camp could do about it, in figures about this camp.
+ *
+ * Measured 2026-09-13: the small-camp complaint was not that everybody is away — that almost
+ * never happens — but that **a lone unarmed defender holds back 20% and watches the other 80%
+ * leave**. The two things that change it are strong and were stated nowhere a player would
+ * find them: the weapon's share lived in a hover on a row of a block that only exists while
+ * raiders are already in the yard, and nothing anywhere said a watchtower turns them away.
+ *
+ * A readout rather than advice. It says what the fence is worth now and what one pair of hands
+ * is worth armed and unarmed; what to do about either is the player's.
+ */
+function raidLevers(ready) {
+  if (!ready) return '';
+
+  const pct = (n) => `${Math.round(Number(n) * 100)}%`;
+  const rows = [
+    [
+      'the fence',
+      ready.defence > 0
+        ? `turns away ${pct(ready.repels)} of them`
+        : 'turns none of them away yet',
+    ],
+    [
+      'one at the fence',
+      ready.armed
+        ? `${pct(ready.bare)} bare, ${pct(ready.armed.stands)} with the ${String(
+            ready.armed.name,
+          ).toLowerCase()}`
+        : `${pct(ready.bare)}, and nobody here is carrying a weapon`,
+    ],
+  ];
+
+  return `<div class="levers">${rows
+    .map(
+      ([key, said]) =>
+        `<span class="lever"><span class="tag">${escape(key)}</span>
+           <span class="said">${escape(said)}</span></span>`,
+    )
+    .join('')}</div>`;
+}
+
+function renderRaidWarning(expectedAt, ready) {
   // No radio, so no hour — and that is a fact about the camp rather than a blank. The
   // line says what is missing and what happens without it, which is the difference
   // between an empty slot and a thing to go and build.
@@ -6738,7 +6791,10 @@ function renderRaidWarning(expectedAt) {
         <span class="tag">Radio</span>
         <span class="clock deadline">${countdown(expectedAt, 'any moment')}<small>until raiders</small></span>
       </div>
-      <div class="block-body"><p>Anything still in the stores is theirs to take.</p></div>
+      <div class="block-body">
+        <p>Anything still in the stores is theirs to take.</p>
+        ${raidLevers(ready)}
+      </div>
     </div>`;
 }
 

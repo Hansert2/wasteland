@@ -341,6 +341,35 @@ test('the radio buys the hour of the next raid, and nothing else', async () => {
     const warned = await viewCamp(client, settlementId, now + hours(9));
     assert.ok(warned.raidExpectedAt, 'fitted, and the hour is on the page');
 
+    /*
+     * And the block says what the camp could do about it, which it did not until 2026-09-14.
+     *
+     * `tools/raid-at-home.mjs` found the small-camp complaint was never about everybody being
+     * away — it is that a lone unarmed defender holds back 20% and watches the rest go. The
+     * two things that change it are strong and were stated nowhere a player would find them:
+     * the weapon's share lived in a hover on a block that only exists once raiders are already
+     * in the yard, and nothing said a watchtower turns them away at all.
+     */
+    assert.ok(warned.raidReady, 'the forecast carries what the camp could do about it');
+    assert.equal(warned.raidReady.armed, null, 'this camp has no weapon anywhere');
+    assert.ok(warned.raidReady.bare > 0 && warned.raidReady.bare < 1, 'a bare stand is a share');
+
+    const forecast = campPage(warned, { pane: 'camp' });
+    assert.match(forecast, /nobody here is carrying a weapon/, 'and says so in the open');
+
+    // Put one on the shelf and the same block prices it: the box is a place hands can reach.
+    await client.query(
+      `insert into store_items (settlement_id, item_id, qty)
+       select $1, id, 1 from items where slug = 'scrap_spear'`,
+      [settlementId],
+    );
+    const armed = await viewCamp(client, settlementId, now + hours(9));
+    assert.ok(
+      armed.raidReady.armed.stands > armed.raidReady.bare,
+      'a spear on the shelf is worth more than empty hands',
+    );
+    assert.match(campPage(armed, { pane: 'camp' }), /with the scrap spear/);
+
     // Informational only: it must not move the raid it reports.
     const { rows: after } = await client.query(
       'select next_raid_at, raid_count from settlements where id = $1',

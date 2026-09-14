@@ -762,6 +762,34 @@ export const NIGHT = {
     },
   },
 
+  /*
+   * The one moment that shipped without a dark half, written 2026-09-14.
+   *
+   * `walking_out` arrived with Phase 15, the day after night shipped, and was the only entry
+   * of twenty-one with no reading here — so meeting somebody on the road at three in the
+   * morning was described in daylight words.
+   *
+   * **The inversion is what makes it worth writing rather than restating.** By day the whole
+   * decision is that you can *see* they have nothing: the scene hands you a person with no
+   * pack, and the question is pity. At night you cannot see them at all, only a light that
+   * stops when you stop — so the same ration buys the same stranger, and the question is
+   * whether you want to find out who is behind it. Nothing about what the option does moves,
+   * because nothing here can move it.
+   */
+  walking_out: {
+    title: 'The light coming the other way',
+    scene:
+      'There is a light on the road a long way off, low and unsteady, held at about the height of somebody’s hand. It is coming this way at walking pace. When the survivor stops, it stops, and then it waits — whoever is carrying it can see no more of them than they can see of it.',
+    prose: 'A light on the road at this hour, coming the other way, and stopping when you do.',
+    options: {
+      pass: { label: 'Wait for it to pass', detail: 'off the road, and let it go by' },
+      feed: {
+        label: 'Call out to them',
+        detail: 'one ration, and whoever turns out to be behind it',
+      },
+    },
+  },
+
   the_tin: {
     title: 'The last tin, and the cold',
     scene:

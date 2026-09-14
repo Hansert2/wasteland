@@ -642,3 +642,21 @@ test('bringing somebody home is a consequence no moment can hand out for free', 
     assert.equal(option.bringsSomebody, true, `${key}: the flag is a flag, not a count`);
   }
 });
+
+test('every moment has a dark half, because the one that did not went unnoticed for a day', () => {
+  /*
+   * `walking_out` shipped with Phase 15 the day after night shipped, and was the only entry of
+   * twenty-one with no reading in `NIGHT` — so meeting somebody on the road at three in the
+   * morning was described in daylight words for a day, with a green suite the whole time.
+   *
+   * **Nothing here could have caught it.** Every other test in this file walks `NIGHT` and
+   * validates the entries that exist; the one that compares a placed moment against its
+   * mirror skips a moment that has none (`if (!NIGHT[day[i].key]) continue`). Written the way
+   * this project writes guards: cheap, specific, and aimed at the exact mistake the next
+   * change is likely to make — adding a moment and forgetting its other half. What a mirror is
+   * allowed to *contain* is already pinned above, by "every night mirror names a moment that
+   * exists, and only overrides its words"; this is the other direction, and only this one.
+   */
+  const missing = Object.keys(MOMENTS).filter((key) => !NIGHT[key]);
+  assert.deepStrictEqual(missing, [], `written for the day only: ${missing.join(', ')}`);
+});

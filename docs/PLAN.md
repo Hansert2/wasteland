@@ -6162,6 +6162,48 @@ to somebody wondering where the parts went.
 pile the bench can spend"*, which was true when it was written and is the thing this change
 made false.
 
+## Two owed things, closed 2026-09-14
+
+### The moment that shipped without a dark half
+
+`walking_out` arrived with Phase 15 the day after Phase 14 shipped, and was the only entry of
+twenty-one with no reading in `NIGHT` — so meeting somebody on the road at three in the morning
+was described in daylight words.
+
+**The inversion is what made it worth writing rather than restating.** By day the whole decision
+is that you can *see* they have nothing: the scene hands you a person with no pack and the
+question is pity. At night you cannot see them at all, only a light that stops when you stop —
+so the same ration buys the same stranger and the question is whether you want to find out who
+is behind it.
+
+**And nothing could have caught it.** Every test in `moments.test.js` walks `NIGHT` and
+validates the entries that exist; the one that compares a placed moment against its mirror
+skips a moment that has none (`if (!NIGHT[day[i].key]) continue`). There is now a guard in the
+other direction — every moment has a dark half — which is the cheap, specific shape this file
+keeps asking for: aimed at the exact mistake the next change is likely to make.
+
+### The raid's two levers were invisible
+
+`tools/raid-at-home.mjs` measured the small-camp complaint on 2026-09-13 and found the premise
+wrong — a whole roster is almost never away when raiders come. What is true is that **a lone
+unarmed defender holds back 20% and watches the other 80% leave**, and the two things that
+change that are strong:
+
+    a weapon in their hands          20% -> 45% for one, 36% -> 70% for two
+    fence and tower at level 4       40% of raids turned away outright, and the rest more
+                                     than halved
+
+Both were stated nowhere a player would find them. The weapon's share lived in a hover on a row
+of a block **that only exists once raiders are already in the yard** — too late to act on — and
+nothing anywhere said a watchtower turns raiders away at all.
+
+The forecast block carries both now, as figures about this camp: what the fence is worth, and
+what one pair of hands is worth armed and unarmed. **The best weapon anybody could pick up**
+counts, whether it is in a pack or on the shelf, because the box is a place hands can reach.
+
+A readout rather than advice — what to do about either is the player's. And it is on the block
+that *warns*, which is the only place a player can still act on it.
+
 ## Not planned
 
 - **Alts.** `settlements_player_idx` is unique on `player_id`. Drop it if this ever

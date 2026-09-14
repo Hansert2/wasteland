@@ -39,7 +39,7 @@ import { CARRY_CAP_GRAMS, saysLoad, saysWeight, weighPack } from '../game/carryi
 /** The order the stores are read in, top to bottom, on every page. */
 const STORES = ['food', 'water', 'scrap', 'fuel'];
 import { radDamagePerHourAt, recoveryOf } from '../game/tick.js';
-import { RAID_DAMAGE_PER_HOUR, standFor, standTogether } from '../game/raids.js';
+import { RAID_DAMAGE_PER_HOUR, repelChance, standFor, standTogether } from '../game/raids.js';
 import {
   LINKS,
   TRADE_POST_LINKS,
@@ -1288,7 +1288,7 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
    * a rule somebody has to remember.
    */
   const { rows: boxRows } = await client.query(
-    `select i.slug, i.name, i.kind, i.description, i.weight_grams, si.qty
+    `select i.slug, i.name, i.kind, i.potency, i.description, i.weight_grams, si.qty
        from store_items si
        join items i on i.id = si.item_id
       where si.settlement_id = $1 and si.qty > 0
@@ -2288,6 +2288,36 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
     // The radio's entire effect. Without it the hour is in the database and none of
     // the player's business; with it, it is the most useful thing on the page.
     raidExpectedAt: fitted.has('radio') ? settlements[0].next_raid_at : null,
+
+    /*
+     * What the camp could do about a raid, on the block that forecasts one.
+     *
+     * `tools/raid-at-home.mjs` measured the small-camp complaint on 2026-09-13 and found the
+     * premise wrong: a whole roster is almost never away when raiders come. What is true is
+     * that **a lone unarmed defender holds back 20% and watches the other 80% leave**, and the
+     * two things that change that are strong and were stated nowhere a player would find them
+     * — the weapon's share lived in a hover on a row of a block that only exists mid-raid, and
+     * nothing anywhere said a watchtower turns raiders away at all.
+     *
+     * So the forecast carries both, as figures about *this* camp. It is a readout and not
+     * advice: what the fence is worth now, and what one pair of hands is worth armed and
+     * unarmed.
+     */
+    raidReady: {
+      defence: campDefence(structures),
+      repels: repelChance(campDefence(structures), 0),
+      bare: standFor({ inventory: [] }),
+      /* The best weapon anybody in the camp could actually pick up — a pack or the shelf. */
+      armed: (() => {
+        const best = [
+          ...inventoryRows.filter((row) => row.kind === 'weapon' && Number(row.qty) > 0),
+          ...boxRows.filter((row) => row.kind === 'weapon' && Number(row.qty) > 0),
+        ].sort((a, b) => Number(b.potency ?? 0) - Number(a.potency ?? 0))[0];
+        return best
+          ? { name: best.name, stands: standFor({ inventory: [{ kind: 'weapon', potency: best.potency, qty: 1 }] }) }
+          : null;
+      })(),
+    },
     /*
      * The raid happening *now*, which is a different fact from the one above.
      *
