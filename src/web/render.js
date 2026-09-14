@@ -64,8 +64,8 @@ const PANES = {
    * no clock on it, so nothing about its position has to leave room for a countdown.
    */
   camp: [
-    'raid', 'hunt', 'sky', 'forecast', 'events', 'direction', 'gate', 'structures', 'workshop',
-    'caravan', 'roster',
+    'raid', 'hunt-line', 'sky', 'forecast', 'events', 'direction', 'gate', 'structures',
+    'workshop', 'caravan', 'roster',
   ],
   survivor: ['survivor', 'expedition', 'forecast'],
   /*
@@ -78,6 +78,19 @@ const PANES = {
    * only layout in which dragging one thing to another means anything.
    */
   storage: ['storage'],
+  /*
+   * The hunt is a view of its own, and Camp keeps a line about it.
+   *
+   * The same split the gate and the caravan already use, for the reason written there: a thing
+   * that belongs to one view still has to be *discoverable* from the view a player actually
+   * checks in on. What is on Camp is one quiet row saying whether anybody is out and how it is
+   * going; the board — the odds, the two readings, the presses — is here.
+   *
+   * It earned the view by being the only block on the page that is read *every press* rather
+   * than scanned once, and by wanting figures beside its controls that a column of nine other
+   * blocks has no room for.
+   */
+  hunt: ['hunt'],
   road: ['road'],
   trade: ['caravan', 'post', 'standings'],
 };
@@ -138,6 +151,11 @@ const RAIL = [
   // path is what a player has bookmarked.
   ['survivor', 'Survivors', '/camp/survivor'],
   ['storage', 'Storage', '/camp/storage'],
+  // Beside the Road and before it, because the two are the same question at two scales: the
+  // road is leaving for a day and the hunt is leaving for a minute. It is also the only view
+  // on this rail that answers *now*, so it wants to be found before the one that answers
+  // tomorrow.
+  ['hunt', 'Hunt', '/camp/hunt'],
   ['road', 'Road', '/camp/road'],
   ['trade', 'Trade', '/camp/trade'],
   ['records', 'Records', '/graveyard'],
@@ -1225,30 +1243,172 @@ ${SURVIVOR_TAB_CSS}
                           font-variant-numeric: tabular-nums; }
 
   /*
-   * Phase 20. The moves are a row of wide buttons rather than a menu, because unlike every
-   * other control on this page they are read *every* press: a menu that has to be opened puts
-   * a click between the player and the only block here that answers instantly.
+   * Phase 20, and the one board in this game that is read on every press.
    *
-   * Backing off is in the row and not beside it. Set apart it reads as cancelling the block;
-   * in the row it reads as one of the things you can do, which is what it is.
+   * Everything else here is scanned once a visit and then acted on somewhere else; this is
+   * looked at, pressed, and looked at again four times in a minute. So the figures are large,
+   * the two readings that move them stand either side, and the presses are a row of wide
+   * targets rather than a menu that has to be opened first — a click between the player and
+   * the answer is a click this block cannot afford.
    */
-  .hunt .huntnow { margin: 0 0 4px; color: var(--bone); font-size: 15px; }
-  .hunt .huntlog { margin: 0 0 13px; color: var(--dim); font-size: 13px; line-height: 1.5; }
-  .huntmoves { display: flex; flex-wrap: wrap; gap: 9px; }
-  .huntmove { flex: 1 1 150px; display: flex; flex-direction: column; gap: 3px;
-              padding: 10px 13px; border: 1px solid var(--edge); background: var(--panel);
-              font-family: var(--label); font-size: 10.5px; font-weight: 700;
-              letter-spacing: .14em; text-transform: uppercase; color: var(--prose);
-              text-align: left; cursor: pointer; }
-  .huntmove:hover { background: var(--rule-in); color: var(--bone); }
-  .huntmove .why { font-size: 9.5px; font-weight: 400; letter-spacing: .1em;
-                   text-transform: lowercase; color: var(--faint); }
-  .huntmove.away { flex: 0 1 auto; }
-  /* Something has turned to face them, and this is the one screen that has to be read rather
-     than clicked through. The mark is on the block, not on a button: what changed is the
-     situation, and colouring an option would say the danger is in choosing it. */
-  .hunt.turned .huntnow { color: var(--oxide-light); }
+  /* The one line left on a running board, and it only appears when something has turned to
+     face them. Loud, because it is the screen the whole fairness rule rests on. */
+  .huntboard .huntwarn {
+    margin: 0 0 6px; color: var(--oxide-light); font-size: 17px; line-height: 1.4;
+  }
+  .huntboard .huntlog { margin: 0; color: var(--dim); font-size: 13.5px; line-height: 1.55; }
+  .huntidle .huntnow { margin: 0 0 14px; color: var(--prose); font-size: 15px; }
+
+  /*
+   * How it ended. The win is the only thing on this view a player is playing *for*, so it is
+   * the only outcome allowed to take the accent and the big figures; the three kinds of
+   * nothing stay grey, because a block that shouts about an empty-handed walk home is one
+   * nobody believes the next time it shouts about a boar.
+   */
+  .huntdone .crown { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  .huntdone .word { font-family: var(--label); font-weight: 700; font-size: 34px;
+                    line-height: 1; letter-spacing: .04em; text-transform: uppercase;
+                    color: var(--bone); }
+  .huntdone.won .word { color: var(--oxide-light); }
+  .huntdone.hurt .word { color: var(--warn-prose); }
+  .huntdone .word.quiet { font-size: 22px; color: var(--quiet); }
+  .huntdone .on { font-family: var(--numer); font-size: 12.5px; color: var(--faint); }
+  .huntdone .huntlog { margin: 12px 0 0; }
+  .huntdone .huntwarn { margin: 8px 0 0; font-size: 14px; }
+  .huntdone .huntgo { margin-top: 16px; }
+
+  /* The haul, in the things it is made of. Same reading the storage board gives a shelf,
+     because that is what this is -- and the figures carry it, not the sentence. */
+  .haul { display: inline-flex; flex-wrap: wrap; margin: 16px 0 0;
+          border: 1px solid var(--edge); background: var(--panel); }
+  .haul .got { display: flex; flex-direction: column; gap: 3px; padding: 14px 22px;
+               border-right: 1px solid var(--rule); }
+  .haul .got:last-child { border-right: 0; }
+  .haul .fig { font-family: var(--numer); font-size: 30px; line-height: 1;
+               color: var(--bone); font-variant-numeric: tabular-nums; }
+  .haul .sub { font-family: var(--numer); font-size: 11px; color: var(--faint); }
+  .huntidle .caption, .huntboard .caption { margin: 11px 0 0; }
+  .huntgo { margin-top: 2px; }
+
+  /*
+   * The frame, and it is the ground between them rather than a picture of it.
+   *
+   * The plate is the region art the roads already use: one photograph per quarry, the animal
+   * standing where it was photographed. Closing the distance scales the frame about the animal
+   * -- see cameraFor in hunting.js -- so the press a player makes is the thing they see
+   * happen, and no bar anywhere has to carry distance.
+   *
+   * **The height never changes.** This block is pressed four times a minute, and a picture
+   * that grew would move every control under the cursor.
+   */
+  .view { position: relative; height: 244px; overflow: hidden; background: var(--void);
+          border-bottom: 1px solid var(--rule); }
+  .view img { display: block; width: 100%; height: 244px; object-fit: cover; }
+  /* The plate is pushed back so the writing on it holds: dark at the top where the verdict
+     sits, dark at the foot where the label and the scrubber do, and barely touched across the
+     middle where the animal is. */
+  .view::after { content: ''; position: absolute; inset: 0; pointer-events: none;
+    background: linear-gradient(to bottom, rgba(11,10,8,.62) 0%, rgba(11,10,8,.06) 34%,
+                                           rgba(11,10,8,.2) 68%, rgba(11,10,8,.8) 100%); }
+
+  /* How far in, on the bottom edge of the frame itself. */
+  .view .stops { position: absolute; left: 0; right: 0; bottom: 0; z-index: 2;
+                 display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; }
+  .view .stops i { display: block; height: 3px; background: rgba(228,225,216,.14); }
+  .view .stops i.on { background: var(--oxide); }
+
+  /* What it is worth, top-left on the plate: a fact about the animal in the picture, in the
+     darkest corner of the scrim, and the seventh cell the strip below had no room for. */
+  .view .onplate { position: absolute; left: 20px; top: 16px; z-index: 2;
+                   display: flex; flex-direction: column; gap: 3px; }
+  .view .onplate .tag { color: rgba(228,225,216,.5); text-shadow: 0 1px 4px rgba(11,10,8,.95); }
+  .view .onplate .val { display: flex; align-items: baseline; gap: 4px;
+    font-family: var(--numer); font-size: 16px; color: var(--bone);
+    font-variant-numeric: tabular-nums; text-shadow: 0 1px 4px rgba(11,10,8,.95); }
+  .view .onplate .val b { font-weight: 400; }
+  .view .onplate .val i { font-style: normal; font-family: var(--label); font-size: 10px;
+    letter-spacing: .12em; text-transform: uppercase; color: rgba(228,225,216,.55);
+    margin-right: 8px; }
+
+  .view .where { position: absolute; left: 20px; bottom: 16px; z-index: 2;
+    font-family: var(--label); font-weight: 700; font-size: 10px; letter-spacing: .18em;
+    text-transform: uppercase; color: rgba(228,225,216,.72);
+    text-shadow: 0 1px 4px rgba(11,10,8,.95); }
+  .view .verdict { position: absolute; right: 20px; bottom: 13px; z-index: 2; text-align: right; }
+  .view .verdict .word { display: block; font-family: var(--label); font-weight: 700;
+    font-size: 26px; line-height: 1; letter-spacing: .03em; text-transform: uppercase;
+    color: var(--quiet); text-shadow: 0 2px 8px rgba(11,10,8,.95); }
+  .view .verdict .word.clean { color: var(--bone); }
+  .view .verdict .word.turned { color: var(--oxide-light); font-size: 30px; }
+  .view .verdict .sub { display: block; margin-top: 3px; font-family: var(--numer);
+    font-size: 11.5px; color: rgba(228,225,216,.6); text-shadow: 0 1px 4px rgba(11,10,8,.95); }
+
+  /* The one screen that has to stop somebody pressing through without reading, so the frame
+     itself carries it and not only the words on it. */
+  .view.warned { border-bottom-color: var(--oxide); }
+  .view.warned::after { background:
+    linear-gradient(to bottom, rgba(11,10,8,.62) 0%, rgba(11,10,8,.06) 34%,
+                               rgba(122,69,38,.22) 72%, rgba(11,10,8,.86) 100%); }
+
+  /* The readings, flush under the picture: hairlines between them and no box of their own. */
+  .reads { display: flex; flex-wrap: wrap; }
+  /* The cells share the slack rather than leaving it at the right-hand end: measured at 1520
+     the six of them came to 853 of 1029, which left a sixth of the strip looking unfinished. */
+  .reads .cell { flex: 1 1 auto; display: flex; flex-direction: column; gap: 4px;
+                 padding: 13px 20px; border-right: 1px solid var(--rule-in); }
+  .reads .cell:last-child { border-right: 0; }
+  .reads .tag { color: var(--faint); }
+  .reads .val { font-family: var(--numer); font-size: 18px; line-height: 1.15;
+                color: var(--value); font-variant-numeric: tabular-nums; }
+  .reads .val i { font-style: normal; color: var(--faint); font-size: 12px; }
+  .reads .val.small { font-family: var(--label); font-weight: 700; font-size: 15px;
+                      letter-spacing: .04em; text-transform: uppercase; color: var(--prose); }
+  .reads .sub { font-family: var(--numer); font-size: 11px; line-height: 1.3;
+                color: var(--faint); }
+  .reads .cell.warn .val { color: var(--oxide-light); }
+
+  .reads .kit { gap: 3px; }
+  .reads .kit .k { display: flex; align-items: baseline; gap: 8px;
+                   font-family: var(--body); font-size: 13px; line-height: 1.35; }
+  .reads .kit .k b { font-weight: 400; color: var(--prose); }
+  .reads .kit .k i { font-style: normal; font-family: var(--numer); font-size: 12px;
+                     color: var(--quiet); margin-left: auto; }
+  .reads .worth .val { display: flex; align-items: baseline; gap: 4px; font-size: 17px; }
+  .reads .worth .val b { font-weight: 400; }
+  .reads .worth .val i { font-style: normal; color: var(--faint); font-size: 11px;
+                         letter-spacing: .1em; text-transform: uppercase; margin-right: 7px; }
+
+  /* Sized to their words rather than stretched: measured at 1520, a flex basis of 160px with
+     room to grow made each two-word button 428px wide. A press that wide reads as a panel. */
+  .huntmoves { display: flex; flex-wrap: wrap; gap: 9px;
+               padding: 14px 18px 16px; border-top: 1px solid var(--rule); }
+  .huntmove {
+    flex: 0 0 auto;
+    min-width: 172px;
+    display: flex; flex-direction: column; gap: 4px;
+    padding: 12px 14px;
+    border: 1px solid var(--control); background: var(--panel);
+    font-family: var(--label); font-size: 11px; font-weight: 700;
+    letter-spacing: .14em; text-transform: uppercase; color: var(--prose);
+    text-align: left; cursor: pointer;
+  }
+  .huntmove:hover { background: var(--rule-in); color: var(--bone); border-color: var(--bone); }
+  .huntmove .why {
+    font-size: 10px; font-weight: 400; letter-spacing: .08em;
+    text-transform: lowercase; color: var(--faint);
+  }
+  .huntmove.take { border-color: var(--oxide); }
+  .huntmove.take:hover { border-color: var(--oxide-light); background: var(--warn-strip); }
+  .huntmove.away { flex: 0 1 auto; min-width: 0; }
   .huntstart { display: inline-block; }
+
+  /* The line on Camp, with the way through beside the words rather than flush right.
+     Measured at 1520: pushing it with an auto left margin put it 533px past the end of the
+     sentence, a control floating in a row with nothing to attach it to. */
+  .quiet .goto { color: var(--dim); font-family: var(--label);
+                 font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase;
+                 white-space: nowrap; }
+  .quiet .goto:hover { color: var(--bone); }
 
   /*
    * The road still to come. Greyed because none of it can be paid into yet — only the live
@@ -5367,9 +5527,10 @@ const NOTHING = {
   caravan: 'Nobody at the gate, and nobody on the road here.',
   roster: 'Nobody has died here.',
   forecast: 'No glass fitted. The sky is whatever you can see of it from here.',
-  /* Phase 20. It names the verb because this is the only block on the page that offers one
-     nothing else does, and a camp that has never hunted has no other way to find out. */
-  hunt: 'Nothing worth walking out for.',
+  /* Phase 20, and it states the situation rather than refusing: the control is beside it, and
+     a camp that has never hunted has no other way to learn the verb exists. It read "Nothing
+     worth walking out for", which announced that there was nothing to do. */
+  hunt: 'Nobody has been out after anything.',
   direction: 'Nothing to advise until somebody is standing here.',
   expedition: 'Nobody to send.',
   post: 'No link on the road opens one yet.',
@@ -5521,7 +5682,8 @@ export function campPage(view, { error, pane = 'camp', place = null } = {}) {
       error,
       inner: `
     ${section('raid', view.underRaid ? renderRaid(view) : renderRaidWarning(view.raidExpectedAt))}
-    ${section('hunt', renderHunt(view))}
+    ${section('hunt-line', renderHuntLine(view))}
+    ${section('hunt', renderHuntBoard(view))}
     ${section('sky', renderWeather(view.weather))}
     ${section('forecast', renderForecast(view.forecast))}
 
@@ -6156,65 +6318,403 @@ function renderRaid(view) {
 
 
 
-/**
- * The hunt: the only block on this page with no clock in it.
- *
- * Every other thing here counts down — a trip, a build, the bench, a raid, somebody asleep —
- * and this one sits exactly where the last press left it, for a night or a week. That is the
- * whole of Phase 20 and the reason it looks different: no `data-until`, no deadline strip, and
- * nothing for the timer loop to find.
- *
- * Three states, and the quiet one is doing real work. Nothing out there is a line offering the
- * verb; a hunt in progress is the block; a hunt that just ended says what came of it and
- * offers the verb again. A block that vanished when the hunt ended would take the outcome with
- * it, which is the fault `NOTHING` exists to avoid one level up.
- */
-/** A quarry's name leads the sentence it is in, and "a hare" is not a capital letter. */
+/** A quarry's name leads the sentence it is in, and "a hare" does not arrive capitalised. */
 const upperFirst = (line) => (line ? line[0].toUpperCase() + line.slice(1) : line);
 
-function renderHunt(view) {
+/**
+ * The line Camp keeps, so a view of its own does not become a verb nobody finds.
+ *
+ * The gate's answer and the caravan's before it: one quiet row saying whether anybody is out
+ * and how it is going, with the way through on it. Everything that wants room — the odds, the
+ * two readings, the presses — is on the Hunt view.
+ */
+function renderHuntLine(view) {
   const hunt = view.hunt;
-  if (!hunt) return quiet('The edge of the camp', NOTHING.hunt);
+  const live = hunt && hunt.status === 'active';
 
-  if (hunt.status !== 'active') {
-    return quiet(
+  const line = !hunt
+    ? NOTHING.hunt
+    : live
+      ? `${hunt.who} is out. ${upperFirst(hunt.said ?? '')}`
+      : upperFirst(hunt.said || 'It came to nothing.');
+
+  return `<div class="quiet"><span class="tag">The edge of the camp</span>
+      <p>${escape(line)}</p>
+      ${
+        live
+          ? '<a class="goto" href="/camp/hunt">Go to it &rsaquo;</a>'
+          : huntVerb(view, hunt ? 'Go out again' : 'Go out after something')
+      }
+    </div>`;
+}
+
+/**
+ * One of the two readings: the figure, then the cells that make it.
+ *
+ * The class is `pips` and not `track`, which cost a measurement to find: `.track` is the raid
+ * block's holding gauge and is two pixels tall, so reusing the name gave each reading a 20px
+ * box with its contents hanging out of it. Nothing in the markup looked wrong.
+ *
+ * Cells because both are small integers — two and three — and a continuous fill at two thirds
+ * reads as a percentage of something continuous. What the player counts is presses, so the
+ * drawing counts presses.
+ *
+ * **The sentence under each is gone.** "a way to go yet" and "settled enough" were prose
+ * restating a figure directly above them, which is the thing `stats()` was written to stop:
+ * a number belongs in a row, and prose is for what a number cannot say.
+ */
+function huntTrack(label, filled, of, warn = false) {
+  const cells = Array.from(
+    { length: of },
+    (_, i) => `<i class="${i < filled ? (warn ? 'hot' : 'on') : ''}"></i>`,
+  ).join('');
+
+  return `<div class="stat pips${warn ? ' warn' : ''}">
+      <span class="tag">${escape(label)}</span>
+      <span class="val">${filled}<i>/${of}</i></span>
+      <span class="cells">${cells}</span>
+    </div>`;
+}
+
+/**
+ * What they are carrying, and what each half of it is worth.
+ *
+ * On the board rather than behind the odds popup, because it is the answer to the question a
+ * player asks before every press: does it matter what I walked out with. The weapon's figure
+ * is the alarm it lets a strike survive — `toleranceFor`, the same call the shot resolves
+ * with — and the armour's is `equipmentOf`'s cap, the one the mauling applies.
+ *
+ * An empty hand still gets a row — "bare hands, +0%" is the page naming what is missing, the
+ * one place a non-effect earns its line. Nothing is said about armour nobody has: there is no
+ * decision in it until they own some.
+ */
+function huntKit(kit) {
+  if (!kit) return '';
+
+  const weapon = kit.weapon
+    ? `<span class="k"><b>${escape(kit.weapon.name)}</b><i>allows ${kit.weapon.allows}</i></span>`
+    : '<span class="k"><b>Bare hands</b><i>allows 0</i></span>';
+  const armour = kit.armour
+    ? `<span class="k"><b>${escape(kit.armour.name)}</b><i>&minus;${kit.armour.cuts}% harm</i></span>`
+    : '';
+
+  return `<div class="cell kit"><span class="tag">carrying</span>${weapon}${armour}</div>`;
+}
+
+/** What is on the other side of the press, so the stake is legible before it is taken. */
+function huntWorth(worth, label = 'worth', where = 'cell') {
+  const parts = [
+    [worth.food, 'food'],
+    [worth.raw_hide, 'hide'],
+    [worth.sinew, 'sinew'],
+  ]
+    .filter(([qty]) => Number(qty) > 0)
+    .map(([qty, what]) => `<b>${Number(qty)}</b><i>${escape(what)}</i>`)
+    .join('');
+
+  if (!parts) return '';
+  return `<div class="${where} worth"><span class="tag">${escape(label)}</span>
+      <span class="val">${parts}</span></div>`;
+}
+
+/**
+ * What a hunt costs, said the way a player would say it rather than as a bare number.
+ *
+ * The block reported "a quarter of a day" and expected the reader to know that meant 25 points
+ * of a gauge; it says the points and the plain reading of them together now.
+ */
+const STAMINA_SAID = '25 stamina';
+
+/**
+ * How it ended, and the five ways it can end are five different screens.
+ *
+ * They used to be one: a sentence, the haul if there was one, and the verb again — so a boar
+ * taken on the last press and a hare that broke for the scrub rendered the same flat block
+ * with one word changed. **The win did not look like a win**, which is the only thing on this
+ * view a player is playing *for*.
+ *
+ * So the outcome leads with what happened, in the one voice each deserves: a kill states
+ * itself and puts the haul up in figures, a mauling wears the warn palette, and the three
+ * kinds of nothing stay quiet — because a block that shouts about an empty-handed walk home
+ * is a block nobody believes the next time it shouts about a boar.
+ */
+function huntOutcome(view, hunt) {
+  if (!hunt) {
+    return block(
       'The edge of the camp',
-      `${escape(upperFirst(hunt.said || 'It came to nothing.'))} ${huntVerb(view, 'Go out again')}`,
+      `<div class="huntidle">
+         <p class="huntnow">${escape(NOTHING.hunt)}</p>
+         <div class="huntgo">${huntVerb(view, 'Go out after something')}</div>
+         <p class="caption">A quarter of a day, spent before anybody knows what is out there.</p>
+       </div>`,
+    );
+  }
+
+  const again = `<div class="huntgo">${huntVerb(view, 'Go out again')}</div>`;
+  const said = upperFirst(hunt.said || 'It came to nothing.');
+
+  if (hunt.status === 'taken') {
+    /*
+     * The win. Two things carry it: the word, and the haul as figures rather than as a
+     * sentence — the same reading the storage board gives a shelf, because that is what this
+     * is. The presses it took are on it as well: a boar on the fourth is a different evening
+     * from a boar on the first, and nothing else on the page would ever say so.
+     */
+    return block(
+      `${hunt.who} took ${hunt.quarryName ?? 'it'}`,
+      `<div class="huntdone won">
+         <div class="crown">
+           <span class="word">Taken</span>
+           <span class="on">${hunt.turns} ${hunt.turns === 1 ? 'press' : 'presses'}, and ${STAMINA_SAID} of ${hunt.who}&rsquo;s day</span>
+         </div>
+         ${huntHaul(hunt.gained)}
+         ${/*
+            * No log line on a clean kill. The heading says who took what, the word says it
+            * again in one syllable, and the haul says what it came to — a third sentence
+            * reading "They took a boar" is the same redundancy the live board was stripped of.
+            * What the log is kept for is the thing none of those can say: that it reached them
+            * on the way down.
+            */ ''}
+         ${
+           hunt.hurt > 0
+             ? `<p class="huntwarn">It reached them on the way down: ${hunt.who} lost
+                ${hunt.hurt} health, and has ${hunt.healthLeft} left.</p>`
+             : ''
+         }
+         ${again}
+       </div>`,
+    );
+  }
+
+  if (hunt.status === 'mauled') {
+    /*
+     * What actually happened, in the words a player would use.
+     *
+     * Reported 2026-09-14: this read "Mauled — 8 taken out of them" over "It came the other
+     * way, and it came fast", which names neither what came nor what the 8 was. **And when the
+     * charge killed somebody it still said only that**, so a player learned their survivor was
+     * dead by noticing the roster was shorter. A block that reports a death has to report it.
+     */
+    return block(
+      hunt.killed ? `${hunt.who} did not come back` : 'The edge of the camp',
+      `<div class="huntdone hurt">
+         <div class="crown">
+           <span class="word">${hunt.killed ? 'Killed' : 'Hurt'}</span>
+           <span class="on">${
+             hunt.killed
+               ? `${hunt.who} was killed by the ${escape(hunt.quarryPlain ?? 'animal')}`
+               : `${hunt.who} lost ${hunt.hurt} health, and has ${hunt.healthLeft} left`
+           }</span>
+         </div>
+         <p class="huntlog">${escape(said)}</p>
+         ${/*
+            * No line explaining how health works. It said "health comes back slowly, and there
+            * is no sleeping it off the way stamina can be" — a rule the player can read off
+            * their own gauges, on a screen whose job is to report what just happened. What
+            * survives is the one consequence nothing else on the page will mention: a pack
+            * dies with its owner.
+            */ ''}
+         ${
+           hunt.killed
+             ? '<p class="caption">Whatever they were carrying went with them.</p>'
+             : ''
+         }
+         ${hunt.killed ? '' : again}
+       </div>`,
+      { wants: true },
     );
   }
 
   /*
-   * The moves are the ones `movesFor` returned, not a list written here. The service validates
-   * against the same function, so the page cannot offer a press the service will refuse — the
-   * arrangement the Contact box has with a moment's options, and for the same reason.
+   * And the three kinds of nothing, which differ by whose decision it was: the animal's, the
+   * light's, or yours. One quiet line each — the day is spent either way and the page does not
+   * need to dwell on it.
    */
-  const moves = (hunt.moves ?? [])
-    .map(
-      (move) => `<button type="submit" name="move" value="${escape(move.key)}"
-           class="huntmove${move.key === 'leave' ? ' away' : ''}">
-           ${escape(move.label)}<span class="why">${escape(move.detail)}</span>
-         </button>`,
-    )
-    .join('');
-
+  const word = { bolted: 'It got away', lost: 'Out of light', left: 'Backed off' }[hunt.status]
+    ?? 'Nothing';
   return block(
     'The edge of the camp',
-    `<div class="hunt${hunt.turning ? ' turned' : ''}">
-       <p class="huntnow">${escape(upperFirst(hunt.said ?? ''))}</p>
-       ${hunt.lines?.length ? `<p class="huntlog">${escape(hunt.lines.join(' '))}</p>` : ''}
-       <form method="post" action="/hunt/turn" class="huntmoves">${moves}</form>
+    `<div class="huntdone">
+       <div class="crown">
+         <span class="word quiet">${escape(word)}</span>
+         <span class="on">${STAMINA_SAID} of ${hunt.who}&rsquo;s day spent, nothing brought back</span>
+       </div>
+       <p class="huntlog">${escape(said)}</p>
+       ${again}
      </div>`,
-    { flush: true },
   );
 }
 
+/** What came home, as figures. Three cells at most, and none of them zero. */
+function huntHaul(gained) {
+  if (!gained) return '';
+  const cells = [
+    [gained.food, 'food', 'into the stores'],
+    [gained.raw_hide, 'hide', 'onto the shelf'],
+    [gained.sinew, 'sinew', 'onto the shelf'],
+  ]
+    .filter(([qty]) => Number(qty) > 0)
+    .map(
+      ([qty, what, where]) => `<div class="got">
+         <span class="fig">${Number(qty)}</span>
+         <span class="tag">${escape(what)}</span>
+         <span class="sub">${escape(where)}</span>
+       </div>`,
+    )
+    .join('');
+
+  return cells ? `<div class="haul">${cells}</div>` : '';
+}
+
 /**
- * The control that starts one, and what it refuses with.
+ * The Hunt view: two readings, the odds, what it is worth, and the presses.
  *
- * The stamina cost is on the button rather than in a popup: it is the entire decision, it is a
- * quarter of somebody's day, and a player should not have to press a thing to find out what it
- * takes. `whoMenu` already prints what each survivor has left, so the two read together.
+ * **The only board in the game read on every press rather than scanned once**, which is what
+ * earns it the figures. A stalk where the player cannot see what a shot is worth is a page
+ * asking them to guess — so the chance is the largest number on it, and the two things that
+ * move it stand beside it, drawn rather than written: how much ground is left, and how much of
+ * the animal's patience is gone.
+ *
+ * Nothing here counts down. No `data-until`, no `data-done`, no `data-drift`.
  */
+function renderHuntBoard(view) {
+  const hunt = view.hunt;
+
+  if (!hunt || hunt.status !== 'active') return huntOutcome(view, hunt);
+
+  /*
+   * The verdict, and the picture the player is reading it off.
+   *
+   * Nothing here is a probability: `shotOf` says whether the press lands and what is short if
+   * it does not. What changed on 2026-09-14 is where that gets read — the plate is the ground
+   * between them, and closing the distance scales it about the animal, so the press a player
+   * makes is the thing they see happen.
+   *
+   * **The frame never changes height.** This block is pressed four times a minute and nothing
+   * below the picture may move between presses; only what is inside it does.
+   */
+  const shot = hunt.shot ?? { lands: false, why: 'too far', shortBy: 2, tolerance: 0, alarm: 0 };
+  const camera = hunt.camera;
+  const left = hunt.bolts - hunt.alarm;
+
+  const word = hunt.turning
+    ? 'It has turned'
+    : shot.lands
+      ? 'Clean'
+      : shot.why === 'too far'
+        ? 'Too far'
+        : 'It moves first';
+
+  const under = hunt.turning
+    ? 'any press but backing off takes a charge'
+    : shot.lands
+      ? `alarm ${shot.alarm} of the ${shot.tolerance} ${
+          hunt.kit?.weapon ? hunt.kit.weapon.name.toLowerCase() : 'bare hands'
+        } allow`
+      : shot.why === 'too far'
+        ? `${shot.shortBy} ${shot.shortBy === 1 ? 'press' : 'presses'} of ground to close`
+        : `${shot.shortBy} too alert to try it`;
+
+  return block(
+    `${hunt.who} is out after ${hunt.quarryName ?? 'something'}`,
+    `<div class="huntboard${hunt.turning ? ' turned' : ''}">
+       ${
+         camera
+           ? `<div class="view${hunt.turning ? ' warned' : ''}">
+                <img src="/img/${escape(camera.plate)}.webp" alt=""
+                     style="object-position: ${camera.focus.x}% ${camera.focus.y}%;
+                            transform-origin: ${camera.focus.x}% ${camera.focus.y}%;
+                            transform: translateX(${camera.shift}%) scale(${camera.scale})">
+                <span class="where">${escape(camera.where)}</span>
+                ${/*
+                   * What it is worth, on the picture rather than in the strip below.
+                   *
+                   * Seven cells did not fit the column — measured at 1520 the worth cell wrapped
+                   * to a second row, and two rows of readings under a photograph reads as a
+                   * table that has outgrown its box. It belongs on the frame anyway: it is a
+                   * fact about the animal in it, and the top of the plate is the darkest part
+                   * of the scrim with nothing else on it.
+                   */ ''}
+                ${hunt.worth ? huntWorth(hunt.worth, 'worth', 'onplate') : ''}
+                <div class="verdict">
+                  <span class="word${shot.lands && !hunt.turning ? ' clean' : ''}${
+                    hunt.turning ? ' turned' : ''
+                  }">${escape(word)}</span>
+                  <span class="sub">${escape(under)}</span>
+                </div>
+                ${/*
+                   * How far in, on the bottom edge of the frame. With one frame instead of
+                   * three this is the only thing carrying the approach as a whole, and it is
+                   * on the picture rather than under it so the eye finds it without leaving.
+                   */ ''}
+                <div class="stops">${Array.from(
+                  { length: camera.of + 1 },
+                  (_, i) => `<i class="${i <= camera.step ? 'on' : ''}"></i>`,
+                ).join('')}</div>
+              </div>`
+           : ''
+       }
+
+       <div class="reads">
+         <div class="cell">
+           <span class="tag">ground</span>
+           <span class="val">${hunt.closeness}<i>/${hunt.reach}</i></span>
+           <span class="sub">${escape(
+             hunt.closeness >= hunt.reach ? 'nothing left to close' : 'closed so far',
+           )}</span>
+         </div>
+         <div class="cell${left <= 1 ? ' warn' : ''}">
+           <span class="tag">alarm</span>
+           <span class="val">${hunt.alarm}<i>/${hunt.bolts}</i></span>
+           <span class="sub">${escape(
+             hunt.turning ? 'a boar does not break off' : `it breaks off at ${hunt.bolts}`,
+           )}</span>
+         </div>
+         <div class="cell">
+           <span class="tag">it is</span>
+           <span class="val small">${escape(hunt.turning ? 'facing them' : hunt.beat ?? '')}</span>
+           <span class="sub">${escape(
+             hunt.turning ? 'and not moving' : `then ${hunt.nextBeat ?? ''}`,
+           )}</span>
+         </div>
+         <div class="cell">
+           <span class="tag">wind</span>
+           <span class="val small">${escape(hunt.wind ?? '')}</span>
+           <span class="sub">closing costs ${hunt.closeCost}</span>
+         </div>
+         <div class="cell">
+           <span class="tag">press</span>
+           <span class="val">${hunt.turns}<i>/${hunt.lastTurn}</i></span>
+           <span class="sub">then the light goes</span>
+         </div>
+         ${huntKit(hunt.kit)}
+       </div>
+
+       <form method="post" action="/hunt/turn" class="huntmoves">
+         ${(hunt.moves ?? [])
+           .map(
+             (move) => `<button type="submit" name="move" value="${escape(move.key)}"
+                class="huntmove${move.key === 'leave' ? ' away' : ''}${
+                  move.key === 'strike' ? ' take' : ''
+                }">
+                <span class="mv">${escape(move.label)}</span>
+                <span class="why">${escape(move.detail)}</span>
+              </button>`,
+           )
+           .join('')}
+       </form>
+     </div>`,
+    /*
+     * Flush, and this time deliberately: the picture and the readings run to the block's own
+     * border and each section below carries its own padding. `flush` was wrong here when the
+     * body was a strip floating in the block — a panel of instruments wants the block's
+     * padding. A photograph does not: an inset plate reads as a picture *in* a panel rather
+     * than as the ground the panel is about.
+     */
+    { wants: hunt.turning, flush: true },
+  );
+}
+
 function huntVerb(view, label) {
   if (!view.roster?.length) return '';
   // Wrapped in its own form, because `whoMenu`'s names are submit buttons for whatever form

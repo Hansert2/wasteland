@@ -6,12 +6,16 @@ import {
   MAX_TURNS,
   QUARRY,
   STAMINA,
+  kitOf,
   WITHIN_REACH,
   movesFor,
   quarryFor,
   startOf,
-  strikeChance,
+  alarmCostOf,
+  shotOf,
   takeTurn,
+  toleranceFor,
+  BEATS,
   yieldOf,
 } from '../../src/game/hunting.js';
 import { ORDINARY } from '../../src/game/wanderers.js';
@@ -123,29 +127,83 @@ test('every hunt ends, and only ever in one of the five ways the schema allows',
   }
 });
 
-test('taking it needs closing first, and a weapon is worth about a third of the odds', () => {
+test('a strike is a verdict, not a wager, and the weapon decides how much slack it survives', () => {
   /*
-   * The split settled with the user: **the weapon decides whether the quarry can be taken**,
-   * mirroring `standFor` at the fence, and unarmed is possible and bad. A combat skill was
-   * measured as scenery before skills were designed a sixth time, so there is not one.
+   * The 2026-09-13 rebuild, stated as a test. **Nothing rolls.** A strike lands when they are
+   * close enough and the animal is no more alert than the weapon allows, so the board can say
+   * "clean" and be right — where a percentage could only ever be a mood.
+   *
+   * The weapon stopped being luck and became *slack*: bare hands may spend nothing getting
+   * there, a spear one, a bow two. That is a thing a player can plan a route around.
    */
   const far = startOf(1);
   assert.ok(!movesFor(far).some((one) => one.key === 'strike'), 'no striking from a field away');
+  assert.equal(shotOf(far, armed(35)).why, 'too far');
+  assert.equal(shotOf(far, armed(35)).shortBy, WITHIN_REACH);
 
-  const near = { ...startOf(1), closeness: WITHIN_REACH };
-  assert.ok(movesFor(near).some((one) => one.key === 'strike'));
+  assert.equal(toleranceFor(hunter()), 0, 'bare hands allow nothing');
+  assert.equal(toleranceFor(armed(25)), 1, 'a scrap spear allows one');
+  assert.equal(toleranceFor(armed(35)), 2, 'a bow allows two');
 
-  const bare = strikeChance(near, hunter());
-  const spear = strikeChance(near, armed(25));
-  const bow = strikeChance(near, armed(35));
+  const near = { ...startOf(1), closeness: WITHIN_REACH, alarm: 2 };
+  assert.equal(shotOf(near, hunter()).lands, false, 'and an empty hand at two is not a shot');
+  assert.equal(shotOf(near, hunter()).shortBy, 2, 'which it says, in presses');
+  assert.equal(shotOf(near, armed(25)).lands, false);
+  assert.equal(shotOf(near, armed(35)).lands, true, 'the bow takes it');
 
-  assert.ok(spear > bare, 'a spear beats bare hands');
-  assert.ok(bow > spear, 'and a bow beats a spear');
-  assert.ok(bare > 0.05, 'bare hands are bad, not impossible');
-  assert.ok(bow <= 0.95, 'and nothing is certain');
+  // And the resolution honours exactly that, with no stream of its own to disagree with.
+  const missed = takeTurn(near, 'strike', { seed: 1, survivor: armed(25) });
+  const landed = takeTurn(near, 'strike', { seed: 1, survivor: armed(35) });
+  assert.equal(missed.status, 'bolted', 'a shot outside tolerance moves the animal, every time');
+  assert.equal(landed.status, 'taken');
+});
 
-  // Alarm takes it away, which is what makes standing still a move rather than a pass.
-  assert.ok(strikeChance({ ...near, alarm: 2 }, armed(25)) < spear);
+test('what closing costs is the beat and the wind, and both are on the board a press early', () => {
+  /*
+   * The two tells the mode is built on. The cycle turns on every press including standing
+   * still, which is what makes waiting a cost rather than a free reset — and what lets a
+   * player count the cheap moment toward them instead of guessing at it.
+   */
+  const at = (beat, wind) => ({ ...startOf(1), beat: BEATS.indexOf(beat), wind });
+
+  assert.equal(alarmCostOf(at('feeding', 'across')), 0);
+  assert.equal(alarmCostOf(at('lifting', 'across')), 1);
+  assert.equal(alarmCostOf(at('watching', 'across')), 2);
+
+  // The wind shifts every one of those by a point, and never below nothing.
+  assert.equal(alarmCostOf(at('lifting', 'behind')), 0, 'behind them, a lifting head is free');
+  assert.equal(alarmCostOf(at('feeding', 'behind')), 0, 'and nothing is cheaper than free');
+  assert.equal(alarmCostOf(at('feeding', 'ahead')), 1, 'into their faces, even feeding costs');
+  assert.equal(alarmCostOf(at('watching', 'ahead')), BOLTS_AT, 'and watching, into the wind, ends it');
+
+  // The beat turns on every press, whatever the press was.
+  const start = at('feeding', 'across');
+  assert.equal(takeTurn(start, 'close', { seed: 1, survivor: hunter() }).beat, BEATS.indexOf('lifting'));
+  assert.equal(takeTurn(start, 'still', { seed: 1, survivor: hunter() }).beat, BEATS.indexOf('lifting'));
+
+  // And closing pays exactly what the board said it would.
+  const closed = takeTurn(at('watching', 'across'), 'close', { seed: 1, survivor: hunter() });
+  assert.equal(closed.alarm, 2, 'what it costs is what it said');
+});
+
+test('a hunt can be lost to the clock as well as to the animal', () => {
+  /*
+   * The tension the whole rebuild rests on: waiting for a free close is how you get a clean
+   * shot, and waiting is how you run out of presses. A player who only ever waits should end
+   * with nothing — measured across every seed in the set rather than asserted about one.
+   *
+   * `tools/hunt-balance.mjs` puts the line that only reads the beat at 44% taken and 56% lost
+   * to the light, against 66% for the line that also counts its presses. That gap is the mode.
+   */
+  let lost = 0;
+  for (const seed of SEEDS) {
+    let state = startOf(seed);
+    for (let n = 0; n < MAX_TURNS && state.status === 'active'; n += 1) {
+      state = takeTurn(state, 'still', { seed, survivor: armed(35) });
+    }
+    if (state.status === 'lost') lost += 1;
+  }
+  assert.equal(lost, SEEDS.length, 'standing still for every press takes nothing, ever');
 });
 
 test('what the meat is worth is about what the stamina cost, and the materials are the point', () => {
@@ -238,4 +296,44 @@ test('a hunt costs a real part of a day, measured against the gauge it spends', 
     STAMINA > CONFIG.staminaPerHourWorked * 4,
     'a hunt should cost more than four hours of ordinary work',
   );
+});
+
+test('what they are wearing counts here, through the same reader a trip uses', () => {
+  /*
+   * Found on 2026-09-13 by being asked how equipment affects a hunt: it did not. `rollHazard`
+   * has run a region's damage through `equipmentOf`'s `damageMultiplier` since gear existed
+   * and the mauling ignored it, so a plate vest was worth thirty percent on the road and
+   * nothing against a boar twenty yards from the fence.
+   *
+   * Asserted as a comparison rather than against a figure, because the cap and the potencies
+   * are content: what may not be true again is that armour makes no difference.
+   */
+  const turned = { ...startOf(1), quarry: 'boar', turning: true, closeness: WITHIN_REACH };
+  const bare = hunter();
+  const coated = hunter({
+    inventory: [{ slug: 'plate_vest', kind: 'armour', potency: 30, qty: 1 }],
+  });
+
+  let hurtBare = 0;
+  let hurtCoated = 0;
+  for (const seed of SEEDS) {
+    hurtBare += takeTurn(turned, 'close', { seed, survivor: bare }).damage;
+    hurtCoated += takeTurn(turned, 'close', { seed, survivor: coated }).damage;
+  }
+
+  assert.ok(hurtBare > 0, 'a turned boar draws blood from somebody with nothing on');
+  assert.ok(hurtCoated < hurtBare, `a vest is worth something: ${hurtCoated} against ${hurtBare}`);
+
+  // And the page quotes the same two numbers the arithmetic uses, rather than its own.
+  const kit = kitOf(armed(35));
+  assert.equal(kit.weapon.allows, 2, 'the weapon row is the tolerance the shot resolves with');
+  assert.equal(kit.armour, null, 'and nothing is claimed about armour nobody owns');
+
+  const both = kitOf({
+    inventory: [
+      { slug: 'hunting_bow', kind: 'weapon', potency: 35, qty: 1, name: 'Hunting Bow' },
+      { slug: 'plate_vest', kind: 'armour', potency: 30, qty: 1, name: 'Plate Vest' },
+    ],
+  });
+  assert.equal(both.armour.cuts, 30, 'and the armour row is the cap the mauling applies');
 });

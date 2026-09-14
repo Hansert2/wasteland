@@ -1,0 +1,119 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    :root {
+      --void: #0B0A08; --ground: #171614; --strip: #1E1D1A; --panel: #1E1D1A;
+      --rule: #33312C; --rule-in: #26241F; --edge: #4A463E; --control: #55504E;
+      --bone: #E4E1D8; --prose: #CFCBC0; --value: #DCD8CD;
+      --dim: #999588; --quiet: #7A766C; --faint: #6F6B62;
+      --oxide: #C2632C; --oxide-light: #DD8F4A; --warn-strip: #251C15;
+      --label: 'Roboto Condensed', 'Arial Narrow', Arial, sans-serif;
+      --body: -apple-system, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+      --numer: ui-monospace, Menlo, Consolas, monospace;
+    }
+    body { margin: 0; background: var(--ground); color: var(--prose);
+           font-family: var(--body); font-size: 16.5px; line-height: 1.6; }
+    a { color: var(--dim); } a:hover { color: var(--bone); }
+    .wrap { padding: 20px 24px; }
+    .block { border: 1px solid var(--rule); background: var(--ground);
+             display: flex; flex-direction: column; }
+    .block > h2 { margin: 0; padding: 11px 18px; background: var(--strip);
+      border-bottom: 1px solid var(--rule); font-family: var(--label); font-weight: 700;
+      font-size: 10px; line-height: 1; letter-spacing: .18em; text-transform: uppercase;
+      color: var(--dim); }
+    .tag { font-family: var(--label); font-weight: 700; font-size: 10px; line-height: 1.4;
+           letter-spacing: .16em; text-transform: uppercase; color: var(--faint); }
+
+    /*
+     * The roads band, borrowed: a band that is the subject, with the figures ranged across
+     * it, and the controls under it on the block's own ground.
+     */
+    .band { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 30px;
+            align-items: center; padding: 20px 22px; background: var(--void);
+            border-bottom: 1px solid var(--rule); }
+    .lead { display: block; font-family: var(--label); font-weight: 700; font-size: 10px;
+            letter-spacing: .2em; text-transform: uppercase; color: var(--faint); }
+    .nm { display: block; margin-top: 4px; font-family: var(--label); font-size: 30px;
+          line-height: 1; color: var(--bone); }
+    .said { margin: 8px 0 0; color: var(--quiet); font-size: 13.5px; line-height: 1.5; }
+
+    .figs { display: flex; align-items: flex-end; gap: 28px; }
+    .fig { display: flex; flex-direction: column; gap: 5px; }
+    .fig .val { font-family: var(--numer); font-size: 17px; line-height: 1;
+                color: var(--value); font-variant-numeric: tabular-nums; }
+    .fig.odds .val { font-size: 38px; line-height: .9; color: var(--bone); }
+    .fig.odds .val i { font-style: normal; font-size: 17px; color: var(--quiet); }
+    .pips { display: flex; gap: 3px; margin-top: 2px; }
+    .pips i { display: block; width: 22px; height: 7px; background: var(--rule-in);
+              border: 1px solid var(--rule); }
+    .pips i.on { background: var(--quiet); border-color: var(--edge); }
+
+    .foot { display: flex; align-items: center; gap: 22px; padding: 14px 18px; }
+    .worth { display: flex; align-items: baseline; gap: 4px; font-family: var(--numer);
+             font-size: 15px; color: var(--value); }
+    .worth i { font-style: normal; font-family: var(--label); font-size: 10px;
+               letter-spacing: .14em; text-transform: uppercase; color: var(--faint);
+               margin-right: 9px; }
+    .moves { display: flex; gap: 9px; margin-left: auto; }
+    .move { font-family: var(--label); font-weight: 700; font-size: 10.5px;
+            letter-spacing: .14em; text-transform: uppercase; padding: 11px 16px;
+            background: transparent; color: var(--bone); border: 1px solid var(--control);
+            cursor: pointer; }
+    .move.take { background: var(--oxide); border-color: var(--oxide); color: #171614; }
+  </style>
+</helmet>
+<div class="wrap">
+  <div class="block">
+    <h2>The edge of the camp</h2>
+
+    <div class="band">
+      <div>
+        <span class="lead">Nim is out after</span>
+        <span class="nm">a boar</span>
+        <p class="said">It is rooting along the fence line and it has not moved off.</p>
+      </div>
+
+      <div class="figs">
+        <div class="fig odds">
+          <span class="tag">hit</span>
+          <span class="val">57<i>%</i></span>
+        </div>
+        <div class="fig">
+          <span class="tag">ground</span>
+          <span class="val">2/2</span>
+          <span class="pips"><i class="on"></i><i class="on"></i></span>
+        </div>
+        <div class="fig">
+          <span class="tag">patience</span>
+          <span class="val">2/3</span>
+          <span class="pips"><i class="on"></i><i class="on"></i><i></i></span>
+        </div>
+        <div class="fig">
+          <span class="tag">press</span>
+          <span class="val">2/5</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="foot">
+      <span class="tag">worth</span>
+      <span class="worth">34<i>food</i>3<i>hide</i>2<i>sinew</i></span>
+      <div class="moves">
+        <button class="move take" type="button">Take it</button>
+        <button class="move" type="button">Close the distance</button>
+        <button class="move" type="button">Stand still</button>
+        <button class="move" type="button">Back off</button>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

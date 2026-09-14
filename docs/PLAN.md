@@ -6005,6 +6005,122 @@ That is the whole question the phase was asked to answer.
 there was no Chrome connected to the session that built it. The block is a row of wide buttons
 and its geometry in a narrow column is unverified.
 
+### Rebuilt 2026-09-13/14 — the dice came out ✅
+
+*Played, and the verdict was "I don't like that it's a chance game — how can we make it a bit
+more skill intensive". The instrument agreed before the argument did: across four thousand
+hunts the patient line beat the greedy one by **two points**, 48% against 46%. Everything else
+was the roll. The board had a thirty-pixel number on it announcing that the game was a coin
+flip.*
+
+**The randomness moved from the resolution to the deal.** A strike no longer rolls at all: it
+lands when they are close enough *and* the animal is no more alert than the weapon allows.
+The weapon stopped being luck and became **slack** — bare hands 0, scrap spear 1, hunting bow
+2 — and slack is a thing a player can plan a route around where a percentage is a thing they
+can only hope about.
+
+What the seed decides now is the *situation*, and both halves of it are on the board:
+
+- **Its attention**, on a three-beat cycle that turns on every press including standing still:
+  feeding → lifting → watching, costing 0, 1, 2 of its alarm to close on. **The next beat is
+  shown**, which is the difference between reading a cycle and guessing at one.
+- **The wind** — behind, across or ahead, fixed for the hunt, shifting every closing cost by
+  −1, 0 or +1.
+
+**The tension, and it is the whole mode:** five presses, two closes and a strike, and the cheap
+moments come round on a schedule. Waiting for a feeding beat is how you close for nothing.
+Waiting is also how you run out of presses.
+
+### What the measurement says it became
+
+`tools/hunt-balance.mjs` gained a brute-forcer: every sequence of presses, three moves five
+deep, 243 of them — **is there a winning line at all?** That figure is what separates a mode
+from a lottery. With a bow:
+
+    a perfect line takes it                                     89%
+    plays the clock   (reads the beat and counts its presses)   66%
+    reads the beat    (waits for cheap closes, ignores the clock) 44%
+    greedy            (closes and swings)                       55%, and mauled 3%
+
+Twenty-three points between the best heuristic and perfection, and — better — **two different
+ways to be wrong**. The line that only reads the beat never spooks anything (0% bolted) and
+loses **56% to running out of light**; the greedy line spooks 34% and bleeds. Those are
+mistakes a player can learn out of, which is the thing the dice version could not offer: under
+a roll there was no such thing as playing it badly on purpose.
+
+### And it broke the pricing immediately
+
+Deterministic play put a clock-playing bow hunter at **13.2 food against the 12.5 a hunt
+costs**, and a perfect line near 17.8 — a food printer for anybody who got good at it, which is
+exactly what a reverse arrow must never become. The meat came down by about a third (hare 6→4,
+deer 22→15, boar 34→24). **A perfect line now yields 12.3 against 12.5 spent** — break-even to
+within a fifth of a unit — and everybody below perfect is paying for the materials. Skill buys
+hide and sinew, not a larder.
+
+### Armour was worth nothing here, and had been all along
+
+Asked what equipment does to the odds, and the honest answer was that the weapon did everything
+and the armour did nothing at all. `rollHazard` has run a region's damage through
+`equipmentOf`'s `damageMultiplier` since gear existed; the mauling ignored it — so a plate vest
+was worth thirty percent out on the road and **nothing against a boar twenty yards from the
+fence**. Same reader now, so there is one arithmetic and one cap. Measured: a bow-armed greedy
+line takes 6.0 damage bare, 4.9 in a hide coat, 4.2 in a plate vest.
+
+Both halves are on the board rather than behind a hover, in the figures the arithmetic itself
+uses: the weapon's tolerance from `toleranceFor`, the armour's cut from `equipmentOf`.
+
+### The board became the plate
+
+*Four rounds of mockups, and the first three were wrong in ways worth recording: a strip of
+eight cells (a box inside a box), a set of hand-drawn SVG figures (the user's verdict: "that
+does not look nice"), and three side-by-side frames that mocked a mechanic rather than a
+screen.*
+
+What shipped is **one frame that never changes height**, showing the quarry's own plate —
+generated to `docs/HUNT-PLATES.md`, in the same house style as the eleven regions, with the
+one clause about "no animals" deliberately lifted. **Closing the distance scales the frame
+about the animal**, so the press a player makes is the thing they see happen and no bar
+anywhere has to carry distance:
+
+    across the clearing  1x       half the ground  1.55x       within reach  2.3x
+
+Two things the screenshots caught that no measurement would have. Scaling about the animal
+**pins it at its own place in the plate** — the boar sits at 74% across, so at full zoom it was
+jammed into the right edge and under the verdict; it drifts seven tenths of the way to centre
+across the two presses now, which is also truer to looking at something. And the readings
+**wrapped to a second row** at seven cells, which moving `worth` onto the plate fixed at the
+cause rather than the symptom.
+
+`QUARRY` carries a `focus` per animal, read off the real 1200×400 plates. If a plate is
+regenerated, that number moves with it.
+
+### Five outcomes, five screens
+
+They were one screen with a word changed, so a boar taken on the last press and a hare that
+broke for the scrub read identically. **The win did not look like a win**, which is the only
+thing on this view a player is playing for. A kill now states itself and puts the haul up in
+figures; a mauling wears the warn palette and says what it cost; the three kinds of nothing
+stay grey, because a block that shouts about an empty-handed walk home is one nobody believes
+the next time it shouts about a boar.
+
+**And a fatal hunt never said anybody had died** — the block reported the same "Mauled" and a
+number whether they got up or not, so a player learned their survivor was dead by noticing the
+roster was shorter. It leads with the name now, says what killed them, notes that whatever they
+carried went with them, and does not offer a dead survivor another hunt.
+
+### The prose was written twice
+
+First pass: *"It came the other way, and it came fast"* over *"8 taken out of them"* — which
+names neither what came nor what the 8 was. Every line states the mechanic and the number now
+(*"Wren closed a few yards and it noticed — alarm up 2"*), the survivor is called by their name
+rather than "they", and the line explaining how health recovers is gone: a rule a player can
+read off their own gauges does not belong on a screen whose job is to report what just
+happened.
+
+**One thing worth knowing about the log:** it is written into the hunt's row when it happens,
+so a hunt that resolved before a wording change keeps the words it was written with. That block
+is a record of an evening, not a render of one.
+
 ## Not planned
 
 - **Alts.** `settlements_player_idx` is unique on `player_id`. Drop it if this ever

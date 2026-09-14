@@ -15,3 +15,7 @@ page-states/
 # Anchored. Without the leading slash this matches a directory named img at any depth,
 # which includes public/img — the one that has to ship.
 /img/
+
+# The seeded design canvas: 2.8 MB of editor payload regenerated from the .dc.html files
+# beside it. The artboards and canvas.json are the source; this is the build.
+design/*-treatments.html

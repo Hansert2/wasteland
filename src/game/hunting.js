@@ -1,5 +1,5 @@
 import { makeRandom, mix, intBetween } from './random.js';
-import { bestOfKind } from './equipment.js';
+import { bestOfKind, equipmentOf } from './equipment.js';
 import { scavengingMultiplier } from './wanderers.js';
 
 /**
@@ -43,6 +43,27 @@ import { scavengingMultiplier } from './wanderers.js';
  * courtesy — it is what makes the stake fair.
  */
 
+/**
+ * What the survivor is carrying, and what each half of it is worth here.
+ *
+ * Both halves, because a hunt is the one place in the game that reads *both*: the weapon
+ * decides how alert the animal may be when the strike comes — `toleranceFor`, the call the
+ * shot itself resolves with — and the armour decides what it costs when one turns round,
+ * capped at sixty percent by `equipmentOf`. Both figures are the arithmetic's own, not a
+ * second statement of them.
+ */
+export function kitOf(survivor) {
+  const { weapon, armour, damageMultiplier } = equipmentOf(survivor);
+  return {
+    weapon: weapon
+      ? { name: weapon.name ?? 'a weapon', allows: toleranceFor(survivor) }
+      : null,
+    armour: armour
+      ? { name: armour.name ?? 'armour', cuts: Math.round((1 - damageMultiplier) * 100) }
+      : null,
+  };
+}
+
 /** What a hunt costs in a survivor's day, spent when they commit and never refunded. */
 export const STAMINA = 25;
 
@@ -84,20 +105,33 @@ export const MAX_TURNS = 5;
  * `meat` is food into the stores. `hide` and `sinew` are the materials, and the reason the
  * bench cares. Both are before skill, which `yieldOf` applies.
  *
- * **The meat figures are derived, not chosen.** `STAMINA` is 25 points and the plan's measured
- * figure is that a full gauge costs the camp 50 food, so a hunt has spent about 12.5 food in
- * recovery before it pays anything — and these are set so that *expected* food across every
- * outcome lands near that for a survivor with a weapon, rather than the successful case doing
- * so. Measured at 6.8 on the first pass and raised by about two thirds: a hunter who fails
- * three times in ten was being priced as though they never failed. Bare-handed still loses,
- * which is the weapon mattering.
+ * **`focus` is where the animal actually is in its plate**, as a percentage across and down.
+ * The board zooms the photograph about that point as the ground closes, so closing the
+ * distance moves the camera rather than a marker — and a focal point that is merely "the
+ * middle" would walk the animal out of frame at the far end of the zoom. Read off the three
+ * 1200x400 plates in `public/img/`; if a plate is ever regenerated, this moves with it.
+ *
+ * **The meat figures are derived, not chosen, and they have been re-derived twice.** `STAMINA`
+ * is 25 points and the plan's measured figure is that a full gauge costs the camp 50 food, so
+ * a hunt has spent about 12.5 food in recovery before it pays anything. These are set so that
+ * *expected* food across every outcome lands near that — and the bar moved when the dice came
+ * out on 2026-09-13.
+ *
+ * Under the roll, a good player took 58% and the yields were raised to suit. Deterministic,
+ * a player reading the board takes 66% and a perfect line takes 89%, which put the same
+ * figures at 13.2 and about 17.8 against the 12.5 they cost: **a food printer for anybody who
+ * got good at it**, which is precisely what a reverse arrow must never become. Cut by about a
+ * third, so that a *perfect* line breaks even and everybody else is paying for the materials.
+ * Skill buys hide and sinew, not a larder.
  */
 export const QUARRY = {
   hare: {
     name: 'a hare',
+    plain: 'hare',
+    focus: { x: 70, y: 44 },
     danger: 0,
     wary: 2,
-    meat: 6,
+    meat: 4,
     hide: 1,
     sinew: 0,
     sighted:
@@ -105,9 +139,11 @@ export const QUARRY = {
   },
   deer: {
     name: 'a thin deer',
+    plain: 'deer',
+    focus: { x: 52, y: 50 },
     danger: 1,
     wary: 3,
-    meat: 22,
+    meat: 15,
     hide: 2,
     sinew: 1,
     sighted:
@@ -115,6 +151,8 @@ export const QUARRY = {
   },
   boar: {
     name: 'a boar',
+    plain: 'boar',
+    focus: { x: 74, y: 46 },
     danger: 4,
     /*
      * As slow to take fright as the deer, and measured that way rather than chosen.
@@ -131,7 +169,7 @@ export const QUARRY = {
      * turning round.
      */
     wary: 3,
-    meat: 34,
+    meat: 24,
     hide: 3,
     sinew: 2,
     sighted:
@@ -154,10 +192,20 @@ export function quarryFor(seed) {
   return 'boar';
 }
 
-/** A hunt as it begins: nothing spent, nothing known, nobody alarmed. */
+/**
+ * A hunt as it begins — and the seed's whole job is here, in the deal.
+ *
+ * **Which animal, which way the wind is, and where its attention has got to.** After this the
+ * seed decides nothing: every press resolves from the rules and the state in front of the
+ * player. That is the trade this phase was rebuilt on 2026-09-13 to make — a situation you are
+ * dealt and then play, rather than a wager you place and then watch.
+ */
 export function startOf(seed) {
+  const random = makeRandom(mix(seed, 'deal'));
   return {
     quarry: quarryFor(seed),
+    wind: WINDS[Math.floor(random() * WINDS.length)],
+    beat: Math.floor(random() * BEATS.length),
     turn: 0,
     closeness: 0,
     alarm: 0,
@@ -212,20 +260,75 @@ export function yieldOf(state, survivor) {
 }
 
 /**
- * The chance this strike lands.
+ * Where the animal's attention is, on a cycle the player can read.
  *
- * Closeness is most of it, the weapon is the rest, and alarm is what takes it away. A survivor
- * with nothing in their hands can still take a hare and will lose a boar, which is the mirror
- * of the fence: unarmed is possible and bad.
+ * Three beats, advancing one a turn whatever anybody does. **The board shows this beat and the
+ * next**, which is the whole of what makes the hunt a puzzle rather than a wager: closing while
+ * it feeds is free, while its head comes up costs one, while it is watching costs two, and the
+ * cheap moment comes round on a schedule you can count.
+ *
+ * Advancing on every press — including `still` — is what puts the two halves of the decision in
+ * tension. Waiting for a feeding beat is how you close for nothing; waiting is also how you run
+ * out of presses.
  */
-export function strikeChance(state, survivor) {
-  const spec = QUARRY[state.quarry];
-  const weapon = bestOfKind(survivor?.inventory, 'weapon');
-  const potency = Math.max(0, Number(weapon?.potency) || 0);
+export const BEATS = ['feeding', 'lifting', 'watching'];
 
-  const reach = Math.min(1, state.closeness / WITHIN_REACH);
-  const odds = 0.15 + 0.35 * reach + potency / 100 - state.alarm * 0.12 - spec.danger * 0.04;
-  return Math.max(0.05, Math.min(0.95, odds));
+/** What closing costs at each beat, before the wind. */
+const BEAT_COST = { feeding: 0, lifting: 1, watching: 2 };
+
+/**
+ * The wind, dealt by the seed and fixed for the hunt.
+ *
+ * The second readable fact, and the one that makes two hunts on the same beats play
+ * differently: it shifts every closing cost by one either way. Behind them, a lifting head is
+ * still free; into their faces, even a feeding animal notices.
+ */
+export const WINDS = ['behind', 'across', 'ahead'];
+const WIND_SHIFT = { behind: -1, across: 0, ahead: 1 };
+
+/**
+ * How much of the animal's attention a strike can survive, by what is in their hands.
+ *
+ * **This is what replaced the dice, and it is the whole reason the weapon matters.** A strike
+ * no longer rolls: it lands when they are close enough and the animal is no more alert than
+ * the weapon allows. So a bow does not make you luckier, it buys you *slack* — two points of
+ * attention you are allowed to have spent getting there — and slack is a thing a player can
+ * plan around where a percentage is a thing they can only hope about.
+ *
+ * A point of tolerance per fifteen of potency: bare hands 0, the scrap spear 1, the bow 2.
+ */
+export function toleranceFor(survivor) {
+  const weapon = bestOfKind(survivor?.inventory, 'weapon');
+  return Math.min(BOLTS_AT, Math.floor(Math.max(0, Number(weapon?.potency) || 0) / 15));
+}
+
+/** What closing would cost right now, in the animal's attention. */
+export function alarmCostOf(state) {
+  const beat = BEATS[state.beat % BEATS.length];
+  return Math.max(0, BEAT_COST[beat] + WIND_SHIFT[state.wind ?? 'across']);
+}
+
+/**
+ * Whether a strike would land, and why — the figure the board is built around.
+ *
+ * Deterministic, and stated rather than rolled, which is the point: a player who can see
+ * "clean" and "it moves first" is a player deciding, where one who sees 57% is a player
+ * gambling. Everything that used to be hidden in the roll is now a number they can act on.
+ */
+export function shotOf(state, survivor) {
+  const tolerance = toleranceFor(survivor);
+  const reach = state.closeness >= WITHIN_REACH;
+  const calm = state.alarm <= tolerance;
+
+  return {
+    lands: reach && calm,
+    tolerance,
+    alarm: state.alarm,
+    /* One reason, and the nearest one: what to fix first. */
+    why: reach ? (calm ? 'clean' : 'too alert') : 'too far',
+    /* And what it would take, so the next press is obvious rather than deduced. */
+    shortBy: reach ? Math.max(0, state.alarm - tolerance) : WITHIN_REACH - state.closeness,
+  };
 }
 
 /**
@@ -240,6 +343,14 @@ export function takeTurn(state, move, { seed, survivor }) {
   if (state.status !== 'active') return state;
 
   const spec = QUARRY[state.quarry];
+  /*
+   * The survivor's own name, in every line they are the subject of.
+   *
+   * It was "They" throughout, which on a camp of four is a pronoun with four possible
+   * referents on one page — and the block above it names whoever is out. A caller with no name
+   * falls back to the pronoun rather than to a blank.
+   */
+  const who = survivor?.name ?? 'They';
   const random = makeRandom(mix(seed, `hunt${state.turn}`));
   const next = { ...state, turn: state.turn + 1, log: [] };
 
@@ -249,7 +360,7 @@ export function takeTurn(state, move, { seed, survivor }) {
 
   if (move === 'leave') {
     next.status = 'left';
-    next.log.push('They backed out of it and came away with nothing, which is a thing you can do.');
+    next.log.push(`${who} backed off. Nothing gained, and nobody hurt.`);
     return next;
   }
 
@@ -268,35 +379,50 @@ export function takeTurn(state, move, { seed, survivor }) {
    * announcement.
    */
   if (lethal && spec.danger > 0 && move !== 'leave') {
-    const hurt = intBetween(random, spec.danger * 3, spec.danger * 9);
+    /*
+     * And what they are wearing is worth something, which it was not until 2026-09-13.
+     *
+     * `rollHazard` has run a region's damage through `equipmentOf`'s `damageMultiplier` since
+     * gear existed. This did not, so a plate vest was worth thirty percent out on the road and
+     * nothing at all against a boar twenty yards from the fence — the same survivor, the same
+     * coat, two different games. **The same reader, so there is one arithmetic**: armour is
+     * capped at 0.6 there and is capped at 0.6 here because it is the same call.
+     */
+    const { damageMultiplier } = equipmentOf(survivor);
+    const hurt = Math.round(intBetween(random, spec.danger * 3, spec.danger * 9) * damageMultiplier);
     next.damage += hurt;
-    next.log.push('It came the other way, and it came fast.');
+    next.log.push(`The ${spec.plain} charged ${who}.`);
   }
 
   if (move === 'strike') {
-    if (state.closeness < WITHIN_REACH) {
-      next.log.push('Too far, and they know it.');
-      next.alarm += 1;
-    } else if (random() < strikeChance(state, survivor)) {
+    /*
+     * No roll. It lands when they are close enough and the animal is no more alert than the
+     * weapon allows, and the board said so before the press — see `shotOf`.
+     *
+     * A strike taken outside that is not refused, because there are hunts where it is the last
+     * press and a bad shot beats no shot at all. It simply does what everyone could see it
+     * would do.
+     */
+    const shot = shotOf(state, survivor);
+    if (shot.lands) {
       next.status = 'taken';
-      next.log.push(`They took ${spec.name}.`);
+      next.log.push(`${who} took the ${spec.plain}.`);
       // Whatever it did on the way down still happened. A boar taken as it came is the good
       // outcome of a bad turn, and the survivor wears it.
-      if (next.damage > state.damage) next.log.push('Not before it reached them, though.');
+      if (next.damage > state.damage) next.log.push(`It reached ${who} on the way down.`);
       return next;
-    } else {
-      next.alarm += 2;
-      next.log.push('It moved first.');
-      if (spec.danger >= 3) next.turning = true;
     }
+
+    next.alarm += 2;
+    next.log.push(
+      shot.why === 'too far'
+        ? `Too far for ${who} to reach it. The try put it on edge — alarm up 2.`
+        : `It moved before ${who} did — alarm up 2.`,
+    );
+    if (spec.danger >= 3) next.turning = true;
   }
 
   if (move === 'close') {
-    /*
-     * Pressing in on something that has turned is where the blood is, and it is the only
-     * place in the hunt that can take a survivor's life. The damage is drawn against the
-     * quarry's danger the way a region's hazard is, and a hare has none of it.
-     */
     // Walking into something already coming at you ends it there: the only press in the game
     // with no upside at all. The damage itself was taken above.
     if (lethal && spec.danger > 0) {
@@ -305,19 +431,20 @@ export function takeTurn(state, move, { seed, survivor }) {
     }
 
     /*
-     * Closing always costs attention, and that is what makes standing still a move.
+     * What it costs is the beat and the wind, and the player was shown both.
      *
-     * It was a coin toss, and a coin toss is not a price a player can plan against: half the
-     * time closing was free, so the patient line bought nothing it could rely on. Now two
-     * closes put any quarry within one of breaking, and whether to spend a turn settling it
-     * before striking is the decision the hunt is made of.
+     * This is where the skill went. Closing on a feeding animal with the wind behind is free;
+     * closing while it watches, into its face, costs three and ends the hunt. In between is
+     * the decision the mode is made of — pay attention now, or spend a press waiting for the
+     * cheap moment and risk running out of presses.
      */
+    const cost = alarmCostOf(state);
     next.closeness = Math.min(WITHIN_REACH, state.closeness + 1);
-    next.alarm += 1;
+    next.alarm += cost;
     next.log.push(
-      next.closeness >= WITHIN_REACH
-        ? 'They are close enough now, and the next thing they do will be the last quiet one.'
-        : 'A few yards, slowly.',
+      cost === 0
+        ? `${who} closed a few yards. It never lifted its head.`
+        : `${who} closed a few yards and it noticed — alarm up ${cost}.`,
     );
   }
 
@@ -329,8 +456,16 @@ export function takeTurn(state, move, { seed, survivor }) {
       return next;
     }
     next.alarm = Math.max(0, state.alarm - 1);
-    next.log.push('Nothing moves for a while, and it goes back to what it was doing.');
+    next.log.push(`${who} stood still. It settled — alarm down 1.`);
   }
+
+  /*
+   * And the animal's attention moves on, whatever anybody did.
+   *
+   * Every press, including standing still — which is what makes waiting a *cost* rather than a
+   * free reset, and what lets a player count the cheap moment toward them.
+   */
+  next.beat = (state.beat + 1) % BEATS.length;
 
   /*
    * And what the animal does about it. A quarry at its own wariness starts thinking about
@@ -340,22 +475,61 @@ export function takeTurn(state, move, { seed, survivor }) {
   if (next.alarm >= BOLTS_AT) {
     if (spec.danger >= 3) {
       next.turning = true;
-      next.log.push('It is not going anywhere. It has turned to face them.');
+      next.log.push(
+        `The ${spec.plain} has turned to face ${who}. It will not run now. Any move but backing ` +
+          'off means taking a charge.',
+      );
     } else {
       next.status = 'bolted';
-      next.log.push('It broke, and the scrub took it.');
+      next.log.push(`The ${spec.plain} broke and ran. The hunt is over.`);
       return next;
     }
-  } else if (next.alarm >= spec.wary && !next.turning) {
-    next.log.push('Its head is up.');
   }
 
   if (next.turn >= MAX_TURNS && next.status === 'active') {
     next.status = 'lost';
-    next.log.push('The light went, and it was somewhere else by then.');
+    next.log.push(`${who} ran out of light. It was gone by then.`);
   }
 
   return next;
+}
+
+/**
+ * How far in they are, as the camera sees it.
+ *
+ * One scale per stop rather than a formula, because these are three framings of a photograph
+ * and the middle one has to look like somewhere a person is standing — not like the mean of
+ * the other two. The frame's height never changes; only what is inside it does.
+ */
+const ZOOM = [1, 1.55, 2.3];
+
+/** Where they are standing, in the words the frame uses. */
+const STOPS = ['Across the clearing', 'Half the ground', 'Within reach'];
+
+export function cameraFor(state) {
+  const spec = QUARRY[state.quarry];
+  const step = Math.max(0, Math.min(WITHIN_REACH, Number(state.closeness) || 0));
+
+  /*
+   * And the animal drifts toward the middle of the frame as they close.
+   *
+   * Scaling about the animal keeps it pinned at its own place in the plate — the boar sits at
+   * 74% across, so at full zoom it was jammed into the right-hand edge and under the verdict.
+   * Which is also wrong about looking at something: the closer you get, the more it is the
+   * thing you are looking at. So the frame slides it seven tenths of the way to centre across
+   * the two presses. A plate whose animal is already central barely moves.
+   */
+  const drift = ((50 - spec.focus.x) * 0.7 * step) / WITHIN_REACH;
+
+  return {
+    plate: state.quarry,
+    focus: spec.focus,
+    scale: ZOOM[step] ?? 1,
+    shift: Number(drift.toFixed(2)),
+    where: STOPS[step] ?? STOPS[0],
+    step,
+    of: WITHIN_REACH,
+  };
 }
 
 /**
@@ -368,8 +542,10 @@ export function takeTurn(state, move, { seed, survivor }) {
 export function saysHunt(state) {
   const spec = QUARRY[state.quarry];
   if (state.status !== 'active') return null;
-  if (state.turning) return `${spec.name} has stopped backing away.`;
-  if (state.closeness >= WITHIN_REACH) return `Within reach of ${spec.name}.`;
-  if (state.alarm >= spec.wary) return `${spec.name}, and it knows something is wrong.`;
-  return `${spec.name}, and it has not seen them yet.`;
+  if (state.turning) {
+    return `The ${spec.plain} has turned to face them — any move but backing off takes a charge.`;
+  }
+  if (state.closeness >= WITHIN_REACH) return `Close enough to the ${spec.plain} to try.`;
+  if (state.alarm >= spec.wary) return `A ${spec.plain}, and it knows something is wrong.`;
+  return `A ${spec.plain}, and it has not noticed them.`;
 }

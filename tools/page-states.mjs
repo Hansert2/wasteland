@@ -27,6 +27,7 @@ import { pool } from '../src/db/pool.js';
 import { foundSettlement, raiseSuccessor } from '../src/services/settlement-lifecycle.js';
 import { dispatchExpedition } from '../src/services/dispatch-expedition.js';
 import { startHunt, huntTurn } from '../src/services/hunt.js';
+import { quarryFor, startOf } from '../src/game/hunting.js';
 import { viewCamp } from '../src/services/view-camp.js';
 import { viewGraveyard } from '../src/services/view-graveyard.js';
 import { campPage, graveyardPage } from '../src/web/render.js';
@@ -287,10 +288,16 @@ export async function buildStates(client, now = Date.now()) {
       `update resources set amount = 200, storage_cap = 100000 where settlement_id = $1`,
       [id],
     );
+    /*
+     * A bow and a coat, because the board says what each half of the kit is worth and a
+     * fixture carrying neither renders half the block. The armour row only exists when there
+     * is armour: nothing is claimed about gear nobody owns.
+     */
     await client.query(
       `insert into inventory_items (character_id, item_id, qty)
        select c.id, i.id, 1 from characters c, items i
-        where c.settlement_id = $1 and c.died_at is null and i.slug = 'hunting_bow'`,
+        where c.settlement_id = $1 and c.died_at is null
+          and i.slug in ('hunting_bow', 'hide_coat')`,
       [id],
     );
 
@@ -298,10 +305,108 @@ export async function buildStates(client, now = Date.now()) {
       'select id from characters where settlement_id = $1 and died_at is null',
       [id],
     );
+    /*
+     * Pinned, like the two below it. Under the deterministic rules a hunt can be over on its
+     * first press — close into the wind while the animal is watching and the alarm is at three
+     * before anybody has done anything — so an unpinned fixture captured whatever it happened
+     * to draw, and quietly stopped being a picture of a hunt in progress.
+     */
+    let mid = 1;
+    while (quarryFor(mid) !== 'boar' || startOf(mid).wind !== 'behind') mid += 1;
+
     await startHunt(client, id, hunter[0].id, now);
+    await client.query(
+      `update hunts set seed = $2, state = $3::jsonb
+        where settlement_id = $1 and status = 'active'`,
+      [id, mid, JSON.stringify(startOf(mid))],
+    );
     await huntTurn(client, id, 'close', now);
 
     states['hunting'] = campPage(await viewCamp(client, id, now));
+  }
+
+  /*
+   * 6c-iii. And one that ended well, because the win is the state the view exists for.
+   *
+   * Every outcome rendered the same flat block until 2026-09-14, which is exactly the kind of
+   * fault a saved state catches and a test does not: nothing was *broken*, a kill simply did
+   * not look like one. Pinned rather than played: with the wind behind them every beat is free
+   * to close on, so close-close-strike takes it on the third press for any such seed.
+   */
+  {
+    const id = await camp(client, now);
+    await raiseSuccessor(client, id, { name: 'Sol', now });
+    await client.query(
+      `update resources set amount = 200, storage_cap = 100000 where settlement_id = $1`,
+      [id],
+    );
+    await client.query(
+      `insert into inventory_items (character_id, item_id, qty)
+       select c.id, i.id, 1 from characters c, items i
+        where c.settlement_id = $1 and c.died_at is null
+          and i.slug in ('hunting_bow', 'hide_coat')`,
+      [id],
+    );
+    const { rows: hunter } = await client.query(
+      'select id from characters where settlement_id = $1 and died_at is null',
+      [id],
+    );
+
+    let downwind = 1;
+    while (startOf(downwind).wind !== 'behind' || quarryFor(downwind) !== 'boar') downwind += 1;
+
+    await startHunt(client, id, hunter[0].id, now);
+    await client.query(
+      `update hunts set seed = $2, state = $3::jsonb
+        where settlement_id = $1 and status = 'active'`,
+      [id, downwind, JSON.stringify(startOf(downwind))],
+    );
+
+    for (const move of ['close', 'close', 'strike']) {
+      await huntTurn(client, id, move, now);
+    }
+
+    states['hunt-taken'] = campPage(await viewCamp(client, id, now));
+  }
+
+  /*
+   * 6c-iv. And one that went wrong, which is the state that had never been looked at.
+   *
+   * Reported 2026-09-14: the mauling read "Mauled - 8 taken out of them" over "It came the
+   * other way, and it came fast", which names neither what came nor what the 8 was. It had no
+   * saved state, so nobody had ever read it on a page. The charge is set up rather than played
+   * for: a boar already turned, and one press into it.
+   */
+  {
+    const id = await camp(client, now);
+    await raiseSuccessor(client, id, { name: 'Sol', now });
+    await client.query(
+      `update resources set amount = 200, storage_cap = 100000 where settlement_id = $1`,
+      [id],
+    );
+    await client.query(
+      `insert into inventory_items (character_id, item_id, qty)
+       select c.id, i.id, 1 from characters c, items i
+        where c.settlement_id = $1 and c.died_at is null and i.slug = 'hide_coat'`,
+      [id],
+    );
+    const { rows: hunter } = await client.query(
+      'select id from characters where settlement_id = $1 and died_at is null',
+      [id],
+    );
+
+    let boar = 1;
+    while (quarryFor(boar) !== 'boar') boar += 1;
+
+    await startHunt(client, id, hunter[0].id, now);
+    await client.query(
+      `update hunts set seed = $2, state = $3::jsonb
+        where settlement_id = $1 and status = 'active'`,
+      [id, boar, JSON.stringify({ ...startOf(boar), turning: true, closeness: 1, alarm: 3 })],
+    );
+    await huntTurn(client, id, 'close', now);
+
+    states['hunt-hurt'] = campPage(await viewCamp(client, id, now));
   }
 
   /*

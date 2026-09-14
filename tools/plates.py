@@ -41,6 +41,9 @@ NAMES = {
     'sixteen_wells.png': 'sixteen_wells',
     'waterworks.png': 'the_waterworks',
     'harrow_end.png': 'harrow_end',
+    'hare.png': 'hare',
+    'deer.png': 'deer',
+    'boar.png': 'boar',
 }
 
 # 3:1, and oversampled twice over for the size it renders at. Quality 82 is where these

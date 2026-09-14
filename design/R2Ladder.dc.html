@@ -1,0 +1,150 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    :root {
+      --void: #0B0A08; --ground: #171614; --strip: #1E1D1A; --panel: #1E1D1A;
+      --rule: #33312C; --rule-in: #26241F; --edge: #4A463E; --control: #55504E;
+      --bone: #E4E1D8; --prose: #CFCBC0; --value: #DCD8CD;
+      --dim: #999588; --quiet: #7A766C; --faint: #6F6B62;
+      --oxide: #C2632C; --oxide-light: #DD8F4A;
+      --label: 'Roboto Condensed', 'Arial Narrow', Arial, sans-serif;
+      --body: -apple-system, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+      --numer: ui-monospace, Menlo, Consolas, monospace;
+    }
+    body { margin: 0; background: var(--ground); color: var(--prose);
+           font-family: var(--body); font-size: 16.5px; line-height: 1.6; }
+    a { color: var(--dim); } a:hover { color: var(--bone); }
+    .wrap { padding: 20px 24px; }
+    .block { border: 1px solid var(--rule); background: var(--ground);
+             display: flex; flex-direction: column; }
+    .block > h2 { margin: 0; padding: 11px 18px; background: var(--strip);
+      border-bottom: 1px solid var(--rule); font-family: var(--label); font-weight: 700;
+      font-size: 10px; line-height: 1; letter-spacing: .18em; text-transform: uppercase;
+      color: var(--dim); }
+    .block-body { padding: 15px 18px; }
+    .tag { font-family: var(--label); font-weight: 700; font-size: 10px; line-height: 1.4;
+           letter-spacing: .16em; text-transform: uppercase; color: var(--faint); }
+
+    /*
+     * The approach as three named stops rather than as a continuous distance, because the
+     * thing being counted is presses. Each gap carries what crossing it costs at THIS beat,
+     * which is the decision, and the beats run underneath as a strip you can count along.
+     */
+    .rungs { display: grid; grid-template-columns: 1fr 1fr 1fr; margin: 8px 0 0;
+             border: 1px solid var(--rule); background: var(--panel); }
+    .rung { padding: 16px 18px; border-right: 1px solid var(--rule); position: relative; }
+    .rung:last-child { border-right: 0; }
+    .rung .where { font-family: var(--label); font-weight: 700; font-size: 12px;
+                   letter-spacing: .14em; text-transform: uppercase; color: var(--faint); }
+    .rung .said { margin-top: 5px; color: var(--quiet); font-size: 13px; }
+    .rung.here { background: var(--void); }
+    .rung.here .where { color: var(--bone); }
+    /* Where the survivor is standing, drawn on the rung rather than beside it. */
+    .rung .pin { position: absolute; left: 18px; top: -1px; width: 46px; height: 2px;
+                 background: var(--oxide); }
+    .rung .fig { position: absolute; right: 16px; top: 12px; }
+
+    /* What the next step costs, in the gap it belongs to. */
+    .gaps { display: grid; grid-template-columns: 1fr 1fr 1fr; margin-bottom: 10px; }
+    .gap { padding: 0 18px 6px; font-family: var(--numer); font-size: 11.5px;
+           color: var(--faint); }
+    .gap b { font-weight: 400; color: var(--oxide-light); }
+
+    .beats { display: flex; align-items: center; gap: 10px; margin-top: 14px;
+             padding: 12px 18px; border: 1px solid var(--rule); background: var(--panel); }
+    .beat { display: flex; flex-direction: column; gap: 4px; padding: 0 14px 0 0;
+            border-right: 1px solid var(--rule-in); }
+    .beat:last-of-type { border-right: 0; }
+    .beat .nm { font-family: var(--label); font-weight: 700; font-size: 12px;
+                letter-spacing: .12em; text-transform: uppercase; color: var(--quiet); }
+    .beat.now .nm { color: var(--bone); }
+    .beat .c { font-family: var(--numer); font-size: 11px; color: var(--faint); }
+    .beats .rest { margin-left: auto; font-family: var(--numer); font-size: 12px;
+                   color: var(--faint); }
+
+    .moves { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 16px; }
+    .move { display: flex; flex-direction: column; gap: 4px; align-items: flex-start;
+            min-width: 172px; padding: 12px 14px; border: 1px solid var(--control);
+            background: var(--panel); font-family: var(--label); font-weight: 700;
+            font-size: 11px; letter-spacing: .14em; text-transform: uppercase;
+            color: var(--prose); text-align: left; cursor: pointer; }
+    .move .why { font-size: 10px; font-weight: 400; letter-spacing: .08em;
+                 text-transform: lowercase; color: var(--faint); }
+    .move.take { border-color: var(--oxide); }
+    .move.away { min-width: 0; }
+  </style>
+</helmet>
+<div class="wrap">
+  <div class="block">
+    <h2>Nim is out after a boar</h2>
+    <div class="block-body">
+
+      <div class="rungs">
+        <div class="rung">
+          <span class="where">Across the clearing</span>
+          <p class="said">Where they started.</p>
+        </div>
+        <div class="rung here">
+          <span class="pin"></span>
+          <span class="where">Half the ground</span>
+          <p class="said">Nim is here, and it has not looked up.</p>
+          <svg class="fig" width="14" height="30" viewBox="0 0 14 30" aria-hidden="true">
+            <circle cx="7" cy="4" r="3" fill="none" stroke="#E4E1D8" stroke-width="1.3"/>
+            <path d="M7 7 V19 M7 10 L2 14 M7 10 L12 14 M7 19 L3 29 M7 19 L11 29"
+                  fill="none" stroke="#E4E1D8" stroke-width="1.3" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div class="rung">
+          <span class="where">Within reach</span>
+          <p class="said">Close enough to try it.</p>
+          <svg class="fig" width="46" height="27" viewBox="0 0 52 30" aria-hidden="true">
+            <path d="M4 20 C6 12 13 8 22 8 C31 8 39 10 44 14 L50 13 L47 18
+                     C47 24 42 26 36 26 L34 26 L33 30 M14 26 L13 30 M24 26 L23 30
+                     M40 26 L41 30"
+                  fill="none" stroke="#DD8F4A" stroke-width="1.6"
+                  stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="45" cy="16" r="1" fill="#DD8F4A"/>
+          </svg>
+        </div>
+      </div>
+
+      <div class="gaps">
+        <div class="gap"></div>
+        <div class="gap">crossed for <b>0</b></div>
+        <div class="gap">one press, costs <b>1</b> at this beat</div>
+      </div>
+
+      <div class="beats">
+        <div class="beat now"><span class="nm">Feeding</span><span class="c">closing costs 0</span></div>
+        <div class="beat"><span class="nm">Lifting</span><span class="c">costs 1</span></div>
+        <div class="beat"><span class="nm">Watching</span><span class="c">costs 2</span></div>
+        <span class="rest">alarm 1 of 3 &nbsp;·&nbsp; press 2 of 5 &nbsp;·&nbsp; wind across &nbsp;·&nbsp; the shot is clean</span>
+      </div>
+
+      <div class="moves">
+        <button class="move take" type="button">
+          <span>Take it</span><span class="why">now, with the bow</span>
+        </button>
+        <button class="move" type="button">
+          <span>Close the distance</span><span class="why">costs 1 of its attention</span>
+        </button>
+        <button class="move" type="button">
+          <span>Stand still</span><span class="why">alarm down 1, a press gone</span>
+        </button>
+        <button class="move away" type="button">
+          <span>Back off</span><span class="why">nothing, and no holes in you</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

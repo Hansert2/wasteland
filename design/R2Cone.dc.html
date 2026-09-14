@@ -1,0 +1,152 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    :root {
+      --void: #0B0A08; --ground: #171614; --strip: #1E1D1A; --panel: #1E1D1A;
+      --rule: #33312C; --rule-in: #26241F; --edge: #4A463E; --control: #55504E;
+      --bone: #E4E1D8; --prose: #CFCBC0; --value: #DCD8CD;
+      --dim: #999588; --quiet: #7A766C; --faint: #6F6B62;
+      --oxide: #C2632C; --oxide-light: #DD8F4A;
+      --label: 'Roboto Condensed', 'Arial Narrow', Arial, sans-serif;
+      --body: -apple-system, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+      --numer: ui-monospace, Menlo, Consolas, monospace;
+    }
+    body { margin: 0; background: var(--ground); color: var(--prose);
+           font-family: var(--body); font-size: 16.5px; line-height: 1.6; }
+    a { color: var(--dim); } a:hover { color: var(--bone); }
+    .wrap { padding: 20px 24px; }
+    .block { border: 1px solid var(--rule); background: var(--ground);
+             display: flex; flex-direction: column; }
+    .block > h2 { margin: 0; padding: 11px 18px; background: var(--strip);
+      border-bottom: 1px solid var(--rule); font-family: var(--label); font-weight: 700;
+      font-size: 10px; line-height: 1; letter-spacing: .18em; text-transform: uppercase;
+      color: var(--dim); }
+    .block-body { padding: 15px 18px; }
+    .tag { font-family: var(--label); font-weight: 700; font-size: 10px; line-height: 1.4;
+           letter-spacing: .16em; text-transform: uppercase; color: var(--faint); }
+
+    /*
+     * Looked down on rather than along: the survivor at one end, the quarry at the other, and
+     * the cone is where its attention is pointing. Distance is the line; alarm is how wide and
+     * how hot the cone gets; the beat is which way it faces.
+     */
+    .plan { display: grid; grid-template-columns: 1fr 300px; gap: 24px; align-items: center;
+            padding: 14px 18px; margin-bottom: 6px;
+            background: var(--void); border: 1px solid var(--rule); }
+    .plan .legend { display: flex; flex-direction: column; gap: 11px; }
+    .leg { display: grid; grid-template-columns: 92px 1fr; gap: 12px; align-items: baseline; }
+    .leg .val { font-family: var(--numer); font-size: 14px; color: var(--value); }
+    .leg .val b { font-weight: 400; color: var(--oxide-light); }
+
+    .moves { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 16px; }
+    .move { display: flex; flex-direction: column; gap: 4px; align-items: flex-start;
+            min-width: 172px; padding: 12px 14px; border: 1px solid var(--control);
+            background: var(--panel); font-family: var(--label); font-weight: 700;
+            font-size: 11px; letter-spacing: .14em; text-transform: uppercase;
+            color: var(--prose); text-align: left; cursor: pointer; }
+    .move .why { font-size: 10px; font-weight: 400; letter-spacing: .08em;
+                 text-transform: lowercase; color: var(--faint); }
+    .move.take { border-color: var(--oxide); }
+    .move.away { min-width: 0; }
+  </style>
+</helmet>
+<div class="wrap">
+  <div class="block">
+    <h2>Nim is out after a boar</h2>
+    <div class="block-body">
+
+      <div class="plan">
+        <svg width="100%" height="150" viewBox="0 0 620 150" aria-hidden="true"
+             preserveAspectRatio="xMidYMid meet">
+          <!-- the ground: two rules, near and far, so the space reads as depth -->
+          <line x1="0" y1="120" x2="620" y2="120" stroke="#26241F" stroke-width="1"/>
+          <line x1="0" y1="34" x2="620" y2="34" stroke="#26241F" stroke-width="1"/>
+
+          <!-- what its attention covers. Widens and warms as the alarm climbs. -->
+          <path d="M470 66 L250 24 L250 108 Z" fill="#C2632C" fill-opacity="0.14"
+                stroke="#C2632C" stroke-opacity="0.5" stroke-width="1"/>
+
+          <!-- the ground between them, closed and still to close -->
+          <line x1="96" y1="88" x2="300" y2="88" stroke="#C2632C" stroke-width="2"/>
+          <line x1="300" y1="88" x2="466" y2="88" stroke="#4A463E" stroke-width="1"
+                stroke-dasharray="3 5"/>
+          <circle cx="300" cy="88" r="3" fill="#171614" stroke="#4A463E" stroke-width="1"/>
+
+          <!-- the survivor -->
+          <circle cx="84" cy="76" r="4" fill="none" stroke="#E4E1D8" stroke-width="1.5"/>
+          <path d="M84 80 V94 M84 84 L77 89 M84 84 L91 89 M84 94 L79 106 M84 94 L89 106"
+                fill="none" stroke="#E4E1D8" stroke-width="1.5" stroke-linecap="round"/>
+          <text x="84" y="122" text-anchor="middle" fill="#6F6B62"
+                font-family="Arial Narrow, Arial" font-size="11" letter-spacing="1.6">NIM</text>
+
+          <!-- the quarry, facing away and to the left: feeding -->
+          <path d="M452 78 C454 68 462 63 472 63 C482 63 491 65 496 69 L503 68 L500 74
+                   C500 81 494 84 487 84 L485 84 L484 89 M462 84 L461 89 M473 84 L472 89
+                   M491 84 L492 89"
+                fill="none" stroke="#DD8F4A" stroke-width="1.8"
+                stroke-linecap="round" stroke-linejoin="round"/>
+          <text x="480" y="122" text-anchor="middle" fill="#6F6B62"
+                font-family="Arial Narrow, Arial" font-size="11" letter-spacing="1.6">BOAR</text>
+
+          <!-- the wind, drawn across the field because that is what it is -->
+          <path d="M520 26 L560 26 M552 21 L560 26 L552 31" fill="none" stroke="#4A463E"
+                stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+          <text x="566" y="30" fill="#6F6B62" font-family="Arial Narrow, Arial"
+                font-size="11" letter-spacing="1.6">WIND</text>
+        </svg>
+
+        <div class="legend">
+          <div class="leg">
+            <span class="tag">the shot</span>
+            <span class="val"><b>CLEAN</b> &mdash; 1 of 2 allowed</span>
+          </div>
+          <div class="leg">
+            <span class="tag">ground</span>
+            <span class="val">1 of 2 closed</span>
+          </div>
+          <div class="leg">
+            <span class="tag">alarm</span>
+            <span class="val">1 of 3</span>
+          </div>
+          <div class="leg">
+            <span class="tag">it is</span>
+            <span class="val">feeding, then lifting</span>
+          </div>
+          <div class="leg">
+            <span class="tag">press</span>
+            <span class="val">2 of 5</span>
+          </div>
+          <div class="leg">
+            <span class="tag">worth</span>
+            <span class="val">24 food, 3 hide, 2 sinew</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="moves">
+        <button class="move take" type="button">
+          <span>Take it</span><span class="why">now, with the bow</span>
+        </button>
+        <button class="move" type="button">
+          <span>Close the distance</span><span class="why">costs 1 of its attention</span>
+        </button>
+        <button class="move" type="button">
+          <span>Stand still</span><span class="why">alarm down 1, a press gone</span>
+        </button>
+        <button class="move away" type="button">
+          <span>Back off</span><span class="why">nothing, and no holes in you</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

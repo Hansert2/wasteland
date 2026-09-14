@@ -52,7 +52,21 @@ import {
 } from '../game/road.js';
 import { WORLD_SEED, loadWorldEvents } from '../db/world-events.js';
 import { FACTIONS, caravanVisit, postKeeper, priceAt, standingOf } from '../game/factions.js';
-import { movesFor, saysHunt } from '../game/hunting.js';
+import {
+  BOLTS_AT,
+  MAX_TURNS,
+  QUARRY,
+  STAMINA,
+  WITHIN_REACH,
+  kitOf,
+  movesFor,
+  saysHunt,
+  alarmCostOf,
+  cameraFor,
+  shotOf,
+  BEATS,
+  yieldOf,
+} from '../game/hunting.js';
 import {
   STRUCTURES,
   UPGRADES,
@@ -1029,6 +1043,119 @@ function shortfall(resources, pack, costs = {}, inputs = []) {
 
   return missing.length > 0 ? `needs ${missing.join(', ')}` : null;
 }
+
+/**
+ * The hunt as the page reads it, and every figure of it derived.
+ *
+ * `movesFor`, `saysHunt`, `shotOf` and `yieldOf` all take the state the service acts on, so the
+ * page cannot offer a press the service refuses or quote a verdict it will not honour. The one
+ * thing assembled here is *which* survivor's pack to ask about, which is a row and not a rule.
+ *
+ * **The odds are on the page because they are the decision.** A stalk where the player cannot
+ * see what a shot is worth is a page asking them to guess, and the two numbers that move it —
+ * how close they are and how alarmed it is — are already drawn beside it. What a popup adds is
+ * where the figure comes from, in the `stats()` style: a number in a row, and prose only for
+ * what a number cannot say.
+ */
+function huntFor(row, packsByOwner, state) {
+  const live = row.status === 'active';
+  const hunter = (state.survivors ?? []).find((one) => Number(one.id) === Number(row.character_id));
+  const survivor = {
+    skillScavenging: hunter?.skillScavenging,
+    inventory: packsByOwner.get(Number(row.character_id)) ?? [],
+  };
+
+  const weapon = (survivor.inventory ?? [])
+    .filter((item) => item.kind === 'weapon' && item.qty > 0)
+    .sort((a, b) => Number(b.potency ?? 0) - Number(a.potency ?? 0))[0] ?? null;
+
+  return {
+    status: row.status,
+    who: row.name,
+    quarry: row.state?.quarry ?? null,
+    turning: Boolean(row.state?.turning),
+    said: live ? saysHunt(row.state) : (row.state?.log ?? []).join(' '),
+    lines: live ? row.state?.log ?? [] : [],
+    moves: live ? movesFor(row.state) : [],
+    gained: row.state?.gained ?? null,
+
+    // The two readings the decision is actually made on, as figures rather than as sentences.
+    closeness: Number(row.state?.closeness ?? 0),
+    reach: WITHIN_REACH,
+    alarm: Number(row.state?.alarm ?? 0),
+    bolts: BOLTS_AT,
+    turns: Number(row.state?.turn ?? 0),
+    lastTurn: MAX_TURNS,
+
+    /*
+     * What a shot is worth now, and what it would be worth from close enough.
+     *
+     * Both, because for most of a hunt the player is deciding whether the ground is worth the
+     * attention it costs — and "58% once you are there" is the whole of that argument. The
+     * far figure is computed against a state that has been moved to reach and left otherwise
+     * alone, so it answers *this* hunt rather than an average one.
+     */
+    /*
+     * The shot as a verdict rather than as odds, which is the 2026-09-13 rebuild in one field.
+     *
+     * Nothing rolls any more: a strike lands when they are close enough and the animal is no
+     * more alert than the weapon allows, and `shotOf` is the same call the service resolves
+     * with. So the board can say "clean" or "it moves first" and be *right*, where a
+     * percentage could only ever be a mood.
+     */
+    shot: live ? shotOf(row.state, survivor) : null,
+
+    /*
+     * And the two facts the player plays against: where its attention is now, where it will be
+     * on the next press, and what closing would cost at this moment.
+     *
+     * The next beat is on the board deliberately. A cycle you can only discover by pressing is
+     * a cycle you are guessing at; one you can see coming is a thing you can plan two presses
+     * around, which is the whole of what makes this skill rather than chance.
+     */
+    wind: row.state?.wind ?? null,
+    beat: live ? BEATS[row.state.beat % BEATS.length] : null,
+    nextBeat: live ? BEATS[(row.state.beat + 1) % BEATS.length] : null,
+    closeCost: live ? alarmCostOf(row.state) : 0,
+
+    // And what is on the other side of it, so the stake is legible before the press.
+    worth: live ? yieldOf(row.state, survivor) : null,
+    quarryName: row.state?.quarry ? QUARRY[row.state.quarry]?.name ?? null : null,
+    /* The bare noun, for sentences that name the animal without an article in front of it. */
+    quarryPlain: row.state?.quarry ? QUARRY[row.state.quarry]?.plain ?? null : null,
+    cost: STAMINA,
+
+    /*
+     * What they walked out with, and what each half of it is worth — on the board rather than
+     * behind a hover.
+     *
+     * The weapon's contribution was only ever legible inside the odds popup, and the armour's
+     * was nothing at all until the mauling started reading it. Both are the answer to the one
+     * question a player asks before pressing anything: does it matter what I am carrying.
+     */
+    kit: live ? kitOf(survivor) : null,
+
+    /*
+     * Where the camera is standing. The plate is the ground between them, and closing the
+     * distance scales it about the animal rather than moving a marker along a bar — so the
+     * press a player makes is the thing they see happen.
+     */
+    camera: live ? cameraFor(row.state) : null,
+
+    /*
+     * What it cost them, and whether they got up.
+     *
+     * The outcome has to be able to say both even when it went well — a boar taken as it came
+     * is a win the survivor wears for a week. **And a hunt that killed somebody said nothing
+     * about it**: the block reported "Mauled" and a number, and the player found out their
+     * survivor was dead by noticing them missing from the roster.
+     */
+    hurt: Number(row.state?.damage ?? 0),
+    killed: row.died_at !== null,
+    healthLeft: Math.max(0, Math.round(Number(row.health ?? 0))),
+  };
+}
+
 export async function viewCamp(client, settlementId, now = Date.now(), { day = 0 } = {}) {
   const { state, events } = await advanceSettlement(client, settlementId, now);
 
@@ -1756,28 +1883,13 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
    * not. Found by a test that hunted forty times without the clock moving.
    */
   const { rows: huntRows } = await client.query(
-    `select h.id, h.seed, h.state, h.status, c.name
+    `select h.id, h.seed, h.state, h.status, h.character_id, c.name, c.died_at, c.health
        from hunts h join characters c on c.id = h.character_id
       where h.settlement_id = $1 order by h.started_at desc, h.id desc limit 1`,
     [settlementId],
   );
 
-  const hunt = huntRows[0]
-    ? {
-        status: huntRows[0].status,
-        who: huntRows[0].name,
-        turning: Boolean(huntRows[0].state?.turning),
-        // What it is, and what can be done about it — both from the pure module, so the page
-        // and the service read one answer rather than two.
-        said:
-          huntRows[0].status === 'active'
-            ? saysHunt(huntRows[0].state)
-            : (huntRows[0].state?.log ?? []).join(' '),
-        lines: huntRows[0].status === 'active' ? huntRows[0].state?.log ?? [] : [],
-        moves: huntRows[0].status === 'active' ? movesFor(huntRows[0].state) : [],
-        gained: huntRows[0].state?.gained ?? null,
-      }
-    : null;
+  const hunt = huntRows[0] ? huntFor(huntRows[0], packsByOwner, state) : null;
 
   const openRow = roadRows.find((row) => row.completed_at === null);
   const nextIndex = openRow ? Number(openRow.link_index) : reached.length + 1;

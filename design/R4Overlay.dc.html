@@ -1,0 +1,155 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    :root {
+      --void: #0B0A08; --ground: #171614; --strip: #1E1D1A; --panel: #1E1D1A;
+      --rule: #33312C; --rule-in: #26241F; --edge: #4A463E; --control: #55504E;
+      --bone: #E4E1D8; --prose: #CFCBC0; --value: #DCD8CD;
+      --dim: #999588; --quiet: #7A766C; --faint: #6F6B62;
+      --oxide: #C2632C; --oxide-light: #DD8F4A;
+      --label: 'Roboto Condensed', 'Arial Narrow', Arial, sans-serif;
+      --body: -apple-system, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+      --numer: ui-monospace, Menlo, Consolas, monospace;
+    }
+    body { margin: 0; background: var(--ground); color: var(--prose);
+           font-family: var(--body); font-size: 16.5px; line-height: 1.6; }
+    a { color: var(--dim); } a:hover { color: var(--bone); }
+    .wrap { padding: 20px 24px; }
+    .block { border: 1px solid var(--rule); background: var(--ground); }
+    .block > h2 { margin: 0; padding: 11px 18px; background: var(--strip);
+      border-bottom: 1px solid var(--rule); font-family: var(--label); font-weight: 700;
+      font-size: 10px; line-height: 1; letter-spacing: .18em; text-transform: uppercase;
+      color: var(--dim); }
+    .tag { font-family: var(--label); font-weight: 700; font-size: 10px; line-height: 1.4;
+           letter-spacing: .16em; text-transform: uppercase; color: var(--faint); }
+
+    /*
+     * ONE frame, and it never changes height. The block is pressed four times a minute, so
+     * nothing below the picture may move between presses -- only what is inside it.
+     */
+    .view { position: relative; height: 330px; overflow: hidden; background: var(--void);
+            border-bottom: 1px solid var(--rule); }
+    .view img { display: block; width: 100%; height: 330px; object-fit: cover;
+                object-position: 74% 46%; transform-origin: 74% 46%; transform: scale(2.3); }
+    .view::after { content: ''; position: absolute; inset: 0; pointer-events: none;
+      background: linear-gradient(to bottom, rgba(11,10,8,.58) 0%, rgba(11,10,8,.04) 26%,
+                                             rgba(11,10,8,.34) 58%, rgba(11,10,8,.93) 100%); }
+
+    /* Where they are standing, on the bottom edge of the frame like a scrubber. */
+    .stops { position: absolute; left: 0; right: 0; bottom: 0; z-index: 2;
+             display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; }
+    .stops i { display: block; height: 3px; background: rgba(228,225,216,.14); }
+    .stops i.on { background: var(--oxide); }
+
+    .where { position: absolute; left: 20px; top: 22px; z-index: 2;
+      font-family: var(--label); font-weight: 700; font-size: 10px; letter-spacing: .18em;
+      text-transform: uppercase; color: rgba(228,225,216,.72);
+      text-shadow: 0 1px 4px rgba(11,10,8,.95); }
+    .verdict { position: absolute; right: 20px; top: 18px; z-index: 2; text-align: right; }
+    .verdict .word { display: block; font-family: var(--label); font-weight: 700;
+      font-size: 26px; line-height: 1; letter-spacing: .03em; text-transform: uppercase;
+      color: var(--quiet); text-shadow: 0 2px 8px rgba(11,10,8,.95); }
+    .verdict .word.clean { color: var(--bone); }
+    .verdict .sub { display: block; margin-top: 3px; font-family: var(--numer);
+      font-size: 11.5px; color: rgba(228,225,216,.6); text-shadow: 0 1px 4px rgba(11,10,8,.95); }
+
+    /* The readings laid on the frame's own dead ground rather than in a strip beneath it. */
+    .reads { position: absolute; left: 0; right: 0; bottom: 3px; z-index: 2;
+             display: flex; flex-wrap: wrap; }
+    .cell { display: flex; flex-direction: column; gap: 3px; padding: 10px 20px;
+            border-right: 1px solid rgba(228,225,216,.12); }
+    .cell:last-child { border-right: 0; }
+    .cell .val { font-family: var(--numer); font-size: 18px; line-height: 1.15;
+                 color: var(--bone); font-variant-numeric: tabular-nums;
+                 text-shadow: 0 1px 4px rgba(11,10,8,.95); }
+    .cell .val i { font-style: normal; color: var(--faint); font-size: 12px; }
+    .cell .val.small { font-family: var(--label); font-weight: 700; font-size: 15px;
+                       letter-spacing: .04em; text-transform: uppercase; color: var(--prose); }
+    .cell .sub { font-family: var(--numer); font-size: 11px; color: rgba(228,225,216,.55);
+                 text-shadow: 0 1px 4px rgba(11,10,8,.95); }
+    .reads .tag { color: rgba(228,225,216,.5); text-shadow: 0 1px 4px rgba(11,10,8,.95); }
+
+    .moves { display: flex; flex-wrap: wrap; gap: 9px; padding: 14px 18px 16px;
+             border-top: 1px solid var(--rule); }
+    .move { display: flex; flex-direction: column; gap: 4px; align-items: flex-start;
+            min-width: 172px; padding: 12px 14px; border: 1px solid var(--control);
+            background: var(--panel); font-family: var(--label); font-weight: 700;
+            font-size: 11px; letter-spacing: .14em; text-transform: uppercase;
+            color: var(--prose); text-align: left; cursor: pointer; }
+    .move .why { font-size: 10px; font-weight: 400; letter-spacing: .08em;
+                 text-transform: lowercase; color: var(--faint); }
+    .move.take { border-color: var(--oxide); }
+    .move.take[disabled] { border-color: var(--rule); color: var(--faint); cursor: default; }
+    .move.away { min-width: 0; }
+  </style>
+</helmet>
+<div class="wrap">
+  <div class="block">
+    <h2>Nim is out after a boar</h2>
+
+    <div class="view">
+      <img src="plate-boar.webp" alt="">
+      <span class="where">Within reach</span>
+      <div class="verdict">
+        <span class="word clean">Clean</span>
+        <span class="sub">alarm 1 of the 2 the bow allows</span>
+      </div>
+      <div class="stops"><i class="on"></i><i class="on"></i><i class="on"></i></div>
+
+      <div class="reads">
+      <div class="cell">
+        <span class="tag">ground</span>
+        <span class="val">2<i>/2</i></span>
+        <span class="sub">all of it</span>
+      </div>
+      <div class="cell">
+        <span class="tag">alarm</span>
+        <span class="val">1<i>/3</i></span>
+        <span class="sub">it breaks off at 3</span>
+      </div>
+      <div class="cell">
+        <span class="tag">it is</span>
+        <span class="val small">feeding</span>
+        <span class="sub">then lifting</span>
+      </div>
+      <div class="cell">
+        <span class="tag">wind</span>
+        <span class="val small">across</span>
+        <span class="sub">nothing left to close</span>
+      </div>
+      <div class="cell">
+        <span class="tag">press</span>
+        <span class="val">3<i>/5</i></span>
+        <span class="sub">then the light goes</span>
+      </div>
+      <div class="cell">
+        <span class="tag">worth</span>
+        <span class="val">24<i> food</i> 3<i> hide</i> 2<i> sinew</i></span>
+        <span class="sub">bow allows 2 &middot; coat &minus;18%</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="moves">
+      <button class="move take" type="button">
+        <span>Take it</span><span class="why">now, with the bow</span>
+      </button>
+      <button class="move" type="button">
+        <span>Stand still</span><span class="why">alarm down 1, a press gone</span>
+      </button>
+      <button class="move away" type="button">
+        <span>Back off</span><span class="why">nothing, and no holes in you</span>
+      </button>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

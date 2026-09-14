@@ -9,7 +9,7 @@ import { foundSettlement, raiseSuccessor } from '../../src/services/settlement-l
 import { occupations } from '../../src/services/who-is-free.js';
 import { viewCamp } from '../../src/services/view-camp.js';
 import { campPage } from '../../src/web/render.js';
-import { STAMINA, WITHIN_REACH } from '../../src/game/hunting.js';
+import { STAMINA, WITHIN_REACH, quarryFor, startOf } from '../../src/game/hunting.js';
 import { InputError } from '../../src/errors.js';
 
 const T0 = Date.UTC(2287, 0, 1);
@@ -224,7 +224,13 @@ test('nothing can be started on an empty gauge, and the refusal says how short t
       'and it names the number rather than saying no',
     );
 
-    const { rows } = await client.query('select count(*)::int as n from hunts');
+    // Scoped to this camp. The first version counted the whole table, which is a shared
+    // database with a page-state fixture in it — so the assertion passed or failed depending
+    // on whether anybody had run `tools/page-states.mjs` since.
+    const { rows } = await client.query(
+      'select count(*)::int as n from hunts where settlement_id = $1',
+      [settlementId],
+    );
     assert.equal(rows[0].n, 0, 'and no row was written');
   });
 });
@@ -281,7 +287,8 @@ test('the block says where it stands, offers every move, and keeps the outcome a
     await huntTurn(client, settlementId, 'leave', T0);
 
     const after = campPage(await viewCamp(client, settlementId, T0), { pane: 'camp' });
-    assert.match(after, /came away with nothing/, 'the outcome survives the press that made it');
+    assert.match(after, /Backed off/, 'the outcome survives the press that made it');
+    assert.match(after, /Nothing gained, and nobody hurt/, 'and says plainly what came of it');
     assert.match(after, /action="\/hunt"/, 'and the verb is offered again');
   });
 });
@@ -328,6 +335,50 @@ test('a boar that has turned can kill, and only ever after the screen that said 
       return;
     }
     throw new Error('sixty reckless hunts at 12 health and nobody was ever touched');
+  });
+});
+
+test('a hunt that kills somebody says so, on the block that killed them', async () => {
+  /*
+   * Reported 2026-09-14. The mauling screen read "Mauled - 8 taken out of them" over "It came
+   * the other way, and it came fast" — and when the charge was fatal it said exactly the same,
+   * so **a player learned their survivor was dead by noticing the roster was shorter.**
+   *
+   * The block that reports a death has to report it. Driven rather than played for: the state
+   * is set to a boar already turned and one press taken into it, which is the only way to
+   * reach the charge deterministically.
+   */
+  await withRollback(async (client) => {
+    const { settlementId, characterId } = await seed(client);
+    await client.query('update characters set health = 4 where id = $1', [characterId]);
+
+    let boar = 1;
+    while (quarryFor(boar) !== 'boar') boar += 1;
+
+    await startHunt(client, settlementId, characterId, T0);
+    await client.query(
+      `update hunts set seed = $2, state = $3::jsonb
+        where settlement_id = $1 and status = 'active'`,
+      [settlementId, boar, JSON.stringify({ ...startOf(boar), turning: true, closeness: 1, alarm: 3 })],
+    );
+
+    const { died } = await huntTurn(client, settlementId, 'close', T0);
+    assert.equal(died, true, 'four health against a boar is not a survivable press');
+
+    const view = await viewCamp(client, settlementId, T0);
+    assert.equal(view.hunt.status, 'mauled');
+    assert.equal(view.hunt.killed, true, 'and the view knows it');
+
+    const page = campPage(view, { pane: 'hunt' });
+    assert.match(page, /did not come back/, 'the block says somebody died');
+    // The name is read off the view rather than assumed: `raiseSuccessor` draws whoever
+    // `wandererFor` says, and the 'Vera' this fixture asks for is not what it gets.
+    assert.match(
+      page,
+      new RegExp(`${view.hunt.who} was killed by the boar`),
+      'and says what killed them, in plain words',
+    );
+    assert.doesNotMatch(page, /Go out again/, 'and does not offer a dead survivor another hunt');
   });
 });
 

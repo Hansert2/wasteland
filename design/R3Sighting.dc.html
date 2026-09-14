@@ -1,0 +1,135 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    :root {
+      --void: #0B0A08; --ground: #171614; --strip: #1E1D1A; --panel: #1E1D1A;
+      --rule: #33312C; --rule-in: #26241F; --edge: #4A463E; --control: #55504E;
+      --bone: #E4E1D8; --prose: #CFCBC0; --value: #DCD8CD;
+      --dim: #999588; --quiet: #7A766C; --faint: #6F6B62;
+      --oxide: #C2632C; --oxide-light: #DD8F4A;
+      --label: 'Roboto Condensed', 'Arial Narrow', Arial, sans-serif;
+      --body: -apple-system, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+      --numer: ui-monospace, Menlo, Consolas, monospace;
+    }
+    body { margin: 0; background: var(--ground); color: var(--prose);
+           font-family: var(--body); font-size: 16.5px; line-height: 1.6; }
+    a { color: var(--dim); } a:hover { color: var(--bone); }
+    .wrap { padding: 20px 24px; }
+    .block { border: 1px solid var(--rule); background: var(--ground); }
+    .block > h2 { margin: 0; padding: 11px 18px; background: var(--strip);
+      border-bottom: 1px solid var(--rule); font-family: var(--label); font-weight: 700;
+      font-size: 10px; line-height: 1; letter-spacing: .18em; text-transform: uppercase;
+      color: var(--dim); }
+    .tag { font-family: var(--label); font-weight: 700; font-size: 10px; line-height: 1.4;
+           letter-spacing: .16em; text-transform: uppercase; color: var(--faint); }
+
+    /*
+     * The plate takes the whole block and the readings sit on it, in a column down the left
+     * where the photograph has nothing to say. The picture is the board rather than a band
+     * across the top of it.
+     */
+    .scene { position: relative; }
+    .scene > img { display: block; width: 100%; height: 340px; object-fit: cover;
+                   object-position: 62% 46%; }
+    .scene::after { content: ''; position: absolute; inset: 0; z-index: 1;
+      background: linear-gradient(to right, rgba(11,10,8,.92) 0%, rgba(11,10,8,.82) 26%,
+                                            rgba(11,10,8,.18) 54%, rgba(11,10,8,.36) 100%); }
+
+    .panel { position: absolute; left: 0; top: 0; bottom: 0; width: 340px; z-index: 2;
+             display: flex; flex-direction: column; justify-content: center; gap: 0;
+             padding: 0 22px; }
+    .shotline { margin-bottom: 14px; }
+    .shotline .word { display: block; font-family: var(--label); font-weight: 700;
+      font-size: 34px; line-height: 1; letter-spacing: .03em; text-transform: uppercase;
+      color: var(--bone); }
+    .shotline .sub { display: block; margin-top: 5px; font-family: var(--numer);
+                     font-size: 11.5px; color: var(--quiet); }
+    .row { display: grid; grid-template-columns: 86px 1fr; gap: 12px; align-items: baseline;
+           padding: 7px 0; border-top: 1px solid rgba(228,225,216,.09); }
+    .row .val { font-family: var(--numer); font-size: 14px; color: var(--value);
+                font-variant-numeric: tabular-nums; }
+    .row .val b { font-weight: 400; color: var(--oxide-light); }
+
+    /* Where the survivor is, and how much of the ground is behind them: a rule laid along the
+       photograph's own middle distance rather than a bar in a panel. */
+    .run { position: absolute; left: 368px; right: 34px; bottom: 52px; height: 1px; z-index: 2;
+           background: rgba(228,225,216,.2); }
+    .run .closed { position: absolute; left: 0; top: 0; height: 1px; width: 58%;
+                   background: var(--oxide); }
+    .run .pip { position: absolute; top: -4px; width: 9px; height: 9px;
+                transform: translateX(-50%) rotate(45deg); }
+    .run .pip.you { left: 58%; background: var(--bone); }
+    .run .pip.them { left: 100%; border: 1px solid var(--oxide-light); }
+    .run .lab { position: absolute; top: 12px; transform: translateX(-50%);
+      font-family: var(--label); font-weight: 700; font-size: 9.5px; letter-spacing: .16em;
+      text-transform: uppercase; color: rgba(228,225,216,.7); white-space: nowrap;
+      text-shadow: 0 1px 3px rgba(11,10,8,.9); }
+
+    .moves { display: flex; flex-wrap: wrap; gap: 9px; padding: 14px 18px 16px;
+             border-top: 1px solid var(--rule); }
+    .move { display: flex; flex-direction: column; gap: 4px; align-items: flex-start;
+            min-width: 172px; padding: 12px 14px; border: 1px solid var(--control);
+            background: var(--panel); font-family: var(--label); font-weight: 700;
+            font-size: 11px; letter-spacing: .14em; text-transform: uppercase;
+            color: var(--prose); text-align: left; cursor: pointer; }
+    .move .why { font-size: 10px; font-weight: 400; letter-spacing: .08em;
+                 text-transform: lowercase; color: var(--faint); }
+    .move.take { border-color: var(--oxide); }
+    .move.away { min-width: 0; }
+  </style>
+</helmet>
+<div class="wrap">
+  <div class="block">
+    <h2>Nim is out after a boar</h2>
+
+    <div class="scene">
+      <img src="plate-boar.webp" alt="">
+
+      <div class="panel">
+        <div class="shotline">
+          <span class="word">Clean</span>
+          <span class="sub">alarm 1 of the 2 the bow allows</span>
+        </div>
+        <div class="row"><span class="tag">ground</span><span class="val">1 of 2 closed</span></div>
+        <div class="row"><span class="tag">alarm</span><span class="val">1 of 3 &mdash; breaks at 3</span></div>
+        <div class="row"><span class="tag">it is</span><span class="val">feeding, then <b>lifting</b></span></div>
+        <div class="row"><span class="tag">wind</span><span class="val">across &mdash; closing costs 1</span></div>
+        <div class="row"><span class="tag">press</span><span class="val">2 of 5</span></div>
+        <div class="row"><span class="tag">worth</span><span class="val">24 food, 3 hide, 2 sinew</span></div>
+      </div>
+
+      <div class="run">
+        <span class="closed"></span>
+        <span class="pip you"></span>
+        <span class="pip them"></span>
+        <span class="lab" style="left: 58%">Nim</span>
+        <span class="lab" style="left: 100%">the boar</span>
+      </div>
+    </div>
+
+    <div class="moves">
+      <button class="move take" type="button">
+        <span>Take it</span><span class="why">now, with the bow</span>
+      </button>
+      <button class="move" type="button">
+        <span>Close the distance</span><span class="why">costs 1 of its attention</span>
+      </button>
+      <button class="move" type="button">
+        <span>Stand still</span><span class="why">alarm down 1, a press gone</span>
+      </button>
+      <button class="move away" type="button">
+        <span>Back off</span><span class="why">nothing, and no holes in you</span>
+      </button>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

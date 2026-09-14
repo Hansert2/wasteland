@@ -1,0 +1,175 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    :root {
+      --void: #0B0A08; --ground: #171614; --strip: #1E1D1A; --panel: #1E1D1A;
+      --rule: #33312C; --rule-in: #26241F; --edge: #4A463E; --control: #55504E;
+      --bone: #E4E1D8; --prose: #CFCBC0; --value: #DCD8CD;
+      --dim: #999588; --quiet: #7A766C; --faint: #6F6B62;
+      --oxide: #C2632C; --oxide-light: #DD8F4A;
+      --label: 'Roboto Condensed', 'Arial Narrow', Arial, sans-serif;
+      --body: -apple-system, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+      --numer: ui-monospace, Menlo, Consolas, monospace;
+    }
+    body { margin: 0; background: var(--ground); color: var(--prose);
+           font-family: var(--body); font-size: 16.5px; line-height: 1.6; }
+    a { color: var(--dim); } a:hover { color: var(--bone); }
+    .wrap { padding: 20px 24px; }
+    .block { border: 1px solid var(--rule); background: var(--ground); }
+    .block > h2 { margin: 0; padding: 11px 18px; background: var(--strip);
+      border-bottom: 1px solid var(--rule); font-family: var(--label); font-weight: 700;
+      font-size: 10px; line-height: 1; letter-spacing: .18em; text-transform: uppercase;
+      color: var(--dim); }
+    .tag { font-family: var(--label); font-weight: 700; font-size: 10px; line-height: 1.4;
+           letter-spacing: .16em; text-transform: uppercase; color: var(--faint); }
+    .note { margin: 0; padding: 12px 18px; color: var(--quiet); font-size: 13.5px;
+            border-bottom: 1px solid var(--rule-in); }
+
+    /*
+     * Closing the distance moves the camera, not a marker.
+     *
+     * One photograph, three crops: the frame scales about the animal as the ground closes, so
+     * the press a player makes is the thing they see happen. Nothing else on the board has to
+     * carry distance at all after this.
+     */
+    .steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .step { border-right: 1px solid var(--rule); }
+    .step:last-child { border-right: 0; }
+    .shot { position: relative; height: 190px; overflow: hidden; background: var(--void); }
+    .shot img { display: block; width: 100%; height: 190px; object-fit: cover;
+                object-position: 74% 46%; transform-origin: 74% 46%; }
+    .shot.far img { transform: scale(1); }
+    .shot.half img { transform: scale(1.55); }
+    .shot.near img { transform: scale(2.35); }
+    .shot::after { content: ''; position: absolute; inset: 0;
+      background: linear-gradient(to bottom, rgba(11,10,8,.5), rgba(11,10,8,.06) 45%,
+                                             rgba(11,10,8,.78)); }
+    .shot .where { position: absolute; left: 14px; bottom: 11px; z-index: 2;
+      font-family: var(--label); font-weight: 700; font-size: 10px; letter-spacing: .16em;
+      text-transform: uppercase; color: rgba(228,225,216,.62);
+      text-shadow: 0 1px 3px rgba(11,10,8,.9); }
+    .shot.near .where { color: var(--bone); }
+    /* The one the player is standing at, marked on the frame rather than beside it. */
+    .step.here .shot { outline: 1px solid var(--oxide); outline-offset: -1px; }
+    .step.here .shot .where::before { content: '\\2192\\00a0'; color: var(--oxide-light); }
+
+    .under { display: flex; align-items: baseline; gap: 10px; padding: 11px 14px;
+             border-top: 1px solid var(--rule-in); }
+    .under .c { font-family: var(--numer); font-size: 12px; color: var(--faint); }
+    .under .c b { font-weight: 400; color: var(--oxide-light); }
+
+    .reads { display: flex; flex-wrap: wrap; border-top: 1px solid var(--rule); }
+    .cell { display: flex; flex-direction: column; gap: 4px; padding: 13px 20px;
+            border-right: 1px solid var(--rule-in); }
+    .cell:last-child { border-right: 0; }
+    .cell .val { font-family: var(--numer); font-size: 18px; line-height: 1.15;
+                 color: var(--value); font-variant-numeric: tabular-nums; }
+    .cell .val i { font-style: normal; color: var(--faint); font-size: 12px; }
+    .cell .val.word { font-family: var(--label); font-weight: 700; font-size: 22px;
+                      letter-spacing: .03em; text-transform: uppercase; color: var(--bone); }
+    .cell .val.small { font-family: var(--label); font-weight: 700; font-size: 15px;
+                       letter-spacing: .04em; text-transform: uppercase; color: var(--prose); }
+    .cell .sub { font-family: var(--numer); font-size: 11px; color: var(--faint); }
+
+    .moves { display: flex; flex-wrap: wrap; gap: 9px; padding: 14px 18px 16px;
+             border-top: 1px solid var(--rule); }
+    .move { display: flex; flex-direction: column; gap: 4px; align-items: flex-start;
+            min-width: 172px; padding: 12px 14px; border: 1px solid var(--control);
+            background: var(--panel); font-family: var(--label); font-weight: 700;
+            font-size: 11px; letter-spacing: .14em; text-transform: uppercase;
+            color: var(--prose); text-align: left; cursor: pointer; }
+    .move .why { font-size: 10px; font-weight: 400; letter-spacing: .08em;
+                 text-transform: lowercase; color: var(--faint); }
+    .move.take { border-color: var(--oxide); }
+    .move.away { min-width: 0; }
+  </style>
+</helmet>
+<div class="wrap">
+  <div class="block">
+    <h2>Nim is out after a boar</h2>
+    <p class="note">Closing moves the camera. The three frames are the three places a survivor
+      can stand, and pressing <b>Close the distance</b> walks the picture forward.</p>
+
+    <div class="steps">
+      <div class="step">
+        <div class="shot far">
+          <img src="plate-boar.webp" alt="">
+          <span class="where">Across the clearing</span>
+        </div>
+        <div class="under"><span class="c">where they started</span></div>
+      </div>
+      <div class="step here">
+        <div class="shot half">
+          <img src="plate-boar.webp" alt="">
+          <span class="where">Half the ground</span>
+        </div>
+        <div class="under"><span class="c">Nim is here &middot; next press costs <b>1</b></span></div>
+      </div>
+      <div class="step">
+        <div class="shot near">
+          <img src="plate-boar.webp" alt="">
+          <span class="where">Within reach</span>
+        </div>
+        <div class="under"><span class="c">close enough to try it</span></div>
+      </div>
+    </div>
+
+    <div class="reads">
+      <div class="cell">
+        <span class="tag">the shot</span>
+        <span class="val word">Clean</span>
+        <span class="sub">1 of 2 the bow allows</span>
+      </div>
+      <div class="cell">
+        <span class="tag">alarm</span>
+        <span class="val">1<i>/3</i></span>
+        <span class="sub">it breaks off at 3</span>
+      </div>
+      <div class="cell">
+        <span class="tag">it is</span>
+        <span class="val small">feeding</span>
+        <span class="sub">then lifting</span>
+      </div>
+      <div class="cell">
+        <span class="tag">wind</span>
+        <span class="val small">across</span>
+        <span class="sub">no help either way</span>
+      </div>
+      <div class="cell">
+        <span class="tag">press</span>
+        <span class="val">2<i>/5</i></span>
+        <span class="sub">then the light goes</span>
+      </div>
+      <div class="cell">
+        <span class="tag">worth</span>
+        <span class="val">24<i> food</i> 3<i> hide</i> 2<i> sinew</i></span>
+        <span class="sub">coat &minus;18% harm</span>
+      </div>
+    </div>
+
+    <div class="moves">
+      <button class="move take" type="button">
+        <span>Take it</span><span class="why">now, with the bow</span>
+      </button>
+      <button class="move" type="button">
+        <span>Close the distance</span><span class="why">costs 1 of its attention</span>
+      </button>
+      <button class="move" type="button">
+        <span>Stand still</span><span class="why">alarm down 1, a press gone</span>
+      </button>
+      <button class="move away" type="button">
+        <span>Back off</span><span class="why">nothing, and no holes in you</span>
+      </button>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

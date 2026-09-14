@@ -1,0 +1,119 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    :root {
+      --ground: #171614; --strip: #1E1D1A; --panel: #1E1D1A;
+      --rule: #33312C; --rule-in: #26241F; --edge: #4A463E; --control: #55504E;
+      --bone: #E4E1D8; --prose: #CFCBC0; --value: #DCD8CD;
+      --dim: #999588; --quiet: #7A766C; --faint: #6F6B62;
+      --oxide: #C2632C; --oxide-light: #DD8F4A;
+      --label: 'Roboto Condensed', 'Arial Narrow', Arial, sans-serif;
+      --body: -apple-system, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+      --numer: ui-monospace, Menlo, Consolas, monospace;
+    }
+    body { margin: 0; background: var(--ground); color: var(--prose);
+           font-family: var(--body); font-size: 16.5px; line-height: 1.6; }
+    a { color: var(--dim); } a:hover { color: var(--bone); }
+    .wrap { padding: 20px 24px; }
+    .block { border: 1px solid var(--rule); background: var(--ground);
+             display: flex; flex-direction: column; }
+    .block > h2 { margin: 0; padding: 11px 18px; background: var(--strip);
+      border-bottom: 1px solid var(--rule); font-family: var(--label); font-weight: 700;
+      font-size: 10px; line-height: 1; letter-spacing: .18em; text-transform: uppercase;
+      color: var(--dim); }
+    .block-body { padding: 15px 18px; }
+    .tag { font-family: var(--label); font-weight: 700; font-size: 10px; line-height: 1.4;
+           letter-spacing: .16em; text-transform: uppercase; color: var(--faint); }
+    .caption { margin: 0; font-family: var(--numer); font-size: 12.5px; line-height: 1.4;
+               color: var(--faint); }
+    .log { margin: 0 0 14px; color: var(--dim); font-size: 13.5px; line-height: 1.55; }
+
+    .strip { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--rule);
+             background: var(--panel); }
+    .cell { display: flex; flex-direction: column; gap: 4px; padding: 14px 20px;
+            border-right: 1px solid var(--rule); }
+    .cell:last-child { border-right: 0; }
+    .cell .val { font-family: var(--numer); font-size: 19px; line-height: 1.15;
+                 color: var(--value); font-variant-numeric: tabular-nums; }
+    .cell .val i { font-style: normal; color: var(--faint); font-size: 13px; }
+    .cell.odds .val { font-size: 30px; color: var(--bone); }
+    .cell.odds .val i { font-size: 16px; color: var(--quiet); }
+    .pips { display: flex; gap: 3px; margin-top: 2px; }
+    .pips i { display: block; width: 22px; height: 7px; background: var(--rule-in);
+              border: 1px solid var(--rule); }
+    .pips i.on { background: var(--quiet); border-color: var(--edge); }
+    .worth .val { display: flex; align-items: baseline; gap: 4px; font-size: 17px; }
+    .worth .val b { font-weight: 400; }
+    .worth .val i { font-style: normal; color: var(--faint); font-size: 11px;
+                    letter-spacing: .1em; text-transform: uppercase; margin-right: 7px; }
+
+    .moves { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 20px; }
+    .move { display: flex; flex-direction: column; gap: 4px; align-items: flex-start;
+            min-width: 172px; padding: 12px 14px; border: 1px solid var(--control);
+            background: var(--panel); font-family: var(--label); font-weight: 700;
+            font-size: 11px; letter-spacing: .14em; text-transform: uppercase;
+            color: var(--prose); text-align: left; cursor: pointer; }
+    .move .why { font-size: 10px; font-weight: 400; letter-spacing: .08em;
+                 text-transform: lowercase; color: var(--faint); }
+    .move.take { border-color: var(--oxide); }
+    .move.away { min-width: 0; }
+  </style>
+</helmet>
+<div class="wrap">
+  <div class="block">
+    <h2>Nim is out after a boar</h2>
+    <div class="block-body">
+      <p class="log">A few yards, slowly. Its head is up.</p>
+
+      <div class="strip">
+        <div class="cell odds">
+          <span class="tag">hit</span>
+          <span class="val">57<i>%</i></span>
+        </div>
+        <div class="cell">
+          <span class="tag">ground</span>
+          <span class="val">2<i>/2</i></span>
+          <span class="pips"><i class="on"></i><i class="on"></i></span>
+        </div>
+        <div class="cell">
+          <span class="tag">patience</span>
+          <span class="val">2<i>/3</i></span>
+          <span class="pips"><i class="on"></i><i class="on"></i><i></i></span>
+        </div>
+        <div class="cell">
+          <span class="tag">press</span>
+          <span class="val">2<i>/5</i></span>
+        </div>
+        <div class="cell worth">
+          <span class="tag">worth</span>
+          <span class="val"><b>34</b><i>food</i><b>3</b><i>hide</i><b>2</b><i>sinew</i></span>
+        </div>
+      </div>
+
+      <div class="moves">
+        <button class="move take" type="button">
+          <span>Take it</span><span class="why">now, with whatever is in hand</span>
+        </button>
+        <button class="move" type="button">
+          <span>Close the distance</span><span class="why">quietly, and hope</span>
+        </button>
+        <button class="move" type="button">
+          <span>Stand still</span><span class="why">let it settle, lose the ground</span>
+        </button>
+        <button class="move away" type="button">
+          <span>Back off</span><span class="why">nothing, and no holes in you</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>
