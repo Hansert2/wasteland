@@ -77,3 +77,20 @@ export function whatIsLeft(pack, hours) {
     .map((item) => ({ ...item, qty: survives(item.qty, share) }))
     .filter((item) => item.qty > 0);
 }
+
+/**
+ * What looking for somebody adds to the walk.
+ *
+ * A share of the trip rather than a flat number of hours, and the difference is the argument:
+ * a flat figure is a constant nothing derives, where **how long it takes to find somebody is a
+ * fact about the place they are in.** Ten minutes of fence line is searched on the way past;
+ * Harrow End is twenty-six hours of country and takes six and a half more to quarter.
+ *
+ * Against the trip's own hours rather than the region's, so a camp that has opened a shortcut
+ * searches the shorter road it actually walks.
+ */
+export const SEARCH_SHARE = 0.25;
+
+export function searchHours(travelHours) {
+  return Math.max(0, Number(travelHours) || 0) * SEARCH_SHARE;
+}

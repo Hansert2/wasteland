@@ -168,6 +168,76 @@ export async function advanceSettlement(client, settlementId, now) {
    * pack to print what they were carrying at the end, and leaving the unrecovered half there
    * would make that headstone a list of things the camp actually has.
    */
+  /*
+   * Phase 16: a trip that was sent to look for somebody, coming back.
+   *
+   * Settled here rather than in the walk, and off the expedition row rather than off the state,
+   * for the two reasons this file keeps giving: `applyTick` may not run a query, and what comes
+   * home is a share of rows in a table it cannot see. It also means the tick never had to learn
+   * what a recovery is.
+   *
+   * **Checked again at resolution.** They were out there when the trip left; between then and
+   * now another trip may have reached them first, and the loser of that race comes home having
+   * spent the hours for nothing — which is the honest outcome and is said rather than hidden.
+   *
+   * A survivor who died out there themselves brings nobody home: `expedition_lost` fires
+   * instead of `expedition_returned`, so this never sees them.
+   */
+  const returned = events.filter((event) => event.type === 'expedition_returned');
+  for (const trip of returned) {
+    const { rows: row } = await client.query(
+      `select e.recovering_id, e.character_id, c.name, c.died_at
+         from expeditions e left join characters c on c.id = e.recovering_id
+        where e.id = $1 and e.recovering_id is not null`,
+      [trip.expeditionId],
+    );
+    const errand = row[0];
+    if (!errand) continue;
+
+    const { rows: still } = await client.query(
+      `select died_at, recovered_at from characters where id = $1 and recovered_at is null`,
+      [errand.recovering_id],
+    );
+    if (!still[0]) {
+      events.push({ at: now, type: 'nobody_to_find', who: errand.name });
+      continue;
+    }
+
+    const lain = Math.max(0, (now - new Date(still[0].died_at).getTime()) / 3_600_000);
+    const { rows: pack } = await client.query(
+      `select i.slug, ii.qty from inventory_items ii
+         join items i on i.id = ii.item_id
+        where ii.character_id = $1 and ii.qty > 0`,
+      [errand.recovering_id],
+    );
+
+    /*
+     * What comes back lands on whoever walked, subject to the cap, the overflow left where it
+     * was — Phase 13's rule for a find, and there is no reason a recovery is the exception.
+     */
+    const saved = whatIsLeft(pack, lain);
+    const leftBehind = saved.length > 0
+      ? await grantItems(client, errand.character_id, saved)
+      : [];
+
+    await client.query('delete from inventory_items where character_id = $1', [
+      errand.recovering_id,
+    ]);
+    await client.query('update characters set recovered_at = $2 where id = $1', [
+      errand.recovering_id,
+      new Date(now),
+    ]);
+
+    events.push({
+      at: now,
+      type: 'brought_home',
+      who: errand.name,
+      days: lain / 24,
+      kept: saved.reduce((sum, one) => sum + one.qty, 0),
+      dropped: leftBehind.reduce((sum, one) => sum + one.qty, 0),
+    });
+  }
+
   const fellAtHome = events.filter(
     (event) => event.type === 'survivor_died' && event.inTheWire && event.characterId != null,
   );

@@ -6316,15 +6316,41 @@ survivor and is not now. `advance-settlement` reads it, puts `whatIsLeft(pack, 0
 and deletes the rest, because leaving the unrecovered half on the row would make the headstone
 a list of things the camp actually has.
 
+### The verb, built the same day
+
+Migration `027`: `expeditions.recovering_id`, because the decision belongs to **the trip** and
+not to the camp. A survivor lying in the Deep Zone can be looked for on one walk there and not
+on the next, and which it was has to survive until resolution — the same reason `departed_at`,
+`seed` and the frozen sky are all on that row rather than read off the camp afterwards. It is
+also what stops two trips to one place both claiming the same body.
+
+`searchHours` is a *share* of the walk, not a flat figure: how long it takes to find somebody
+is a fact about the place they are in. A quarter, so the Fence Line is searched on the way past
+and Harrow End costs six and a half hours more. **Paid into `returns_at` before anybody leaves**
+— hours are the one cost a player must never discover after the fact.
+
+Resolution is `advance-settlement`'s, off the expedition row rather than the state, for the
+reasons that file keeps giving. It re-checks: another trip may have reached them first, and the
+loser comes home having spent the hours for nothing, which is said rather than hidden. What
+comes back lands on whoever walked, subject to the cap, the overflow left where it lay — Phase
+13's rule for a find, and a recovery is not the exception.
+
+### Two tests that were nearly worth nothing
+
+**The first pinned a seed the pure module said was fatal, and it was not through the database.**
+`resolveExpedition` is handed the frozen sky and the camp's clock there and neither in a bare
+call, so the roll is a different roll: a seed pinned against one path does not transfer to the
+other. The death is starvation on the road now, which transfers.
+
+**And it returned early when the trip proved survivable** — a test that passes by not running,
+which it would have done seven times in ten. Nothing skips now; the setup makes the death
+certain and the test asserts it.
+
 ### Still to build
 
-The verb. A region where somebody lies offers *"and bring back what you can of Wren"* at
-dispatch, costing hours on top of the walk, returning `whatIsLeft(pack, hours lain out)` onto
-whoever walked and stamping `recovered_at`. And the graveyard saying which of its stones are
-still out there.
-
-**And the figure to measure before any of it is tuned:** what `AT_ONCE` at 0.7 does to a camp's
-balance is the one number this phase adds, and the instrument is the one the raid used.
+The graveyard saying which of its stones are still out there, and the dispatch control offering
+the errand. **And the figure to measure before any of it is tuned:** what `AT_ONCE` at 0.7 does
+to a camp's balance is the one number this phase adds.
 
 ## Not planned
 

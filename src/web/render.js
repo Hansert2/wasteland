@@ -6871,6 +6871,17 @@ function describe(event) {
      * says what came in and what did not — the loss is the point of the rule, so it is not
      * left to be inferred from a shelf that grew by less than somebody was carrying.
      */
+    /*
+     * Phase 16. What came home with them, and what a fortnight out there had already taken —
+     * the loss is the rule working rather than an accident, so the log says it rather than
+     * leaving a player to notice a pack lighter than the headstone promised.
+     */
+    case 'brought_home':
+      return `${event.who ?? 'Somebody'} was brought home after ${n(event.days)} days out there${
+        event.kept > 0 ? `, and ${event.kept} of what they carried came back` : ', carrying nothing anybody could use'
+      }${event.dropped > 0 ? ` — ${event.dropped} would not fit in the pack and stayed where it lay` : ''}.`;
+    case 'nobody_to_find':
+      return `${event.who ?? 'Somebody'} had already been brought home. The hours spent looking were spent anyway.`;
     case 'pack_came_in':
       return `${event.who ?? 'Somebody'} died in the camp. ${event.kept} of what they carried came off them; ${event.lost} did not.`;
     case 'woken':

@@ -252,3 +252,153 @@ test('a death in the camp leaves part of the pack on the shelf, and records no p
     assert.equal(came[0].kept + came[0].lost, 4, 'and all four are accounted for');
   });
 });
+
+test('a death on the road records the place, and a later trip brings them home', async () => {
+  /*
+   * The other half of Phase 16, end to end. A survivor dies out there; the place is on the row
+   * rather than inferred from their last trip; a second trip is sent to the same region to look
+   * for them, pays hours for the search, and comes home with a share of what they were carrying
+   * — thinned by however long they had lain out by the time anybody arrived.
+   */
+  await withRollback(async (client) => {
+    const settlementId = await setup(client);
+    await raiseSuccessor(client, settlementId, { name: 'Vera', now: T0 });
+    await client.query(
+      `update resources set amount = storage_cap where settlement_id = $1 and kind in ('food','water')`,
+      [settlementId],
+    );
+
+    const { rows: first } = await client.query(
+      'select id from characters where settlement_id = $1 and died_at is null',
+      [settlementId],
+    );
+    const walker = first[0].id;
+    await client.query(
+      `insert into inventory_items (character_id, item_id, qty)
+       select $1, id, 4 from items where slug = 'scavenged_parts'`,
+      [walker],
+    );
+
+    /*
+     * Starved on the road rather than killed by its hazard, and that is the second attempt.
+     *
+     * The first pinned a seed the pure module said was fatal at one health — and it was not,
+     * through the database: `resolveExpedition` is handed the frozen sky and the camp's clock
+     * there and neither in a bare call, so the roll is a different roll. A seed pinned against
+     * one path does not transfer to the other.
+     *
+     * Hunger does transfer. An empty larder, a survivor at one health and a full stomach-gauge
+     * kills them within the hour, and eighteen hours from home means it happens out there —
+     * which is all this test needs the road to do.
+     */
+    const { expeditionId } = await dispatchExpedition(
+      client,
+      settlementId,
+      'the_deep_zone',
+      T0,
+      walker,
+    );
+    void expeditionId;
+    await client.query(
+      'update characters set health = 1, hunger = 100 where id = $1',
+      [walker],
+    );
+    await client.query('update resources set amount = 0 where settlement_id = $1', [settlementId]);
+    await client.query(
+      `update camp_structures set level = 0
+        where settlement_id = $1 and kind in ('garden', 'water_purifier')`,
+      [settlementId],
+    );
+    await advanceSettlement(client, settlementId, T0 + hours(6));
+
+    const { rows: dead } = await client.query(
+      `select c.died_at, c.recovered_at, r.slug
+         from characters c left join regions r on r.id = c.died_at_region_id
+        where c.id = $1`,
+      [walker],
+    );
+    /*
+     * Asserted rather than skipped past. The first draft returned early if the trip turned out
+     * survivable, which is a test that passes by not running — and it would have: the hazard it
+     * was relying on fires on three seeds in ten, so most trips came home and the whole body of
+     * this test was skipped in silence.
+     */
+    assert.ok(dead[0].died_at, 'an empty larder at one health kills within the hour');
+    assert.equal(dead[0].slug, 'the_deep_zone', 'the place is on the row, not inferred');
+    assert.equal(dead[0].recovered_at, null, 'and nobody has been yet');
+
+    // Somebody else takes it on, and goes to look.
+    await raiseSuccessor(client, settlementId, { name: 'Odd', now: T0 + hours(6) });
+    const { rows: heir } = await client.query(
+      'select id from characters where settlement_id = $1 and died_at is null',
+      [settlementId],
+    );
+    await client.query('update characters set stamina = 100 where id = $1', [heir[0].id]);
+
+    const plain = await dispatchExpedition(
+      client,
+      settlementId,
+      'the_deep_zone',
+      T0 + hours(8),
+      heir[0].id,
+    );
+    const plainHours = (plain.returnsAt.getTime() - (T0 + hours(8))) / 3600_000;
+    await client.query('delete from expeditions where id = $1', [plain.expeditionId]);
+
+    const errand = await dispatchExpedition(
+      client,
+      settlementId,
+      'the_deep_zone',
+      T0 + hours(8),
+      heir[0].id,
+      walker,
+    );
+    const errandHours = (errand.returnsAt.getTime() - (T0 + hours(8))) / 3600_000;
+    assert.ok(errandHours > plainHours, 'looking for somebody costs hours the walk does not');
+
+    // Fed again, or the heir starves on the way and brings nobody home.
+    await client.query(
+      `update resources set amount = storage_cap
+        where settlement_id = $1 and kind in ('food', 'water')`,
+      [settlementId],
+    );
+    const { events } = await advanceSettlement(client, settlementId, T0 + hours(8) + hours(30));
+
+    const home = events.filter((one) => one.type === 'brought_home');
+    assert.equal(home.length, 1, 'they were brought home');
+    assert.ok(home[0].kept > 0 && home[0].kept < 4, 'with some of the pack, and not all of it');
+
+    const { rows: after } = await client.query(
+      'select recovered_at from characters where id = $1',
+      [walker],
+    );
+    assert.ok(after[0].recovered_at, 'and the stone knows it');
+
+    const { rows: theirs } = await client.query(
+      'select count(*)::int as n from inventory_items where character_id = $1',
+      [walker],
+    );
+    assert.equal(theirs[0].n, 0, 'nothing of theirs is left out there');
+
+    /*
+     * And a second errand for the same person is refused before anybody walks.
+     *
+     * Rested first, deliberately: after twenty-two hours out there the heir is refused for
+     * stamina, and a test that accepts *any* refusal is a test that would pass with the
+     * recovery check deleted.
+     */
+    await client.query('update characters set stamina = 100 where id = $1', [heir[0].id]);
+    await assert.rejects(
+      () =>
+        dispatchExpedition(
+          client,
+          settlementId,
+          'the_deep_zone',
+          T0 + hours(80),
+          heir[0].id,
+          walker,
+        ),
+      /Nobody of theirs is lying in/,
+    );
+  });
+});

@@ -3,6 +3,7 @@ import { InputError } from '../errors.js';
 import { occupations, mustBeFree } from './who-is-free.js';
 import { CONFIG } from '../game/constants.js';
 import { shortcutsFrom, travelHoursFor } from '../game/road.js';
+import { searchHours } from '../game/recovery.js';
 
 /** "45m", "6h", "6h 30m" — the same reading the dispatch table gives the same number. */
 function formatHours(hours) {
@@ -33,6 +34,7 @@ export async function dispatchExpedition(
   regionSlug,
   now = Date.now(),
   who = null,
+  recoverId = null,
 ) {
   const { rows: characters } = await client.query(
     `select id, name, stamina from characters
@@ -129,7 +131,33 @@ export async function dispatchExpedition(
     );
   }
 
-  const returnsAt = new Date(now + travelHours * HOUR_MS);
+  /*
+   * Phase 16: and going to look for somebody who did not come back.
+   *
+   * Checked here rather than only offered on the page, for the reason every other guard in
+   * this service gives: the page is a render of a moment ago. Three things have to be true —
+   * they are dead, they are lying in *this* region, and nobody has been for them already.
+   *
+   * The search is a share of the walk rather than a flat number of hours, because how long it
+   * takes to find somebody is a fact about the place they are in. It is in `returns_at` before
+   * anybody leaves, so the cost is paid at the moment the player chooses it and cannot be
+   * discovered afterwards.
+   */
+  let searching = 0;
+  if (recoverId != null) {
+    const { rows: lost } = await client.query(
+      `select c.id, c.name from characters c
+        where c.id = $1 and c.settlement_id = $2 and c.died_at is not null
+          and c.recovered_at is null and c.died_at_region_id = $3`,
+      [recoverId, settlementId, region.id],
+    );
+    if (!lost[0]) {
+      throw new InputError(`Nobody of theirs is lying in ${region.name}.`);
+    }
+    searching = searchHours(travelHours);
+  }
+
+  const returnsAt = new Date(now + (travelHours + searching) * HOUR_MS);
 
   /*
    * The sky the trip is leaving under, frozen onto the trip — see migration 017.
@@ -147,8 +175,8 @@ export async function dispatchExpedition(
 
   const { rows } = await client.query(
     `insert into expeditions (character_id, region_id, departed_at, returns_at, seed,
-                              clock_offset_minutes, solar_noon_minutes)
-     values ($1, $2, $3, $4, $5, $6, $7) returning id`,
+                              clock_offset_minutes, solar_noon_minutes, recovering_id)
+     values ($1, $2, $3, $4, $5, $6, $7, $8) returning id`,
     [
       character.id,
       region.id,
@@ -157,8 +185,9 @@ export async function dispatchExpedition(
       newSeed(),
       camp[0]?.clock_offset_minutes ?? 0,
       camp[0]?.solar_noon_minutes ?? 720,
+      recoverId,
     ],
   );
 
-  return { expeditionId: rows[0].id, returnsAt, regionName: region.name };
+  return { expeditionId: rows[0].id, returnsAt, regionName: region.name, searching };
 }
