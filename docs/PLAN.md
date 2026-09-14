@@ -4875,7 +4875,7 @@ trip and rolls again, and the backstory becomes a stat block — the exact failu
 no room for is a real choice: improve the shelter, or walk away from a person. A rescue must
 not conjure capacity.
 
-### Phase 16 — body recovery
+### Phase 16 — body recovery *(designed 2026-09-14; one of its two premises was wrong — see below)*
 
 *Against: what someone carried beyond the wire simply evaporates.*
 
@@ -6203,6 +6203,87 @@ counts, whether it is in a pack or on the shelf, because the box is a place hand
 
 A readout rather than advice — what to do about either is the player's. And it is on the block
 that *warns*, which is the only place a player can still act on it.
+
+## Phase 16 — body recovery, designed 2026-09-14
+
+*The design above rests on two facts about the schema. **One of them is wrong**, and checking it
+before starting is the only reason this section is shorter than the one it replaces.*
+
+### The pack is not gone. It never was.
+
+The design said: *"`inventory_items` cascades on delete, and migration 001 says that is
+deliberate — carried inventory belongs to the survivor and dies with them."* True about the
+constraint and false about what happens, because **nothing ever deletes a character row.** A
+death sets `died_at`. The cascade has never once fired for a death, and no code anywhere
+deletes a dead survivor's items.
+
+`view-graveyard.js` has been reading those packs since it was written, and `headstone()` says
+so in as many words: *"nothing cleans up after the dead, so their pack is still there to be
+read."* A headstone already lists what somebody was carrying when they stopped.
+
+**What is true is that the pack is unreachable.** `moveItem`, `consumeInputs`, `useItem` and
+the roster all filter `died_at is null`, so those rows are visible to the graveyard and to
+nothing else.
+
+So this phase is not about reconstructing what was lost. **It is about reaching what is already
+recorded** — and that deletes the table the design was going to need. No snapshot of "what was
+left", no second copy to drift from `inventory_items`, and *most of it is lost* stops being a
+number written at the moment of death and becomes **a rule applied at recovery**: one place,
+one arithmetic, changeable without a migration.
+
+### The fact that really is missing is the place
+
+`characters` records `died_at` and `cause_of_death` and nothing about where. The graveyard
+prints *"Made 4 trips, the last to Coastal Wreckage"* — which is their most recent *trip*, so a
+survivor who starved in their own camp gets a headstone naming a place they came back from
+alive.
+
+So: a nullable `died_at_region_id`, written by whoever kills them, and **null means inside the
+wire**. Three deaths, and only one of them is out there:
+
+    on the road          the region of the trip they were on      recoverable
+    starved, or a raid   inside the wire                          null
+    mauled while hunting the camp's own edge                      null
+
+### Which raises the case the old design could not see
+
+If the pack is still in the database and they died *inside the camp*, there is nothing to
+recover — the shelf is twenty feet away. A recovery trip to the fence line would be absurd, and
+leaving a dead survivor's rations unreachable in a camp that can see them is worse.
+
+**So a death inside the wire should put the pack on the shelf**, and only a death out on the
+road leaves anything to go and fetch. That is one write in `kill()` and it is the first thing
+this phase should do — but it is a real softening of death and it is the user's call, so it is
+asked rather than assumed.
+
+### The verb
+
+**Dispatch-time, not a moment.** A region where somebody lies offers *"and bring back what you
+can of Wren"* on the dispatch control, costing extra hours on top of the walk. A moment you
+stumble on would be cheaper to build — the machinery exists — but `momentsFor` is a pure
+function of a region and a seed and knows nothing about the camp that sent the trip, and the
+decision belongs *before* you go: it is hours you are choosing to spend.
+
+What comes back lands like a find — on whoever walked, subject to the cap, the overflow left
+where it was. That is Phase 13's rule and there is no reason for this to be the exception.
+
+### What the share is, and it decays
+
+A recovery brings back a *share*, and the share falls the longer they have lain out there:
+weather, scavengers, and whoever else walks that road. That is what gives the decision urgency
+without a countdown on the page — the number is a fact about a date, not a timer.
+
+**The figures are to be measured, not guessed**, and the instrument is the one the raid used:
+what a week costs, against what a day costs, at the pack sizes Phase 13 actually produces.
+Nothing here should be tuned before that runs.
+
+### And the body
+
+Bringing them home is the half the phase is named after, and mechanically it does nothing —
+which is the point, and is also why it needs saying out loud rather than being discovered as an
+omission. The graveyard would record it: *brought home* against *still out there*. Anything
+more — a burial, a bonus, a standing effect — would be a mechanic bolted to a gesture, and this
+game has been careful not to do that.
 
 ## Not planned
 
