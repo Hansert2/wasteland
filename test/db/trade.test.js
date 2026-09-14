@@ -68,7 +68,7 @@ const standingsOf = async (client, settlementId) => {
   return Object.fromEntries(rows.map((r) => [r.faction, Number(r.standing)]));
 };
 
-test('a trade pays the stores, fills the pack, and moves both standings', async () => {
+test('a trade pays the stores, fills the pack, and moves every standing', async () => {
   await withRollback(async (client) => {
     const { settlementId, now } = await setup(client, { faction: 'junction_crews' });
 
@@ -90,9 +90,15 @@ test('a trade pays the stores, fills the pack, and moves both standings', async 
       'and carried in from the gate',
     );
 
+    /*
+     * Half a step down among everybody else, *split between them*: the same arithmetic
+     * `standingsAfterTrade` does, asserted here against the database because the service
+     * writes it in SQL rather than by calling that function.
+     */
     const standings = await standingsOf(client, settlementId);
     assert.equal(standings.junction_crews, 6, 'commerce is trust');
-    assert.equal(standings.green_river, -3, 'and the rival heard about it');
+    assert.equal(standings.green_river, -1.5, 'and the others heard about it');
+    assert.equal(standings.wellkeepers, -1.5);
   });
 });
 

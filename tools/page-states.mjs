@@ -32,6 +32,7 @@ import { viewCamp } from '../src/services/view-camp.js';
 import { viewGraveyard } from '../src/services/view-graveyard.js';
 import { campPage, graveyardPage } from '../src/web/render.js';
 import { momentsFor } from '../src/game/moments.js';
+import { caravanVisit } from '../src/game/factions.js';
 
 const HOUR = 3600_000;
 const uniq = () => Math.random().toString(36).slice(2, 10);
@@ -547,6 +548,49 @@ export async function buildStates(client, now = Date.now()) {
     states['crowded'] = campPage(await viewCamp(client, id, now + 0.2 * HOUR), {
       pane: 'survivor',
     });
+  }
+
+  /*
+   * 6e-ii. A caravan at the gate, and a camp that has an opinion about all three crews.
+   *
+   * The Trade view had no saved state at all, which since Phase 17 means the one block on the
+   * page whose *number of rows* is content — three crews now, and the block renders nothing
+   * whatever until a camp has met somebody. The standings are set directly rather than traded
+   * for, because what this state is a fixture of is the block at three different readings, not
+   * the arithmetic that gets there.
+   *
+   * The visit's crew derives from the seed, so the count is walked to the wanted one rather
+   * than the seed being fixed and hoped over — the tick would have arrived here honestly.
+   */
+  {
+    const id = await camp(client, now);
+    await raiseSuccessor(client, id, { name: 'Sol', now });
+    await client.query(
+      `update resources set amount = least(200, storage_cap) where settlement_id = $1`,
+      [id],
+    );
+
+    const seed = 4242;
+    let count = 0;
+    while (caravanVisit(seed, count).faction !== 'wellkeepers') count += 1;
+    await client.query(
+      `update settlements set caravan_seed = $2, caravan_count = $3, next_caravan_at = $4
+        where id = $1`,
+      [id, seed, count, new Date(now - HOUR)],
+    );
+
+    for (const [faction, standing] of [
+      ['junction_crews', 42],
+      ['green_river', -63],
+      ['wellkeepers', 8],
+    ]) {
+      await client.query(
+        `insert into faction_standing (settlement_id, faction, standing) values ($1, $2, $3)`,
+        [id, faction, standing],
+      );
+    }
+
+    states['trade'] = campPage(await viewCamp(client, id, now), { pane: 'trade' });
   }
 
   /*

@@ -6405,6 +6405,161 @@ database actually holds, rounding costs eight points at zero hours and pays five
 days. 0.7 is the nominal; 62% is the number to quote at the balance of a camp, and it is the
 one figure this phase adds.
 
+## Phase 17 — faction relations, designed 2026-09-14 (17a built the same day)
+
+*Against: two factions is a rivalry with a slider, not a world.*
+
+### The phase is smaller than it looks, and the reason is worth stating first
+
+**Everything that touches a faction already iterates `Object.keys(FACTIONS)`.** The caravan
+draw, the raid draw, `postKeeper`, the standing-axis moments, the soak test, the density tool:
+none of them knows there are two. A third crew is four lines of data and it lands in all of
+them at once.
+
+There is exactly one exception, and it is the phase in miniature. `rivalOf` returns **one**
+hard-coded partner per faction, and it is read in two places — `standingsAfterTrade` and
+`trade.js`'s `shiftStanding`, both to push the other crew down by half what the seller went
+up. With three crews that word stops meaning anything: a camp that trades with the
+Provisioners has *two* other crews and no way to say which of them takes it badly.
+
+So Phase 17 is not "add a faction". **It is replacing one word — rival — with a relation**,
+and the third crew is what makes the word insufficient.
+
+### Where a relation lives, and it is already in the schema twice
+
+The shape falls out of a split the codebase has been making since Phase 4 without naming it.
+
+**What the crews do to each other is world news.** `world_events` is deliberately not tied to
+a settlement — *"every camp is under the same sky, which is what makes an event something that
+happened to the world rather than something that happened to you"* — and derives the whole row
+from one world seed plus a slot number, so any camp's tick can generate a missing slot and
+every camp generates the same one. A caravan attacked on the Old Service Road is exactly that
+kind of fact. **Faction relations are weather.**
+
+**What the camp does about it is standing**, which is `faction_standing`, per settlement, since
+Phase 5. That table already survives succession, already prices trade, already tempers raids.
+
+Nothing new is needed to hold either, and the two together are what §14's effects read: **a
+price is the pair's relation times your standing with the seller.** A road is dangerous because
+two crews are fighting over it *and* because you took a side.
+
+### Which settles §15, and in the lore's favour
+
+The overhaul document asks for the camp to *"influence diplomacy, but not control it
+completely"*, and lists sharing intelligence, repairing a disputed road, choosing a side. Read
+against `LORE.md` §5 — **"Nobody is in charge"** — the honest version is narrower and better:
+
+**The camp cannot move world relations, and should not be able to.** It is one small holding
+with a garden. What it can do is **take a side in a conflict the world has already produced**,
+which moves standing with both parties sharply and at once. That is the rare, consequential
+choice §15 asks for, it needs no new mechanism — a standing-axis moment with a bigger number on
+it — and it does not turn a camp of two into a great power.
+
+*"Remain neutral at a material cost"* is the same moment's third option, and it is the one that
+makes the choice a choice.
+
+### The five states, and what each pair is for
+
+Hostile · tense · neutral · trading · working together, from §13. Three crews is **three
+pairs**, which is the smallest number at which a relation is not just the rivalry seen twice.
+
+Each transition arrives as a world event with a cause attached — a caravan attacked, a road
+closed to a rival, supplies exchanged after a bad season, an accusation of sheltering raiders —
+so the log says *why* the world changed, which is §13's actual requirement and the part that
+stops this being a hidden slider.
+
+### The effects, in the order they should be built
+
+Each of these is a multiplier on a number that already exists, and every one of them is
+measurable before it ships:
+
+1. **Prices.** Two crews *working together* sell each other's goods at a markup a camp can
+   read; two at war undercut each other for your custom. This is `priceAt`, one more factor.
+2. **Raid tempo.** Crews at war raid each other and have less to spend on you. `raidTempo`
+   already takes a standing; it takes a relation the same way.
+3. **The road.** A contested region is more dangerous for everybody — that is `danger` at the
+   region, which the trip already reads.
+4. **Encounters.** The standing axis already exists in `momentsFor`; a pair at war puts *both*
+   crews' people on the same road, which is where taking a side happens.
+
+**Access to faction-held places is deliberately not on that list.** A relation that can close a
+region is the same one-way ratchet Phase 5 recorded and rejected for caravan frequency: a camp
+that loses a road it had cannot earn it back on the road it lost.
+
+### The constraint that carries in unchanged
+
+**Trade may never produce fuel.** Fuel is the one resource nothing in the camp produces, and
+the whole fuel track is priced against that. A third crew's offers are the first real chance to
+break it by accident, and it is a test rather than prose.
+
+### 17a — the Wellkeepers, built 2026-09-14
+
+**The user's call from three candidates**, all of them drawn out of the map rather than
+introduced: the water-keepers, the coast, or the wanderers organised. The water-keepers were
+already written — *"The wheel still turns. Somebody kept it turning for a long time"*, *"Pumps
+the size of houses, and something still drawing power to them"*, *"Sixteen shafts, and the
+water in them has never seen the sky."* Three region descriptions written at different times
+all describing the same people.
+
+**They maintain rather than scavenge**, which is the necessity neither other crew holds: the
+Junction Crews take machines apart and sell the pieces, and these keep machines running. What
+that buys them is the one thing on this map that is clean.
+
+**Three offers, not four.** Padding a crew to four with somebody else's goods is what makes
+three factions read as one faction painted three colours. Bulk water is theirs alone; the
+chelation is the interesting one — two for 45 scrap against Green River's one for 20 scrap and
+five fuel — because it is the same good at a different *kind* of price. No danger money, which
+is exactly the choice a third crew exists to create.
+
+**They visit like the others, and that overruled the design above.** The plan said territorial
+— the crew you go to rather than the one that comes to you — and Phase 5 had already refused
+that shape for a reason that still holds: *even the crew that hates you shows up, because
+trading with them is the only way back.* A crew with no caravan is a crew whose standing can
+only be recovered by chance. What is territorial about them belongs in 17c, on the roads they
+hold.
+
+**`rival` is gone, replaced by `othersOf`.** A single-partner field is a fact about a world
+with two crews in it, and with three the question it answered — who takes this badly? — has
+two answers. The arithmetic that replaced it is the one line the third crew forced:
+`standingsAfterTrade` cools everybody else by half the gain **split between them**, not half
+each. At half each, a camp trading evenly with all three ends exactly where it started, and
+the warming drift — the thing that makes trading round a strategy rather than a wash — is
+silently gone. Split, a round of trade pays +3 to everyone, which is what two crews paid. At
+two factions the split is by one and it is the old rule unchanged.
+
+Everything else needed nothing: the caravan draw, the raid draw, `postKeeper`, the
+standing-axis moments and the soak test all iterate `Object.keys(FACTIONS)` and picked the
+third crew up for free. **The only code fault was a type.** `faction_standing.standing` is
+`numeric(6, 2)`, but Postgres infers a parameter's type from context, and inside
+`greatest(-100, $3)` it read as an integer — true for as long as the only value ever passed
+was −3. The split made it −1.5 and the insert started failing.
+
+### And what a third crew cost, measured
+
+`tools/caravan-reach.mjs`. One clock books caravans and one books raids, so a third crew adds
+no visits and no raids — it **divides** them. Any particular crew now turns up two visits in
+six instead of three, which lengthens exactly the thing Phase 5 protected with a test: the road
+back from a grudge.
+
+    crew                mean wait   median   9 in 10 under   worst   at the gate
+    junction_crews           8.2d     6.0d           17.7d   74.5d   6.6% of hours
+    green_river              8.2d     5.9d           17.8d   74.3d   6.6% of hours
+    wellkeepers              8.3d     6.0d           17.8d   80.1d   6.5% of hours
+
+**5.5 days became 8.2**, and that is arithmetic rather than a second simulation: the draw is
+uniform, so the wait scales with the number of crews.
+
+**Not tuned, and deliberately.** Nine waits in ten are under eighteen days and a hostile crew
+is a situation the camp chose; the seventy-day tail is one gap in forty thousand. The lever, if
+play says otherwise, is a floor on the draw — a crew absent for three visits comes next, which
+caps the wait at four visits and stays derivable from seed and index. **Named, not built**,
+because a number invented to fix a tail the ninetieth percentile says is fine is exactly the
+kind of figure this file keeps refusing.
+
+### Still to build: 17b, 17c, 17d
+
+The relations themselves, their effects, and the choice that takes a side.
+
 ## Not planned
 
 - **Alts.** `settlements_player_idx` is unique on `player_id`. Drop it if this ever

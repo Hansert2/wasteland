@@ -4,7 +4,7 @@ import {
   caravanVisit,
   postKeeper,
   priceAt,
-  rivalOf,
+  othersOf,
 } from '../game/factions.js';
 import { grantItems, storeItems } from '../db/world.js';
 import { InputError } from '../errors.js';
@@ -156,20 +156,35 @@ async function grant(client, settlementId, characterId, goods) {
 async function shiftStanding(client, settlementId, faction) {
   await client.query(
     `insert into faction_standing (settlement_id, faction, standing)
-     values ($1, $2, least(100, $3))
+     values ($1, $2, least(100, $3::numeric))
      on conflict (settlement_id, faction)
-       do update set standing = least(100, faction_standing.standing + $3)`,
+       do update set standing = least(100, faction_standing.standing + $3::numeric)`,
     [settlementId, faction, TRADE_STANDING_GAIN],
   );
 
-  const rival = rivalOf(faction);
-  if (rival) {
+  /*
+   * `$3::numeric`, and it is not decoration. The column is `numeric(6, 2)` and always has
+   * been, but Postgres infers a parameter's type from where it sits — inside `greatest(-100,
+   * $3)` it read as an integer, which was true for as long as the only value ever passed was
+   * −3. Splitting the penalty between two crews made it −1.5 and the insert began failing with
+   * `invalid input syntax for type integer`. The cast says what the column already knew.
+   */
+  /*
+   * And half a step down among everybody else, *split between them* rather than paid in full
+   * to each — see `standingsAfterTrade`, which is the same arithmetic and carries the reason.
+   * Two writes now instead of one, and they are separate statements rather than a single
+   * multi-row insert because the clamp has to be applied per row and `greatest` cannot see
+   * across them.
+   */
+  const others = othersOf(faction);
+  const share = TRADE_STANDING_GAIN / 2 / Math.max(1, others.length);
+  for (const other of others) {
     await client.query(
       `insert into faction_standing (settlement_id, faction, standing)
-       values ($1, $2, greatest(-100, $3))
+       values ($1, $2, greatest(-100, $3::numeric))
        on conflict (settlement_id, faction)
-         do update set standing = greatest(-100, faction_standing.standing + $3)`,
-      [settlementId, rival, -TRADE_STANDING_GAIN / 2],
+         do update set standing = greatest(-100, faction_standing.standing + $3::numeric)`,
+      [settlementId, other, -share],
     );
   }
 }

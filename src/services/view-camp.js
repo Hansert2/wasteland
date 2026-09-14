@@ -91,6 +91,18 @@ import {
  * to the current instant, so the page can never show stale resources or a survivor
  * who is, as of now, already dead.
  */
+/*
+ * A store's name as it is written beside a trader's goods.
+ *
+ * The offer row prints "90 x water" next to "2 x Rad Scrubber", and the item names come from
+ * the items table already capitalised. Uncapitalised beside them, a bulk offer read as a
+ * different kind of thing than the row above it — which is exactly what it is not.
+ */
+function titleOf(word) {
+  const text = String(word ?? '');
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
 
@@ -1704,7 +1716,7 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
             const costs = priceAt(offer, standing);
             return {
               index,
-              what: offer.item ? names.get(offer.item) ?? offer.item : offer.resource,
+              what: offer.item ? names.get(offer.item) ?? offer.item : titleOf(offer.resource),
               qty: offer.qty,
               costs,
               // Priced in stores alone, so the pack is not consulted. Standing has
@@ -2080,7 +2092,7 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
         const costs = priceAt(offer, standing);
         return {
           index,
-          what: offer.item ? names.get(offer.item) ?? offer.item : offer.resource,
+          what: offer.item ? names.get(offer.item) ?? offer.item : titleOf(offer.resource),
           qty: offer.qty,
           costs,
           shortBy: shortfall(purse, pack, costs),
