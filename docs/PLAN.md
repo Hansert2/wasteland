@@ -7088,6 +7088,56 @@ the wall clock happens to leave somebody under at the instant the fixture render
 are built against `Date.now()`. A gauge that is in the saved states on some runs and not others
 is a gauge nothing can be designed against, and the page contract *requires* one.
 
+### 16 and 01, chosen from the rack and built 2026-09-14
+
+Seventeen alternatives were drawn at true size in the game's own palette — the artifact is
+*Two Clocks, Seventeen Ways* — and the user picked two of them, which turn out to be halves of
+one idea.
+
+**16: the camp's deadline goes on the hour strip.** `dry in 1d 05h · fed for 9d`, beside the
+clock and the sky. Everybody drinks from one tank, so a per-person reading of a shared shelf is
+the same number copied once per survivor, on the one view a player opens least — while the
+strip is sticky across *every* view and is already the page's answer to "how long until".
+
+Read off the **net** rate, the one the stores rail beside it prints, because a strip saying nine
+days over a rail draining at a rate that empties in four is the page contradicting itself. It is
+silent for a store that is not falling: a camp whose purifier out-produces its mouths has no
+deadline, and a mark reports something acting on a number, never a non-effect.
+
+**01: a survivor's gauge prints when, not how much.** Once the camp's figure is on the strip,
+what is left for a person's gauge is the one thing a level cannot give — how long, *for this
+survivor*, at the rate they are actually on. The bar underneath keeps the level, because the
+shape is still worth a glance and the threshold mark is still what the fill is crossing; what
+changed is which of the two is the figure.
+
+The two legitimately disagree, and that is the pair earning its keep rather than a fault: the
+`hungry` fixture is a camp whose shelf is empty *now* but filling, so the strip has no deadline
+to show and the survivor is still two and a half days from starving.
+
+### Three things that only turned up in the building
+
+**Hunger was made conditional and then put back.** Vanishing for a fed survivor looks like the
+rule thirst follows, and it is not: the food-and-water rates live in *that* gauge's panel, so
+hiding the gauge hides the only place the page says what a mouth draws. Caught by the invariant
+that the survivor panel and the stores panel must print the same constant — the test the user's
+own bug report put there in August. Thirst can disappear because its panel is a copy of what the
+stores rail already carries. Hunger cannot.
+
+**The gauge ticker was clobbering the countdown.** The value cell carries `data-value` and
+`data-drift` so the figure climbs between page loads, and the client writes the drifted number
+into it every second — over the top of a deadline. The bar still has to drift, so the fix is
+`data-said`: the ticker moves every bar and writes text only into the cell whose text it owns.
+
+**And `countdown` was the wrong formatter.** It reads "2d 13h 54m" — ten characters of mono
+beside a label and two marks in a 190px column, with the last unit clipped. A gauge is glanced
+at against a threshold; the hour strip is where the page keeps things that tick and has the
+width for them. The gauge uses `duration`, which gives two units and "now" for a span of zero.
+
+The `parched` fixture had to be **backdated** rather than viewed thirty hours ahead, for the
+same reason: `countdown` and `duration` both render against the browser's clock, so a state
+viewed in the future shows a deadline where the real page says "now". The camp's clock has to be
+the page's clock.
+
 ### What the migration does not do
 
 `028` adds `thirst` at zero and **does not rescale `hunger`.** A survivor sitting at 80 hunger

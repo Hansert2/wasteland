@@ -226,8 +226,15 @@ export async function buildStates(client, now = Date.now()) {
    * the fill rather than ahead of it, which is the reading the mark is for.
    */
   {
-    const id = await camp(client, now);
-    await raiseSuccessor(client, id, { name: 'Sol', now });
+    /*
+     * Backdated rather than viewed thirty hours ahead, and the difference matters to what this
+     * state is for. A cost gauge prints a countdown, and `countdown` renders against the
+     * *browser's* clock — so a fixture viewed in the future shows a deadline thirty hours out
+     * where the real page would say "now". The camp's clock has to be the page's clock.
+     */
+    const dry = 30 * HOUR;
+    const id = await camp(client, now - dry);
+    await raiseSuccessor(client, id, { name: 'Sol', now: now - dry });
     await client.query(
       `update resources set amount = 0 where settlement_id = $1 and kind = 'water'`,
       [id],
@@ -236,9 +243,11 @@ export async function buildStates(client, now = Date.now()) {
       `update camp_structures set level = 0 where settlement_id = $1 and kind = 'water_purifier'`,
       [id],
     );
-    states['parched'] = campPage(await viewCamp(client, id, now + 30 * HOUR), {
-      pane: 'survivor',
-    });
+    await client.query('update settlements set last_tick_at = $2 where id = $1', [
+      id,
+      new Date(now - dry),
+    ]);
+    states['parched'] = campPage(await viewCamp(client, id, now), { pane: 'survivor' });
   }
 
   // 6. Two events at once, so the sky carries its stacking line.

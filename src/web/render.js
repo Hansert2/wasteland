@@ -514,6 +514,11 @@ const STYLE = `
   .hourbar .from { display: inline-flex; gap: 8px; align-items: baseline; }
   .hourbar .from .tag,
   .hourbar .cost-row .tag { color: var(--faint); }
+  /* The camp's two deadlines, in the mono the strip sets every other figure in. Water takes
+     the accent because on these two clocks it is always the near one. */
+  .hourbar .from .val { font-family: var(--numer); color: var(--value);
+                        font-variant-numeric: tabular-nums; }
+  .hourbar .from .val.hot { color: var(--oxide); }
   .hourbar .sky-now { display: inline-flex; gap: 8px; align-items: baseline; }
   .hourbar .sky-now .name { color: var(--oxide-light); }
 
@@ -3709,6 +3714,9 @@ ${PANE_CSS}
   .gauge-top .tag { letter-spacing: .14em; color: var(--dim); }
   .gauge-top .val { font-family: var(--numer); font-size: 16px; line-height: 1;
                     color: var(--value); font-variant-numeric: tabular-nums; }
+  /* A deadline is two units wide where a level is four characters, so it sits a step down
+     rather than pushing the label off the row. */
+  .gauge-top .val.when { font-size: 13px; }
   .gauge .track { margin-top: 7px; position: relative; }
   /*
    * The line a cost gauge crosses, in the accent that only ever means a warning.
@@ -4382,6 +4390,19 @@ function hourBar(hour, place) {
         */ ''}
       ${hour.clock ? from('Clock', `${time}${light}`) : light}
       ${hour.glass ? from('Glass', warmth) : ''}
+      ${/*
+        * How long the camp has, beside the other deadlines rather than four times down the
+        * roster. Everybody drinks from one tank, so a per-person reading of a shared shelf is
+        * the same number copied — and this strip is sticky across every view, where the
+        * roster is the one a player opens least.
+        *
+        * Silent for a store that is not falling: a camp whose purifier out-produces its
+        * mouths has no deadline, and a mark reports something acting on a number, never a
+        * non-effect. Water carries the accent and food does not, because on these two clocks
+        * water is always the near one and the accent is for what is close.
+        */ ''}
+      ${hour.dryAt ? from('Dry in', `<span class="val hot">${countdown(hour.dryAt, 'now')}</span>`) : ''}
+      ${hour.emptyAt ? from('Fed for', `<span class="val">${countdown(hour.emptyAt, 'no time')}</span>`) : ''}
       <span class="costs" tabindex="0" role="button" aria-label="What going out now costs">
         <span class="band">${escape(hour.band)}</span>
         <span class="costs-panel">
@@ -5243,7 +5264,15 @@ export const TIMERS = `
       if (!rate) continue;
 
       const value = Math.max(0, Math.min(of, Number(el.dataset.value) + rate * elapsedHours));
-      el.textContent = value.toFixed(1);
+      /*
+       * The bar always drifts; the text only when the cell is a level.
+       *
+       * A cost gauge prints a countdown rather than a level, and that countdown is a nested
+       * span with its own ticker — so writing the drifted number in here would clobber it
+       * every second and the cell would flicker between "6h 12m" and "44.0". The data-said
+       * attribute marks the cell whose text this owns.
+       */
+      if (el.dataset.said) el.textContent = value.toFixed(1);
 
       const fill = el.closest('.gauge').querySelector('.track i');
       if (!fill) continue;
@@ -7773,6 +7802,9 @@ function renderSurvivor(survivor, strain, vitals, inventory, panelId) {
    */
   const BITES_AT = { hunger: vitals?.starvationThreshold, thirst: vitals?.thirstThreshold };
 
+  /* When each of those two gets there, for this survivor, at the rate they are on. */
+  const bites = survivor.drivers?.bites ?? {};
+
   const gauge = (label, value, of, note, tail = '', acting = [], rate = 0) => {
     const key = label.toLowerCase();
     const share = Math.max(0, Math.min(1, Number(value) / (Number(of) || 100)));
@@ -7803,9 +7835,33 @@ function renderSurvivor(survivor, strain, vitals, inventory, panelId) {
     const live = ' data-value="' + value + '" data-drift="' + rate + '" data-of="' + of + '"' +
       (RISING.has(key) ? ' data-rising="1"' : '');
 
+    /*
+     * A cost gauge prints *when*, not *how much* — 2026-09-14, with the camp's own deadline
+     * moved to the hour strip.
+     *
+     * What is left for a person's gauge once the camp figure lives on the strip is the one
+     * thing a level cannot give: how long, for this survivor, at the rate they are actually
+     * on. Nobody asks how thirsty somebody is; they ask how long they have.
+     *
+     * The bar underneath keeps the level, because the shape is still worth a glance and the
+     * threshold mark on it is still the thing the fill is crossing. What changes is which of
+     * the two is the figure.
+     *
+     * `duration` and not `countdown`, which was measured rather than preferred: a ticking
+     * countdown reads "2d 13h 54m", which is ten characters of mono beside a label and two
+     * marks in a 190px column, and the last unit was clipped. A gauge is glanced at against a
+     * threshold; the hour strip is where the page keeps things that tick, and it has the width
+     * for them. Past the threshold `duration` gives "now" for a span of zero, which is the
+     * honest reading and saves the cell from carrying two formats.
+     */
+    const due = BITES_AT[key] > 0 ? bites?.[key] : null;
+    const left = due ? Math.max(0, (new Date(due).getTime() - Date.now()) / 3600_000) : 0;
+
     return `<div class="gauge noted g-${key}">
       <div class="gauge-top"><span class="tag">${label}</span>${signs(acting)}
-        <span class="val"${live}>${n(value)}</span></div>
+        <span class="val${due ? ' when' : ''}"${live}${due ? '' : ' data-said="1"'}>${
+          due ? escape(duration(left)) : n(value)
+        }</span></div>
       <div class="track">${
         value > 0
           ? `<i class="${
@@ -7960,6 +8016,16 @@ function renderSurvivor(survivor, strain, vitals, inventory, panelId) {
            survivor.drivers?.rates?.health)}
          ${gauge('Stamina', survivor.stamina, 100, said.stamina, '', survivor.drivers?.stamina,
            survivor.drivers?.rates?.stamina)}
+         ${/*
+            * Hunger stays unconditional, and that was tried the other way round first.
+            *
+            * Making it vanish for a fed survivor looked like the same rule thirst follows, and
+            * it is not: the food-and-water rates live in *this* gauge's panel, so hiding the
+            * gauge hides the only place the page says what a mouth draws — caught by the
+            * invariant in `world.test.js` that the survivor panel and the stores panel print
+            * the same constant. Thirst can disappear because its panel is a copy of what the
+            * stores rail already carries. This one is not.
+            */ ''}
          ${gauge('Hunger', survivor.hunger, 100, said.hunger, '', survivor.drivers?.hunger,
            survivor.drivers?.rates?.hunger)}
          ${/*

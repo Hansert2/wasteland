@@ -146,7 +146,7 @@ const DAY_MS = 24 * HOUR_MS;
  * be stated before one is chosen, so the strip answers the question it can — what going
  * out now is worth — and leaves the rest to the trip.
  */
-function hourStrip(state, now, fitted, clock = 0, noon = DEFAULT_SOLAR_NOON) {
+function hourStrip(state, now, fitted, clock = 0, noon = DEFAULT_SOLAR_NOON, net = {}) {
   const active = activeAt(state.worldEvents, now);
   const time = worldTimeAt(now, clock, noon);
   const lit = isLit(now, clock, noon);
@@ -161,8 +161,34 @@ function hourStrip(state, now, fitted, clock = 0, noon = DEFAULT_SOLAR_NOON) {
   const hasClock = fitted.has('clock');
   const hasGlass = fitted.has('glass');
 
+  /*
+   * How long the camp has, on the strip where every other deadline already lives.
+   *
+   * Phase 19 gave water its own clock and the roster its own gauge, and the gauge is the
+   * wrong place for it: everybody drinks from one tank, so four survivors in a dry camp carry
+   * four copies of the same number, on the one view a player opens least. **The hour strip is
+   * sticky across every view and is already the page's answer to "how long until".**
+   *
+   * Read off the *net* rate rather than off production, because that is the number the stores
+   * rail beside it prints — a strip saying nine days over a rail draining at a rate that
+   * empties in four is the page contradicting itself, which is the failure `world.test.js`
+   * exists to catch.
+   *
+   * Null when a store is not falling. A camp whose purifier out-produces its mouths has no
+   * deadline, and a mark reports something acting on a number, never a non-effect.
+   */
+  const runsOut = (kind) => {
+    const rate = Number(net[kind]);
+    if (!Number.isFinite(rate) || rate >= 0) return null;
+    const amount = Number(state.settlement.resources[kind]?.amount) || 0;
+    return new Date(now + (amount / -rate) * HOUR_MS);
+  };
+
   return {
     band: time.band,
+    /* Both, so the strip can say which of the two is the near one. */
+    dryAt: runsOut('water'),
+    emptyAt: runsOut('food'),
     // Carried to the page so the ticking clock in the browser shows this camp's hour.
     offset: clock,
     // Free at every tier: which way the hour is pushing. Numbers cost fuel; the direction
@@ -763,6 +789,7 @@ function driversFor(person, {
   radDecayPerHour,
   strain,
   config,
+  at,
 }) {
   /*
    * What this hour is worth and what it draws, from the tick rather than from here.
@@ -1015,7 +1042,33 @@ function driversFor(person, {
     stamina: working ? -config.staminaPerHourWorked : resting ? recoveredPerHour : 0,
   };
 
-  return { health, hunger, thirst, radiation, stamina, rates };
+  /*
+   * And when each of the two clocks gets to the point it starts taking health.
+   *
+   * The per-person half of the roster change of 2026-09-14: the camp's own deadline is on the
+   * hour strip now, so what is left for a survivor's gauge is the figure a *level* cannot give
+   * — how long, for this person, at the rate they are actually on.
+   *
+   * Null when the gauge is falling or already at rest, which is the same rule the gauge itself
+   * follows: somebody who is drinking has no deadline, and a cell holding a countdown that
+   * never arrives is a mark reporting a non-effect.
+   *
+   * Past the threshold it is an instant in the past, which `countdown` renders as "now" — the
+   * honest reading, and one word rather than a second format for the same cell.
+   */
+  const bitesAt = (value, rate, threshold) => {
+    if (!(rate > 0)) return null;
+    const level = Number(value) || 0;
+    if (level >= threshold) return new Date(at);
+    return new Date(at + ((threshold - level) / rate) * 3600_000);
+  };
+
+  const bites = {
+    hunger: bitesAt(person.hunger, rates.hunger, config.starvationThreshold),
+    thirst: bitesAt(person.thirst, rates.thirst, config.thirstThreshold),
+  };
+
+  return { health, hunger, thirst, radiation, stamina, rates, bites };
 }
 
 /**
@@ -2568,7 +2621,7 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
      * cost they cannot plan around. What fuel buys is precision: the clock sells the hour
      * and the exact turn of the light, the glass sells the temperature and the numbers.
      */
-    hour: hourStrip(state, now, fitted, clock, noon),
+    hour: hourStrip(state, now, fitted, clock, noon, netRates),
     /**
      * Where the camp stands — offered once, to a camp that was never actually placed, and
      * `null` for everybody else.
@@ -3009,6 +3062,8 @@ export async function viewCamp(client, settlementId, now = Date.now(), { day = 0
           radDecayPerHour,
           strain: strainOf(person, radDecayPerHour),
           config: CONFIG,
+          /* The instant the deadlines below are measured from. */
+          at: now,
         }),
         inventory: packsByOwner.get(Number(person.id)) ?? [],
         /*
