@@ -3754,6 +3754,37 @@ ${PANE_CSS}
   .gauge .track u { position: absolute; top: -2px; width: 2px; height: 6px;
                     background: var(--oxide); }
   /*
+   * The ghost: where the gauge will be when this survivor is next somebody you can act on.
+   *
+   * A broken line rather than a second fill, because it is the one mark on this page that
+   * reports something that has not happened. Everything else here is a measurement; this is
+   * arithmetic on a rate, and the gaps in it are what say so without a word of explanation.
+   *
+   * Two on, three off, at the track's own two pixels -- the same repeat the road band's ghost
+   * uses. Finer than that and it reads as a dimmer solid bar at anything under full zoom,
+   * which would be a projection pretending to be a reading.
+   *
+   * After the fill in the markup and therefore over it, which matters only for a gauge that is
+   * coming *down*: there the ghost lies across the part of the fill that is about to go, and
+   * being on top is what makes it read as the part that is leaving. The threshold mark is
+   * last of the three and stays on top of both, because the mark is what the other two are
+   * being read against.
+   */
+  .gauge .track s {
+    position: absolute; top: 0; height: 2px; text-decoration: none;
+    background: repeating-linear-gradient(90deg,
+                  var(--quiet) 0 2px, transparent 2px 5px);
+  }
+  .gauge .track s.worse {
+    background: repeating-linear-gradient(90deg,
+                  var(--oxide) 0 2px, transparent 2px 5px);
+  }
+  /* The crossing, in words, under the track it happens on. Set at the size the gauge's own
+     notes are set at, because that is what it is -- a note on this gauge, not a second
+     heading. */
+  .ghost-note { display: block; margin-top: 7px; font-family: var(--numer); font-size: 11px;
+                line-height: 1.45; color: var(--oxide-light); }
+  /*
    * The bar warms as it goes wrong.
    *
    * The heat is 0 when a gauge is where you want it and 1 when it is as bad as it gets —
@@ -5319,6 +5350,25 @@ export const TIMERS = `
       const share = value / of;
       fill.style.width = 100 * Math.max(0, Math.min(1, share)) + '%';
       fill.style.setProperty('--heat', (el.dataset.rising ? share : 1 - share).toFixed(3));
+
+      /*
+       * And the ghost closes on the fill as the wait runs down.
+       *
+       * Drawn from the value this loop just worked out rather than from the one the server
+       * sent, so the two ends of the hatching move together and the far end stays put: the
+       * projection is to a fixed hour, and what changes between now and that hour is only how
+       * much of it is still ahead. A page left open until they walk back through the gate ends
+       * with no hatching at all, which is correct -- there is nothing left to wait for.
+       */
+      const ghost = el.closest('.gauge').querySelector('.track s');
+      if (!ghost) continue;
+      const hours = (Number(el.dataset.ahead) - Date.now()) / 3600000;
+      if (!(hours > 0)) { ghost.style.width = '0%'; continue; }
+      const will = Math.max(0, Math.min(of, value + rate * hours));
+      const lo = Math.min(value, will) / of;
+      const hi = Math.max(value, will) / of;
+      ghost.style.left = 100 * lo + '%';
+      ghost.style.width = 100 * (hi - lo) + '%';
     }
 
     for (const el of works) {
@@ -7845,6 +7895,27 @@ function renderSurvivor(survivor, strain, vitals, inventory, panelId) {
   /* When each of those two gets there, for this survivor, at the rate they are on. */
   const bites = survivor.drivers?.bites ?? {};
 
+  /*
+   * The hour this survivor stops being someone you are waiting on — and the horizon every
+   * track's ghost is drawn to.
+   *
+   * This game is about absence. Everything resolves while nobody is watching, and the
+   * question every block on this page is quietly trying to answer is *what will this be when
+   * I get back*. A gauge that reports only the present is the one thing here not doing that.
+   *
+   * The horizon is the survivor's own clock and nothing else: the hour they walk back through
+   * the gate, or the hour they put down whatever is occupying them. That is the choice that
+   * keeps this from needing a constant. "When will the player next look" is unknowable and
+   * would have to be invented; "when is this person next someone I can act on" is a timestamp
+   * the page is already printing beside their name.
+   *
+   * It also means a survivor standing in camp with nothing on has no ghost on any of their
+   * tracks, which is the house rule holding rather than a gap: there is no pending hour to
+   * draw to, so drawing one would be the page inventing a future to report.
+   */
+  const backAt = survivor.away?.returnsAt ?? survivor.busyUntil ?? null;
+  const backWhen = backAt ? new Date(backAt).getTime() : 0;
+
   const gauge = (label, value, of, note, tail = '', acting = [], rate = 0) => {
     const key = label.toLowerCase();
     const share = Math.max(0, Math.min(1, Number(value) / (Number(of) || 100)));
@@ -7897,9 +7968,64 @@ function renderSurvivor(survivor, strain, vitals, inventory, panelId) {
     const due = BITES_AT[key] > 0 ? bites?.[key] : null;
     const left = due ? Math.max(0, (new Date(due).getTime() - Date.now()) / 3600_000) : 0;
 
+    /*
+     * Where this gauge will stand at that hour, hatched onto the same track.
+     *
+     * The solid part is now and the hatched part is what the waiting costs, so the threshold
+     * mark stays exactly where it is and whether the hatching reaches it is the whole reading.
+     * That is the one comparison the figure above cannot make: the figure says the hour this
+     * gauge bites, and the hatching says whether that hour falls before or after the one the
+     * player is already waiting for.
+     *
+     * A straight line from the rate the server sent, which is the same extrapolation the
+     * stores have used since they were built and the same one the ticker below runs every
+     * second. It is honest about being a projection by being drawn as one -- a broken line
+     * against the solid fill, never a second bar.
+     *
+     * Nothing to draw without both a clock and a rate, and nothing drawn for a span under half
+     * a percent: a hatch one pixel wide is a smudge on the track that reports nothing.
+     */
+    const ahead = backWhen > Date.now() ? backWhen : 0;
+    const willBe = ahead && rate
+      ? Math.max(
+          0,
+          Math.min(Number(of) || 100, Number(value) + rate * ((ahead - Date.now()) / 3600_000)),
+        )
+      : null;
+    const from = willBe === null ? 0 : bar(Math.min(value, willBe), of);
+    const to = willBe === null ? 0 : bar(Math.max(value, willBe), of);
+    /*
+     * Oxide only when the wait costs something. On this page the accent is a clock, a price
+     * you cannot pay, or a warning -- so a sleeper whose stamina fills back up while they rest
+     * gets the same hatching in the quiet grey, because good news is not a warning and the
+     * palette has no green in it on purpose.
+     */
+    const worse = willBe !== null && (RISING.has(key) ? willBe > value : willBe < value);
+    const ghost = willBe === null || to - from < 0.5
+      ? ''
+      : `<s class="${worse ? 'worse' : ''}" style="left:${from}%; width:${(to - from).toFixed(
+          2,
+        )}%" aria-hidden="true"></s>`;
+
+    /*
+     * And the line that says it in words, for the one case where the hatching changes what the
+     * player should do: a gauge that is under its threshold now and over it by the time this
+     * survivor is somebody again. Only that crossing -- a hatch that stays short of the mark
+     * has already said so by being short of the mark.
+     */
+    const crosses =
+      willBe !== null && BITES_AT[key] > 0 && Number(value) < BITES_AT[key] && willBe >= BITES_AT[key];
+    const over = crosses
+      ? `<span class="ghost-note">past it ${
+          survivor.away ? 'by the time they are home' : 'before they are free'
+        }</span>`
+      : '';
+
     return `<div class="gauge noted g-${key}">
       <div class="gauge-top"><span class="tag">${label}</span>${signs(acting)}
-        <span class="val${due ? ' when' : ''}"${live}${due ? '' : ' data-said="1"'}>${
+        <span class="val${due ? ' when' : ''}"${live}${
+          ahead ? ` data-ahead="${ahead}"` : ''
+        }${due ? '' : ' data-said="1"'}>${
           due ? escape(duration(left)) : n(value)
         }</span></div>
       <div class="track">${
@@ -7908,11 +8034,11 @@ function renderSurvivor(survivor, strain, vitals, inventory, panelId) {
               rate > 0 ? 'drift-up' : rate < 0 ? 'drift-down' : ''
             }" style="width:${bar(value, of)}%; --heat:${heat.toFixed(3)}"></i>`
           : ''
-      }${
+      }${ghost}${
         BITES_AT[key] > 0
           ? `<u style="left:${bar(BITES_AT[key], of)}%" aria-hidden="true"></u>`
           : ''
-      }</div>${marks(acting)}${tail}${note}
+      }</div>${over}${marks(acting)}${tail}${note}
     </div>`;
   };
 
