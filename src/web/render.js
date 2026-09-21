@@ -2726,7 +2726,28 @@ ${PANE_CSS}
   .roadband { display: grid; align-items: center; height: 148px; padding: 0 20px; gap: 0 24px;
           border-bottom: 1px solid var(--rule); background: var(--strip);
           background-size: cover; background-position: center 62%; background-repeat: no-repeat; }
-  .roadband.at-camp { grid-template-columns: minmax(0, 1fr) auto; }
+  /*
+   * The camp, behind its own half of the band, at the same veil as a place.
+   *
+   * The band is a place while one is pressed and the camp while none is, and only half of
+   * that stood on a photograph. A camp is a place — the one the player actually lives in —
+   * so the half that shows it now has a ground too, and stepping between the two stops
+   * being a step between a picture and a fill.
+   *
+   * In the stylesheet rather than in a style attribute, which is the opposite of what
+   * plateGround does and for the reason written there: the plate under a dispatch row is
+   * the one value the stylesheet cannot know, because there is one per region. There is
+   * exactly one camp banner, so this is a value the stylesheet knows.
+   *
+   * .88 is the set's own figure and is used unchanged, which took work on the other side:
+   * the master is a night photograph among eleven overcast daylight ones, and at its own
+   * exposure this veil left a band nobody could see. tools/plates.py lifts it to the set's
+   * median before shipping it, so the figure here did not have to move and no grey in this
+   * band had to move either. The numbers are in that file.
+   */
+  .roadband.at-camp { grid-template-columns: minmax(0, 1fr) auto;
+                background-image: linear-gradient(rgba(23, 22, 20, .88), rgba(23, 22, 20, .88)),
+                                  url(/img/camp-banner.webp); }
   /*
    * The place, behind the whole band, at a flat veil rather than a gradient.
    *
@@ -2756,9 +2777,13 @@ ${PANE_CSS}
   .band-fig .hot { color: var(--oxide); }
   .band-figs { min-width: 0; }
   .band-act { display: flex; flex-direction: column; align-items: flex-end; gap: 9px; }
-  .band-hint { font-family: var(--numer); font-size: 12px; color: var(--faint); }
   /* Brighter than the hint beside it, and for the same reason as the bar labels: the hint
      sits on the flat rest band, this sits on a photograph. */
+  /* Both bands carry a photograph since the camp got its own, and the pair still differ,
+     because the reason was never only the ground: this is a control and the hint is a
+     caption. The camp banner is built to the region plates' own exposure, so the hint
+     measures on it what it always measured on the fill. */
+  .band-hint { font-family: var(--numer); font-size: 12px; color: var(--faint); }
   .band-back { font-family: var(--numer); font-size: 12px; color: var(--dim);
                text-decoration: none; }
   .band-back:hover { color: var(--bone); }
